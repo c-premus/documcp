@@ -1,0 +1,10 @@
+# Local settings with permissions (may contain sensitive patterns)
+.claude/settings.local.json
+
+# Don't ignore these - they should be committed:
+# .claude/settings.json
+# .claude/skills/
+# .claude/agents/
+# .claude/scripts/
+# memory-bank/
+# CLAUDE.md
