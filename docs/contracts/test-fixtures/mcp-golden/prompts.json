@@ -1,0 +1,386 @@
+{
+  "metadata": {
+    "protocol": "MCP (Model Context Protocol)",
+    "endpoint": "POST /documcp",
+    "transport": "JSON-RPC 2.0",
+    "total_prompts": 7,
+    "generated_from": "app/Mcp/Prompts/"
+  },
+  "prompts": {
+    "document_analysis": {
+      "class": "App\\Mcp\\Prompts\\DocumentAnalysisPrompt",
+      "title": "document_analysis",
+      "description": "Analyze documents (summarize, compare, extract, assess). Args: document_ids*, task, focus, length",
+      "schema": {
+        "document_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}, "required": true},
+        "task": {"type": "string", "enum": ["summarize", "compare", "extract", "assess"], "default": "summarize"},
+        "focus": {"type": "string", "enum": ["technical", "business", "overview", "actionable"], "default": "overview"},
+        "length": {"type": "string", "enum": ["brief", "detailed", "comprehensive"], "default": "detailed"}
+      },
+      "examples": [
+        {
+          "name": "summarize single document",
+          "input": {
+            "document_ids": ["550e8400-e29b-41d4-a716-446655440000"],
+            "task": "summarize",
+            "focus": "technical",
+            "length": "brief"
+          },
+          "output_messages": [
+            {
+              "role": "assistant",
+              "content_contains": [
+                "Document Analysis Assistant",
+                "read_document",
+                "Task: Summarize",
+                "Executive Summary",
+                "Key Points",
+                "Focus on:",
+                "Technical concepts and terminology",
+                "Brief Analysis"
+              ]
+            },
+            {
+              "role": "user",
+              "content_contains": [
+                "Document Analysis Request",
+                "doc://550e8400-e29b-41d4-a716-446655440000",
+                "Please summarize",
+                "Task: summarize",
+                "Focus: technical",
+                "Length: brief"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "compare two documents",
+          "input": {
+            "document_ids": ["550e8400-e29b-41d4-a716-446655440000", "660e8400-e29b-41d4-a716-446655440001"],
+            "task": "compare",
+            "focus": "overview",
+            "length": "detailed"
+          },
+          "output_messages": [
+            {
+              "role": "assistant",
+              "content_contains": ["Task: Compare", "Similarities", "Differences", "Relative Authority"]
+            },
+            {
+              "role": "user",
+              "content_contains": ["2 documents", "Please compare"]
+            }
+          ]
+        }
+      ]
+    },
+    "search_query_builder": {
+      "class": "App\\Mcp\\Prompts\\SearchQueryBuilderPrompt",
+      "title": "search_query_builder",
+      "description": "Build effective search queries with keyword analysis and filters. Args: goal*, context, file_types",
+      "schema": {
+        "goal": {"type": "string", "required": true, "max": 500},
+        "context": {"type": "string", "default": "", "max": 1000},
+        "file_types": {"type": "array", "items": {"type": "string", "enum": ["markdown", "pdf", "docx", "xlsx", "html"]}, "default": []}
+      },
+      "examples": [
+        {
+          "name": "build search for API docs",
+          "input": {
+            "goal": "Find documentation about REST API authentication patterns",
+            "context": "Laravel project with OAuth 2.1",
+            "file_types": ["markdown", "pdf"]
+          },
+          "output_messages": [
+            {
+              "role": "assistant",
+              "content_contains": [
+                "search query builder",
+                "search_documents",
+                "Query Optimization Tips",
+                "Keyword Analysis",
+                "Recommended Queries",
+                "Preferred file types: markdown, pdf"
+              ]
+            },
+            {
+              "role": "user",
+              "content_contains": [
+                "Find documentation about REST API authentication patterns",
+                "Laravel project with OAuth 2.1",
+                "File Type Preferences: markdown, pdf"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "knowledge_base_builder": {
+      "class": "App\\Mcp\\Prompts\\KnowledgeBaseBuilderPrompt",
+      "title": "knowledge_base_builder",
+      "description": "Create and organize knowledge base documents with templates. Args: goal*, content_type, scope",
+      "schema": {
+        "goal": {"type": "string", "required": true, "max": 500},
+        "content_type": {"type": "string", "enum": ["guide", "reference", "runbook", "notes"], "default": "guide"},
+        "scope": {"type": "string", "enum": ["single", "collection", "organize"], "default": "single"}
+      },
+      "examples": [
+        {
+          "name": "create API reference collection",
+          "input": {
+            "goal": "Document our API endpoints",
+            "content_type": "reference",
+            "scope": "collection"
+          },
+          "output_messages": [
+            {
+              "role": "assistant",
+              "content_contains": [
+                "knowledge base builder",
+                "create_document",
+                "update_document",
+                "search_documents",
+                "Content Template (reference)",
+                "Overview",
+                "Parameters / Fields",
+                "Workflow (collection)",
+                "Tagging Best Practices"
+              ]
+            },
+            {
+              "role": "user",
+              "content_contains": [
+                "Document our API endpoints",
+                "Content Type: reference",
+                "Scope: collection"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "zim_research": {
+      "class": "App\\Mcp\\Prompts\\ZimResearchPrompt",
+      "title": "zim_research",
+      "description": "Research ZIM archives (DevDocs, Wikipedia, Stack Exchange). Args: topic*, depth, preferred_sources",
+      "conditional_registration": "Requires ZIM enabled and Kiwix service configured",
+      "schema": {
+        "topic": {"type": "string", "required": true, "max": 500},
+        "depth": {"type": "string", "enum": ["quick", "standard", "deep"], "default": "standard"},
+        "preferred_sources": {"type": "array", "items": {"type": "string", "enum": ["devdocs", "wikipedia", "stackoverflow"]}, "default": []}
+      },
+      "examples": [
+        {
+          "name": "research programming topic",
+          "input": {
+            "topic": "Laravel middleware implementation",
+            "depth": "standard",
+            "preferred_sources": ["devdocs"]
+          },
+          "output_messages": [
+            {
+              "role": "assistant",
+              "content_contains": [
+                "ZIM Archive Research Assistant",
+                "list_zim_archives",
+                "search_zim",
+                "read_zim_article",
+                "Research Workflow",
+                "Step 1: Discover Available Archives",
+                "Step 2: Search for Relevant Articles",
+                "Step 3: Read Article Content"
+              ]
+            },
+            {
+              "role": "user",
+              "content_contains": [
+                "Research Request: Laravel middleware implementation",
+                "Research Depth: standard",
+                "Standard Research",
+                "DevDocs"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "confluence_research": {
+      "class": "App\\Mcp\\Prompts\\ConfluenceResearchPrompt",
+      "title": "confluence_research",
+      "description": "Research Confluence spaces and pages with CQL search. Args: topic*, space, depth",
+      "conditional_registration": "Requires Confluence enabled and service configured",
+      "schema": {
+        "topic": {"type": "string", "required": true, "max": 500},
+        "space": {"type": "string", "default": "", "max": 50},
+        "depth": {"type": "string", "enum": ["quick", "standard", "deep"], "default": "standard"}
+      },
+      "examples": [
+        {
+          "name": "research in specific space",
+          "input": {
+            "topic": "deployment procedures",
+            "space": "DEV",
+            "depth": "deep"
+          },
+          "output_messages": [
+            {
+              "role": "assistant",
+              "content_contains": [
+                "Confluence Research Assistant",
+                "list_confluence_spaces",
+                "search_confluence",
+                "read_confluence_page",
+                "CQL Reference",
+                "text ~ \"term\"",
+                "space = \"KEY\""
+              ]
+            },
+            {
+              "role": "user",
+              "content_contains": [
+                "Research Request: deployment procedures",
+                "Limit search to space `DEV`",
+                "Deep Investigation"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "cross_source_research": {
+      "class": "App\\Mcp\\Prompts\\CrossSourceResearchPrompt",
+      "title": "cross_source_research",
+      "description": "Research across all sources (Documents, ZIM, Confluence, Git Templates). Args: topic*, sources, depth",
+      "conditional_registration": "Always registered (works with any available sources)",
+      "schema": {
+        "topic": {"type": "string", "required": true, "max": 500},
+        "sources": {"type": "array", "items": {"type": "string", "enum": ["documents", "zim", "confluence", "git_templates"]}, "default": []},
+        "depth": {"type": "string", "enum": ["quick", "standard", "deep"], "default": "standard"}
+      },
+      "examples": [
+        {
+          "name": "research across all sources",
+          "input": {
+            "topic": "authentication best practices",
+            "sources": [],
+            "depth": "standard"
+          },
+          "output_messages": [
+            {
+              "role": "assistant",
+              "content_contains": [
+                "Cross-Source Research Assistant",
+                "search_documents",
+                "read_document",
+                "list_zim_archives",
+                "search_zim",
+                "list_confluence_spaces",
+                "search_confluence",
+                "search_git_templates",
+                "Synthesis Guidance"
+              ]
+            },
+            {
+              "role": "user",
+              "content_contains": [
+                "Research Request: authentication best practices",
+                "All available sources",
+                "Standard Research"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "research limited sources",
+          "input": {
+            "topic": "project templates",
+            "sources": ["documents", "git_templates"],
+            "depth": "quick"
+          },
+          "output_messages": [
+            {
+              "role": "assistant",
+              "content_contains": [
+                "search_documents",
+                "search_git_templates"
+              ]
+            },
+            {
+              "role": "user",
+              "content_contains": [
+                "documents, git_templates",
+                "Quick Search"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "git_template_setup": {
+      "class": "App\\Mcp\\Prompts\\GitTemplateSetupPrompt",
+      "title": "git_template_setup",
+      "description": "Discover and deploy project templates (CLAUDE.md, Memory Bank). Args: intent*, category, depth",
+      "conditional_registration": "Requires git_templates.enabled config",
+      "schema": {
+        "intent": {"type": "string", "required": true, "max": 500},
+        "category": {"type": "string", "enum": ["claude", "memory-bank", "project"], "required": false},
+        "depth": {"type": "string", "enum": ["browse", "preview", "deploy"], "default": "deploy"}
+      },
+      "examples": [
+        {
+          "name": "deploy CLAUDE.md template",
+          "input": {
+            "intent": "Set up CLAUDE.md for a Laravel project",
+            "category": "claude",
+            "depth": "deploy"
+          },
+          "output_messages": [
+            {
+              "role": "assistant",
+              "content_contains": [
+                "Git Template Setup Assistant",
+                "list_git_templates",
+                "search_git_templates",
+                "get_template_structure",
+                "get_template_file",
+                "get_deployment_guide",
+                "Template Categories",
+                "Workflow: Deploy",
+                "Search templates",
+                "Collect variable values",
+                "Write files"
+              ]
+            },
+            {
+              "role": "user",
+              "content_contains": [
+                "Template Setup Request",
+                "Set up CLAUDE.md for a Laravel project",
+                "Category filter: claude",
+                "Deploy"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "browse available templates",
+          "input": {
+            "intent": "Show me what memory bank templates are available",
+            "category": "memory-bank",
+            "depth": "browse"
+          },
+          "output_messages": [
+            {
+              "role": "assistant",
+              "content_contains": ["Workflow: Browse", "List or search templates", "Present options"]
+            },
+            {
+              "role": "user",
+              "content_contains": ["Category filter: memory-bank", "Browse"]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

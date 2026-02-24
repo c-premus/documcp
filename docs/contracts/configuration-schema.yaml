@@ -1,0 +1,3108 @@
+# DocuMCP Configuration Schema
+# Generated from Laravel config files and .env.example
+# All environment variables with types, defaults, and descriptions
+
+metadata:
+  generated_from: "Laravel config files + .env.example"
+  total_variables: 207
+
+variables:
+  # ============================================================
+  # Application
+  # ============================================================
+  - name: APP_NAME
+    type: string
+    default: "Laravel"
+    required: true
+    description: "Application name displayed in UI, API responses, and used as prefix for cache/session keys"
+    config_path: "config/app.php -> name"
+    used_by: [app, cache, session, redis, horizon, opentelemetry]
+
+  - name: APP_ENV
+    type: string
+    default: "production"
+    required: true
+    description: "Application environment; affects debug behavior, logging, and OAuth client registration defaults"
+    config_path: "config/app.php -> env"
+    enum: [local, staging, production, testing]
+    used_by: [app, documcp]
+
+  - name: APP_DEBUG
+    type: boolean
+    default: false
+    required: false
+    description: "Enable debug mode with detailed error messages and stack traces; must be false in production"
+    config_path: "config/app.php -> debug"
+    used_by: [app]
+
+  - name: APP_URL
+    type: url
+    default: "http://localhost"
+    required: true
+    description: "Base URL for the application; used for generating absolute URLs, storage links, OAuth issuer, and EHLO domain"
+    config_path: "config/app.php -> url"
+    used_by: [app, filesystems, mail, documcp]
+
+  - name: APP_KEY
+    type: string
+    default: null
+    required: true
+    description: "Encryption key used by Laravel's encryption services; generate with 'php artisan key:generate'"
+    config_path: "config/app.php -> key"
+    sensitive: true
+    used_by: [app]
+
+  - name: APP_PREVIOUS_KEYS
+    type: string
+    default: ""
+    required: false
+    description: "Comma-separated list of previous encryption keys for key rotation"
+    config_path: "config/app.php -> previous_keys"
+    sensitive: true
+    used_by: [app]
+
+  - name: APP_TIMEZONE
+    type: string
+    default: "UTC"
+    required: false
+    description: "Default timezone for PHP date functions (hardcoded in config/app.php, overridable in .env)"
+    config_path: "config/app.php -> timezone"
+    used_by: [app]
+
+  - name: APP_LOCALE
+    type: string
+    default: "en"
+    required: false
+    description: "Default application locale for translation and localization"
+    config_path: "config/app.php -> locale"
+    used_by: [app]
+
+  - name: APP_FALLBACK_LOCALE
+    type: string
+    default: "en"
+    required: false
+    description: "Fallback locale when the primary locale translation is missing"
+    config_path: "config/app.php -> fallback_locale"
+    used_by: [app]
+
+  - name: APP_FAKER_LOCALE
+    type: string
+    default: "en_US"
+    required: false
+    description: "Locale used by Faker for generating test data"
+    config_path: "config/app.php -> faker_locale"
+    used_by: [app]
+
+  - name: APP_MAINTENANCE_DRIVER
+    type: string
+    default: "file"
+    required: false
+    description: "Driver for managing maintenance mode status"
+    config_path: "config/app.php -> maintenance.driver"
+    enum: [file, cache]
+    used_by: [app]
+
+  - name: APP_MAINTENANCE_STORE
+    type: string
+    default: "database"
+    required: false
+    description: "Cache store used when maintenance driver is 'cache'"
+    config_path: "config/app.php -> maintenance.store"
+    used_by: [app]
+
+  # ============================================================
+  # Octane / RoadRunner
+  # ============================================================
+  - name: OCTANE_SERVER
+    type: string
+    default: "roadrunner"
+    required: false
+    description: "HTTP server backend for Laravel Octane"
+    config_path: "config/octane.php -> server"
+    enum: [roadrunner, swoole, frankenphp]
+    used_by: [octane]
+
+  - name: OCTANE_HTTPS
+    type: boolean
+    default: false
+    required: false
+    description: "Force HTTPS for all generated URLs; set true when behind a TLS-terminating reverse proxy (e.g., Traefik)"
+    config_path: "config/octane.php -> https"
+    used_by: [octane]
+
+  - name: TRUSTED_PROXIES
+    type: string
+    default: "172.20.0.0/16"
+    required: false
+    description: "CIDR of the network your reverse proxy runs on; only IPs in this range can set X-Forwarded-* headers"
+    config_path: "bootstrap/app.php (not in config/)"
+    used_by: [app]
+
+  # ============================================================
+  # Database
+  # ============================================================
+  - name: DB_CONNECTION
+    type: string
+    default: "sqlite"
+    required: true
+    description: "Default database connection driver; DocuMCP requires 'pgsql' for production"
+    config_path: "config/database.php -> default"
+    enum: [sqlite, mysql, mariadb, pgsql, sqlsrv]
+    used_by: [database, queue]
+
+  - name: DB_URL
+    type: url
+    default: null
+    required: false
+    description: "Full database connection URL (alternative to individual host/port/database settings)"
+    config_path: "config/database.php -> connections.*.url"
+    sensitive: true
+    used_by: [database]
+
+  - name: DB_HOST
+    type: string
+    default: "127.0.0.1"
+    required: true
+    description: "Database server hostname or IP address"
+    config_path: "config/database.php -> connections.pgsql.host"
+    used_by: [database]
+
+  - name: DB_PORT
+    type: integer
+    default: 5432
+    required: false
+    description: "Database server port (5432 for PostgreSQL, 3306 for MySQL, 1433 for SQL Server)"
+    config_path: "config/database.php -> connections.pgsql.port"
+    used_by: [database]
+
+  - name: DB_DATABASE
+    type: string
+    default: "laravel"
+    required: true
+    description: "Database name to connect to"
+    config_path: "config/database.php -> connections.pgsql.database"
+    used_by: [database]
+
+  - name: DB_USERNAME
+    type: string
+    default: "root"
+    required: true
+    description: "Database authentication username"
+    config_path: "config/database.php -> connections.pgsql.username"
+    used_by: [database]
+
+  - name: DB_PASSWORD
+    type: string
+    default: ""
+    required: true
+    description: "Database authentication password"
+    config_path: "config/database.php -> connections.pgsql.password"
+    sensitive: true
+    used_by: [database]
+
+  - name: DB_SOCKET
+    type: string
+    default: ""
+    required: false
+    description: "Unix socket path for MySQL/MariaDB connections (alternative to host/port)"
+    config_path: "config/database.php -> connections.mysql.unix_socket"
+    used_by: [database]
+
+  - name: DB_CHARSET
+    type: string
+    default: "utf8"
+    required: false
+    description: "Character set for the database connection (utf8 for PostgreSQL, utf8mb4 for MySQL)"
+    config_path: "config/database.php -> connections.pgsql.charset"
+    used_by: [database]
+
+  - name: DB_COLLATION
+    type: string
+    default: "utf8mb4_unicode_ci"
+    required: false
+    description: "Collation for MySQL/MariaDB connections"
+    config_path: "config/database.php -> connections.mysql.collation"
+    used_by: [database]
+
+  - name: DB_FOREIGN_KEYS
+    type: boolean
+    default: true
+    required: false
+    description: "Enable foreign key constraints for SQLite"
+    config_path: "config/database.php -> connections.sqlite.foreign_key_constraints"
+    used_by: [database]
+
+  - name: MYSQL_ATTR_SSL_CA
+    type: path
+    default: null
+    required: false
+    description: "Path to SSL CA certificate for MySQL/MariaDB TLS connections"
+    config_path: "config/database.php -> connections.mysql.options"
+    used_by: [database]
+
+  - name: DB_CACHE_CONNECTION
+    type: string
+    default: null
+    required: false
+    description: "Database connection for cache store when using database cache driver"
+    config_path: "config/cache.php -> stores.database.connection"
+    used_by: [cache]
+
+  - name: DB_CACHE_TABLE
+    type: string
+    default: "cache"
+    required: false
+    description: "Database table name for cache storage"
+    config_path: "config/cache.php -> stores.database.table"
+    used_by: [cache]
+
+  - name: DB_CACHE_LOCK_CONNECTION
+    type: string
+    default: null
+    required: false
+    description: "Database connection for cache lock operations"
+    config_path: "config/cache.php -> stores.database.lock_connection"
+    used_by: [cache]
+
+  - name: DB_CACHE_LOCK_TABLE
+    type: string
+    default: null
+    required: false
+    description: "Database table name for cache lock storage"
+    config_path: "config/cache.php -> stores.database.lock_table"
+    used_by: [cache]
+
+  - name: DB_QUEUE_CONNECTION
+    type: string
+    default: null
+    required: false
+    description: "Database connection for queue storage when using database queue driver"
+    config_path: "config/queue.php -> connections.database.connection"
+    used_by: [queue]
+
+  - name: DB_QUEUE_TABLE
+    type: string
+    default: "jobs"
+    required: false
+    description: "Database table name for queue jobs"
+    config_path: "config/queue.php -> connections.database.table"
+    used_by: [queue]
+
+  - name: DB_QUEUE
+    type: string
+    default: "default"
+    required: false
+    description: "Default queue name for database queue driver"
+    config_path: "config/queue.php -> connections.database.queue"
+    used_by: [queue]
+
+  - name: DB_QUEUE_RETRY_AFTER
+    type: integer
+    default: 90
+    required: false
+    description: "Seconds before a database queue job is retried after failure"
+    config_path: "config/queue.php -> connections.database.retry_after"
+    used_by: [queue]
+
+  # ============================================================
+  # Redis
+  # ============================================================
+  - name: REDIS_CLIENT
+    type: string
+    default: "phpredis"
+    required: false
+    description: "PHP Redis client library to use"
+    config_path: "config/database.php -> redis.client"
+    enum: [phpredis, predis]
+    used_by: [redis]
+
+  - name: REDIS_URL
+    type: url
+    default: null
+    required: false
+    description: "Full Redis connection URL (alternative to individual host/port settings)"
+    config_path: "config/database.php -> redis.default.url"
+    sensitive: true
+    used_by: [redis, reverb]
+
+  - name: REDIS_HOST
+    type: string
+    default: "127.0.0.1"
+    required: true
+    description: "Redis server hostname or IP address"
+    config_path: "config/database.php -> redis.default.host"
+    used_by: [redis, reverb]
+
+  - name: REDIS_USERNAME
+    type: string
+    default: null
+    required: false
+    description: "Redis authentication username (Redis 6+ ACL)"
+    config_path: "config/database.php -> redis.default.username"
+    used_by: [redis, reverb]
+
+  - name: REDIS_PASSWORD
+    type: string
+    default: null
+    required: false
+    description: "Redis authentication password"
+    config_path: "config/database.php -> redis.default.password"
+    sensitive: true
+    used_by: [redis, reverb]
+
+  - name: REDIS_PORT
+    type: integer
+    default: 6379
+    required: false
+    description: "Redis server port"
+    config_path: "config/database.php -> redis.default.port"
+    used_by: [redis, reverb]
+
+  - name: REDIS_DB
+    type: integer
+    default: 0
+    required: false
+    description: "Redis database number for the default connection"
+    config_path: "config/database.php -> redis.default.database"
+    used_by: [redis, reverb]
+
+  - name: REDIS_CACHE_DB
+    type: integer
+    default: 1
+    required: false
+    description: "Redis database number for the cache connection"
+    config_path: "config/database.php -> redis.cache.database"
+    used_by: [redis, cache]
+
+  - name: REDIS_CLUSTER
+    type: string
+    default: "redis"
+    required: false
+    description: "Redis cluster configuration type"
+    config_path: "config/database.php -> redis.options.cluster"
+    used_by: [redis]
+
+  - name: REDIS_PREFIX
+    type: string
+    default: "{app-name}-database-"
+    required: false
+    description: "Prefix for all Redis keys (derived from APP_NAME by default)"
+    config_path: "config/database.php -> redis.options.prefix"
+    used_by: [redis]
+
+  - name: REDIS_PERSISTENT
+    type: boolean
+    default: false
+    required: false
+    description: "Use persistent Redis connections"
+    config_path: "config/database.php -> redis.options.persistent"
+    used_by: [redis]
+
+  - name: REDIS_MAX_RETRIES
+    type: integer
+    default: 3
+    required: false
+    description: "Maximum number of retry attempts for Redis operations"
+    config_path: "config/database.php -> redis.default.max_retries"
+    used_by: [redis]
+
+  - name: REDIS_BACKOFF_ALGORITHM
+    type: string
+    default: "decorrelated_jitter"
+    required: false
+    description: "Backoff algorithm for Redis retry logic"
+    config_path: "config/database.php -> redis.default.backoff_algorithm"
+    used_by: [redis]
+
+  - name: REDIS_BACKOFF_BASE
+    type: integer
+    default: 100
+    required: false
+    description: "Base delay in milliseconds for Redis retry backoff"
+    config_path: "config/database.php -> redis.default.backoff_base"
+    used_by: [redis]
+
+  - name: REDIS_BACKOFF_CAP
+    type: integer
+    default: 1000
+    required: false
+    description: "Maximum delay in milliseconds for Redis retry backoff"
+    config_path: "config/database.php -> redis.default.backoff_cap"
+    used_by: [redis]
+
+  - name: REDIS_TIMEOUT
+    type: integer
+    default: 60
+    required: false
+    description: "Redis connection timeout in seconds (used by Reverb scaling)"
+    config_path: "config/reverb.php -> servers.reverb.scaling.server.timeout"
+    used_by: [redis, reverb]
+
+  - name: REDIS_CACHE_CONNECTION
+    type: string
+    default: "cache"
+    required: false
+    description: "Redis connection name for the cache store"
+    config_path: "config/cache.php -> stores.redis.connection"
+    used_by: [cache]
+
+  - name: REDIS_CACHE_LOCK_CONNECTION
+    type: string
+    default: "default"
+    required: false
+    description: "Redis connection name for cache lock operations"
+    config_path: "config/cache.php -> stores.redis.lock_connection"
+    used_by: [cache]
+
+  - name: REDIS_QUEUE_CONNECTION
+    type: string
+    default: "default"
+    required: false
+    description: "Redis connection name for the queue driver"
+    config_path: "config/queue.php -> connections.redis.connection"
+    used_by: [queue]
+
+  - name: REDIS_QUEUE
+    type: string
+    default: "default"
+    required: false
+    description: "Default queue name for Redis queue driver"
+    config_path: "config/queue.php -> connections.redis.queue"
+    used_by: [queue]
+
+  # ============================================================
+  # Cache
+  # ============================================================
+  - name: CACHE_STORE
+    type: string
+    default: "database"
+    required: false
+    description: "Default cache store driver"
+    config_path: "config/cache.php -> default"
+    enum: [array, database, file, memcached, redis, dynamodb, octane, failover]
+    used_by: [cache]
+
+  - name: CACHE_PREFIX
+    type: string
+    default: "{app-name}-cache-"
+    required: false
+    description: "Prefix for all cache keys (derived from APP_NAME by default)"
+    config_path: "config/cache.php -> prefix"
+    used_by: [cache]
+
+  # ============================================================
+  # Session
+  # ============================================================
+  - name: SESSION_DRIVER
+    type: string
+    default: "database"
+    required: false
+    description: "Session storage driver; DocuMCP uses 'redis' for production"
+    config_path: "config/session.php -> driver"
+    enum: [file, cookie, database, memcached, redis, dynamodb, array]
+    used_by: [session]
+
+  - name: SESSION_LIFETIME
+    type: integer
+    default: 120
+    required: false
+    description: "Session idle timeout in minutes before expiration"
+    config_path: "config/session.php -> lifetime"
+    used_by: [session]
+
+  - name: SESSION_EXPIRE_ON_CLOSE
+    type: boolean
+    default: false
+    required: false
+    description: "Expire session when the browser is closed"
+    config_path: "config/session.php -> expire_on_close"
+    used_by: [session]
+
+  - name: SESSION_ENCRYPT
+    type: boolean
+    default: true
+    required: false
+    description: "Encrypt all session data before storage; enabled by default for security"
+    config_path: "config/session.php -> encrypt"
+    used_by: [session]
+
+  - name: SESSION_CONNECTION
+    type: string
+    default: null
+    required: false
+    description: "Database or Redis connection to use for session storage"
+    config_path: "config/session.php -> connection"
+    used_by: [session]
+
+  - name: SESSION_TABLE
+    type: string
+    default: "sessions"
+    required: false
+    description: "Database table name for session storage"
+    config_path: "config/session.php -> table"
+    used_by: [session]
+
+  - name: SESSION_STORE
+    type: string
+    default: null
+    required: false
+    description: "Cache store to use for cache-driven session backends"
+    config_path: "config/session.php -> store"
+    used_by: [session]
+
+  - name: SESSION_COOKIE
+    type: string
+    default: "{app-name}-session"
+    required: false
+    description: "Name of the session cookie (derived from APP_NAME by default)"
+    config_path: "config/session.php -> cookie"
+    used_by: [session]
+
+  - name: SESSION_PATH
+    type: string
+    default: "/"
+    required: false
+    description: "Cookie path scope for the session cookie"
+    config_path: "config/session.php -> path"
+    used_by: [session]
+
+  - name: SESSION_DOMAIN
+    type: string
+    default: null
+    required: false
+    description: "Cookie domain for the session cookie; null uses root domain"
+    config_path: "config/session.php -> domain"
+    used_by: [session]
+
+  - name: SESSION_SECURE_COOKIE
+    type: boolean
+    default: null
+    required: false
+    description: "Only send session cookie over HTTPS; set true in production with TLS"
+    config_path: "config/session.php -> secure"
+    used_by: [session]
+
+  - name: SESSION_HTTP_ONLY
+    type: boolean
+    default: true
+    required: false
+    description: "Prevent JavaScript access to the session cookie (XSS protection)"
+    config_path: "config/session.php -> http_only"
+    used_by: [session]
+
+  - name: SESSION_SAME_SITE
+    type: string
+    default: "lax"
+    required: false
+    description: "SameSite attribute for the session cookie (CSRF protection)"
+    config_path: "config/session.php -> same_site"
+    enum: [lax, strict, none]
+    used_by: [session]
+
+  - name: SESSION_PARTITIONED_COOKIE
+    type: boolean
+    default: false
+    required: false
+    description: "Tie the session cookie to the top-level site in cross-site contexts"
+    config_path: "config/session.php -> partitioned"
+    used_by: [session]
+
+  # ============================================================
+  # Queue
+  # ============================================================
+  - name: QUEUE_CONNECTION
+    type: string
+    default: "database"
+    required: true
+    description: "Default queue connection driver; DocuMCP uses 'redis' for production"
+    config_path: "config/queue.php -> default"
+    enum: [sync, database, beanstalkd, sqs, redis, deferred, background, failover]
+    used_by: [queue]
+
+  - name: QUEUE_FAILED_DRIVER
+    type: string
+    default: "database-uuids"
+    required: false
+    description: "Driver for storing failed queue jobs"
+    config_path: "config/queue.php -> failed.driver"
+    enum: [database-uuids, dynamodb, file, "null"]
+    used_by: [queue]
+
+  # ============================================================
+  # Mail
+  # ============================================================
+  - name: MAIL_MAILER
+    type: string
+    default: "log"
+    required: false
+    description: "Default mail transport driver"
+    config_path: "config/mail.php -> default"
+    enum: [smtp, sendmail, mailgun, ses, ses-v2, postmark, resend, log, array, failover, roundrobin]
+    used_by: [mail]
+
+  - name: MAIL_SCHEME
+    type: string
+    default: null
+    required: false
+    description: "SMTP connection scheme (e.g., tls)"
+    config_path: "config/mail.php -> mailers.smtp.scheme"
+    used_by: [mail]
+
+  - name: MAIL_URL
+    type: url
+    default: null
+    required: false
+    description: "Full SMTP connection URL (alternative to individual settings)"
+    config_path: "config/mail.php -> mailers.smtp.url"
+    sensitive: true
+    used_by: [mail]
+
+  - name: MAIL_HOST
+    type: string
+    default: "127.0.0.1"
+    required: false
+    description: "SMTP server hostname"
+    config_path: "config/mail.php -> mailers.smtp.host"
+    used_by: [mail]
+
+  - name: MAIL_PORT
+    type: integer
+    default: 2525
+    required: false
+    description: "SMTP server port"
+    config_path: "config/mail.php -> mailers.smtp.port"
+    used_by: [mail]
+
+  - name: MAIL_USERNAME
+    type: string
+    default: null
+    required: false
+    description: "SMTP authentication username"
+    config_path: "config/mail.php -> mailers.smtp.username"
+    used_by: [mail]
+
+  - name: MAIL_PASSWORD
+    type: string
+    default: null
+    required: false
+    description: "SMTP authentication password"
+    config_path: "config/mail.php -> mailers.smtp.password"
+    sensitive: true
+    used_by: [mail]
+
+  - name: MAIL_ENCRYPTION
+    type: string
+    default: null
+    required: false
+    description: "SMTP encryption method (referenced in .env.example; actual config uses MAIL_SCHEME)"
+    config_path: ".env.example only"
+    enum: [tls, ssl, "null"]
+    used_by: [mail]
+
+  - name: MAIL_EHLO_DOMAIN
+    type: string
+    default: null
+    required: false
+    description: "Local domain for SMTP EHLO command; defaults to APP_URL hostname"
+    config_path: "config/mail.php -> mailers.smtp.local_domain"
+    used_by: [mail]
+
+  - name: MAIL_FROM_ADDRESS
+    type: string
+    default: "hello@example.com"
+    required: false
+    description: "Global 'From' email address for all outgoing emails"
+    config_path: "config/mail.php -> from.address"
+    used_by: [mail]
+
+  - name: MAIL_FROM_NAME
+    type: string
+    default: "Example"
+    required: false
+    description: "Global 'From' name for all outgoing emails"
+    config_path: "config/mail.php -> from.name"
+    used_by: [mail]
+
+  - name: MAIL_SENDMAIL_PATH
+    type: path
+    default: "/usr/sbin/sendmail -bs -i"
+    required: false
+    description: "Path to the sendmail binary"
+    config_path: "config/mail.php -> mailers.sendmail.path"
+    used_by: [mail]
+
+  - name: MAIL_LOG_CHANNEL
+    type: string
+    default: null
+    required: false
+    description: "Log channel to use when mail driver is 'log'"
+    config_path: "config/mail.php -> mailers.log.channel"
+    used_by: [mail]
+
+  # ============================================================
+  # Search / Meilisearch / Scout
+  # ============================================================
+  - name: MEILISEARCH_HOST
+    type: url
+    default: "http://localhost:7700"
+    required: true
+    description: "Meilisearch server URL for full-text search"
+    config_path: "config/meilisearch.php -> host, config/scout.php -> meilisearch.host"
+    used_by: [meilisearch, scout]
+
+  - name: MEILISEARCH_KEY
+    type: string
+    default: null
+    required: true
+    description: "Meilisearch master API key for authentication"
+    config_path: "config/meilisearch.php -> key, config/scout.php -> meilisearch.key"
+    sensitive: true
+    used_by: [meilisearch, scout]
+
+  - name: SCOUT_DRIVER
+    type: string
+    default: "meilisearch"
+    required: false
+    description: "Search engine driver for Laravel Scout"
+    config_path: "config/scout.php -> driver"
+    enum: [algolia, meilisearch, typesense, database, collection, "null"]
+    used_by: [scout]
+
+  - name: SCOUT_PREFIX
+    type: string
+    default: ""
+    required: false
+    description: "Prefix applied to all search index names; useful for multi-tenant setups"
+    config_path: "config/scout.php -> prefix"
+    used_by: [scout]
+
+  - name: SCOUT_QUEUE
+    type: boolean
+    default: false
+    required: false
+    description: "Queue search index sync operations for better performance"
+    config_path: "config/scout.php -> queue"
+    used_by: [scout]
+
+  - name: SCOUT_IDENTIFY
+    type: boolean
+    default: false
+    required: false
+    description: "Notify the search engine of the user performing the search (Algolia only)"
+    config_path: "config/scout.php -> identify"
+    used_by: [scout]
+
+  - name: ALGOLIA_APP_ID
+    type: string
+    default: ""
+    required: false
+    description: "Algolia application ID"
+    config_path: "config/scout.php -> algolia.id"
+    used_by: [scout]
+
+  - name: ALGOLIA_SECRET
+    type: string
+    default: ""
+    required: false
+    description: "Algolia admin API key"
+    config_path: "config/scout.php -> algolia.secret"
+    sensitive: true
+    used_by: [scout]
+
+  # ============================================================
+  # OIDC / OAuth
+  # ============================================================
+  - name: OIDC_PROVIDER_URL
+    type: url
+    default: null
+    required: false
+    description: "OIDC provider issuer URL for user SSO login and MCP API authentication"
+    config_path: "config/documcp.php -> auth.oidc.issuer"
+    used_by: [documcp, oauth]
+
+  - name: OIDC_CLIENT_ID
+    type: string
+    default: null
+    required: false
+    description: "OAuth 2.0 client ID registered with the OIDC provider"
+    config_path: "config/documcp.php -> auth.oidc.client_id"
+    used_by: [documcp, oauth]
+
+  - name: OIDC_CLIENT_SECRET
+    type: string
+    default: null
+    required: false
+    description: "OAuth 2.0 client secret from the OIDC provider"
+    config_path: "config/documcp.php -> auth.oidc.client_secret"
+    sensitive: true
+    used_by: [documcp, oauth]
+
+  - name: OIDC_REDIRECT_URI
+    type: url
+    default: null
+    required: false
+    description: "OAuth callback URL (e.g., {APP_URL}/auth/oidc/callback)"
+    config_path: "config/documcp.php -> auth.oidc.redirect_uri"
+    used_by: [documcp, oauth]
+
+  - name: OIDC_AUTO_DISCOVERY
+    type: boolean
+    default: true
+    required: false
+    description: "Fetch .well-known/openid-configuration automatically; when false, all endpoints must be set explicitly"
+    config_path: "config/documcp.php -> auth.oidc.auto_discovery"
+    used_by: [documcp, oauth]
+
+  - name: OIDC_JWKS_URI
+    type: url
+    default: null
+    required: false
+    description: "Override auto-discovered JWKS endpoint URL"
+    config_path: "config/documcp.php -> auth.oidc.jwks_uri"
+    used_by: [documcp, oauth]
+
+  - name: OIDC_AUTHORIZATION_ENDPOINT
+    type: url
+    default: null
+    required: false
+    description: "Override auto-discovered authorization endpoint URL"
+    config_path: "config/documcp.php -> auth.oidc.authorization_endpoint"
+    used_by: [documcp, oauth]
+
+  - name: OIDC_TOKEN_ENDPOINT
+    type: url
+    default: null
+    required: false
+    description: "Override auto-discovered token endpoint URL"
+    config_path: "config/documcp.php -> auth.oidc.token_endpoint"
+    used_by: [documcp, oauth]
+
+  - name: OIDC_USERINFO_ENDPOINT
+    type: url
+    default: null
+    required: false
+    description: "Override auto-discovered userinfo endpoint URL"
+    config_path: "config/documcp.php -> auth.oidc.userinfo_endpoint"
+    used_by: [documcp, oauth]
+
+  - name: OIDC_END_SESSION_ENDPOINT
+    type: url
+    default: null
+    required: false
+    description: "Override auto-discovered end session (logout) endpoint URL"
+    config_path: "config/documcp.php -> auth.oidc.end_session_endpoint"
+    used_by: [documcp, oauth]
+
+  - name: OIDC_ADMIN_GROUP
+    type: string
+    default: null
+    required: false
+    description: "OIDC group name whose members automatically receive admin privileges"
+    config_path: "config/documcp.php -> auth.oidc.admin_group"
+    used_by: [documcp, oauth]
+
+  - name: OAUTH_ISSUER
+    type: url
+    default: "${APP_URL}"
+    required: false
+    description: "OAuth 2.1 authorization server issuer identifier; defaults to APP_URL"
+    config_path: "config/documcp.php -> oauth.issuer"
+    used_by: [documcp, oauth]
+
+  - name: OAUTH_AUTHORIZATION_CODE_LIFETIME
+    type: integer
+    default: 600
+    required: false
+    description: "Authorization code validity period in seconds (10 minutes)"
+    config_path: "config/documcp.php -> oauth.authorization_code_lifetime"
+    used_by: [documcp, oauth]
+
+  - name: OAUTH_ACCESS_TOKEN_LIFETIME
+    type: integer
+    default: 3600
+    required: false
+    description: "Access token validity period in seconds (1 hour)"
+    config_path: "config/documcp.php -> oauth.access_token_lifetime"
+    used_by: [documcp, oauth]
+
+  - name: OAUTH_REFRESH_TOKEN_LIFETIME
+    type: integer
+    default: 2592000
+    required: false
+    description: "Refresh token validity period in seconds (30 days)"
+    config_path: "config/documcp.php -> oauth.refresh_token_lifetime"
+    used_by: [documcp, oauth]
+
+  - name: OAUTH_DEVICE_CODE_LIFETIME
+    type: integer
+    default: 900
+    required: false
+    description: "Device authorization code validity period in seconds (15 minutes, RFC 8628)"
+    config_path: "config/documcp.php -> oauth.device_code_lifetime"
+    used_by: [documcp, oauth]
+
+  - name: OAUTH_DEVICE_POLLING_INTERVAL
+    type: integer
+    default: 5
+    required: false
+    description: "Minimum polling interval in seconds for device authorization grant (RFC 8628)"
+    config_path: "config/documcp.php -> oauth.device_polling_interval"
+    used_by: [documcp, oauth]
+
+  - name: OAUTH_PKCE_REQUIRED
+    type: boolean
+    default: true
+    required: false
+    description: "Enforce PKCE (S256 only) for all public clients per OAuth 2.1"
+    config_path: "config/documcp.php -> oauth.pkce_required"
+    used_by: [documcp, oauth]
+
+  - name: OAUTH_DEFAULT_SCOPE
+    type: string
+    default: "mcp:access"
+    required: false
+    description: "Default scope granted when no scope is requested"
+    config_path: "config/documcp.php -> oauth.default_scope"
+    used_by: [documcp, oauth]
+
+  - name: OAUTH_CLIENT_REGISTRATION_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Enable RFC 7591 dynamic client registration"
+    config_path: "config/documcp.php -> oauth.client_registration.enabled"
+    used_by: [documcp, oauth]
+
+  - name: OAUTH_CLIENT_REGISTRATION_AUTH_REQUIRED
+    type: boolean
+    default: true
+    required: false
+    description: "Require authentication for dynamic client registration; false in dev allows mcp-remote auto-registration"
+    config_path: "config/documcp.php -> oauth.client_registration.require_authentication"
+    used_by: [documcp, oauth]
+
+  - name: OAUTH_METADATA_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Enable RFC 8414 authorization server metadata endpoint"
+    config_path: "config/documcp.php -> oauth.metadata.enabled"
+    used_by: [documcp, oauth]
+
+  # ============================================================
+  # DocuMCP-specific
+  # ============================================================
+  - name: DOCUMCP_NAME
+    type: string
+    default: "DocuMCP Server"
+    required: false
+    description: "Server name displayed in MCP responses"
+    config_path: "config/documcp.php -> name"
+    used_by: [documcp]
+
+  - name: DOCUMCP_ENDPOINT
+    type: string
+    default: "/documcp"
+    required: false
+    description: "MCP JSON-RPC 2.0 endpoint path"
+    config_path: "config/documcp.php -> mcp.endpoint"
+    used_by: [documcp]
+
+  - name: DOCUMCP_MAX_FILE_SIZE
+    type: integer
+    default: 52428800
+    required: false
+    description: "Maximum file upload size in bytes (default: 50MB)"
+    config_path: "config/documcp.php -> max_file_size"
+    used_by: [documcp]
+
+  - name: DOCUMCP_PANDOC_ENABLED
+    type: boolean
+    default: false
+    required: false
+    description: "Enable Pandoc for enhanced PDF to Markdown conversion; falls back to smalot/pdfparser"
+    config_path: "config/documcp.php -> extractors.pdf.pandoc.enabled"
+    used_by: [documcp]
+
+  - name: DOCUMCP_PANDOC_PATH
+    type: path
+    default: "/usr/bin/pandoc"
+    required: false
+    description: "Path to the Pandoc binary"
+    config_path: "config/documcp.php -> extractors.pdf.pandoc.path"
+    used_by: [documcp]
+
+  - name: DOCUMCP_PANDOC_TIMEOUT
+    type: integer
+    default: 120
+    required: false
+    description: "Pandoc processing timeout in seconds"
+    config_path: "config/documcp.php -> extractors.pdf.pandoc.timeout"
+    used_by: [documcp]
+
+  - name: DOCUMCP_SEARCH_INDEX
+    type: string
+    default: "documents"
+    required: false
+    description: "Meilisearch index name for documents"
+    config_path: "config/documcp.php -> search.index"
+    used_by: [documcp, meilisearch]
+
+  - name: DOCUMCP_AUTH_PROVIDER
+    type: string
+    default: "oidc"
+    required: false
+    description: "Authentication provider for MCP API requests"
+    config_path: "config/documcp.php -> auth.provider"
+    enum: [oidc]
+    used_by: [documcp]
+
+  - name: INTERNAL_API_TOKEN
+    type: string
+    default: null
+    required: false
+    description: "Bearer token for /metrics and /api/health/deep endpoints; when empty, endpoints are publicly accessible"
+    config_path: "config/documcp.php -> internal_api.token"
+    sensitive: true
+    used_by: [documcp]
+
+  # ============================================================
+  # Services - ZIM Archives (Kiwix)
+  # ============================================================
+  - name: KIWIX_SERVE_URL
+    type: url
+    default: null
+    required: false
+    description: "Kiwix server URL for ZIM archive integration"
+    config_path: "config/services.php -> kiwix.url"
+    used_by: [kiwix, zim]
+
+  - name: ZIM_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Enable/disable ZIM archive integration"
+    config_path: "config/documcp.php -> zim.enabled"
+    used_by: [zim]
+
+  - name: ZIM_SEARCH_INDEX
+    type: string
+    default: "zim_archives"
+    required: false
+    description: "Meilisearch index name for ZIM archive metadata"
+    config_path: "config/documcp.php -> zim.search_index"
+    used_by: [zim, meilisearch]
+
+  - name: ZIM_CACHE_TTL
+    type: integer
+    default: 3600
+    required: false
+    description: "Cache TTL in seconds for OPDS catalog / archive metadata (1 hour)"
+    config_path: "config/documcp.php -> zim.cache_ttl"
+    used_by: [zim]
+
+  - name: ZIM_SYNC_ON_BOOT
+    type: boolean
+    default: false
+    required: false
+    description: "Automatically sync ZIM archives when the application starts"
+    config_path: "config/documcp.php -> zim.sync_on_boot"
+    used_by: [zim]
+
+  - name: ZIM_CONTENT_MAX_LENGTH
+    type: integer
+    default: 100000
+    required: false
+    description: "Maximum article content length in characters"
+    config_path: "config/documcp.php -> zim.content_max_length"
+    used_by: [zim]
+
+  # ============================================================
+  # Services - Confluence
+  # ============================================================
+  - name: CONFLUENCE_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Enable/disable Atlassian Confluence integration"
+    config_path: "config/documcp.php -> confluence.enabled"
+    used_by: [confluence]
+
+  - name: CONFLUENCE_URL
+    type: url
+    default: null
+    required: false
+    description: "Confluence instance base URL"
+    config_path: "config/services.php -> confluence.url"
+    used_by: [confluence]
+
+  - name: CONFLUENCE_EMAIL
+    type: string
+    default: null
+    required: false
+    description: "Atlassian account email for Confluence API authentication"
+    config_path: "config/services.php -> confluence.email"
+    used_by: [confluence]
+
+  - name: CONFLUENCE_API_TOKEN
+    type: string
+    default: null
+    required: false
+    description: "Confluence REST API token for authentication"
+    config_path: "config/services.php -> confluence.token"
+    sensitive: true
+    used_by: [confluence]
+
+  - name: CONFLUENCE_SEARCH_INDEX
+    type: string
+    default: "confluence_spaces"
+    required: false
+    description: "Meilisearch index name for Confluence space metadata"
+    config_path: "config/documcp.php -> confluence.search_index"
+    used_by: [confluence, meilisearch]
+
+  - name: CONFLUENCE_CACHE_TTL
+    type: integer
+    default: 600
+    required: false
+    description: "Cache TTL in seconds for Confluence spaces metadata (10 minutes)"
+    config_path: "config/documcp.php -> confluence.cache_ttl"
+    used_by: [confluence]
+
+  - name: CONFLUENCE_MAX_RESULTS
+    type: integer
+    default: 25
+    required: false
+    description: "Maximum search results per Confluence query"
+    config_path: "config/documcp.php -> confluence.max_results"
+    used_by: [confluence]
+
+  - name: CONFLUENCE_RATE_LIMIT
+    type: integer
+    default: 60
+    required: false
+    description: "Rate limit for Confluence API requests (requests per minute)"
+    config_path: "config/documcp.php -> confluence.rate_limit"
+    used_by: [confluence]
+
+  - name: CONFLUENCE_CONTENT_MAX_LENGTH
+    type: integer
+    default: 100000
+    required: false
+    description: "Maximum page content length in characters"
+    config_path: "config/documcp.php -> confluence.content_max_length"
+    used_by: [confluence]
+
+  # ============================================================
+  # Services - Git Templates
+  # ============================================================
+  - name: GIT_TEMPLATES_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Enable/disable Git Templates feature for project scaffolding"
+    config_path: "config/documcp.php -> git_templates.enabled"
+    used_by: [git_templates]
+
+  - name: GIT_TEMPLATES_MAX_FILE_SIZE
+    type: integer
+    default: 1048576
+    required: false
+    description: "Maximum file size per file in bytes (1MB)"
+    config_path: "config/documcp.php -> git_templates.max_file_size"
+    used_by: [git_templates]
+
+  - name: GIT_TEMPLATES_MAX_TOTAL_SIZE
+    type: integer
+    default: 10485760
+    required: false
+    description: "Maximum total size per template in bytes (10MB)"
+    config_path: "config/documcp.php -> git_templates.max_total_size"
+    used_by: [git_templates]
+
+  - name: GIT_TEMPLATES_SEARCH_INDEX
+    type: string
+    default: "git_templates"
+    required: false
+    description: "Meilisearch index name for template metadata"
+    config_path: "config/documcp.php -> git_templates.search_index"
+    used_by: [git_templates, meilisearch]
+
+  - name: GIT_TEMPLATES_ALLOWED_HOSTS
+    type: string
+    default: ""
+    required: false
+    description: "Comma-separated hosts allowed to resolve to private IPs (SSRF allowlist for self-hosted git servers)"
+    config_path: "config/documcp.php -> git_templates.allowed_hosts"
+    used_by: [git_templates]
+
+  - name: GIT_TEMPLATES_CLONE_TIMEOUT
+    type: integer
+    default: 300
+    required: false
+    description: "Git clone timeout in seconds (referenced in .env.example; not in config files)"
+    config_path: ".env.example only"
+    used_by: [git_templates]
+
+  # ============================================================
+  # File Storage
+  # ============================================================
+  - name: FILESYSTEM_DISK
+    type: string
+    default: "local"
+    required: false
+    description: "Default filesystem disk for file storage"
+    config_path: "config/filesystems.php -> default"
+    enum: [local, public, s3]
+    used_by: [filesystems]
+
+  - name: AWS_ACCESS_KEY_ID
+    type: string
+    default: null
+    required: false
+    description: "AWS access key ID for S3, SES, SQS, and DynamoDB services"
+    config_path: "config/filesystems.php -> disks.s3.key"
+    sensitive: true
+    used_by: [filesystems, mail, queue, cache]
+
+  - name: AWS_SECRET_ACCESS_KEY
+    type: string
+    default: null
+    required: false
+    description: "AWS secret access key"
+    config_path: "config/filesystems.php -> disks.s3.secret"
+    sensitive: true
+    used_by: [filesystems, mail, queue, cache]
+
+  - name: AWS_DEFAULT_REGION
+    type: string
+    default: "us-east-1"
+    required: false
+    description: "AWS default region for all AWS services"
+    config_path: "config/filesystems.php -> disks.s3.region"
+    used_by: [filesystems, mail, queue, cache]
+
+  - name: AWS_BUCKET
+    type: string
+    default: null
+    required: false
+    description: "S3 bucket name for file storage"
+    config_path: "config/filesystems.php -> disks.s3.bucket"
+    used_by: [filesystems]
+
+  - name: AWS_URL
+    type: url
+    default: null
+    required: false
+    description: "Custom URL for S3 asset access"
+    config_path: "config/filesystems.php -> disks.s3.url"
+    used_by: [filesystems]
+
+  - name: AWS_ENDPOINT
+    type: url
+    default: null
+    required: false
+    description: "Custom S3-compatible endpoint URL (e.g., MinIO)"
+    config_path: "config/filesystems.php -> disks.s3.endpoint"
+    used_by: [filesystems]
+
+  - name: AWS_USE_PATH_STYLE_ENDPOINT
+    type: boolean
+    default: false
+    required: false
+    description: "Use path-style S3 endpoint URLs instead of virtual hosted-style"
+    config_path: "config/filesystems.php -> disks.s3.use_path_style_endpoint"
+    used_by: [filesystems]
+
+  # ============================================================
+  # Logging
+  # ============================================================
+  - name: LOG_CHANNEL
+    type: string
+    default: "stack"
+    required: false
+    description: "Default log channel"
+    config_path: "config/logging.php -> default"
+    enum: [stack, single, daily, slack, papertrail, stderr, syslog, errorlog, "null", json, json_daily]
+    used_by: [logging]
+
+  - name: LOG_STACK
+    type: string
+    default: "single"
+    required: false
+    description: "Comma-separated list of channels for the stack driver"
+    config_path: "config/logging.php -> channels.stack.channels"
+    used_by: [logging]
+
+  - name: LOG_DEPRECATIONS_CHANNEL
+    type: string
+    default: "null"
+    required: false
+    description: "Log channel for PHP and library deprecation warnings"
+    config_path: "config/logging.php -> deprecations.channel"
+    used_by: [logging]
+
+  - name: LOG_DEPRECATIONS_TRACE
+    type: boolean
+    default: false
+    required: false
+    description: "Include stack traces in deprecation log entries"
+    config_path: "config/logging.php -> deprecations.trace"
+    used_by: [logging]
+
+  - name: LOG_LEVEL
+    type: string
+    default: "debug"
+    required: false
+    description: "Minimum log level for all channels"
+    config_path: "config/logging.php -> channels.single.level (and others)"
+    enum: [debug, info, notice, warning, error, critical, alert, emergency]
+    used_by: [logging, sentry]
+
+  - name: LOG_DAILY_DAYS
+    type: integer
+    default: 14
+    required: false
+    description: "Number of days to retain daily log files"
+    config_path: "config/logging.php -> channels.daily.days"
+    used_by: [logging]
+
+  - name: LOG_SLACK_WEBHOOK_URL
+    type: url
+    default: null
+    required: false
+    description: "Slack webhook URL for log notifications"
+    config_path: "config/logging.php -> channels.slack.url"
+    sensitive: true
+    used_by: [logging]
+
+  - name: LOG_SLACK_USERNAME
+    type: string
+    default: "Laravel Log"
+    required: false
+    description: "Username displayed in Slack log notifications"
+    config_path: "config/logging.php -> channels.slack.username"
+    used_by: [logging]
+
+  - name: LOG_SLACK_EMOJI
+    type: string
+    default: ":boom:"
+    required: false
+    description: "Emoji displayed in Slack log notifications"
+    config_path: "config/logging.php -> channels.slack.emoji"
+    used_by: [logging]
+
+  - name: LOG_PAPERTRAIL_HANDLER
+    type: string
+    default: "SyslogUdpHandler::class"
+    required: false
+    description: "Monolog handler class for Papertrail logging"
+    config_path: "config/logging.php -> channels.papertrail.handler"
+    used_by: [logging]
+
+  - name: PAPERTRAIL_URL
+    type: string
+    default: null
+    required: false
+    description: "Papertrail log destination hostname"
+    config_path: "config/logging.php -> channels.papertrail.handler_with.host"
+    used_by: [logging]
+
+  - name: PAPERTRAIL_PORT
+    type: integer
+    default: null
+    required: false
+    description: "Papertrail log destination port"
+    config_path: "config/logging.php -> channels.papertrail.handler_with.port"
+    used_by: [logging]
+
+  - name: LOG_STDERR_FORMATTER
+    type: string
+    default: null
+    required: false
+    description: "Custom formatter class for stderr log channel"
+    config_path: "config/logging.php -> channels.stderr.formatter"
+    used_by: [logging]
+
+  - name: LOG_SYSLOG_FACILITY
+    type: string
+    default: "LOG_USER"
+    required: false
+    description: "Syslog facility for the syslog log channel"
+    config_path: "config/logging.php -> channels.syslog.facility"
+    used_by: [logging]
+
+  # ============================================================
+  # OpenTelemetry
+  # ============================================================
+  - name: OTEL_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Master switch for OpenTelemetry; when disabled, all tracing becomes no-ops"
+    config_path: "config/opentelemetry.php -> enabled"
+    used_by: [opentelemetry]
+
+  - name: OTEL_SERVICE_NAME
+    type: string
+    default: "{app-name-slug}"
+    required: false
+    description: "Service name appearing in trace UI; derived from APP_NAME by default"
+    config_path: "config/opentelemetry.php -> service_name"
+    used_by: [opentelemetry]
+
+  - name: OTEL_SERVICE_INSTANCE_ID
+    type: string
+    default: null
+    required: false
+    description: "Unique service instance ID; random if not set"
+    config_path: "config/opentelemetry.php -> service_instance_id"
+    used_by: [opentelemetry]
+
+  - name: OTEL_RESOURCE_ATTRIBUTES
+    type: string
+    default: ""
+    required: false
+    description: "Additional resource attributes in 'key1=value1,key2=value2' format"
+    config_path: "config/opentelemetry.php -> resource_attributes"
+    used_by: [opentelemetry]
+
+  - name: OTEL_USER_CONTEXT
+    type: boolean
+    default: true
+    required: false
+    description: "Include authenticated user.id in trace spans (no PII)"
+    config_path: "config/opentelemetry.php -> user_context"
+    used_by: [opentelemetry]
+
+  - name: OTEL_PROPAGATORS
+    type: string
+    default: "tracecontext"
+    required: false
+    description: "Comma-separated list of trace propagators"
+    config_path: "config/opentelemetry.php -> propagators"
+    enum: [tracecontext, baggage, b3, b3multi, none]
+    used_by: [opentelemetry]
+
+  - name: OTEL_TRACES_EXPORTER
+    type: string
+    default: "otlp"
+    required: false
+    description: "Traces exporter driver; NEVER use 'console' with RoadRunner"
+    config_path: "config/opentelemetry.php -> traces.exporter"
+    enum: [otlp, zipkin, memory, "null"]
+    used_by: [opentelemetry]
+
+  - name: OTEL_METRICS_EXPORTER
+    type: string
+    default: "otlp"
+    required: false
+    description: "Metrics exporter driver"
+    config_path: "config/opentelemetry.php -> metrics.exporter"
+    enum: [otlp, memory, "null"]
+    used_by: [opentelemetry]
+
+  - name: OTEL_LOGS_EXPORTER
+    type: string
+    default: "otlp"
+    required: false
+    description: "Logs exporter driver"
+    config_path: "config/opentelemetry.php -> logs.exporter"
+    enum: [otlp, memory, "null"]
+    used_by: [opentelemetry]
+
+  - name: OTEL_TRACES_SAMPLER_PARENT
+    type: boolean
+    default: true
+    required: false
+    description: "Wrap sampler in a parent-based sampler"
+    config_path: "config/opentelemetry.php -> traces.sampler.parent"
+    used_by: [opentelemetry]
+
+  - name: OTEL_TRACES_SAMPLER_TYPE
+    type: string
+    default: "always_on"
+    required: false
+    description: "Trace sampler type"
+    config_path: "config/opentelemetry.php -> traces.sampler.type"
+    enum: [always_on, always_off, traceidratio]
+    used_by: [opentelemetry]
+
+  - name: OTEL_TRACES_SAMPLER_ARG
+    type: float
+    default: 1.0
+    required: false
+    description: "Sampling ratio (1.0 = sample everything, 0.1 = sample 10%); referenced in .env.example"
+    config_path: ".env.example (mapped to OTEL_TRACES_SAMPLER_TRACEIDRATIO_RATIO)"
+    used_by: [opentelemetry]
+
+  - name: OTEL_TRACES_SAMPLER_TRACEIDRATIO_RATIO
+    type: float
+    default: 0.05
+    required: false
+    description: "Sampling ratio for traceidratio sampler"
+    config_path: "config/opentelemetry.php -> traces.sampler.args.ratio"
+    used_by: [opentelemetry]
+
+  - name: OTEL_TRACES_TAIL_SAMPLING_ENABLED
+    type: boolean
+    default: false
+    required: false
+    description: "Enable tail sampling (keeps traces based on complete trace data)"
+    config_path: "config/opentelemetry.php -> traces.sampler.tail_sampling.enabled"
+    used_by: [opentelemetry]
+
+  - name: OTEL_TRACES_TAIL_SAMPLING_DECISION_WAIT
+    type: integer
+    default: 5000
+    required: false
+    description: "Maximum wait time in milliseconds before making a tail sampling decision"
+    config_path: "config/opentelemetry.php -> traces.sampler.tail_sampling.decision_wait"
+    used_by: [opentelemetry]
+
+  - name: OTEL_TRACES_TAIL_SAMPLING_RULE_KEEP_ERRORS
+    type: boolean
+    default: true
+    required: false
+    description: "Always keep traces that contain errors"
+    config_path: "config/opentelemetry.php -> traces.sampler.tail_sampling.rules.ErrorsRule"
+    used_by: [opentelemetry]
+
+  - name: OTEL_TRACES_TAIL_SAMPLING_RULE_SLOW_TRACES
+    type: boolean
+    default: true
+    required: false
+    description: "Keep traces that exceed the slow trace threshold"
+    config_path: "config/opentelemetry.php -> traces.sampler.tail_sampling.rules.SlowTraceRule.enabled"
+    used_by: [opentelemetry]
+
+  - name: OTEL_TRACES_TAIL_SAMPLING_SLOW_TRACES_THRESHOLD_MS
+    type: integer
+    default: 2000
+    required: false
+    description: "Threshold in milliseconds for slow trace rule"
+    config_path: "config/opentelemetry.php -> traces.sampler.tail_sampling.rules.SlowTraceRule.threshold_ms"
+    used_by: [opentelemetry]
+
+  - name: OTEL_LOGS_INJECT_TRACE_ID
+    type: boolean
+    default: true
+    required: false
+    description: "Inject active trace ID into log context for correlation"
+    config_path: "config/opentelemetry.php -> logs.inject_trace_id"
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    type: url
+    default: "http://alloy:4318"
+    required: false
+    description: "OTLP exporter endpoint URL (typically Grafana Alloy or Tempo)"
+    config_path: "config/opentelemetry.php -> exporters.otlp.endpoint"
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_OTLP_PROTOCOL
+    type: string
+    default: "http/protobuf"
+    required: false
+    description: "OTLP exporter protocol"
+    config_path: "config/opentelemetry.php -> exporters.otlp.protocol"
+    enum: [grpc, http/protobuf, http/json]
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_OTLP_MAX_RETRIES
+    type: integer
+    default: 3
+    required: false
+    description: "Maximum retry attempts for OTLP exporter"
+    config_path: "config/opentelemetry.php -> exporters.otlp.max_retries"
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_OTLP_TIMEOUT
+    type: integer
+    default: 10000
+    required: false
+    description: "Default timeout in milliseconds for all OTLP exports (fallback for specific timeouts)"
+    config_path: "config/opentelemetry.php -> exporters.otlp.*.timeout (fallback)"
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_OTLP_TRACES_TIMEOUT
+    type: integer
+    default: 10000
+    required: false
+    description: "Timeout in milliseconds for OTLP trace exports"
+    config_path: "config/opentelemetry.php -> exporters.otlp.traces_timeout"
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_OTLP_HEADERS
+    type: string
+    default: ""
+    required: false
+    description: "Default headers for all OTLP exports (fallback for specific headers)"
+    config_path: "config/opentelemetry.php -> exporters.otlp.*.headers (fallback)"
+    sensitive: true
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_OTLP_TRACES_HEADERS
+    type: string
+    default: ""
+    required: false
+    description: "Headers for OTLP trace exports"
+    config_path: "config/opentelemetry.php -> exporters.otlp.traces_headers"
+    sensitive: true
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_OTLP_TRACES_PROTOCOL
+    type: string
+    default: null
+    required: false
+    description: "Override protocol for OTLP trace exports"
+    config_path: "config/opentelemetry.php -> exporters.otlp.traces_protocol"
+    enum: [grpc, http/protobuf, http/json]
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_OTLP_METRICS_TIMEOUT
+    type: integer
+    default: 10000
+    required: false
+    description: "Timeout in milliseconds for OTLP metrics exports"
+    config_path: "config/opentelemetry.php -> exporters.otlp.metrics_timeout"
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_OTLP_METRICS_HEADERS
+    type: string
+    default: ""
+    required: false
+    description: "Headers for OTLP metrics exports"
+    config_path: "config/opentelemetry.php -> exporters.otlp.metrics_headers"
+    sensitive: true
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_OTLP_METRICS_PROTOCOL
+    type: string
+    default: null
+    required: false
+    description: "Override protocol for OTLP metrics exports"
+    config_path: "config/opentelemetry.php -> exporters.otlp.metrics_protocol"
+    enum: [grpc, http/protobuf, http/json]
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
+    type: string
+    default: null
+    required: false
+    description: "Preferred metrics temporality for OTLP metrics exports"
+    config_path: "config/opentelemetry.php -> exporters.otlp.metrics_temporality"
+    enum: [Delta, Cumulative]
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_OTLP_LOGS_TIMEOUT
+    type: integer
+    default: 10000
+    required: false
+    description: "Timeout in milliseconds for OTLP log exports"
+    config_path: "config/opentelemetry.php -> exporters.otlp.logs_timeout"
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_OTLP_LOGS_HEADERS
+    type: string
+    default: ""
+    required: false
+    description: "Headers for OTLP log exports"
+    config_path: "config/opentelemetry.php -> exporters.otlp.logs_headers"
+    sensitive: true
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_OTLP_LOGS_PROTOCOL
+    type: string
+    default: null
+    required: false
+    description: "Override protocol for OTLP log exports"
+    config_path: "config/opentelemetry.php -> exporters.otlp.logs_protocol"
+    enum: [grpc, http/protobuf, http/json]
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_ZIPKIN_ENDPOINT
+    type: url
+    default: "http://localhost:9411"
+    required: false
+    description: "Zipkin exporter endpoint URL"
+    config_path: "config/opentelemetry.php -> exporters.zipkin.endpoint"
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_ZIPKIN_TIMEOUT
+    type: integer
+    default: 10000
+    required: false
+    description: "Timeout in milliseconds for Zipkin exports"
+    config_path: "config/opentelemetry.php -> exporters.zipkin.timeout"
+    used_by: [opentelemetry]
+
+  - name: OTEL_EXPORTER_ZIPKIN_MAX_RETRIES
+    type: integer
+    default: 3
+    required: false
+    description: "Maximum retry attempts for Zipkin exporter"
+    config_path: "config/opentelemetry.php -> exporters.zipkin.max_retries"
+    used_by: [opentelemetry]
+
+  - name: OTEL_SERVICE_NAMESPACE
+    type: string
+    default: "documcp"
+    required: false
+    description: "Service namespace for grouping in trace UI (referenced in .env.example)"
+    config_path: ".env.example (OTEL_RESOURCE_ATTRIBUTES)"
+    used_by: [opentelemetry]
+
+  # ============================================================
+  # OpenTelemetry Instrumentation Toggles
+  # ============================================================
+  - name: OTEL_INSTRUMENTATION_HTTP_SERVER
+    type: boolean
+    default: true
+    required: false
+    description: "Enable HTTP server request tracing"
+    config_path: "config/opentelemetry.php -> instrumentation.HttpServerInstrumentation.enabled"
+    used_by: [opentelemetry]
+
+  - name: OTEL_INSTRUMENTATION_HTTP_CLIENT
+    type: boolean
+    default: true
+    required: false
+    description: "Enable outgoing HTTP client request tracing"
+    config_path: "config/opentelemetry.php -> instrumentation.HttpClientInstrumentation.enabled"
+    used_by: [opentelemetry]
+
+  - name: OTEL_INSTRUMENTATION_QUERY
+    type: boolean
+    default: true
+    required: false
+    description: "Enable database query tracing"
+    config_path: "config/opentelemetry.php -> instrumentation.QueryInstrumentation"
+    used_by: [opentelemetry]
+
+  - name: OTEL_INSTRUMENTATION_REDIS
+    type: boolean
+    default: true
+    required: false
+    description: "Enable Redis command tracing"
+    config_path: "config/opentelemetry.php -> instrumentation.RedisInstrumentation"
+    used_by: [opentelemetry]
+
+  - name: OTEL_INSTRUMENTATION_QUEUE
+    type: boolean
+    default: true
+    required: false
+    description: "Enable queue job tracing"
+    config_path: "config/opentelemetry.php -> instrumentation.QueueInstrumentation"
+    used_by: [opentelemetry]
+
+  - name: OTEL_INSTRUMENTATION_CACHE
+    type: boolean
+    default: true
+    required: false
+    description: "Enable cache operation tracing"
+    config_path: "config/opentelemetry.php -> instrumentation.CacheInstrumentation"
+    used_by: [opentelemetry]
+
+  - name: OTEL_INSTRUMENTATION_EVENT
+    type: boolean
+    default: true
+    required: false
+    description: "Enable event dispatch tracing"
+    config_path: "config/opentelemetry.php -> instrumentation.EventInstrumentation.enabled"
+    used_by: [opentelemetry]
+
+  - name: OTEL_INSTRUMENTATION_VIEW
+    type: boolean
+    default: true
+    required: false
+    description: "Enable Blade view rendering tracing"
+    config_path: "config/opentelemetry.php -> instrumentation.ViewInstrumentation"
+    used_by: [opentelemetry]
+
+  - name: OTEL_INSTRUMENTATION_LIVEWIRE
+    type: boolean
+    default: true
+    required: false
+    description: "Enable Livewire component tracing"
+    config_path: "config/opentelemetry.php -> instrumentation.LivewireInstrumentation"
+    used_by: [opentelemetry]
+
+  - name: OTEL_INSTRUMENTATION_CONSOLE
+    type: boolean
+    default: true
+    required: false
+    description: "Enable Artisan console command tracing (opt-in command list)"
+    config_path: "config/opentelemetry.php -> instrumentation.ConsoleInstrumentation.enabled"
+    used_by: [opentelemetry]
+
+  - name: OTEL_INSTRUMENTATION_SCOUT
+    type: boolean
+    default: true
+    required: false
+    description: "Enable Laravel Scout search tracing"
+    config_path: "config/opentelemetry.php -> instrumentation.ScoutInstrumentation"
+    used_by: [opentelemetry]
+
+  # ============================================================
+  # OpenTelemetry Worker Mode
+  # ============================================================
+  - name: OTEL_WORKER_MODE_FLUSH_AFTER_EACH_ITERATION
+    type: boolean
+    default: false
+    required: false
+    description: "Flush spans after each iteration (HTTP request, queue job) instead of batching"
+    config_path: "config/opentelemetry.php -> worker_mode.flush_after_each_iteration"
+    used_by: [opentelemetry]
+
+  - name: OTEL_WORKER_MODE_COLLECT_INTERVAL
+    type: integer
+    default: 60
+    required: false
+    description: "Metrics collection interval in seconds for worker mode"
+    config_path: "config/opentelemetry.php -> worker_mode.metrics_collect_interval"
+    used_by: [opentelemetry]
+
+  # ============================================================
+  # Broadcasting / Reverb (WebSocket)
+  # ============================================================
+  - name: BROADCAST_CONNECTION
+    type: string
+    default: "null"
+    required: false
+    description: "Default broadcast driver"
+    config_path: "config/broadcasting.php -> default"
+    enum: [reverb, pusher, ably, redis, log, "null"]
+    used_by: [broadcasting]
+
+  - name: REVERB_SERVER
+    type: string
+    default: "reverb"
+    required: false
+    description: "Default Reverb server configuration"
+    config_path: "config/reverb.php -> default"
+    used_by: [reverb]
+
+  - name: REVERB_SERVER_HOST
+    type: string
+    default: "0.0.0.0"
+    required: false
+    description: "Reverb server bind address"
+    config_path: "config/reverb.php -> servers.reverb.host"
+    used_by: [reverb]
+
+  - name: REVERB_SERVER_PORT
+    type: integer
+    default: 8080
+    required: false
+    description: "Reverb server bind port"
+    config_path: "config/reverb.php -> servers.reverb.port"
+    used_by: [reverb]
+
+  - name: REVERB_SERVER_PATH
+    type: string
+    default: ""
+    required: false
+    description: "Reverb server URL path prefix"
+    config_path: "config/reverb.php -> servers.reverb.path"
+    used_by: [reverb]
+
+  - name: REVERB_HOST
+    type: string
+    default: null
+    required: false
+    description: "Public hostname for Reverb WebSocket connections"
+    config_path: "config/reverb.php -> servers.reverb.hostname"
+    used_by: [reverb, broadcasting]
+
+  - name: REVERB_PORT
+    type: integer
+    default: 443
+    required: false
+    description: "Public port for Reverb WebSocket connections"
+    config_path: "config/reverb.php -> apps.apps.0.options.port"
+    used_by: [reverb, broadcasting]
+
+  - name: REVERB_SCHEME
+    type: string
+    default: "https"
+    required: false
+    description: "URL scheme for Reverb connections (http or https)"
+    config_path: "config/reverb.php -> apps.apps.0.options.scheme"
+    enum: [http, https]
+    used_by: [reverb, broadcasting]
+
+  - name: REVERB_APP_ID
+    type: string
+    default: null
+    required: false
+    description: "Reverb application ID"
+    config_path: "config/reverb.php -> apps.apps.0.app_id"
+    used_by: [reverb, broadcasting]
+
+  - name: REVERB_APP_KEY
+    type: string
+    default: null
+    required: false
+    description: "Reverb application key"
+    config_path: "config/reverb.php -> apps.apps.0.key"
+    sensitive: true
+    used_by: [reverb, broadcasting]
+
+  - name: REVERB_APP_SECRET
+    type: string
+    default: null
+    required: false
+    description: "Reverb application secret"
+    config_path: "config/reverb.php -> apps.apps.0.secret"
+    sensitive: true
+    used_by: [reverb, broadcasting]
+
+  - name: REVERB_MAX_REQUEST_SIZE
+    type: integer
+    default: 10000
+    required: false
+    description: "Maximum request size in bytes for Reverb"
+    config_path: "config/reverb.php -> servers.reverb.max_request_size"
+    used_by: [reverb]
+
+  - name: REVERB_SCALING_ENABLED
+    type: boolean
+    default: false
+    required: false
+    description: "Enable Redis-based scaling for Reverb across multiple servers"
+    config_path: "config/reverb.php -> servers.reverb.scaling.enabled"
+    used_by: [reverb]
+
+  - name: REVERB_SCALING_CHANNEL
+    type: string
+    default: "reverb"
+    required: false
+    description: "Redis channel name for Reverb scaling"
+    config_path: "config/reverb.php -> servers.reverb.scaling.channel"
+    used_by: [reverb]
+
+  - name: REVERB_PULSE_INGEST_INTERVAL
+    type: integer
+    default: 15
+    required: false
+    description: "Interval in seconds for Pulse metrics ingestion from Reverb"
+    config_path: "config/reverb.php -> servers.reverb.pulse_ingest_interval"
+    used_by: [reverb, pulse]
+
+  - name: REVERB_TELESCOPE_INGEST_INTERVAL
+    type: integer
+    default: 15
+    required: false
+    description: "Interval in seconds for Telescope data ingestion from Reverb"
+    config_path: "config/reverb.php -> servers.reverb.telescope_ingest_interval"
+    used_by: [reverb]
+
+  - name: REVERB_APP_PING_INTERVAL
+    type: integer
+    default: 60
+    required: false
+    description: "WebSocket ping interval in seconds"
+    config_path: "config/reverb.php -> apps.apps.0.ping_interval"
+    used_by: [reverb]
+
+  - name: REVERB_APP_ACTIVITY_TIMEOUT
+    type: integer
+    default: 30
+    required: false
+    description: "WebSocket connection activity timeout in seconds"
+    config_path: "config/reverb.php -> apps.apps.0.activity_timeout"
+    used_by: [reverb]
+
+  - name: REVERB_APP_MAX_CONNECTIONS
+    type: integer
+    default: null
+    required: false
+    description: "Maximum concurrent WebSocket connections"
+    config_path: "config/reverb.php -> apps.apps.0.max_connections"
+    used_by: [reverb]
+
+  - name: REVERB_APP_MAX_MESSAGE_SIZE
+    type: integer
+    default: 10000
+    required: false
+    description: "Maximum WebSocket message size in bytes"
+    config_path: "config/reverb.php -> apps.apps.0.max_message_size"
+    used_by: [reverb]
+
+  - name: VITE_REVERB_APP_KEY
+    type: string
+    default: "${REVERB_APP_KEY}"
+    required: false
+    description: "Reverb app key exposed to Vite frontend build"
+    config_path: ".env.example only (Vite)"
+    used_by: [frontend]
+
+  - name: VITE_REVERB_HOST
+    type: string
+    default: "${REVERB_HOST}"
+    required: false
+    description: "Reverb host exposed to Vite frontend build"
+    config_path: ".env.example only (Vite)"
+    used_by: [frontend]
+
+  - name: VITE_REVERB_PORT
+    type: integer
+    default: "${REVERB_PORT}"
+    required: false
+    description: "Reverb port exposed to Vite frontend build"
+    config_path: ".env.example only (Vite)"
+    used_by: [frontend]
+
+  - name: VITE_REVERB_SCHEME
+    type: string
+    default: "${REVERB_SCHEME}"
+    required: false
+    description: "Reverb scheme exposed to Vite frontend build"
+    config_path: ".env.example only (Vite)"
+    enum: [http, https]
+    used_by: [frontend]
+
+  # ============================================================
+  # Authentication
+  # ============================================================
+  - name: AUTH_GUARD
+    type: string
+    default: "web"
+    required: false
+    description: "Default authentication guard"
+    config_path: "config/auth.php -> defaults.guard"
+    enum: [web, api]
+    used_by: [auth]
+
+  - name: AUTH_PASSWORD_BROKER
+    type: string
+    default: "users"
+    required: false
+    description: "Default password reset broker"
+    config_path: "config/auth.php -> defaults.passwords"
+    used_by: [auth]
+
+  - name: AUTH_MODEL
+    type: string
+    default: "App\\Models\\User"
+    required: false
+    description: "Eloquent model class for user authentication"
+    config_path: "config/auth.php -> providers.users.model"
+    used_by: [auth]
+
+  - name: AUTH_PASSWORD_RESET_TOKEN_TABLE
+    type: string
+    default: "password_reset_tokens"
+    required: false
+    description: "Database table for password reset tokens"
+    config_path: "config/auth.php -> passwords.users.table"
+    used_by: [auth]
+
+  - name: AUTH_PASSWORD_TIMEOUT
+    type: integer
+    default: 10800
+    required: false
+    description: "Seconds before password confirmation window expires (3 hours)"
+    config_path: "config/auth.php -> password_timeout"
+    used_by: [auth]
+
+  # ============================================================
+  # CORS
+  # ============================================================
+  - name: CORS_ALLOWED_ORIGINS
+    type: string
+    default: null
+    required: false
+    description: "Comma-separated list of allowed CORS origins; defaults to wildcard (*) when unset"
+    config_path: "config/cors.php -> allowed_origins"
+    used_by: [cors]
+
+  # ============================================================
+  # Sanctum
+  # ============================================================
+  - name: SANCTUM_STATEFUL_DOMAINS
+    type: string
+    default: "localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1"
+    required: false
+    description: "Comma-separated domains receiving stateful API authentication cookies"
+    config_path: "config/sanctum.php -> stateful"
+    used_by: [sanctum]
+
+  - name: SANCTUM_TOKEN_PREFIX
+    type: string
+    default: ""
+    required: false
+    description: "Prefix for Sanctum tokens (enables secret scanning detection)"
+    config_path: "config/sanctum.php -> token_prefix"
+    used_by: [sanctum]
+
+  # ============================================================
+  # Horizon (Queue Dashboard)
+  # ============================================================
+  - name: HORIZON_NAME
+    type: string
+    default: null
+    required: false
+    description: "Horizon instance name for notifications and UI"
+    config_path: "config/horizon.php -> name"
+    used_by: [horizon]
+
+  - name: HORIZON_DOMAIN
+    type: string
+    default: null
+    required: false
+    description: "Subdomain for Horizon dashboard access"
+    config_path: "config/horizon.php -> domain"
+    used_by: [horizon]
+
+  - name: HORIZON_PATH
+    type: string
+    default: "horizon"
+    required: false
+    description: "URI path for the Horizon dashboard"
+    config_path: "config/horizon.php -> path"
+    used_by: [horizon]
+
+  - name: HORIZON_PREFIX
+    type: string
+    default: "{app_name}_horizon:"
+    required: false
+    description: "Redis key prefix for Horizon data"
+    config_path: "config/horizon.php -> prefix"
+    used_by: [horizon]
+
+  # ============================================================
+  # Pulse (Monitoring Dashboard)
+  # ============================================================
+  - name: PULSE_DOMAIN
+    type: string
+    default: null
+    required: false
+    description: "Subdomain for Pulse dashboard access"
+    config_path: "config/pulse.php -> domain"
+    used_by: [pulse]
+
+  - name: PULSE_PATH
+    type: string
+    default: "pulse"
+    required: false
+    description: "URI path for the Pulse dashboard"
+    config_path: "config/pulse.php -> path"
+    used_by: [pulse]
+
+  - name: PULSE_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Master switch to disable all Pulse data recording"
+    config_path: "config/pulse.php -> enabled"
+    used_by: [pulse]
+
+  - name: PULSE_STORAGE_DRIVER
+    type: string
+    default: "database"
+    required: false
+    description: "Storage driver for Pulse data"
+    config_path: "config/pulse.php -> storage.driver"
+    used_by: [pulse]
+
+  - name: PULSE_STORAGE_KEEP
+    type: string
+    default: "7 days"
+    required: false
+    description: "How long to retain Pulse storage data"
+    config_path: "config/pulse.php -> storage.trim.keep"
+    used_by: [pulse]
+
+  - name: PULSE_DB_CONNECTION
+    type: string
+    default: null
+    required: false
+    description: "Database connection for Pulse data storage"
+    config_path: "config/pulse.php -> storage.database.connection"
+    used_by: [pulse]
+
+  - name: PULSE_INGEST_DRIVER
+    type: string
+    default: "storage"
+    required: false
+    description: "Ingest driver for capturing Pulse recorder data"
+    config_path: "config/pulse.php -> ingest.driver"
+    used_by: [pulse]
+
+  - name: PULSE_INGEST_BUFFER
+    type: integer
+    default: 5000
+    required: false
+    description: "Buffer size for Pulse ingest driver"
+    config_path: "config/pulse.php -> ingest.buffer"
+    used_by: [pulse]
+
+  - name: PULSE_INGEST_KEEP
+    type: string
+    default: "7 days"
+    required: false
+    description: "How long to retain Pulse ingest trimming data"
+    config_path: "config/pulse.php -> ingest.trim.keep"
+    used_by: [pulse]
+
+  - name: PULSE_REDIS_CONNECTION
+    type: string
+    default: null
+    required: false
+    description: "Redis connection for Pulse ingest when using Redis driver"
+    config_path: "config/pulse.php -> ingest.redis.connection"
+    used_by: [pulse]
+
+  - name: PULSE_CACHE_DRIVER
+    type: string
+    default: null
+    required: false
+    description: "Cache driver for Pulse dashboard results and locks"
+    config_path: "config/pulse.php -> cache"
+    used_by: [pulse]
+
+  - name: PULSE_SERVER_NAME
+    type: string
+    default: "gethostname()"
+    required: false
+    description: "Server name for Pulse server recorder"
+    config_path: "config/pulse.php -> recorders.Servers.server_name"
+    used_by: [pulse]
+
+  - name: PULSE_SERVER_DIRECTORIES
+    type: string
+    default: "/"
+    required: false
+    description: "Colon-separated directories monitored by Pulse server recorder"
+    config_path: "config/pulse.php -> recorders.Servers.directories"
+    used_by: [pulse]
+
+  - name: PULSE_CACHE_INTERACTIONS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Record cache interaction metrics"
+    config_path: "config/pulse.php -> recorders.CacheInteractions.enabled"
+    used_by: [pulse]
+
+  - name: PULSE_CACHE_INTERACTIONS_SAMPLE_RATE
+    type: float
+    default: 1
+    required: false
+    description: "Sample rate for cache interaction recording (0-1)"
+    config_path: "config/pulse.php -> recorders.CacheInteractions.sample_rate"
+    used_by: [pulse]
+
+  - name: PULSE_EXCEPTIONS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Record exception metrics"
+    config_path: "config/pulse.php -> recorders.Exceptions.enabled"
+    used_by: [pulse]
+
+  - name: PULSE_EXCEPTIONS_SAMPLE_RATE
+    type: float
+    default: 1
+    required: false
+    description: "Sample rate for exception recording (0-1)"
+    config_path: "config/pulse.php -> recorders.Exceptions.sample_rate"
+    used_by: [pulse]
+
+  - name: PULSE_EXCEPTIONS_LOCATION
+    type: boolean
+    default: true
+    required: false
+    description: "Record exception source location"
+    config_path: "config/pulse.php -> recorders.Exceptions.location"
+    used_by: [pulse]
+
+  - name: PULSE_QUEUES_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Record queue metrics"
+    config_path: "config/pulse.php -> recorders.Queues.enabled"
+    used_by: [pulse]
+
+  - name: PULSE_QUEUES_SAMPLE_RATE
+    type: float
+    default: 1
+    required: false
+    description: "Sample rate for queue recording (0-1)"
+    config_path: "config/pulse.php -> recorders.Queues.sample_rate"
+    used_by: [pulse]
+
+  - name: PULSE_SLOW_JOBS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Record slow job metrics"
+    config_path: "config/pulse.php -> recorders.SlowJobs.enabled"
+    used_by: [pulse]
+
+  - name: PULSE_SLOW_JOBS_SAMPLE_RATE
+    type: float
+    default: 1
+    required: false
+    description: "Sample rate for slow job recording (0-1)"
+    config_path: "config/pulse.php -> recorders.SlowJobs.sample_rate"
+    used_by: [pulse]
+
+  - name: PULSE_SLOW_JOBS_THRESHOLD
+    type: integer
+    default: 1000
+    required: false
+    description: "Threshold in milliseconds for a job to be considered slow"
+    config_path: "config/pulse.php -> recorders.SlowJobs.threshold"
+    used_by: [pulse]
+
+  - name: PULSE_SLOW_OUTGOING_REQUESTS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Record slow outgoing HTTP request metrics"
+    config_path: "config/pulse.php -> recorders.SlowOutgoingRequests.enabled"
+    used_by: [pulse]
+
+  - name: PULSE_SLOW_OUTGOING_REQUESTS_SAMPLE_RATE
+    type: float
+    default: 1
+    required: false
+    description: "Sample rate for slow outgoing request recording (0-1)"
+    config_path: "config/pulse.php -> recorders.SlowOutgoingRequests.sample_rate"
+    used_by: [pulse]
+
+  - name: PULSE_SLOW_OUTGOING_REQUESTS_THRESHOLD
+    type: integer
+    default: 1000
+    required: false
+    description: "Threshold in milliseconds for an outgoing request to be considered slow"
+    config_path: "config/pulse.php -> recorders.SlowOutgoingRequests.threshold"
+    used_by: [pulse]
+
+  - name: PULSE_SLOW_QUERIES_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Record slow database query metrics"
+    config_path: "config/pulse.php -> recorders.SlowQueries.enabled"
+    used_by: [pulse]
+
+  - name: PULSE_SLOW_QUERIES_SAMPLE_RATE
+    type: float
+    default: 1
+    required: false
+    description: "Sample rate for slow query recording (0-1)"
+    config_path: "config/pulse.php -> recorders.SlowQueries.sample_rate"
+    used_by: [pulse]
+
+  - name: PULSE_SLOW_QUERIES_THRESHOLD
+    type: integer
+    default: 100
+    required: false
+    description: "Threshold in milliseconds for a query to be considered slow"
+    config_path: "config/pulse.php -> recorders.SlowQueries.threshold"
+    used_by: [pulse]
+
+  - name: PULSE_SLOW_QUERIES_LOCATION
+    type: boolean
+    default: true
+    required: false
+    description: "Record slow query source location"
+    config_path: "config/pulse.php -> recorders.SlowQueries.location"
+    used_by: [pulse]
+
+  - name: PULSE_SLOW_QUERIES_MAX_QUERY_LENGTH
+    type: integer
+    default: null
+    required: false
+    description: "Maximum query length to record"
+    config_path: "config/pulse.php -> recorders.SlowQueries.max_query_length"
+    used_by: [pulse]
+
+  - name: PULSE_SLOW_REQUESTS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Record slow HTTP request metrics"
+    config_path: "config/pulse.php -> recorders.SlowRequests.enabled"
+    used_by: [pulse]
+
+  - name: PULSE_SLOW_REQUESTS_SAMPLE_RATE
+    type: float
+    default: 1
+    required: false
+    description: "Sample rate for slow request recording (0-1)"
+    config_path: "config/pulse.php -> recorders.SlowRequests.sample_rate"
+    used_by: [pulse]
+
+  - name: PULSE_SLOW_REQUESTS_THRESHOLD
+    type: integer
+    default: 1000
+    required: false
+    description: "Threshold in milliseconds for a request to be considered slow"
+    config_path: "config/pulse.php -> recorders.SlowRequests.threshold"
+    used_by: [pulse]
+
+  - name: PULSE_USER_JOBS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Record per-user job metrics"
+    config_path: "config/pulse.php -> recorders.UserJobs.enabled"
+    used_by: [pulse]
+
+  - name: PULSE_USER_JOBS_SAMPLE_RATE
+    type: float
+    default: 1
+    required: false
+    description: "Sample rate for user job recording (0-1)"
+    config_path: "config/pulse.php -> recorders.UserJobs.sample_rate"
+    used_by: [pulse]
+
+  - name: PULSE_USER_REQUESTS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Record per-user request metrics"
+    config_path: "config/pulse.php -> recorders.UserRequests.enabled"
+    used_by: [pulse]
+
+  - name: PULSE_USER_REQUESTS_SAMPLE_RATE
+    type: float
+    default: 1
+    required: false
+    description: "Sample rate for user request recording (0-1)"
+    config_path: "config/pulse.php -> recorders.UserRequests.sample_rate"
+    used_by: [pulse]
+
+  # ============================================================
+  # Sentry (Error Tracking)
+  # ============================================================
+  - name: SENTRY_LARAVEL_DSN
+    type: url
+    default: null
+    required: false
+    description: "Sentry DSN for error tracking (primary setting)"
+    config_path: "config/sentry.php -> dsn"
+    sensitive: true
+    used_by: [sentry]
+
+  - name: SENTRY_DSN
+    type: url
+    default: null
+    required: false
+    description: "Sentry DSN fallback (used when SENTRY_LARAVEL_DSN is not set)"
+    config_path: "config/sentry.php -> dsn (fallback)"
+    sensitive: true
+    used_by: [sentry]
+
+  - name: SENTRY_RELEASE
+    type: string
+    default: null
+    required: false
+    description: "Release version string for Sentry"
+    config_path: "config/sentry.php -> release"
+    used_by: [sentry]
+
+  - name: SENTRY_ENVIRONMENT
+    type: string
+    default: null
+    required: false
+    description: "Environment name for Sentry (defaults to APP_ENV)"
+    config_path: "config/sentry.php -> environment"
+    used_by: [sentry]
+
+  - name: SENTRY_SAMPLE_RATE
+    type: float
+    default: 1.0
+    required: false
+    description: "Sentry event sample rate (0.0 to 1.0)"
+    config_path: "config/sentry.php -> sample_rate"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACES_SAMPLE_RATE
+    type: float
+    default: null
+    required: false
+    description: "Sentry performance tracing sample rate (0.0 to 1.0)"
+    config_path: "config/sentry.php -> traces_sample_rate"
+    used_by: [sentry]
+
+  - name: SENTRY_PROFILES_SAMPLE_RATE
+    type: float
+    default: null
+    required: false
+    description: "Sentry profiling sample rate (0.0 to 1.0)"
+    config_path: "config/sentry.php -> profiles_sample_rate"
+    used_by: [sentry]
+
+  - name: SENTRY_ENABLE_LOGS
+    type: boolean
+    default: false
+    required: false
+    description: "Enable Sentry logs feature"
+    config_path: "config/sentry.php -> enable_logs"
+    used_by: [sentry]
+
+  - name: SENTRY_LOG_LEVEL
+    type: string
+    default: "debug"
+    required: false
+    description: "Minimum log level sent to Sentry logs channel"
+    config_path: "config/sentry.php -> logs_channel_level"
+    enum: [debug, info, notice, warning, error, critical, alert, emergency]
+    used_by: [sentry]
+
+  - name: SENTRY_SEND_DEFAULT_PII
+    type: boolean
+    default: false
+    required: false
+    description: "Include personally identifiable information in Sentry events"
+    config_path: "config/sentry.php -> send_default_pii"
+    used_by: [sentry]
+
+  - name: SENTRY_BREADCRUMBS_LOGS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture Laravel logs as Sentry breadcrumbs"
+    config_path: "config/sentry.php -> breadcrumbs.logs"
+    used_by: [sentry]
+
+  - name: SENTRY_BREADCRUMBS_CACHE_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture cache events as Sentry breadcrumbs"
+    config_path: "config/sentry.php -> breadcrumbs.cache"
+    used_by: [sentry]
+
+  - name: SENTRY_BREADCRUMBS_LIVEWIRE_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture Livewire components as Sentry breadcrumbs"
+    config_path: "config/sentry.php -> breadcrumbs.livewire"
+    used_by: [sentry]
+
+  - name: SENTRY_BREADCRUMBS_SQL_QUERIES_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture SQL queries as Sentry breadcrumbs"
+    config_path: "config/sentry.php -> breadcrumbs.sql_queries"
+    used_by: [sentry]
+
+  - name: SENTRY_BREADCRUMBS_SQL_BINDINGS_ENABLED
+    type: boolean
+    default: false
+    required: false
+    description: "Include SQL query bindings in Sentry breadcrumbs"
+    config_path: "config/sentry.php -> breadcrumbs.sql_bindings"
+    used_by: [sentry]
+
+  - name: SENTRY_BREADCRUMBS_QUEUE_INFO_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture queue job information as Sentry breadcrumbs"
+    config_path: "config/sentry.php -> breadcrumbs.queue_info"
+    used_by: [sentry]
+
+  - name: SENTRY_BREADCRUMBS_COMMAND_JOBS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture command information as Sentry breadcrumbs"
+    config_path: "config/sentry.php -> breadcrumbs.command_info"
+    used_by: [sentry]
+
+  - name: SENTRY_BREADCRUMBS_HTTP_CLIENT_REQUESTS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture outgoing HTTP client requests as Sentry breadcrumbs"
+    config_path: "config/sentry.php -> breadcrumbs.http_client_requests"
+    used_by: [sentry]
+
+  - name: SENTRY_BREADCRUMBS_NOTIFICATIONS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture sent notifications as Sentry breadcrumbs"
+    config_path: "config/sentry.php -> breadcrumbs.notifications"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_QUEUE_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Trace queue jobs as their own transactions"
+    config_path: "config/sentry.php -> tracing.queue_job_transactions"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_QUEUE_JOBS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture queue jobs as spans on sync driver"
+    config_path: "config/sentry.php -> tracing.queue_jobs"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_SQL_QUERIES_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture SQL queries as Sentry trace spans"
+    config_path: "config/sentry.php -> tracing.sql_queries"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_SQL_BINDINGS_ENABLED
+    type: boolean
+    default: false
+    required: false
+    description: "Include SQL query bindings in Sentry trace spans"
+    config_path: "config/sentry.php -> tracing.sql_bindings"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_SQL_ORIGIN_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture SQL query origin in Sentry trace spans"
+    config_path: "config/sentry.php -> tracing.sql_origin"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_SQL_ORIGIN_THRESHOLD_MS
+    type: integer
+    default: 100
+    required: false
+    description: "Threshold in milliseconds for SQL queries to resolve their origin"
+    config_path: "config/sentry.php -> tracing.sql_origin_threshold_ms"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_VIEWS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture Blade view rendering as Sentry trace spans"
+    config_path: "config/sentry.php -> tracing.views"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_LIVEWIRE_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture Livewire components as Sentry trace spans"
+    config_path: "config/sentry.php -> tracing.livewire"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_HTTP_CLIENT_REQUESTS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture outgoing HTTP client requests as Sentry trace spans"
+    config_path: "config/sentry.php -> tracing.http_client_requests"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_CACHE_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture cache operations as Sentry trace spans"
+    config_path: "config/sentry.php -> tracing.cache"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_REDIS_COMMANDS
+    type: boolean
+    default: false
+    required: false
+    description: "Capture Redis operations as Sentry trace spans"
+    config_path: "config/sentry.php -> tracing.redis_commands"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_REDIS_ORIGIN_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture Redis command origin in Sentry trace spans"
+    config_path: "config/sentry.php -> tracing.redis_origin"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_NOTIFICATIONS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Capture sent notifications as Sentry trace spans"
+    config_path: "config/sentry.php -> tracing.notifications"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_MISSING_ROUTES_ENABLED
+    type: boolean
+    default: false
+    required: false
+    description: "Trace requests to routes that don't exist (404 routes)"
+    config_path: "config/sentry.php -> tracing.missing_routes"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_CONTINUE_AFTER_RESPONSE
+    type: boolean
+    default: true
+    required: false
+    description: "Continue tracing after response is sent to capture afterResponse dispatches"
+    config_path: "config/sentry.php -> tracing.continue_after_response"
+    used_by: [sentry]
+
+  - name: SENTRY_TRACE_DEFAULT_INTEGRATIONS_ENABLED
+    type: boolean
+    default: true
+    required: false
+    description: "Enable Sentry's built-in tracing integrations"
+    config_path: "config/sentry.php -> tracing.default_integrations"
+    used_by: [sentry]
+
+  # ============================================================
+  # Scribe (API Documentation)
+  # ============================================================
+  - name: SCRIBE_AUTH_KEY
+    type: string
+    default: null
+    required: false
+    description: "API key used by Scribe to authenticate response calls during doc generation"
+    config_path: "config/scribe.php -> auth.use_value"
+    sensitive: true
+    used_by: [scribe]
+
+  # ============================================================
+  # Services - External Integrations
+  # ============================================================
+  - name: POSTMARK_API_KEY
+    type: string
+    default: null
+    required: false
+    description: "Postmark API key for transactional email delivery"
+    config_path: "config/services.php -> postmark.key"
+    sensitive: true
+    used_by: [mail]
+
+  - name: RESEND_API_KEY
+    type: string
+    default: null
+    required: false
+    description: "Resend API key for email delivery"
+    config_path: "config/services.php -> resend.key"
+    sensitive: true
+    used_by: [mail]
+
+  - name: SLACK_BOT_USER_OAUTH_TOKEN
+    type: string
+    default: null
+    required: false
+    description: "Slack bot OAuth token for sending notifications"
+    config_path: "config/services.php -> slack.notifications.bot_user_oauth_token"
+    sensitive: true
+    used_by: [notifications]
+
+  - name: SLACK_BOT_USER_DEFAULT_CHANNEL
+    type: string
+    default: null
+    required: false
+    description: "Default Slack channel for bot notifications"
+    config_path: "config/services.php -> slack.notifications.channel"
+    used_by: [notifications]
+
+  - name: APPRISE_WEBHOOK_URL
+    type: url
+    default: "http://apprise:8000/notify/apprise?tag=documcp"
+    required: false
+    description: "Apprise notification service webhook URL"
+    config_path: "config/services.php -> apprise.webhook_url"
+    used_by: [notifications]
+
+  - name: GRAFANA_URL
+    type: url
+    default: null
+    required: false
+    description: "Grafana instance URL for trace visualization links in admin dashboard"
+    config_path: "config/services.php -> grafana.url"
+    used_by: [observability]
+
+  # ============================================================
+  # Services - Pusher (Broadcasting)
+  # ============================================================
+  - name: PUSHER_APP_KEY
+    type: string
+    default: null
+    required: false
+    description: "Pusher application key"
+    config_path: "config/broadcasting.php -> connections.pusher.key"
+    sensitive: true
+    used_by: [broadcasting]
+
+  - name: PUSHER_APP_SECRET
+    type: string
+    default: null
+    required: false
+    description: "Pusher application secret"
+    config_path: "config/broadcasting.php -> connections.pusher.secret"
+    sensitive: true
+    used_by: [broadcasting]
+
+  - name: PUSHER_APP_ID
+    type: string
+    default: null
+    required: false
+    description: "Pusher application ID"
+    config_path: "config/broadcasting.php -> connections.pusher.app_id"
+    used_by: [broadcasting]
+
+  - name: PUSHER_APP_CLUSTER
+    type: string
+    default: "mt1"
+    required: false
+    description: "Pusher cluster region"
+    config_path: "config/broadcasting.php -> connections.pusher.options.cluster"
+    used_by: [broadcasting]
+
+  - name: PUSHER_HOST
+    type: string
+    default: null
+    required: false
+    description: "Custom Pusher host (overrides cluster-based hostname)"
+    config_path: "config/broadcasting.php -> connections.pusher.options.host"
+    used_by: [broadcasting]
+
+  - name: PUSHER_PORT
+    type: integer
+    default: 443
+    required: false
+    description: "Pusher port"
+    config_path: "config/broadcasting.php -> connections.pusher.options.port"
+    used_by: [broadcasting]
+
+  - name: PUSHER_SCHEME
+    type: string
+    default: "https"
+    required: false
+    description: "Pusher connection scheme"
+    config_path: "config/broadcasting.php -> connections.pusher.options.scheme"
+    enum: [http, https]
+    used_by: [broadcasting]
+
+  - name: ABLY_KEY
+    type: string
+    default: null
+    required: false
+    description: "Ably API key for broadcasting"
+    config_path: "config/broadcasting.php -> connections.ably.key"
+    sensitive: true
+    used_by: [broadcasting]
+
+  # ============================================================
+  # Services - SQS (AWS Queue)
+  # ============================================================
+  - name: SQS_PREFIX
+    type: url
+    default: "https://sqs.us-east-1.amazonaws.com/your-account-id"
+    required: false
+    description: "SQS queue URL prefix"
+    config_path: "config/queue.php -> connections.sqs.prefix"
+    used_by: [queue]
+
+  - name: SQS_QUEUE
+    type: string
+    default: "default"
+    required: false
+    description: "SQS default queue name"
+    config_path: "config/queue.php -> connections.sqs.queue"
+    used_by: [queue]
+
+  - name: SQS_SUFFIX
+    type: string
+    default: null
+    required: false
+    description: "SQS queue name suffix"
+    config_path: "config/queue.php -> connections.sqs.suffix"
+    used_by: [queue]
+
+  # ============================================================
+  # Services - Beanstalkd (Queue)
+  # ============================================================
+  - name: BEANSTALKD_QUEUE_HOST
+    type: string
+    default: "localhost"
+    required: false
+    description: "Beanstalkd server hostname"
+    config_path: "config/queue.php -> connections.beanstalkd.host"
+    used_by: [queue]
+
+  - name: BEANSTALKD_QUEUE
+    type: string
+    default: "default"
+    required: false
+    description: "Beanstalkd default queue (tube) name"
+    config_path: "config/queue.php -> connections.beanstalkd.queue"
+    used_by: [queue]
+
+  - name: BEANSTALKD_QUEUE_RETRY_AFTER
+    type: integer
+    default: 90
+    required: false
+    description: "Seconds before a Beanstalkd job is retried after failure"
+    config_path: "config/queue.php -> connections.beanstalkd.retry_after"
+    used_by: [queue]
+
+  # ============================================================
+  # Services - Memcached (Cache)
+  # ============================================================
+  - name: MEMCACHED_PERSISTENT_ID
+    type: string
+    default: null
+    required: false
+    description: "Persistent connection ID for Memcached"
+    config_path: "config/cache.php -> stores.memcached.persistent_id"
+    used_by: [cache]
+
+  - name: MEMCACHED_USERNAME
+    type: string
+    default: null
+    required: false
+    description: "Memcached SASL authentication username"
+    config_path: "config/cache.php -> stores.memcached.sasl[0]"
+    used_by: [cache]
+
+  - name: MEMCACHED_PASSWORD
+    type: string
+    default: null
+    required: false
+    description: "Memcached SASL authentication password"
+    config_path: "config/cache.php -> stores.memcached.sasl[1]"
+    sensitive: true
+    used_by: [cache]
+
+  - name: MEMCACHED_HOST
+    type: string
+    default: "127.0.0.1"
+    required: false
+    description: "Memcached server hostname"
+    config_path: "config/cache.php -> stores.memcached.servers[0].host"
+    used_by: [cache]
+
+  - name: MEMCACHED_PORT
+    type: integer
+    default: 11211
+    required: false
+    description: "Memcached server port"
+    config_path: "config/cache.php -> stores.memcached.servers[0].port"
+    used_by: [cache]
+
+  # ============================================================
+  # Services - DynamoDB (Cache)
+  # ============================================================
+  - name: DYNAMODB_CACHE_TABLE
+    type: string
+    default: "cache"
+    required: false
+    description: "DynamoDB table name for cache storage"
+    config_path: "config/cache.php -> stores.dynamodb.table"
+    used_by: [cache]
+
+  - name: DYNAMODB_ENDPOINT
+    type: url
+    default: null
+    required: false
+    description: "Custom DynamoDB endpoint (e.g., for DynamoDB Local)"
+    config_path: "config/cache.php -> stores.dynamodb.endpoint"
+    used_by: [cache]
+
+  # ============================================================
+  # Services - Typesense (Search)
+  # ============================================================
+  - name: TYPESENSE_API_KEY
+    type: string
+    default: "xyz"
+    required: false
+    description: "Typesense API key for authentication"
+    config_path: "config/scout.php -> typesense.client-settings.api_key"
+    sensitive: true
+    used_by: [scout]
+
+  - name: TYPESENSE_HOST
+    type: string
+    default: "localhost"
+    required: false
+    description: "Typesense server hostname"
+    config_path: "config/scout.php -> typesense.client-settings.nodes[0].host"
+    used_by: [scout]
+
+  - name: TYPESENSE_PORT
+    type: integer
+    default: 8108
+    required: false
+    description: "Typesense server port"
+    config_path: "config/scout.php -> typesense.client-settings.nodes[0].port"
+    used_by: [scout]
+
+  - name: TYPESENSE_PATH
+    type: string
+    default: ""
+    required: false
+    description: "Typesense URL path prefix"
+    config_path: "config/scout.php -> typesense.client-settings.nodes[0].path"
+    used_by: [scout]
+
+  - name: TYPESENSE_PROTOCOL
+    type: string
+    default: "http"
+    required: false
+    description: "Typesense connection protocol"
+    config_path: "config/scout.php -> typesense.client-settings.nodes[0].protocol"
+    enum: [http, https]
+    used_by: [scout]
+
+  - name: TYPESENSE_CONNECTION_TIMEOUT_SECONDS
+    type: integer
+    default: 2
+    required: false
+    description: "Typesense connection timeout in seconds"
+    config_path: "config/scout.php -> typesense.client-settings.connection_timeout_seconds"
+    used_by: [scout]
+
+  - name: TYPESENSE_HEALTHCHECK_INTERVAL_SECONDS
+    type: integer
+    default: 30
+    required: false
+    description: "Typesense health check interval in seconds"
+    config_path: "config/scout.php -> typesense.client-settings.healthcheck_interval_seconds"
+    used_by: [scout]
+
+  - name: TYPESENSE_NUM_RETRIES
+    type: integer
+    default: 3
+    required: false
+    description: "Number of retry attempts for Typesense operations"
+    config_path: "config/scout.php -> typesense.client-settings.num_retries"
+    used_by: [scout]
+
+  - name: TYPESENSE_RETRY_INTERVAL_SECONDS
+    type: integer
+    default: 1
+    required: false
+    description: "Interval in seconds between Typesense retry attempts"
+    config_path: "config/scout.php -> typesense.client-settings.retry_interval_seconds"
+    used_by: [scout]
+
+  # ============================================================
+  # Internal / Misc
+  # ============================================================
+  - name: BCRYPT_ROUNDS
+    type: integer
+    default: 12
+    required: false
+    description: "Bcrypt hashing cost factor; increase to 14 in production for stronger hashing"
+    config_path: ".env.example (Laravel hashing config)"
+    used_by: [auth]

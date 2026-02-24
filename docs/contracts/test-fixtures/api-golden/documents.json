@@ -1,0 +1,282 @@
+{
+  "metadata": {
+    "endpoint_group": "documents",
+    "base_path": "/api",
+    "controller": "App\\Http\\Controllers\\Api\\DocumentController",
+    "resource": "App\\Http\\Resources\\DocumentResource",
+    "response_wrapper": "App\\Http\\Responses\\ApiResponse"
+  },
+  "endpoints": [
+    {
+      "name": "List documents",
+      "method": "GET",
+      "path": "/api/documents",
+      "auth": "sanctum",
+      "query_params": {
+        "page": {"type": "integer", "default": 1},
+        "per_page": {"type": "integer", "default": 15},
+        "file_type": {"type": "string", "enum": ["pdf", "docx", "xlsx", "html", "markdown"], "optional": true}
+      },
+      "response": {
+        "status": 200,
+        "shape": {
+          "data": [
+            {
+              "uuid": "550e8400-e29b-41d4-a716-446655440000",
+              "title": "Laravel Documentation Guide",
+              "description": "Comprehensive guide to Laravel framework",
+              "file_type": "pdf",
+              "file_size": 524288,
+              "mime_type": "application/pdf",
+              "word_count": 5000,
+              "is_public": false,
+              "status": "indexed",
+              "content_hash": "abc123def456",
+              "tags": ["laravel", "php"],
+              "user": {
+                "id": 1,
+                "name": "John Doe",
+                "email": "john@example.com",
+                "created_at": "2026-01-15T10:30:00+00:00"
+              },
+              "created_at": "2026-01-15T10:30:00+00:00",
+              "updated_at": "2026-01-28T12:00:00+00:00",
+              "_links": {
+                "self": {"href": "/api/documents/550e8400-e29b-41d4-a716-446655440000", "method": "GET"},
+                "update": {"href": "/api/documents/550e8400-e29b-41d4-a716-446655440000", "method": "PUT"},
+                "delete": {"href": "/api/documents/550e8400-e29b-41d4-a716-446655440000", "method": "DELETE"}
+              }
+            }
+          ],
+          "meta": {
+            "current_page": 1,
+            "per_page": 15,
+            "total": 42,
+            "last_page": 3,
+            "from": 1,
+            "to": 15
+          },
+          "_links": {
+            "first": "/api/documents?page=1",
+            "last": "/api/documents?page=3",
+            "prev": null,
+            "next": "/api/documents?page=2"
+          }
+        }
+      }
+    },
+    {
+      "name": "Create document",
+      "method": "POST",
+      "path": "/api/documents",
+      "auth": "sanctum",
+      "body": {
+        "file": {"type": "file", "required": true, "formats": ["pdf", "docx", "xlsx", "html", "md"], "max_size": "50MB"},
+        "title": {"type": "string", "required": true, "max": 255},
+        "description": {"type": "string", "required": false, "max": 1000},
+        "is_public": {"type": "boolean", "required": false, "default": false},
+        "tags": {"type": "array", "items": "string", "required": false}
+      },
+      "response": {
+        "status": 201,
+        "shape": {
+          "data": {
+            "uuid": "550e8400-e29b-41d4-a716-446655440000",
+            "title": "Laravel Guide",
+            "description": "Comprehensive Laravel documentation",
+            "file_type": "pdf",
+            "file_size": 1048576,
+            "mime_type": "application/pdf",
+            "word_count": null,
+            "is_public": true,
+            "status": "processing",
+            "content_hash": null,
+            "created_at": "2026-01-29T10:30:00+00:00",
+            "updated_at": "2026-01-29T10:30:00+00:00",
+            "_links": {
+              "self": {"href": "/api/documents/550e8400-e29b-41d4-a716-446655440000", "method": "GET"},
+              "update": {"href": "/api/documents/550e8400-e29b-41d4-a716-446655440000", "method": "PUT"},
+              "delete": {"href": "/api/documents/550e8400-e29b-41d4-a716-446655440000", "method": "DELETE"}
+            }
+          },
+          "meta": {
+            "message": "Document created successfully",
+            "timestamp": "2026-01-29T10:30:00+00:00"
+          }
+        }
+      },
+      "error_responses": [
+        {
+          "status": 422,
+          "shape": {
+            "error": {
+              "message": "The file field is required.",
+              "code": 422,
+              "details": {
+                "file": ["The file field is required."]
+              }
+            },
+            "meta": {"timestamp": "2026-01-29T10:30:00+00:00"}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Show document",
+      "method": "GET",
+      "path": "/api/documents/{document}",
+      "auth": "sanctum",
+      "url_params": {
+        "document": {"type": "string", "format": "uuid", "description": "Document UUID"}
+      },
+      "response": {
+        "status": 200,
+        "shape": {
+          "data": {
+            "uuid": "550e8400-e29b-41d4-a716-446655440000",
+            "title": "Laravel Documentation",
+            "description": "Comprehensive guide to Laravel",
+            "file_type": "pdf",
+            "file_size": 524288,
+            "mime_type": "application/pdf",
+            "word_count": 5000,
+            "is_public": false,
+            "status": "indexed",
+            "content_hash": "abc123def456",
+            "tags": ["laravel", "php"],
+            "created_at": "2026-01-15T10:30:00+00:00",
+            "updated_at": "2026-01-28T12:00:00+00:00",
+            "_links": {
+              "self": {"href": "/api/documents/550e8400-e29b-41d4-a716-446655440000", "method": "GET"},
+              "update": {"href": "/api/documents/550e8400-e29b-41d4-a716-446655440000", "method": "PUT"},
+              "delete": {"href": "/api/documents/550e8400-e29b-41d4-a716-446655440000", "method": "DELETE"}
+            }
+          },
+          "meta": {
+            "message": "Success",
+            "timestamp": "2026-01-29T10:30:00+00:00"
+          }
+        }
+      },
+      "error_responses": [
+        {"status": 404, "shape": {"error": {"message": "Document not found", "code": 404}, "meta": {"timestamp": "..."}}}
+      ]
+    },
+    {
+      "name": "Update document",
+      "method": "PUT",
+      "path": "/api/documents/{document}",
+      "auth": "sanctum",
+      "url_params": {
+        "document": {"type": "string", "format": "uuid"}
+      },
+      "body": {
+        "title": {"type": "string", "max": 255, "optional": true},
+        "description": {"type": "string", "max": 1000, "optional": true},
+        "is_public": {"type": "boolean", "optional": true},
+        "tags": {"type": "array", "items": "string", "optional": true}
+      },
+      "response": {
+        "status": 200,
+        "shape": {
+          "data": {
+            "uuid": "550e8400-e29b-41d4-a716-446655440000",
+            "title": "Updated Title",
+            "description": "Updated description",
+            "file_type": "pdf",
+            "file_size": 524288,
+            "mime_type": "application/pdf",
+            "word_count": 5000,
+            "is_public": false,
+            "status": "indexed",
+            "content_hash": "abc123def456",
+            "tags": ["updated", "tags"],
+            "created_at": "2026-01-15T10:30:00+00:00",
+            "updated_at": "2026-01-29T10:30:00+00:00",
+            "_links": {
+              "self": {"href": "/api/documents/550e8400-e29b-41d4-a716-446655440000", "method": "GET"},
+              "update": {"href": "/api/documents/550e8400-e29b-41d4-a716-446655440000", "method": "PUT"},
+              "delete": {"href": "/api/documents/550e8400-e29b-41d4-a716-446655440000", "method": "DELETE"}
+            }
+          },
+          "meta": {
+            "message": "Document updated successfully",
+            "timestamp": "2026-01-29T10:30:00+00:00"
+          }
+        }
+      },
+      "error_responses": [
+        {"status": 403, "shape": {"error": {"message": "This action is unauthorized.", "code": 403}, "meta": {"timestamp": "..."}}},
+        {"status": 404, "shape": {"error": {"message": "Document not found", "code": 404}, "meta": {"timestamp": "..."}}}
+      ]
+    },
+    {
+      "name": "Delete document",
+      "method": "DELETE",
+      "path": "/api/documents/{document}",
+      "auth": "sanctum",
+      "url_params": {
+        "document": {"type": "string", "format": "uuid"}
+      },
+      "response": {
+        "status": 200,
+        "shape": {
+          "data": null,
+          "meta": {
+            "message": "Document deleted successfully",
+            "timestamp": "2026-01-29T10:30:00+00:00"
+          }
+        }
+      },
+      "error_responses": [
+        {"status": 403, "shape": {"error": {"message": "This action is unauthorized.", "code": 403}, "meta": {"timestamp": "..."}}},
+        {"status": 404, "shape": {"error": {"message": "Document not found", "code": 404}, "meta": {"timestamp": "..."}}}
+      ]
+    },
+    {
+      "name": "Download document",
+      "method": "GET",
+      "path": "/api/documents/{document}/download",
+      "auth": "sanctum",
+      "url_params": {
+        "document": {"type": "string", "format": "uuid"}
+      },
+      "response": {
+        "status": 200,
+        "content_type": "binary/streamed",
+        "description": "Streamed file download with original filename"
+      },
+      "error_responses": [
+        {"status": 404, "shape": {"error": {"message": "File not found", "code": 404}, "meta": {"timestamp": "..."}}}
+      ]
+    },
+    {
+      "name": "Analyze document",
+      "method": "POST",
+      "path": "/api/documents/analyze",
+      "auth": "sanctum",
+      "controller": "App\\Http\\Controllers\\Api\\DocumentAnalysisController",
+      "body": {
+        "file": {"type": "file", "required": true, "formats": ["pdf", "docx", "xlsx", "html", "md"], "max_size": "50MB"}
+      },
+      "response": {
+        "status": 200,
+        "shape": {
+          "success": true,
+          "suggestions": {
+            "title": "Laravel Documentation Guide",
+            "description": "A comprehensive guide covering Laravel framework fundamentals.",
+            "tags": ["laravel", "php", "framework"],
+            "language": "en",
+            "word_count": 15420,
+            "estimated_reading_time": "62 minutes"
+          }
+        }
+      },
+      "error_responses": [
+        {"status": 422, "shape": {"error": {"message": "The file field is required."}}},
+        {"status": 500, "shape": {"success": false, "message": "Failed to analyze document: Unable to extract text content"}}
+      ]
+    }
+  ]
+}
