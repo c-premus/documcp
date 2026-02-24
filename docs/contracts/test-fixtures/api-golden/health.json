@@ -1,0 +1,97 @@
+{
+  "metadata": {
+    "endpoint_group": "health",
+    "base_path": "/api/health",
+    "controller": "App\\Http\\Controllers\\Api\\HealthController",
+    "response_wrapper": "direct (no ApiResponse wrapper)"
+  },
+  "endpoints": [
+    {
+      "name": "Basic health check",
+      "method": "GET",
+      "path": "/api/health",
+      "auth": "none",
+      "response": {
+        "status": 200,
+        "shape": {
+          "status": "healthy",
+          "timestamp": "2026-01-29T10:30:45.000000Z",
+          "application": "DocuMCP",
+          "environment": "production"
+        }
+      }
+    },
+    {
+      "name": "Deep health check",
+      "method": "GET",
+      "path": "/api/health/deep",
+      "auth": "internal_api_token",
+      "response": {
+        "status": 200,
+        "shape": {
+          "status": "healthy",
+          "timestamp": "2026-01-29T10:30:45.000000Z",
+          "application": "DocuMCP",
+          "environment": "production",
+          "checks": {
+            "database": {
+              "status": "healthy",
+              "latency_ms": 5.2,
+              "connection": "pgsql"
+            },
+            "redis": {
+              "status": "healthy",
+              "latency_ms": 1.8
+            },
+            "meilisearch": {
+              "status": "healthy",
+              "latency_ms": 12.4
+            },
+            "filesystem": {
+              "status": "healthy",
+              "writable": true
+            },
+            "queue": {
+              "status": "healthy",
+              "driver": "horizon",
+              "active_supervisors": 1
+            }
+          }
+        }
+      },
+      "error_responses": [
+        {
+          "status": 503,
+          "shape": {
+            "status": "degraded",
+            "timestamp": "2026-01-29T10:30:45.000000Z",
+            "application": "DocuMCP",
+            "environment": "production",
+            "checks": {
+              "database": {
+                "status": "healthy",
+                "latency_ms": 5.2
+              },
+              "redis": {
+                "status": "unhealthy",
+                "error": "Connection refused"
+              },
+              "meilisearch": {
+                "status": "healthy",
+                "latency_ms": 12.4
+              },
+              "filesystem": {
+                "status": "healthy",
+                "writable": true
+              },
+              "queue": {
+                "status": "unhealthy",
+                "error": "No active supervisors"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,218 @@
+{
+  "metadata": {
+    "endpoint_group": "zim",
+    "base_path": "/api/zim",
+    "controller": "App\\Http\\Controllers\\Api\\ZimArchiveController",
+    "resources": [
+      "App\\Http\\Resources\\ZimArchiveResource",
+      "App\\Http\\Resources\\ZimArticleResource",
+      "App\\Http\\Resources\\ZimArticleSearchResultResource"
+    ],
+    "response_wrapper": "App\\Http\\Responses\\ApiResponse"
+  },
+  "endpoints": [
+    {
+      "name": "List ZIM archives",
+      "method": "GET",
+      "path": "/api/zim/archives",
+      "auth": "sanctum",
+      "query_params": {
+        "query": {"type": "string", "optional": true, "description": "Search query to filter archives"},
+        "category": {"type": "string", "enum": ["devdocs", "wikipedia", "stack_exchange", "other"], "optional": true},
+        "language": {"type": "string", "description": "ISO 639-1 language code", "optional": true},
+        "per_page": {"type": "integer", "default": 15, "min": 1, "max": 100, "optional": true}
+      },
+      "response": {
+        "status": 200,
+        "shape": {
+          "data": [
+            {
+              "uuid": "550e8400-e29b-41d4-a716-446655440000",
+              "name": "devdocs_en_laravel_11",
+              "title": "Laravel 11 Documentation",
+              "description": "Official Laravel documentation",
+              "language": "en",
+              "category": "devdocs",
+              "creator": "DevDocs",
+              "publisher": "Kiwix",
+              "article_count": 15000,
+              "media_count": 500,
+              "file_size": 52428800,
+              "file_size_human": "50 MB",
+              "tags": ["programming", "documentation", "reference"],
+              "last_synced_at": "2026-01-28T12:00:00+00:00",
+              "_links": {
+                "self": {"href": "/api/zim/archives/devdocs_en_laravel_11", "method": "GET"},
+                "search": {"href": "/api/zim/archives/devdocs_en_laravel_11/search", "method": "GET"},
+                "suggest": {"href": "/api/zim/archives/devdocs_en_laravel_11/suggest", "method": "GET"}
+              }
+            }
+          ],
+          "meta": {
+            "current_page": 1,
+            "per_page": 15,
+            "total": 50,
+            "last_page": 4,
+            "from": 1,
+            "to": 15
+          },
+          "_links": {
+            "first": "/api/zim/archives?page=1",
+            "last": "/api/zim/archives?page=4",
+            "prev": null,
+            "next": "/api/zim/archives?page=2"
+          }
+        }
+      }
+    },
+    {
+      "name": "Show ZIM archive",
+      "method": "GET",
+      "path": "/api/zim/archives/{archive}",
+      "auth": "sanctum",
+      "url_params": {
+        "archive": {"type": "string", "description": "Archive name"}
+      },
+      "response": {
+        "status": 200,
+        "shape": {
+          "data": {
+            "uuid": "550e8400-e29b-41d4-a716-446655440000",
+            "name": "devdocs_en_laravel_11",
+            "title": "Laravel 11 Documentation",
+            "description": "Official Laravel documentation",
+            "language": "en",
+            "category": "devdocs",
+            "creator": "DevDocs",
+            "publisher": "Kiwix",
+            "article_count": 15000,
+            "media_count": 500,
+            "file_size": 52428800,
+            "file_size_human": "50 MB",
+            "tags": ["programming", "documentation", "reference"],
+            "last_synced_at": "2026-01-28T12:00:00+00:00",
+            "_links": {
+              "self": {"href": "/api/zim/archives/devdocs_en_laravel_11", "method": "GET"},
+              "search": {"href": "/api/zim/archives/devdocs_en_laravel_11/search", "method": "GET"},
+              "suggest": {"href": "/api/zim/archives/devdocs_en_laravel_11/suggest", "method": "GET"}
+            }
+          },
+          "meta": {
+            "message": "Success",
+            "timestamp": "2026-01-29T10:30:00+00:00"
+          }
+        }
+      },
+      "error_responses": [
+        {"status": 404, "shape": {"error": {"message": "Archive not found", "code": 404}, "meta": {"timestamp": "..."}}}
+      ]
+    },
+    {
+      "name": "Search ZIM articles",
+      "method": "GET",
+      "path": "/api/zim/archives/{archive}/search",
+      "auth": "sanctum",
+      "url_params": {
+        "archive": {"type": "string", "description": "Archive name"}
+      },
+      "query_params": {
+        "q": {"type": "string", "required": true, "description": "Search query"},
+        "limit": {"type": "integer", "default": 20, "min": 1, "max": 100, "optional": true}
+      },
+      "response": {
+        "status": 200,
+        "shape": {
+          "data": [
+            {
+              "archive_name": "devdocs_en_laravel_11",
+              "title": "Middleware",
+              "path": "middleware.html",
+              "snippet": "...HTTP middleware provide a convenient mechanism...",
+              "score": 0.95,
+              "_links": {
+                "read": {"href": "/api/zim/archives/devdocs_en_laravel_11/articles/middleware.html", "method": "GET"}
+              }
+            }
+          ],
+          "meta": {
+            "message": "Success",
+            "timestamp": "2026-01-29T10:30:00+00:00"
+          }
+        }
+      },
+      "error_responses": [
+        {"status": 404, "shape": {"error": {"message": "Archive not found or disabled: invalid_archive", "code": 404}, "meta": {"timestamp": "..."}}}
+      ]
+    },
+    {
+      "name": "Suggest ZIM articles",
+      "method": "GET",
+      "path": "/api/zim/archives/{archive}/suggest",
+      "auth": "sanctum",
+      "url_params": {
+        "archive": {"type": "string", "description": "Archive name"}
+      },
+      "query_params": {
+        "q": {"type": "string", "required": true, "min": 2, "description": "Search term"},
+        "limit": {"type": "integer", "default": 10, "min": 1, "max": 50, "optional": true}
+      },
+      "response": {
+        "status": 200,
+        "shape": {
+          "data": [
+            {
+              "archive_name": "devdocs_en_laravel_11",
+              "title": "Laravel",
+              "path": "index.html",
+              "snippet": null,
+              "score": null,
+              "_links": {
+                "read": {"href": "/api/zim/archives/devdocs_en_laravel_11/articles/index.html", "method": "GET"}
+              }
+            }
+          ],
+          "meta": {
+            "message": "Success",
+            "timestamp": "2026-01-29T10:30:00+00:00"
+          }
+        }
+      },
+      "error_responses": [
+        {"status": 404, "shape": {"error": {"message": "Archive not found or disabled: invalid_archive", "code": 404}, "meta": {"timestamp": "..."}}}
+      ]
+    },
+    {
+      "name": "Read ZIM article",
+      "method": "GET",
+      "path": "/api/zim/archives/{archive}/articles/{path}",
+      "auth": "sanctum",
+      "url_params": {
+        "archive": {"type": "string", "description": "Archive name"},
+        "path": {"type": "string", "description": "Article path within the archive"}
+      },
+      "response": {
+        "status": 200,
+        "shape": {
+          "data": {
+            "archive_name": "devdocs_en_laravel_11",
+            "path": "middleware.html",
+            "title": "Middleware",
+            "content": "<h1>Middleware</h1><p>HTTP middleware provide a convenient mechanism...</p>",
+            "mime_type": "text/html",
+            "_links": {
+              "archive": {"href": "/api/zim/archives/devdocs_en_laravel_11", "method": "GET"},
+              "search": {"href": "/api/zim/archives/devdocs_en_laravel_11/search", "method": "GET"}
+            }
+          },
+          "meta": {
+            "message": "Success",
+            "timestamp": "2026-01-29T10:30:00+00:00"
+          }
+        }
+      },
+      "error_responses": [
+        {"status": 404, "shape": {"error": {"message": "Article not found: docs/invalid.html", "code": 404}, "meta": {"timestamp": "..."}}}
+      ]
+    }
+  ]
+}

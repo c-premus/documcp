@@ -1,0 +1,1494 @@
+{
+  "metadata": {
+    "generated_from": "Source code analysis",
+    "generated_at": "2026-02-24",
+    "project": "DocuMCP",
+    "layers": [
+      "models",
+      "dtos",
+      "actions",
+      "services",
+      "controllers",
+      "mcp_tools",
+      "mcp_prompts",
+      "middleware",
+      "extractors",
+      "jobs"
+    ]
+  },
+  "components": {
+    "models": {
+      "User": {
+        "file": "app/Models/User.php",
+        "table": "users",
+        "relationships": {
+          "documents": { "type": "hasMany", "target": "Document" },
+          "oauthClients": { "type": "hasMany", "target": "OAuthClient" },
+          "searchQueries": { "type": "hasMany", "target": "SearchQuery" }
+        },
+        "traits": ["HasApiTokens", "HasFactory", "Notifiable"],
+        "used_by": [
+          "OAuthService",
+          "DocumentService",
+          "LoginController",
+          "OAuthAuthorizationServerController",
+          "LaravelMcpAuth",
+          "UnifiedSearchTool"
+        ]
+      },
+      "Document": {
+        "file": "app/Models/Document.php",
+        "table": "documents",
+        "relationships": {
+          "user": { "type": "belongsTo", "target": "User" },
+          "versions": { "type": "hasMany", "target": "DocumentVersion" },
+          "tags": { "type": "hasMany", "target": "DocumentTag" }
+        },
+        "traits": ["HasFactory", "DatabaseCompatibility", "Searchable", "SoftDeletes"],
+        "used_by": [
+          "CreateDocumentAction",
+          "DeleteDocumentAction",
+          "UpdateDocumentAction",
+          "UpdateDocumentStatusAction",
+          "ExtractDocumentContentAction",
+          "RestoreDocumentAction",
+          "PermanentlyDeleteDocumentAction",
+          "CleanupSoftDeletedDocumentsAction",
+          "IndexDocumentInMeilisearchAction",
+          "FindOrphanedFilesAction",
+          "FindMissingDocumentsAction",
+          "FindOrphanedIndexEntriesAction",
+          "GetIndexStatisticsAction",
+          "ReindexMissingDocumentsAction",
+          "SearchDocumentsAction",
+          "DocumentService",
+          "AdminService",
+          "DocumentController",
+          "Admin\\DocumentController",
+          "CreateDocumentTool",
+          "ProcessDocumentUploadJob",
+          "IndexDocumentInMeilisearchJob",
+          "ReindexAllDocumentsJob"
+        ]
+      },
+      "DocumentTag": {
+        "file": "app/Models/DocumentTag.php",
+        "table": "document_tags",
+        "relationships": {
+          "document": { "type": "belongsTo", "target": "Document" }
+        },
+        "traits": ["HasFactory"],
+        "used_by": ["CreateDocumentAction", "UpdateDocumentAction"]
+      },
+      "DocumentVersion": {
+        "file": "app/Models/DocumentVersion.php",
+        "table": "document_versions",
+        "relationships": {
+          "document": { "type": "belongsTo", "target": "Document" }
+        },
+        "traits": ["HasFactory"],
+        "used_by": []
+      },
+      "ExternalService": {
+        "file": "app/Models/ExternalService.php",
+        "table": "external_services",
+        "relationships": {},
+        "traits": ["HasFactory"],
+        "used_by": [
+          "ExternalServiceManager",
+          "ExternalServiceHealthChecker",
+          "KiwixServeClient",
+          "ConfluenceClient",
+          "UnifiedSearchAction",
+          "CheckExternalServiceHealthJob",
+          "ListConfluenceSpacesTool",
+          "SearchConfluenceTool",
+          "ReadConfluencePageTool",
+          "ZimResearchPrompt",
+          "ConfluenceResearchPrompt"
+        ]
+      },
+      "GitTemplate": {
+        "file": "app/Models/GitTemplate.php",
+        "table": "git_templates",
+        "relationships": {
+          "user": { "type": "belongsTo", "target": "User" },
+          "files": { "type": "hasMany", "target": "GitTemplateFile" }
+        },
+        "traits": ["HasFactory", "DatabaseCompatibility", "Searchable", "SoftDeletes"],
+        "used_by": [
+          "ListGitTemplatesAction",
+          "SearchGitTemplatesAction",
+          "RegisterGitTemplateAction",
+          "SyncGitTemplateAction",
+          "GetTemplateStructureAction",
+          "GetTemplateFileAction",
+          "GenerateDeploymentGuideAction",
+          "GenerateTemplateArchiveAction",
+          "GitTemplateController",
+          "GitTemplateClient",
+          "GetDeploymentGuideTool",
+          "GetTemplateStructureTool",
+          "GetTemplateFileTool",
+          "ListGitTemplatesTool",
+          "DownloadTemplateTool",
+          "SyncGitTemplateJob"
+        ]
+      },
+      "GitTemplateFile": {
+        "file": "app/Models/GitTemplateFile.php",
+        "table": "git_template_files",
+        "relationships": {
+          "gitTemplate": { "type": "belongsTo", "target": "GitTemplate" }
+        },
+        "traits": ["HasFactory"],
+        "used_by": [
+          "SyncGitTemplateAction",
+          "GetTemplateFileAction"
+        ]
+      },
+      "OAuthClient": {
+        "file": "app/Models/OAuthClient.php",
+        "table": "oauth_clients",
+        "relationships": {
+          "user": { "type": "belongsTo", "target": "User" },
+          "authorizationCodes": { "type": "hasMany", "target": "OAuthAuthorizationCode" },
+          "accessTokens": { "type": "hasMany", "target": "OAuthAccessToken" }
+        },
+        "traits": ["HasFactory"],
+        "used_by": [
+          "RegisterOAuthClientAction",
+          "UpdateOAuthClientAction",
+          "DeleteOAuthClientAction",
+          "ExchangeAuthorizationCodeAction",
+          "ExchangeDeviceCodeAction",
+          "RefreshAccessTokenAction",
+          "RevokeTokenAction",
+          "GenerateDeviceCodeAction",
+          "DeactivateExpiredClientsAction",
+          "OAuthService",
+          "OAuthAuthorizationServerController"
+        ]
+      },
+      "OAuthAccessToken": {
+        "file": "app/Models/OAuthAccessToken.php",
+        "table": "oauth_access_tokens",
+        "relationships": {
+          "client": { "type": "belongsTo", "target": "OAuthClient" },
+          "user": { "type": "belongsTo", "target": "User" },
+          "refreshToken": { "type": "hasOne", "target": "OAuthRefreshToken" }
+        },
+        "traits": ["HasFactory"],
+        "used_by": [
+          "ExchangeAuthorizationCodeAction",
+          "ExchangeDeviceCodeAction",
+          "RefreshAccessTokenAction",
+          "RevokeTokenAction",
+          "PruneExpiredAccessTokensAction",
+          "PruneRevokedTokensAction",
+          "LaravelMcpAuth"
+        ]
+      },
+      "OAuthAuthorizationCode": {
+        "file": "app/Models/OAuthAuthorizationCode.php",
+        "table": "oauth_authorization_codes",
+        "relationships": {
+          "client": { "type": "belongsTo", "target": "OAuthClient" },
+          "user": { "type": "belongsTo", "target": "User" }
+        },
+        "traits": ["HasFactory"],
+        "used_by": [
+          "ExchangeAuthorizationCodeAction",
+          "GenerateAuthorizationCodeAction",
+          "PruneExpiredAuthorizationCodesAction",
+          "PruneRevokedTokensAction"
+        ]
+      },
+      "OAuthDeviceCode": {
+        "file": "app/Models/OAuthDeviceCode.php",
+        "table": "oauth_device_codes",
+        "relationships": {
+          "client": { "type": "belongsTo", "target": "OAuthClient" },
+          "user": { "type": "belongsTo", "target": "User" }
+        },
+        "traits": ["HasFactory"],
+        "used_by": [
+          "AuthorizeDeviceCodeAction",
+          "ExchangeDeviceCodeAction",
+          "GenerateDeviceCodeAction",
+          "OAuthAuthorizationServerController"
+        ]
+      },
+      "OAuthRefreshToken": {
+        "file": "app/Models/OAuthRefreshToken.php",
+        "table": "oauth_refresh_tokens",
+        "relationships": {
+          "accessToken": { "type": "belongsTo", "target": "OAuthAccessToken" }
+        },
+        "traits": ["HasFactory"],
+        "used_by": [
+          "ExchangeAuthorizationCodeAction",
+          "ExchangeDeviceCodeAction",
+          "RefreshAccessTokenAction",
+          "RevokeTokenAction",
+          "PruneExpiredRefreshTokensAction",
+          "PruneRevokedTokensAction"
+        ]
+      },
+      "SearchQuery": {
+        "file": "app/Models/SearchQuery.php",
+        "table": "search_queries",
+        "relationships": {
+          "user": { "type": "belongsTo", "target": "User" }
+        },
+        "traits": ["HasFactory"],
+        "used_by": ["SearchService"]
+      },
+      "ZimArchive": {
+        "file": "app/Models/ZimArchive.php",
+        "table": "zim_archives",
+        "relationships": {
+          "externalService": { "type": "belongsTo", "target": "ExternalService" }
+        },
+        "traits": ["HasFactory", "Searchable"],
+        "used_by": [
+          "SearchZimArchivesAction",
+          "SearchZimArticlesAction",
+          "SuggestZimArticlesAction",
+          "ReadZimArticleAction",
+          "SyncOpdsCatalogAction",
+          "CleanupDisabledArchivesAction",
+          "ZimArchiveController"
+        ]
+      },
+      "ConfluenceSpace": {
+        "file": "app/Models/ConfluenceSpace.php",
+        "table": "confluence_spaces",
+        "relationships": {
+          "externalService": { "type": "belongsTo", "target": "ExternalService" }
+        },
+        "traits": ["HasFactory", "Searchable"],
+        "used_by": [
+          "ListConfluenceSpacesAction",
+          "SyncConfluenceSpacesAction",
+          "ConfluenceController"
+        ]
+      }
+    },
+    "dtos": {
+      "DetermineAdminStatusDTO": {
+        "file": "app/DTO/Auth/DetermineAdminStatusDTO.php",
+        "used_by_action": "DetermineAdminStatusFromGroupsAction"
+      },
+      "ConfluencePageDTO": {
+        "file": "app/DTO/Confluence/ConfluencePageDTO.php",
+        "used_by_action": "ReadConfluencePageAction"
+      },
+      "ConfluenceSearchResultDTO": {
+        "file": "app/DTO/Confluence/ConfluenceSearchResultDTO.php",
+        "used_by_action": "SearchConfluencePagesAction"
+      },
+      "ConfluenceSpaceDTO": {
+        "file": "app/DTO/Confluence/ConfluenceSpaceDTO.php",
+        "used_by_action": "SyncConfluenceSpacesAction"
+      },
+      "ListConfluenceSpacesDTO": {
+        "file": "app/DTO/Confluence/ListConfluenceSpacesDTO.php",
+        "used_by_action": "ListConfluenceSpacesAction"
+      },
+      "ReadConfluencePageDTO": {
+        "file": "app/DTO/Confluence/ReadConfluencePageDTO.php",
+        "used_by_action": "ReadConfluencePageAction"
+      },
+      "SearchConfluencePagesDTO": {
+        "file": "app/DTO/Confluence/SearchConfluencePagesDTO.php",
+        "used_by_action": "SearchConfluencePagesAction"
+      },
+      "SyncConfluenceSpacesDTO": {
+        "file": "app/DTO/Confluence/SyncConfluenceSpacesDTO.php",
+        "used_by_action": "SyncConfluenceSpacesAction"
+      },
+      "AnalyzeDocumentMetadataDTO": {
+        "file": "app/DTO/Documents/AnalyzeDocumentMetadataDTO.php",
+        "used_by_action": "AnalyzeDocumentMetadataAction"
+      },
+      "CleanupSoftDeletedDTO": {
+        "file": "app/DTO/Documents/CleanupSoftDeletedDTO.php",
+        "used_by_action": "CleanupSoftDeletedDocumentsAction"
+      },
+      "CreateDocumentDTO": {
+        "file": "app/DTO/Documents/CreateDocumentDTO.php",
+        "used_by_action": "CreateDocumentAction"
+      },
+      "DeleteDocumentDTO": {
+        "file": "app/DTO/Documents/DeleteDocumentDTO.php",
+        "used_by_action": "DeleteDocumentAction"
+      },
+      "DocumentDTO": {
+        "file": "app/DTO/Documents/DocumentDTO.php",
+        "used_by_action": null
+      },
+      "DocumentMetadataSuggestionsDTO": {
+        "file": "app/DTO/Documents/DocumentMetadataSuggestionsDTO.php",
+        "used_by_action": "AnalyzeDocumentMetadataAction"
+      },
+      "DocumentStatsDTO": {
+        "file": "app/DTO/Documents/DocumentStatsDTO.php",
+        "used_by_action": null
+      },
+      "ExtractDocumentContentDTO": {
+        "file": "app/DTO/Documents/ExtractDocumentContentDTO.php",
+        "used_by_action": "ExtractDocumentContentAction"
+      },
+      "ExtractedContentDTO": {
+        "file": "app/DTO/Documents/ExtractedContentDTO.php",
+        "used_by_action": "ExtractDocumentContentAction"
+      },
+      "IndexDocumentDTO": {
+        "file": "app/DTO/Documents/IndexDocumentDTO.php",
+        "used_by_action": "IndexDocumentInMeilisearchAction"
+      },
+      "RestoreDocumentDTO": {
+        "file": "app/DTO/Documents/RestoreDocumentDTO.php",
+        "used_by_action": "RestoreDocumentAction"
+      },
+      "SearchDocumentDTO": {
+        "file": "app/DTO/Documents/SearchDocumentDTO.php",
+        "used_by_action": "SearchDocumentsAction"
+      },
+      "SearchResultsDTO": {
+        "file": "app/DTO/Documents/SearchResultsDTO.php",
+        "used_by_action": null
+      },
+      "UpdateDocumentDTO": {
+        "file": "app/DTO/Documents/UpdateDocumentDTO.php",
+        "used_by_action": "UpdateDocumentAction"
+      },
+      "UpdateDocumentStatusDTO": {
+        "file": "app/DTO/Documents/UpdateDocumentStatusDTO.php",
+        "used_by_action": "UpdateDocumentStatusAction"
+      },
+      "ExternalServiceConfigDTO": {
+        "file": "app/DTO/ExternalServiceConfigDTO.php",
+        "used_by_action": null
+      },
+      "CleanupOrphanedFilesDTO": {
+        "file": "app/DTO/Files/CleanupOrphanedFilesDTO.php",
+        "used_by_action": null
+      },
+      "DeleteOrphanedFilesDTO": {
+        "file": "app/DTO/Files/DeleteOrphanedFilesDTO.php",
+        "used_by_action": "DeleteOrphanedFilesAction"
+      },
+      "OrphanedFileDTO": {
+        "file": "app/DTO/Files/OrphanedFileDTO.php",
+        "used_by_action": "FindOrphanedFilesAction"
+      },
+      "DeploymentGuideDTO": {
+        "file": "app/DTO/GitTemplate/DeploymentGuideDTO.php",
+        "used_by_action": "GenerateDeploymentGuideAction"
+      },
+      "GenerateDeploymentGuideDTO": {
+        "file": "app/DTO/GitTemplate/GenerateDeploymentGuideDTO.php",
+        "used_by_action": "GenerateDeploymentGuideAction"
+      },
+      "GenerateTemplateArchiveDTO": {
+        "file": "app/DTO/GitTemplate/GenerateTemplateArchiveDTO.php",
+        "used_by_action": "GenerateTemplateArchiveAction"
+      },
+      "GetTemplateFileDTO": {
+        "file": "app/DTO/GitTemplate/GetTemplateFileDTO.php",
+        "used_by_action": "GetTemplateFileAction"
+      },
+      "GetTemplateStructureDTO": {
+        "file": "app/DTO/GitTemplate/GetTemplateStructureDTO.php",
+        "used_by_action": "GetTemplateStructureAction"
+      },
+      "GitTemplateFileDTO": {
+        "file": "app/DTO/GitTemplate/GitTemplateFileDTO.php",
+        "used_by_action": "SyncGitTemplateAction"
+      },
+      "ListGitTemplatesDTO": {
+        "file": "app/DTO/GitTemplate/ListGitTemplatesDTO.php",
+        "used_by_action": "ListGitTemplatesAction"
+      },
+      "RegisterGitTemplateDTO": {
+        "file": "app/DTO/GitTemplate/RegisterGitTemplateDTO.php",
+        "used_by_action": "RegisterGitTemplateAction"
+      },
+      "SearchGitTemplatesDTO": {
+        "file": "app/DTO/GitTemplate/SearchGitTemplatesDTO.php",
+        "used_by_action": "SearchGitTemplatesAction"
+      },
+      "SyncGitTemplateDTO": {
+        "file": "app/DTO/GitTemplate/SyncGitTemplateDTO.php",
+        "used_by_action": "SyncGitTemplateAction"
+      },
+      "TemplateArchiveDTO": {
+        "file": "app/DTO/GitTemplate/TemplateArchiveDTO.php",
+        "used_by_action": "GenerateTemplateArchiveAction"
+      },
+      "TemplateStructureDTO": {
+        "file": "app/DTO/GitTemplate/TemplateStructureDTO.php",
+        "used_by_action": "GetTemplateStructureAction"
+      },
+      "HealthCheckResultDTO": {
+        "file": "app/DTO/HealthCheckResultDTO.php",
+        "used_by_action": null
+      },
+      "AuthorizeDeviceCodeDTO": {
+        "file": "app/DTO/OAuth/AuthorizeDeviceCodeDTO.php",
+        "used_by_action": "AuthorizeDeviceCodeAction"
+      },
+      "DeleteOAuthClientDTO": {
+        "file": "app/DTO/OAuth/DeleteOAuthClientDTO.php",
+        "used_by_action": "DeleteOAuthClientAction"
+      },
+      "ExchangeAuthorizationCodeDTO": {
+        "file": "app/DTO/OAuth/ExchangeAuthorizationCodeDTO.php",
+        "used_by_action": "ExchangeAuthorizationCodeAction"
+      },
+      "ExchangeDeviceCodeDTO": {
+        "file": "app/DTO/OAuth/ExchangeDeviceCodeDTO.php",
+        "used_by_action": "ExchangeDeviceCodeAction"
+      },
+      "FetchOIDCUserInfoDTO": {
+        "file": "app/DTO/OAuth/FetchOIDCUserInfoDTO.php",
+        "used_by_action": "FetchOIDCUserInfoAction"
+      },
+      "GenerateAuthorizationCodeDTO": {
+        "file": "app/DTO/OAuth/GenerateAuthorizationCodeDTO.php",
+        "used_by_action": "GenerateAuthorizationCodeAction"
+      },
+      "GenerateDeviceCodeDTO": {
+        "file": "app/DTO/OAuth/GenerateDeviceCodeDTO.php",
+        "used_by_action": "GenerateDeviceCodeAction"
+      },
+      "OIDCDiscoveryDTO": {
+        "file": "app/DTO/OAuth/OIDCDiscoveryDTO.php",
+        "used_by_action": "FetchOIDCDiscoveryAction"
+      },
+      "OIDCTokenDTO": {
+        "file": "app/DTO/OAuth/OIDCTokenDTO.php",
+        "used_by_action": "ValidateOIDCTokenAction"
+      },
+      "RefreshAccessTokenDTO": {
+        "file": "app/DTO/OAuth/RefreshAccessTokenDTO.php",
+        "used_by_action": "RefreshAccessTokenAction"
+      },
+      "RegisterOAuthClientDTO": {
+        "file": "app/DTO/OAuth/RegisterOAuthClientDTO.php",
+        "used_by_action": "RegisterOAuthClientAction"
+      },
+      "RevokeTokenDTO": {
+        "file": "app/DTO/OAuth/RevokeTokenDTO.php",
+        "used_by_action": "RevokeTokenAction"
+      },
+      "TokenPayloadDTO": {
+        "file": "app/DTO/OAuth/TokenPayloadDTO.php",
+        "used_by_action": null
+      },
+      "UpdateOAuthClientDTO": {
+        "file": "app/DTO/OAuth/UpdateOAuthClientDTO.php",
+        "used_by_action": "UpdateOAuthClientAction"
+      },
+      "ValidatePKCEDTO": {
+        "file": "app/DTO/OAuth/ValidatePKCEDTO.php",
+        "used_by_action": "ValidatePKCEAction"
+      },
+      "FindMissingDocumentsDTO": {
+        "file": "app/DTO/SearchIndex/FindMissingDocumentsDTO.php",
+        "used_by_action": "FindMissingDocumentsAction"
+      },
+      "IndexDiscrepancyDTO": {
+        "file": "app/DTO/SearchIndex/IndexDiscrepancyDTO.php",
+        "used_by_action": null
+      },
+      "IndexStatisticsDTO": {
+        "file": "app/DTO/SearchIndex/IndexStatisticsDTO.php",
+        "used_by_action": "GetIndexStatisticsAction"
+      },
+      "MissingDocumentDTO": {
+        "file": "app/DTO/SearchIndex/MissingDocumentDTO.php",
+        "used_by_action": "FindMissingDocumentsAction"
+      },
+      "OrphanedIndexEntryDTO": {
+        "file": "app/DTO/SearchIndex/OrphanedIndexEntryDTO.php",
+        "used_by_action": "FindOrphanedIndexEntriesAction"
+      },
+      "ReindexMissingDocumentsDTO": {
+        "file": "app/DTO/SearchIndex/ReindexMissingDocumentsDTO.php",
+        "used_by_action": "ReindexMissingDocumentsAction"
+      },
+      "RemoveOrphanedEntriesDTO": {
+        "file": "app/DTO/SearchIndex/RemoveOrphanedEntriesDTO.php",
+        "used_by_action": "RemoveOrphanedIndexEntriesAction"
+      },
+      "VerifySearchIndexDTO": {
+        "file": "app/DTO/SearchIndex/VerifySearchIndexDTO.php",
+        "used_by_action": null
+      },
+      "UnifiedSearchDTO": {
+        "file": "app/DTO/Search/UnifiedSearchDTO.php",
+        "used_by_action": "UnifiedSearchAction"
+      },
+      "UnifiedSearchResultDTO": {
+        "file": "app/DTO/Search/UnifiedSearchResultDTO.php",
+        "used_by_action": "UnifiedSearchAction"
+      },
+      "PruneResultsDTO": {
+        "file": "app/DTO/TokenPruning/PruneResultsDTO.php",
+        "used_by_action": null
+      },
+      "PruneTokensDTO": {
+        "file": "app/DTO/TokenPruning/PruneTokensDTO.php",
+        "used_by_action": "PruneExpiredAccessTokensAction"
+      },
+      "CleanupDisabledArchivesDTO": {
+        "file": "app/DTO/Zim/CleanupDisabledArchivesDTO.php",
+        "used_by_action": "CleanupDisabledArchivesAction"
+      },
+      "ReadZimArticleDTO": {
+        "file": "app/DTO/Zim/ReadZimArticleDTO.php",
+        "used_by_action": "ReadZimArticleAction"
+      },
+      "SearchZimArchivesDTO": {
+        "file": "app/DTO/Zim/SearchZimArchivesDTO.php",
+        "used_by_action": "SearchZimArchivesAction"
+      },
+      "SearchZimArticlesDTO": {
+        "file": "app/DTO/Zim/SearchZimArticlesDTO.php",
+        "used_by_action": "SearchZimArticlesAction"
+      },
+      "SuggestZimArticlesDTO": {
+        "file": "app/DTO/Zim/SuggestZimArticlesDTO.php",
+        "used_by_action": "SuggestZimArticlesAction"
+      },
+      "SyncOpdsCatalogDTO": {
+        "file": "app/DTO/Zim/SyncOpdsCatalogDTO.php",
+        "used_by_action": "SyncOpdsCatalogAction"
+      },
+      "ZimArchiveDTO": {
+        "file": "app/DTO/Zim/ZimArchiveDTO.php",
+        "used_by_action": null
+      },
+      "ZimArticleDTO": {
+        "file": "app/DTO/Zim/ZimArticleDTO.php",
+        "used_by_action": "ReadZimArticleAction"
+      },
+      "ZimArticleSearchResultDTO": {
+        "file": "app/DTO/Zim/ZimArticleSearchResultDTO.php",
+        "used_by_action": "SearchZimArticlesAction"
+      }
+    },
+    "actions": {
+      "DetermineAdminStatusFromGroupsAction": {
+        "file": "app/Actions/Auth/DetermineAdminStatusFromGroupsAction.php",
+        "dto": "DetermineAdminStatusDTO",
+        "depends_on": [],
+        "used_by": ["OAuthService"]
+      },
+      "ListConfluenceSpacesAction": {
+        "file": "app/Actions/Confluence/ListConfluenceSpacesAction.php",
+        "dto": "ListConfluenceSpacesDTO",
+        "depends_on": ["ConfluenceSpace"],
+        "used_by": ["ConfluenceController", "ListConfluenceSpacesTool"]
+      },
+      "ReadConfluencePageAction": {
+        "file": "app/Actions/Confluence/ReadConfluencePageAction.php",
+        "dto": "ReadConfluencePageDTO",
+        "depends_on": ["ConfluenceClient"],
+        "used_by": ["ConfluenceController", "ReadConfluencePageTool"]
+      },
+      "SearchConfluencePagesAction": {
+        "file": "app/Actions/Confluence/SearchConfluencePagesAction.php",
+        "dto": "SearchConfluencePagesDTO",
+        "depends_on": ["ConfluenceClient"],
+        "used_by": ["ConfluenceController", "SearchConfluenceTool"]
+      },
+      "SyncConfluenceSpacesAction": {
+        "file": "app/Actions/Confluence/SyncConfluenceSpacesAction.php",
+        "dto": "SyncConfluenceSpacesDTO",
+        "depends_on": ["ConfluenceClient", "ConfluenceSpace"],
+        "used_by": []
+      },
+      "AnalyzeDocumentMetadataAction": {
+        "file": "app/Actions/Documents/AnalyzeDocumentMetadataAction.php",
+        "dto": "AnalyzeDocumentMetadataDTO",
+        "depends_on": ["TextExtractionService"],
+        "used_by": ["DocumentAnalysisController"]
+      },
+      "CleanupSoftDeletedDocumentsAction": {
+        "file": "app/Actions/Documents/CleanupSoftDeletedDocumentsAction.php",
+        "dto": "CleanupSoftDeletedDTO",
+        "depends_on": ["PermanentlyDeleteDocumentAction", "Document"],
+        "used_by": []
+      },
+      "CreateDocumentAction": {
+        "file": "app/Actions/Documents/CreateDocumentAction.php",
+        "dto": "CreateDocumentDTO",
+        "depends_on": ["Document"],
+        "used_by": ["DocumentService", "CreateDocumentTool"]
+      },
+      "DeleteDocumentAction": {
+        "file": "app/Actions/Documents/DeleteDocumentAction.php",
+        "dto": "DeleteDocumentDTO",
+        "depends_on": [],
+        "used_by": ["DocumentService"]
+      },
+      "ExtractDocumentContentAction": {
+        "file": "app/Actions/Documents/ExtractDocumentContentAction.php",
+        "dto": "ExtractDocumentContentDTO",
+        "depends_on": ["TextExtractionService", "Document"],
+        "used_by": ["ProcessDocumentUploadJob"]
+      },
+      "IndexDocumentInMeilisearchAction": {
+        "file": "app/Actions/Documents/IndexDocumentInMeilisearchAction.php",
+        "dto": "IndexDocumentDTO",
+        "depends_on": ["Meilisearch\\Client"],
+        "used_by": ["DocumentService", "ReindexMissingDocumentsAction", "IndexDocumentInMeilisearchJob"]
+      },
+      "PermanentlyDeleteDocumentAction": {
+        "file": "app/Actions/Documents/PermanentlyDeleteDocumentAction.php",
+        "dto": "DeleteDocumentDTO",
+        "depends_on": [],
+        "used_by": ["CleanupSoftDeletedDocumentsAction", "AdminService"]
+      },
+      "RestoreDocumentAction": {
+        "file": "app/Actions/Documents/RestoreDocumentAction.php",
+        "dto": "RestoreDocumentDTO",
+        "depends_on": ["Document"],
+        "used_by": []
+      },
+      "UpdateDocumentAction": {
+        "file": "app/Actions/Documents/UpdateDocumentAction.php",
+        "dto": "UpdateDocumentDTO",
+        "depends_on": ["Document"],
+        "used_by": ["DocumentService"]
+      },
+      "UpdateDocumentStatusAction": {
+        "file": "app/Actions/Documents/UpdateDocumentStatusAction.php",
+        "dto": "UpdateDocumentStatusDTO",
+        "depends_on": ["Document"],
+        "used_by": ["ProcessDocumentUploadJob"]
+      },
+      "DeleteOrphanedFilesAction": {
+        "file": "app/Actions/Files/DeleteOrphanedFilesAction.php",
+        "dto": "DeleteOrphanedFilesDTO",
+        "depends_on": [],
+        "used_by": []
+      },
+      "FindOrphanedFilesAction": {
+        "file": "app/Actions/Files/FindOrphanedFilesAction.php",
+        "dto": null,
+        "depends_on": ["Document"],
+        "used_by": []
+      },
+      "GenerateDeploymentGuideAction": {
+        "file": "app/Actions/GitTemplate/GenerateDeploymentGuideAction.php",
+        "dto": "GenerateDeploymentGuideDTO",
+        "depends_on": ["GitTemplate"],
+        "used_by": ["GitTemplateController", "GetDeploymentGuideTool"]
+      },
+      "GenerateTemplateArchiveAction": {
+        "file": "app/Actions/GitTemplate/GenerateTemplateArchiveAction.php",
+        "dto": "GenerateTemplateArchiveDTO",
+        "depends_on": ["GitTemplate"],
+        "used_by": ["GitTemplateController", "DownloadTemplateTool"]
+      },
+      "GetTemplateFileAction": {
+        "file": "app/Actions/GitTemplate/GetTemplateFileAction.php",
+        "dto": "GetTemplateFileDTO",
+        "depends_on": ["GitTemplateFile"],
+        "used_by": ["GitTemplateController", "GetTemplateFileTool"]
+      },
+      "GetTemplateStructureAction": {
+        "file": "app/Actions/GitTemplate/GetTemplateStructureAction.php",
+        "dto": "GetTemplateStructureDTO",
+        "depends_on": [],
+        "used_by": ["GitTemplateController", "GetTemplateStructureTool"]
+      },
+      "ListGitTemplatesAction": {
+        "file": "app/Actions/GitTemplate/ListGitTemplatesAction.php",
+        "dto": "ListGitTemplatesDTO",
+        "depends_on": ["GitTemplate"],
+        "used_by": ["GitTemplateController", "ListGitTemplatesTool"]
+      },
+      "RegisterGitTemplateAction": {
+        "file": "app/Actions/GitTemplate/RegisterGitTemplateAction.php",
+        "dto": "RegisterGitTemplateDTO",
+        "depends_on": ["GitTemplate", "SyncGitTemplateJob"],
+        "used_by": ["GitTemplateController"]
+      },
+      "SearchGitTemplatesAction": {
+        "file": "app/Actions/GitTemplate/SearchGitTemplatesAction.php",
+        "dto": "SearchGitTemplatesDTO",
+        "depends_on": ["Meilisearch\\Client", "GitTemplate"],
+        "used_by": ["GitTemplateController", "SearchGitTemplatesTool"]
+      },
+      "SyncGitTemplateAction": {
+        "file": "app/Actions/GitTemplate/SyncGitTemplateAction.php",
+        "dto": "SyncGitTemplateDTO",
+        "depends_on": ["GitTemplateClient", "GitTemplate", "GitTemplateFile"],
+        "used_by": ["GitTemplateController", "SyncGitTemplateJob"]
+      },
+      "AuthorizeDeviceCodeAction": {
+        "file": "app/Actions/OAuth/AuthorizeDeviceCodeAction.php",
+        "dto": "AuthorizeDeviceCodeDTO",
+        "depends_on": ["OAuthDeviceCode"],
+        "used_by": ["OAuthAuthorizationServerController"]
+      },
+      "DeleteOAuthClientAction": {
+        "file": "app/Actions/OAuth/DeleteOAuthClientAction.php",
+        "dto": "DeleteOAuthClientDTO",
+        "depends_on": [],
+        "used_by": []
+      },
+      "ExchangeAuthorizationCodeAction": {
+        "file": "app/Actions/OAuth/ExchangeAuthorizationCodeAction.php",
+        "dto": "ExchangeAuthorizationCodeDTO",
+        "depends_on": ["ValidatePKCEAction", "TokenHashingService", "OAuthAccessToken", "OAuthAuthorizationCode", "OAuthClient", "OAuthRefreshToken"],
+        "used_by": ["OAuthAuthorizationServerController"]
+      },
+      "ExchangeDeviceCodeAction": {
+        "file": "app/Actions/OAuth/ExchangeDeviceCodeAction.php",
+        "dto": "ExchangeDeviceCodeDTO",
+        "depends_on": ["TokenHashingService", "OAuthAccessToken", "OAuthClient", "OAuthDeviceCode", "OAuthRefreshToken"],
+        "used_by": ["OAuthAuthorizationServerController"]
+      },
+      "FetchOIDCDiscoveryAction": {
+        "file": "app/Actions/OAuth/FetchOIDCDiscoveryAction.php",
+        "dto": null,
+        "depends_on": [],
+        "used_by": ["ValidateOIDCTokenAction", "LoginController"]
+      },
+      "FetchOIDCUserInfoAction": {
+        "file": "app/Actions/OAuth/FetchOIDCUserInfoAction.php",
+        "dto": "FetchOIDCUserInfoDTO",
+        "depends_on": [],
+        "used_by": ["OAuthService"]
+      },
+      "GenerateAuthorizationCodeAction": {
+        "file": "app/Actions/OAuth/GenerateAuthorizationCodeAction.php",
+        "dto": "GenerateAuthorizationCodeDTO",
+        "depends_on": ["TokenHashingService", "OAuthAuthorizationCode"],
+        "used_by": ["OAuthAuthorizationServerController"]
+      },
+      "GenerateDeviceCodeAction": {
+        "file": "app/Actions/OAuth/GenerateDeviceCodeAction.php",
+        "dto": "GenerateDeviceCodeDTO",
+        "depends_on": ["TokenHashingService", "OAuthClient", "OAuthDeviceCode"],
+        "used_by": ["OAuthAuthorizationServerController"]
+      },
+      "RefreshAccessTokenAction": {
+        "file": "app/Actions/OAuth/RefreshAccessTokenAction.php",
+        "dto": "RefreshAccessTokenDTO",
+        "depends_on": ["TokenHashingService", "OAuthAccessToken", "OAuthClient", "OAuthRefreshToken"],
+        "used_by": ["OAuthAuthorizationServerController"]
+      },
+      "RegisterOAuthClientAction": {
+        "file": "app/Actions/OAuth/RegisterOAuthClientAction.php",
+        "dto": "RegisterOAuthClientDTO",
+        "depends_on": ["OAuthClient"],
+        "used_by": ["OAuthAuthorizationServerController", "OAuthService"]
+      },
+      "RevokeTokenAction": {
+        "file": "app/Actions/OAuth/RevokeTokenAction.php",
+        "dto": "RevokeTokenDTO",
+        "depends_on": ["OAuthAccessToken", "OAuthClient", "OAuthRefreshToken"],
+        "used_by": ["OAuthAuthorizationServerController"]
+      },
+      "UpdateOAuthClientAction": {
+        "file": "app/Actions/OAuth/UpdateOAuthClientAction.php",
+        "dto": "UpdateOAuthClientDTO",
+        "depends_on": ["OAuthClient"],
+        "used_by": []
+      },
+      "ValidateOIDCTokenAction": {
+        "file": "app/Actions/OAuth/ValidateOIDCTokenAction.php",
+        "dto": "OIDCTokenDTO",
+        "depends_on": ["FetchOIDCDiscoveryAction"],
+        "used_by": ["OAuthService"]
+      },
+      "ValidatePKCEAction": {
+        "file": "app/Actions/OAuth/ValidatePKCEAction.php",
+        "dto": "ValidatePKCEDTO",
+        "depends_on": [],
+        "used_by": ["ExchangeAuthorizationCodeAction"]
+      },
+      "SearchDocumentsAction": {
+        "file": "app/Actions/Search/SearchDocumentsAction.php",
+        "dto": "SearchDocumentDTO",
+        "depends_on": ["Meilisearch\\Client"],
+        "used_by": ["SearchService"]
+      },
+      "UnifiedSearchAction": {
+        "file": "app/Actions/Search/UnifiedSearchAction.php",
+        "dto": "UnifiedSearchDTO",
+        "depends_on": ["Meilisearch\\Client", "ExternalServiceManager", "ExternalService"],
+        "used_by": ["UnifiedSearchController", "UnifiedSearchTool"]
+      },
+      "FindMissingDocumentsAction": {
+        "file": "app/Actions/SearchIndex/FindMissingDocumentsAction.php",
+        "dto": "FindMissingDocumentsDTO",
+        "depends_on": ["Document"],
+        "used_by": ["SearchIndexVerificationService"]
+      },
+      "FindOrphanedIndexEntriesAction": {
+        "file": "app/Actions/SearchIndex/FindOrphanedIndexEntriesAction.php",
+        "dto": null,
+        "depends_on": ["Document", "Scout\\EngineManager"],
+        "used_by": ["SearchIndexVerificationService"]
+      },
+      "GetIndexStatisticsAction": {
+        "file": "app/Actions/SearchIndex/GetIndexStatisticsAction.php",
+        "dto": null,
+        "depends_on": ["Document", "Scout\\EngineManager"],
+        "used_by": ["SearchIndexVerificationService"]
+      },
+      "ReindexMissingDocumentsAction": {
+        "file": "app/Actions/SearchIndex/ReindexMissingDocumentsAction.php",
+        "dto": "ReindexMissingDocumentsDTO",
+        "depends_on": ["IndexDocumentInMeilisearchAction", "Document"],
+        "used_by": ["SearchIndexVerificationService"]
+      },
+      "RemoveOrphanedIndexEntriesAction": {
+        "file": "app/Actions/SearchIndex/RemoveOrphanedIndexEntriesAction.php",
+        "dto": "RemoveOrphanedEntriesDTO",
+        "depends_on": ["Meilisearch\\Client"],
+        "used_by": ["SearchIndexVerificationService"]
+      },
+      "DeactivateExpiredClientsAction": {
+        "file": "app/Actions/TokenPruning/DeactivateExpiredClientsAction.php",
+        "dto": "PruneTokensDTO",
+        "depends_on": ["OAuthClient"],
+        "used_by": ["OAuthTokenPruningService"]
+      },
+      "PruneExpiredAccessTokensAction": {
+        "file": "app/Actions/TokenPruning/PruneExpiredAccessTokensAction.php",
+        "dto": "PruneTokensDTO",
+        "depends_on": ["OAuthAccessToken"],
+        "used_by": ["OAuthTokenPruningService"]
+      },
+      "PruneExpiredAuthorizationCodesAction": {
+        "file": "app/Actions/TokenPruning/PruneExpiredAuthorizationCodesAction.php",
+        "dto": "PruneTokensDTO",
+        "depends_on": ["OAuthAuthorizationCode"],
+        "used_by": ["OAuthTokenPruningService"]
+      },
+      "PruneExpiredRefreshTokensAction": {
+        "file": "app/Actions/TokenPruning/PruneExpiredRefreshTokensAction.php",
+        "dto": "PruneTokensDTO",
+        "depends_on": ["OAuthRefreshToken"],
+        "used_by": ["OAuthTokenPruningService"]
+      },
+      "PruneRevokedTokensAction": {
+        "file": "app/Actions/TokenPruning/PruneRevokedTokensAction.php",
+        "dto": "PruneTokensDTO",
+        "depends_on": ["OAuthAccessToken", "OAuthAuthorizationCode", "OAuthRefreshToken"],
+        "used_by": ["OAuthTokenPruningService"]
+      },
+      "CleanupDisabledArchivesAction": {
+        "file": "app/Actions/Zim/CleanupDisabledArchivesAction.php",
+        "dto": "CleanupDisabledArchivesDTO",
+        "depends_on": ["ZimArchive"],
+        "used_by": []
+      },
+      "ReadZimArticleAction": {
+        "file": "app/Actions/Zim/ReadZimArticleAction.php",
+        "dto": "ReadZimArticleDTO",
+        "depends_on": ["KiwixServeClient", "ZimArchive"],
+        "used_by": ["ZimArchiveController", "ReadZimArticleTool"]
+      },
+      "SearchZimArchivesAction": {
+        "file": "app/Actions/Zim/SearchZimArchivesAction.php",
+        "dto": "SearchZimArchivesDTO",
+        "depends_on": ["ZimArchive"],
+        "used_by": ["ZimArchiveController", "ListZimArchivesTool"]
+      },
+      "SearchZimArticlesAction": {
+        "file": "app/Actions/Zim/SearchZimArticlesAction.php",
+        "dto": "SearchZimArticlesDTO",
+        "depends_on": ["KiwixServeClient", "ZimArchive"],
+        "used_by": ["ZimArchiveController", "SearchZimTool"]
+      },
+      "SuggestZimArticlesAction": {
+        "file": "app/Actions/Zim/SuggestZimArticlesAction.php",
+        "dto": "SuggestZimArticlesDTO",
+        "depends_on": ["KiwixServeClient", "ZimArchive"],
+        "used_by": ["ZimArchiveController", "SearchZimTool"]
+      },
+      "SyncOpdsCatalogAction": {
+        "file": "app/Actions/Zim/SyncOpdsCatalogAction.php",
+        "dto": "SyncOpdsCatalogDTO",
+        "depends_on": ["KiwixServeClient", "ZimArchive"],
+        "used_by": []
+      }
+    },
+    "services": {
+      "AdminService": {
+        "file": "app/Services/AdminService.php",
+        "depends_on": ["PermanentlyDeleteDocumentAction", "Document"],
+        "used_by": []
+      },
+      "ConfluenceClient": {
+        "file": "app/Services/Atlassian/ConfluenceClient.php",
+        "depends_on": ["ExternalServiceManager", "ExternalService"],
+        "used_by": ["ReadConfluencePageAction", "SearchConfluencePagesAction", "SyncConfluenceSpacesAction"]
+      },
+      "DocumentService": {
+        "file": "app/Services/DocumentService.php",
+        "depends_on": ["CreateDocumentAction", "DeleteDocumentAction", "IndexDocumentInMeilisearchAction", "UpdateDocumentAction", "ProcessDocumentUploadJob", "Document", "User"],
+        "used_by": ["DocumentController", "ReadDocumentTool", "CreateDocumentTool", "DeleteDocumentTool", "UpdateDocumentTool", "SearchDocumentsTool"]
+      },
+      "ExternalServiceHealthChecker": {
+        "file": "app/Services/ExternalServiceHealthChecker.php",
+        "depends_on": ["ExternalService"],
+        "used_by": ["CheckExternalServiceHealthJob"]
+      },
+      "ExternalServiceManager": {
+        "file": "app/Services/ExternalServiceManager.php",
+        "depends_on": ["ExternalService"],
+        "used_by": ["ConfluenceClient", "KiwixServeClient", "UnifiedSearchAction", "ListConfluenceSpacesTool", "SearchConfluenceTool", "ReadConfluencePageTool", "ZimResearchPrompt", "ConfluenceResearchPrompt"]
+      },
+      "GitTemplateClient": {
+        "file": "app/Services/GitTemplate/GitTemplateClient.php",
+        "depends_on": ["GitTemplate"],
+        "used_by": ["SyncGitTemplateAction", "GitTemplateController"]
+      },
+      "HealthCheckService": {
+        "file": "app/Services/HealthCheckService.php",
+        "depends_on": [],
+        "used_by": ["HealthController"]
+      },
+      "KiwixServeClient": {
+        "file": "app/Services/Zim/KiwixServeClient.php",
+        "depends_on": ["ExternalServiceManager", "ExternalService"],
+        "used_by": ["ReadZimArticleAction", "SearchZimArticlesAction", "SuggestZimArticlesAction", "SyncOpdsCatalogAction", "ReadZimArticleTool"]
+      },
+      "MaintenanceNotificationService": {
+        "file": "app/Services/MaintenanceNotificationService.php",
+        "depends_on": [],
+        "used_by": []
+      },
+      "MeilisearchService": {
+        "file": "app/Services/MeilisearchService.php",
+        "depends_on": [],
+        "used_by": []
+      },
+      "OAuthService": {
+        "file": "app/Services/OAuthService.php",
+        "depends_on": ["DetermineAdminStatusFromGroupsAction", "FetchOIDCUserInfoAction", "RegisterOAuthClientAction", "ValidateOIDCTokenAction", "OAuthClient", "User"],
+        "used_by": ["LaravelMcpAuth", "LoginController"]
+      },
+      "OAuthTokenPruningService": {
+        "file": "app/Services/OAuthTokenPruningService.php",
+        "depends_on": ["DeactivateExpiredClientsAction", "PruneExpiredAccessTokensAction", "PruneExpiredAuthorizationCodesAction", "PruneExpiredRefreshTokensAction", "PruneRevokedTokensAction"],
+        "used_by": []
+      },
+      "SearchIndexVerificationService": {
+        "file": "app/Services/SearchIndexVerificationService.php",
+        "depends_on": ["FindMissingDocumentsAction", "FindOrphanedIndexEntriesAction", "GetIndexStatisticsAction", "ReindexMissingDocumentsAction", "RemoveOrphanedIndexEntriesAction"],
+        "used_by": []
+      },
+      "SearchService": {
+        "file": "app/Services/SearchService.php",
+        "depends_on": ["SearchDocumentsAction", "SearchQuery"],
+        "used_by": ["SearchController", "SearchDocumentsTool"]
+      },
+      "TextExtractionService": {
+        "file": "app/Services/TextExtractionService.php",
+        "depends_on": ["PdfExtractor", "DocxExtractor", "XlsxExtractor", "HtmlExtractor", "MarkdownExtractor"],
+        "used_by": ["AnalyzeDocumentMetadataAction", "ExtractDocumentContentAction"]
+      },
+      "TokenHashingService": {
+        "file": "app/Services/TokenHashingService.php",
+        "depends_on": [],
+        "used_by": ["ExchangeAuthorizationCodeAction", "ExchangeDeviceCodeAction", "RefreshAccessTokenAction", "GenerateAuthorizationCodeAction", "GenerateDeviceCodeAction", "OAuthAccessToken", "OAuthAuthorizationCode", "OAuthDeviceCode", "OAuthRefreshToken"]
+      },
+      "DocumentMetrics": {
+        "file": "app/Services/Metrics/DocumentMetrics.php",
+        "depends_on": [],
+        "used_by": ["SearchController", "DocumentController"]
+      },
+      "PrometheusService": {
+        "file": "app/Services/Metrics/PrometheusService.php",
+        "depends_on": [],
+        "used_by": ["MetricsController", "LaravelMcpAuth"]
+      }
+    },
+    "controllers": {
+      "DocumentController": {
+        "file": "app/Http/Controllers/Api/DocumentController.php",
+        "depends_on": ["DocumentService", "DocumentMetrics", "Document"],
+        "form_requests": ["ListDocumentsRequest", "StoreDocumentRequest", "UpdateDocumentRequest"],
+        "used_by": []
+      },
+      "SearchController": {
+        "file": "app/Http/Controllers/Api/SearchController.php",
+        "depends_on": ["SearchService", "DocumentMetrics"],
+        "form_requests": ["SearchDocumentRequest", "AutocompleteSearchRequest"],
+        "used_by": []
+      },
+      "UnifiedSearchController": {
+        "file": "app/Http/Controllers/Api/UnifiedSearchController.php",
+        "depends_on": ["UnifiedSearchAction"],
+        "form_requests": ["UnifiedSearchRequest"],
+        "used_by": []
+      },
+      "ConfluenceController": {
+        "file": "app/Http/Controllers/Api/ConfluenceController.php",
+        "depends_on": ["ListConfluenceSpacesAction", "ReadConfluencePageAction", "SearchConfluencePagesAction", "ConfluenceSpace"],
+        "form_requests": ["ListConfluenceSpacesRequest", "SearchConfluencePagesRequest"],
+        "used_by": []
+      },
+      "ZimArchiveController": {
+        "file": "app/Http/Controllers/Api/ZimArchiveController.php",
+        "depends_on": ["ReadZimArticleAction", "SearchZimArchivesAction", "SearchZimArticlesAction", "SuggestZimArticlesAction", "ZimArchive"],
+        "form_requests": ["ListZimArchivesRequest", "SearchZimArticlesRequest", "SuggestZimArticlesRequest"],
+        "used_by": []
+      },
+      "GitTemplateController": {
+        "file": "app/Http/Controllers/Api/GitTemplateController.php",
+        "depends_on": [
+          "GenerateDeploymentGuideAction", "GenerateTemplateArchiveAction", "GetTemplateFileAction",
+          "GetTemplateStructureAction", "ListGitTemplatesAction", "RegisterGitTemplateAction",
+          "SearchGitTemplatesAction", "SyncGitTemplateAction", "GitTemplateClient", "GitTemplate"
+        ],
+        "form_requests": ["ListGitTemplatesRequest", "RegisterGitTemplateRequest", "SearchGitTemplatesRequest", "UpdateGitTemplateRequest", "DownloadTemplateRequest"],
+        "used_by": []
+      },
+      "DocumentAnalysisController": {
+        "file": "app/Http/Controllers/Api/DocumentAnalysisController.php",
+        "depends_on": ["AnalyzeDocumentMetadataAction"],
+        "form_requests": ["AnalyzeDocumentRequest"],
+        "used_by": []
+      },
+      "HealthController": {
+        "file": "app/Http/Controllers/Api/HealthController.php",
+        "depends_on": ["HealthCheckService"],
+        "form_requests": [],
+        "used_by": []
+      },
+      "LoginController": {
+        "file": "app/Http/Controllers/Auth/LoginController.php",
+        "depends_on": ["FetchOIDCDiscoveryAction", "OAuthService", "User"],
+        "form_requests": ["LoginRequest"],
+        "used_by": []
+      },
+      "LogoutController": {
+        "file": "app/Http/Controllers/Auth/LogoutController.php",
+        "depends_on": [],
+        "form_requests": [],
+        "used_by": []
+      },
+      "OAuthAuthorizationServerController": {
+        "file": "app/Http/Controllers/Auth/OAuthAuthorizationServerController.php",
+        "depends_on": [
+          "AuthorizeDeviceCodeAction", "ExchangeAuthorizationCodeAction", "ExchangeDeviceCodeAction",
+          "GenerateAuthorizationCodeAction", "GenerateDeviceCodeAction", "RefreshAccessTokenAction",
+          "RegisterOAuthClientAction", "RevokeTokenAction", "OAuthClient", "OAuthDeviceCode"
+        ],
+        "form_requests": [
+          "AuthorizeApproveRequest", "AuthorizeRequest", "ClientRegistrationRequest",
+          "DeviceApproveRequest", "DeviceAuthorizationRequest", "DeviceVerifyRequest",
+          "RevokeRequest", "TokenRequest"
+        ],
+        "used_by": []
+      },
+      "Admin\\DocumentController": {
+        "file": "app/Http/Controllers/Admin/DocumentController.php",
+        "depends_on": ["Document"],
+        "form_requests": [],
+        "used_by": []
+      },
+      "MetricsController": {
+        "file": "app/Http/Controllers/MetricsController.php",
+        "depends_on": ["PrometheusService"],
+        "form_requests": [],
+        "used_by": []
+      }
+    },
+    "mcp_tools": {
+      "UnifiedSearchTool": {
+        "file": "app/Mcp/Tools/UnifiedSearchTool.php",
+        "depends_on": ["UnifiedSearchAction", "User"],
+        "used_by": []
+      },
+      "SearchDocumentsTool": {
+        "file": "app/Mcp/Tools/SearchDocumentsTool.php",
+        "depends_on": ["SearchService"],
+        "used_by": []
+      },
+      "CreateDocumentTool": {
+        "file": "app/Mcp/Tools/CreateDocumentTool.php",
+        "depends_on": ["DocumentService", "Document"],
+        "used_by": []
+      },
+      "ReadDocumentTool": {
+        "file": "app/Mcp/Tools/ReadDocumentTool.php",
+        "depends_on": ["DocumentService"],
+        "used_by": []
+      },
+      "UpdateDocumentTool": {
+        "file": "app/Mcp/Tools/UpdateDocumentTool.php",
+        "depends_on": ["DocumentService"],
+        "used_by": []
+      },
+      "DeleteDocumentTool": {
+        "file": "app/Mcp/Tools/DeleteDocumentTool.php",
+        "depends_on": ["DocumentService"],
+        "used_by": []
+      },
+      "ListZimArchivesTool": {
+        "file": "app/Mcp/Tools/ListZimArchivesTool.php",
+        "depends_on": ["SearchZimArchivesAction"],
+        "used_by": []
+      },
+      "SearchZimTool": {
+        "file": "app/Mcp/Tools/SearchZimTool.php",
+        "depends_on": ["SearchZimArticlesAction", "SuggestZimArticlesAction"],
+        "used_by": []
+      },
+      "ReadZimArticleTool": {
+        "file": "app/Mcp/Tools/ReadZimArticleTool.php",
+        "depends_on": ["ReadZimArticleAction", "KiwixServeClient"],
+        "used_by": []
+      },
+      "ListConfluenceSpacesTool": {
+        "file": "app/Mcp/Tools/ListConfluenceSpacesTool.php",
+        "depends_on": ["ListConfluenceSpacesAction", "ExternalServiceManager", "ExternalService"],
+        "used_by": []
+      },
+      "SearchConfluenceTool": {
+        "file": "app/Mcp/Tools/SearchConfluenceTool.php",
+        "depends_on": ["SearchConfluencePagesAction", "ExternalServiceManager", "ExternalService"],
+        "used_by": []
+      },
+      "ReadConfluencePageTool": {
+        "file": "app/Mcp/Tools/ReadConfluencePageTool.php",
+        "depends_on": ["ReadConfluencePageAction", "ExternalServiceManager", "ExternalService"],
+        "used_by": []
+      },
+      "ListGitTemplatesTool": {
+        "file": "app/Mcp/Tools/ListGitTemplatesTool.php",
+        "depends_on": ["ListGitTemplatesAction", "GitTemplate"],
+        "used_by": []
+      },
+      "SearchGitTemplatesTool": {
+        "file": "app/Mcp/Tools/SearchGitTemplatesTool.php",
+        "depends_on": ["SearchGitTemplatesAction"],
+        "used_by": []
+      },
+      "GetTemplateStructureTool": {
+        "file": "app/Mcp/Tools/GetTemplateStructureTool.php",
+        "depends_on": ["GetTemplateStructureAction", "GitTemplate"],
+        "used_by": []
+      },
+      "GetTemplateFileTool": {
+        "file": "app/Mcp/Tools/GetTemplateFileTool.php",
+        "depends_on": ["GetTemplateFileAction", "GitTemplate"],
+        "used_by": []
+      },
+      "GetDeploymentGuideTool": {
+        "file": "app/Mcp/Tools/GetDeploymentGuideTool.php",
+        "depends_on": ["GenerateDeploymentGuideAction", "GitTemplate"],
+        "used_by": []
+      },
+      "DownloadTemplateTool": {
+        "file": "app/Mcp/Tools/DownloadTemplateTool.php",
+        "depends_on": ["GenerateTemplateArchiveAction", "GitTemplate"],
+        "used_by": []
+      }
+    },
+    "mcp_prompts": {
+      "DocumentAnalysisPrompt": {
+        "file": "app/Mcp/Prompts/DocumentAnalysisPrompt.php",
+        "depends_on": [],
+        "used_by": []
+      },
+      "SearchQueryBuilderPrompt": {
+        "file": "app/Mcp/Prompts/SearchQueryBuilderPrompt.php",
+        "depends_on": [],
+        "used_by": []
+      },
+      "KnowledgeBaseBuilderPrompt": {
+        "file": "app/Mcp/Prompts/KnowledgeBaseBuilderPrompt.php",
+        "depends_on": [],
+        "used_by": []
+      },
+      "CrossSourceResearchPrompt": {
+        "file": "app/Mcp/Prompts/CrossSourceResearchPrompt.php",
+        "depends_on": [],
+        "used_by": []
+      },
+      "ZimResearchPrompt": {
+        "file": "app/Mcp/Prompts/ZimResearchPrompt.php",
+        "depends_on": ["ExternalServiceManager", "ExternalService"],
+        "used_by": []
+      },
+      "GitTemplateSetupPrompt": {
+        "file": "app/Mcp/Prompts/GitTemplateSetupPrompt.php",
+        "depends_on": [],
+        "used_by": []
+      },
+      "ConfluenceResearchPrompt": {
+        "file": "app/Mcp/Prompts/ConfluenceResearchPrompt.php",
+        "depends_on": ["ExternalServiceManager", "ExternalService"],
+        "used_by": []
+      }
+    },
+    "middleware": {
+      "AssignRequestId": {
+        "file": "app/Http/Middleware/AssignRequestId.php",
+        "depends_on": [],
+        "used_by": []
+      },
+      "AuthenticateInternalEndpoint": {
+        "file": "app/Http/Middleware/AuthenticateInternalEndpoint.php",
+        "depends_on": [],
+        "used_by": []
+      },
+      "CacheResponse": {
+        "file": "app/Http/Middleware/CacheResponse.php",
+        "depends_on": [],
+        "used_by": []
+      },
+      "DenyHiddenFiles": {
+        "file": "app/Http/Middleware/DenyHiddenFiles.php",
+        "depends_on": [],
+        "used_by": []
+      },
+      "EnsureUserIsAdmin": {
+        "file": "app/Http/Middleware/EnsureUserIsAdmin.php",
+        "depends_on": [],
+        "used_by": []
+      },
+      "LaravelMcpAuth": {
+        "file": "app/Http/Middleware/LaravelMcpAuth.php",
+        "depends_on": ["OAuthAccessToken", "User", "PrometheusService", "OAuthService"],
+        "used_by": []
+      },
+      "PreventLazyLoading": {
+        "file": "app/Http/Middleware/PreventLazyLoading.php",
+        "depends_on": [],
+        "used_by": []
+      },
+      "SecurityHeaders": {
+        "file": "app/Http/Middleware/SecurityHeaders.php",
+        "depends_on": [],
+        "used_by": []
+      }
+    },
+    "extractors": {
+      "PdfExtractor": {
+        "file": "app/Extractors/PdfExtractor.php",
+        "depends_on": ["PdfAnchorLinkConverter"],
+        "used_by": ["TextExtractionService"]
+      },
+      "DocxExtractor": {
+        "file": "app/Extractors/DocxExtractor.php",
+        "depends_on": [],
+        "used_by": ["TextExtractionService"]
+      },
+      "XlsxExtractor": {
+        "file": "app/Extractors/XlsxExtractor.php",
+        "depends_on": [],
+        "used_by": ["TextExtractionService"]
+      },
+      "HtmlExtractor": {
+        "file": "app/Extractors/HtmlExtractor.php",
+        "depends_on": [],
+        "used_by": ["TextExtractionService"]
+      },
+      "MarkdownExtractor": {
+        "file": "app/Extractors/MarkdownExtractor.php",
+        "depends_on": [],
+        "used_by": ["TextExtractionService"]
+      }
+    },
+    "jobs": {
+      "BaseJob": {
+        "file": "app/Jobs/BaseJob.php",
+        "depends_on": [],
+        "used_by": ["CheckExternalServiceHealthJob", "IndexDocumentInMeilisearchJob", "ProcessDocumentUploadJob", "ReindexAllDocumentsJob", "SyncGitTemplateJob"]
+      },
+      "ProcessDocumentUploadJob": {
+        "file": "app/Jobs/ProcessDocumentUploadJob.php",
+        "depends_on": ["ExtractDocumentContentAction", "UpdateDocumentStatusAction", "Document"],
+        "used_by": ["DocumentService"]
+      },
+      "IndexDocumentInMeilisearchJob": {
+        "file": "app/Jobs/IndexDocumentInMeilisearchJob.php",
+        "depends_on": ["IndexDocumentInMeilisearchAction", "Document"],
+        "used_by": []
+      },
+      "ReindexAllDocumentsJob": {
+        "file": "app/Jobs/ReindexAllDocumentsJob.php",
+        "depends_on": ["Document"],
+        "used_by": []
+      },
+      "CheckExternalServiceHealthJob": {
+        "file": "app/Jobs/CheckExternalServiceHealthJob.php",
+        "depends_on": ["ExternalService", "ExternalServiceHealthChecker"],
+        "used_by": []
+      },
+      "SyncGitTemplateJob": {
+        "file": "app/Jobs/SyncGitTemplateJob.php",
+        "depends_on": ["SyncGitTemplateAction", "GitTemplate"],
+        "used_by": ["RegisterGitTemplateAction"]
+      }
+    }
+  },
+  "build_order": {
+    "description": "Recommended implementation order for Go rewrite",
+    "phases": [
+      {
+        "phase": 1,
+        "name": "Database & Types",
+        "components": [
+          "DDL (database-schema.sql)",
+          "Go structs from 75 DTOs",
+          "Go structs from 15 Models"
+        ],
+        "rationale": "Foundation types with no dependencies. DTOs are pure value objects; models map to database tables."
+      },
+      {
+        "phase": 2,
+        "name": "Repository Layer",
+        "components": [
+          "Repository interfaces for all 15 models",
+          "PostgreSQL repository implementations using pgx"
+        ],
+        "rationale": "Data access wrapping raw SQL/pgx. Models have no cross-model methods that need services."
+      },
+      {
+        "phase": 3,
+        "name": "Use Cases / Actions",
+        "components": [
+          "56 action equivalents using repository interfaces",
+          "TokenHashingService (needed by 5 OAuth actions)",
+          "TextExtractionService (needed by 2 document actions)"
+        ],
+        "rationale": "Business logic depending only on repos + types. Actions form the core domain layer."
+      },
+      {
+        "phase": 4,
+        "name": "Services",
+        "components": [
+          "18 orchestration services composing actions",
+          "ExternalServiceManager (high fan-out: 5 consumers)",
+          "DocumentService (high fan-out: 6 consumers)",
+          "SearchService, OAuthService, etc."
+        ],
+        "rationale": "Higher-level workflows. Services coordinate multiple actions but introduce no new domain logic."
+      },
+      {
+        "phase": 5,
+        "name": "HTTP Handlers",
+        "components": [
+          "14 REST API controllers",
+          "8 middleware handlers",
+          "26 request validation structs (FormRequests)"
+        ],
+        "rationale": "Depends on services + actions. Includes authentication, authorization, request validation."
+      },
+      {
+        "phase": 6,
+        "name": "MCP Server",
+        "components": [
+          "MCP JSON-RPC 2.0 protocol handler",
+          "18 MCP tool handlers",
+          "7 MCP prompt handlers"
+        ],
+        "rationale": "Depends on services + actions. Separate transport layer from REST API."
+      },
+      {
+        "phase": 7,
+        "name": "OAuth Server",
+        "components": [
+          "OAuth 2.1 authorization endpoints",
+          "PKCE validation (S256 only)",
+          "Device Authorization Grant (RFC 8628)",
+          "Token management (issue, refresh, revoke)",
+          "OIDC integration (discovery, token validation, user info)"
+        ],
+        "rationale": "Depends on repos + HTTP handlers. Complex subsystem best built as a unit."
+      },
+      {
+        "phase": 8,
+        "name": "Background Jobs & Extractors",
+        "components": [
+          "6 job handlers (queue workers)",
+          "5 document extractors (PDF, DOCX, XLSX, HTML, Markdown)",
+          "External service health checks"
+        ],
+        "rationale": "Can be implemented last. Extractors are isolated; jobs are async wrappers around actions."
+      }
+    ]
+  },
+  "high_fan_out_components": {
+    "description": "Components referenced by 5+ consumers (shared dependencies)",
+    "components": [
+      {
+        "name": "Document",
+        "type": "model",
+        "consumer_count": 23,
+        "note": "Central domain entity, used across all document-related layers"
+      },
+      {
+        "name": "ExternalService",
+        "type": "model",
+        "consumer_count": 11,
+        "note": "Used by Kiwix, Confluence, health checks, and MCP tools"
+      },
+      {
+        "name": "GitTemplate",
+        "type": "model",
+        "consumer_count": 16,
+        "note": "Used by all git template actions, controllers, and MCP tools"
+      },
+      {
+        "name": "OAuthClient",
+        "type": "model",
+        "consumer_count": 11,
+        "note": "Central to all OAuth flows"
+      },
+      {
+        "name": "DocumentService",
+        "type": "service",
+        "consumer_count": 6,
+        "note": "Used by DocumentController and 4 MCP tools"
+      },
+      {
+        "name": "ExternalServiceManager",
+        "type": "service",
+        "consumer_count": 8,
+        "note": "Gateway for all external API clients (Kiwix, Confluence)"
+      },
+      {
+        "name": "TokenHashingService",
+        "type": "service",
+        "consumer_count": 9,
+        "note": "Used by 5 OAuth actions and 4 models (static findBy methods)"
+      }
+    ]
+  },
+  "circular_dependency_check": {
+    "result": "PASS",
+    "notes": "No circular dependencies detected. Dependency flow is strictly: Models <- DTOs <- Actions <- Services <- Controllers/MCP Tools/Jobs. The only cross-action dependency is ReindexMissingDocumentsAction -> IndexDocumentInMeilisearchAction and CleanupSoftDeletedDocumentsAction -> PermanentlyDeleteDocumentAction, both within the same domain (Documents/SearchIndex) and both unidirectional."
+  },
+  "statistics": {
+    "total_models": 15,
+    "total_dtos": 75,
+    "total_actions": 56,
+    "total_services": 18,
+    "total_controllers": 14,
+    "total_mcp_tools": 18,
+    "total_mcp_prompts": 7,
+    "total_middleware": 8,
+    "total_extractors": 5,
+    "total_jobs": 6,
+    "total_components": 222
+  }
+}

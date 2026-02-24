@@ -1,0 +1,1360 @@
+{
+  "metadata": {
+    "generated_from": "Laravel MCP SDK source files",
+    "generated_at": "2026-02-24",
+    "protocol_version": "2024-11-05",
+    "sdk": "laravel/mcp",
+    "source_files": {
+      "server": "app/Mcp/Servers/DocumentationServer.php",
+      "constants": "app/Mcp/McpConstants.php",
+      "tools_directory": "app/Mcp/Tools/",
+      "prompts_directory": "app/Mcp/Prompts/"
+    },
+    "notes": {
+      "json_flags": "JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE (McpConstants::JSON_FLAGS)",
+      "schema_gotcha": "Never use $schema->object() without properties - Laravel MCP SDK strips the properties key when empty. Tools using $schema->string() for free-form maps (e.g., variables parameter) decode JSON internally."
+    }
+  },
+  "server": {
+    "name": "DocuMCP Server",
+    "version": "1.0.0",
+    "instructions": "Documentation knowledge base with full-text search.\n\n**Unified Search**\n- `unified_search` - Search across ALL sources (documents, templates, archives, wikis) in one request. Use for discovery; type-specific tools for deep search.\n\n**Documents**\n- `search_documents` - Full-text search with filters (file type, tags). Returns metadata and snippets.\n- `read_document` - Retrieve document content by UUID. Supports `summary_only` and `max_paragraphs`.\n- `create_document` - Create documents (markdown, pdf, docx, xlsx, html). Auto-indexed for search.\n- `update_document` - Modify title, description, tags, or visibility.\n- `delete_document` - Remove documents (ownership required).\n\n**ZIM Archives** (offline documentation: DevDocs, Wikipedia, Stack Exchange)\n- `list_zim_archives` - List available archives with category/language filters.\n- `search_zim` - Search within an archive. `suggest` matches titles, `fulltext` searches content.\n- `read_zim_article` - Retrieve article content. Supports `summary_only` and `max_paragraphs`.\n\n**Confluence**\n- `list_confluence_spaces` - List spaces (global or personal). Returns space keys for filtering.\n- `search_confluence` - Search pages via CQL or simple query. Supports space filtering.\n- `read_confluence_page` - Retrieve page content as markdown by ID or space+title.\n\n**Git Templates** (project bootstrapping: CLAUDE.md, Memory Bank)\n- `list_git_templates` - List available templates with category filter.\n- `search_git_templates` - Full-text search across README files and metadata.\n- `get_template_structure` - View folder tree, essential files, and required variables.\n- `get_template_file` - Retrieve file content with optional variable substitution.\n- `get_deployment_guide` - Get deployment instructions with all essential files.\n- `download_template` - Download a complete template as a base64-encoded archive (zip or tar.gz). Reduces deployment from ~45 API calls to 1.\n\n**Prompts**\n- `document_analysis` - Analyze documents (summarize, compare, extract, assess). Supports multiple documents.\n- `search_query_builder` - Query construction assistance.\n- `knowledge_base_builder` - Guide document creation and organization.\n- `git_template_setup` - Template discovery, preview, and deployment.\n- `zim_research` - Research across ZIM archives.\n- `confluence_research` - Research across Confluence spaces.\n- `cross_source_research` - Research across all sources (Documents, ZIM, Confluence, Git Templates).\n\n**Availability**: ZIM tools require Kiwix service configuration. Confluence tools require Confluence service configuration. Git Template tools are enabled by default. Document tools are always available. Configure services in Admin panel under External Services.\n\n**Access Control**: Document modifications require ownership. Public documents are readable by all.",
+    "pagination": {
+      "default_length": 100,
+      "max_length": 100,
+      "note": "SDK defaults (15/50) cause tools beyond index 14 to require cursor-based pagination. Claude Code does not follow nextCursor, so all primitives must fit in a single page."
+    }
+  },
+  "tools": [
+    {
+      "name": "unified_search",
+      "title": "Unified Search",
+      "description": "Search across ALL content types in a single request: Documents, Git Templates, ZIM Archives, and Confluence Spaces.\n\nReturns results ranked by relevance with a `source` field indicating the content type. Use for discovery -- then use type-specific tools (search_documents, search_zim, search_confluence, search_git_templates) for deep content search with full filter options.\n\n**Sources** (filter with `types` param):\n- `document` -- Uploaded documents (PDF, DOCX, XLSX, HTML, Markdown)\n- `git_template` -- Git template README and metadata\n- `zim_archive` -- ZIM archive metadata (DevDocs, Wikipedia, Stack Exchange)\n- `confluence_space` -- Confluence space metadata",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "conditional": null,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text (1-255 characters)"
+          },
+          "types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filter to specific content types: document, git_template, zim_archive, confluence_space. Omit to search all."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20,
+            "description": "Max results across all sources (default 20)"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0,
+            "description": "Pagination offset (default 0)"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), query (string), results (array of {uuid, source, title, description, relevance_score, metadata}), total (integer), sources_searched (array of strings), processing_time_ms (number), hint (string)"
+        }
+      }
+    },
+    {
+      "name": "search_documents",
+      "title": "Search Documents",
+      "description": "Full-text search across documents (Meilisearch).\n\n**Filters:**\n- `file_type`: markdown, pdf, docx, xlsx, html\n- `tags`: Filter by document tags (AND logic)\n- `include_snippets`: Show matched text context\n- `include_content`: Include full document content in results (default false to reduce response size)\n\nReturns UUID, title, description, file type, tags, content_length, and optional snippets/content. Max 100 results, ranked by relevance.\n\n**Workflow:** Use `uuid` from results with `read_document` to fetch full content.",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "conditional": null,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query text (supports keywords, phrases)"
+          },
+          "file_type": {
+            "type": "string",
+            "enum": [
+              "markdown",
+              "pdf",
+              "docx",
+              "xlsx",
+              "html"
+            ],
+            "description": "Filter results by document file type"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filter by document tags (AND logic)"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Maximum number of results to return"
+          },
+          "include_snippets": {
+            "type": "boolean",
+            "default": false,
+            "description": "Include context snippets showing matched text around search terms"
+          },
+          "include_content": {
+            "type": "boolean",
+            "default": false,
+            "description": "Include full document content in results. Default false to reduce response size. Use read_document for full content."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), query (string), count (integer), results (array of document objects with uuid, title, description, file_type, tags, content_length, optional snippet, optional content)"
+        }
+      }
+    },
+    {
+      "name": "read_document",
+      "title": "Read Document",
+      "description": "Read document content by UUID.\n\n**Content Options:**\n- `summary_only`: Returns lead section only\n- `max_paragraphs`: Limits content to first N paragraphs\n\nReturns document metadata (UUID, title, description, file type, tags, dates) and content. Public documents are accessible by all; private documents require ownership.",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "conditional": null,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID of the document to read"
+          },
+          "summary_only": {
+            "type": "boolean",
+            "default": false,
+            "description": "Return only the lead section (first paragraphs before headings). Useful for getting document summaries."
+          },
+          "max_paragraphs": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Limit content to first N paragraphs. Useful for previews or when full content is too large."
+          }
+        },
+        "required": [
+          "uuid"
+        ]
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), document ({uuid, title, description, file_type, word_count, is_public, tags, content_hash, created_at, updated_at, processed_at}), content (string), original_length (integer), truncated (boolean), metadata (object)"
+        }
+      }
+    },
+    {
+      "name": "create_document",
+      "title": "Create Document",
+      "description": "Create a new document with title, description, content, and tags. Automatically indexes in Meilisearch for full-text search.",
+      "annotations": {},
+      "conditional": null,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "Document title"
+          },
+          "content": {
+            "type": "string",
+            "description": "Full document content (markdown, plain text, HTML, etc.)"
+          },
+          "file_type": {
+            "type": "string",
+            "enum": [
+              "markdown",
+              "html"
+            ],
+            "description": "Document file type (text-based formats only; use API for binary uploads)"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "Brief description or summary"
+          },
+          "is_public": {
+            "type": "boolean",
+            "default": false,
+            "description": "Make document publicly readable"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Topic tags for categorization"
+          }
+        },
+        "required": [
+          "title",
+          "content",
+          "file_type"
+        ]
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), message (string), document ({uuid, title, file_type, created_at})"
+        }
+      }
+    },
+    {
+      "name": "update_document",
+      "title": "Update Document",
+      "description": "Update an existing document's title, description, tags, or visibility. Only the document owner can update.",
+      "annotations": {},
+      "conditional": null,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Document UUID to update"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "New title"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "New description"
+          },
+          "is_public": {
+            "type": "boolean",
+            "description": "Update public visibility"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "New tags (replaces existing tags)"
+          }
+        },
+        "required": [
+          "uuid"
+        ]
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), message (string), document ({uuid, title, updated_at})"
+        }
+      }
+    },
+    {
+      "name": "delete_document",
+      "title": "Delete Document",
+      "description": "Delete a document. Only the document owner can delete. This action soft-deletes the document.",
+      "annotations": {},
+      "conditional": null,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID of document to delete"
+          }
+        },
+        "required": [
+          "uuid"
+        ]
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), message (string), uuid (string)"
+        }
+      }
+    },
+    {
+      "name": "list_zim_archives",
+      "title": "List ZIM Archives",
+      "description": "List available ZIM archives with optional filtering.\n\n**Archive Categories:**\n- `devdocs`: Programming documentation (Laravel, PHP, JavaScript, Python, etc.)\n- `wikipedia`: Encyclopedia content in various languages\n- `stack_exchange`: Q&A from Stack Overflow and related sites\n- `other`: Various documentation and reference materials\n\nReturns archive name, title, description, category, language, article count, and file size.\n\n**Workflow:** Use the `name` field with `search_zim` to search within an archive, or with `read_zim_article` to read specific articles.",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "conditional": {
+        "config_key": "documcp.zim.enabled",
+        "default": true,
+        "additional_check": "Kiwix external service must be configured (ExternalService::TYPE_KIWIX)"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query to filter archives by title or description"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "devdocs",
+              "wikipedia",
+              "stack_exchange",
+              "other"
+            ],
+            "description": "Filter by category: devdocs, wikipedia, stack_exchange, other"
+          },
+          "language": {
+            "type": "string",
+            "description": "Filter by language code (e.g., en, de, fr)"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Maximum number of results (default: 50, max: 100)"
+          }
+        },
+        "required": []
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), archives (array of {name, title, description, category, language, article_count, file_size}), count (integer)"
+        }
+      }
+    },
+    {
+      "name": "search_zim",
+      "title": "Search ZIM Archive",
+      "description": "Search for articles within a ZIM archive.\n\n**Search Types:**\n- `fulltext` (default): Content search across article text -- works for all archives\n- `suggest`: Fast title matching -- works best for well-indexed archives (e.g., DevDocs, Wikipedia). May return no results for smaller or custom archives.\n\nReturns article title, path, and snippet. Paths can be used with `read_zim_article`.",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "conditional": {
+        "config_key": "documcp.zim.enabled",
+        "default": true,
+        "additional_check": "Kiwix external service must be configured (ExternalService::TYPE_KIWIX)"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "archive": {
+            "type": "string",
+            "description": "Archive name to search within (e.g., devdocs_en_laravel)"
+          },
+          "query": {
+            "type": "string",
+            "description": "Search query"
+          },
+          "search_type": {
+            "type": "string",
+            "enum": [
+              "suggest",
+              "fulltext"
+            ],
+            "default": "fulltext",
+            "description": "Search type: \"fulltext\" for content search (works for all archives), \"suggest\" for title matching (faster, but may not work for all archives)"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20,
+            "minimum": 1,
+            "maximum": 50,
+            "description": "Maximum number of results (default: 20, max: 50)"
+          }
+        },
+        "required": [
+          "archive",
+          "query"
+        ]
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), archive (string), query (string), search_type (string), results (array of {title, path, snippet}), count (integer), optional hint (string, when suggest returns no results)"
+        }
+      }
+    },
+    {
+      "name": "read_zim_article",
+      "title": "Read ZIM Article",
+      "description": "Read article content from a ZIM archive.\n\n**Content Options:**\n- `summary_only`: Returns lead section only (before table of contents)\n- `max_paragraphs`: Limits content to first N paragraphs\n\nReturns archive name, path, title, and plain text content (converted from HTML).",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "conditional": {
+        "config_key": "documcp.zim.enabled",
+        "default": true,
+        "additional_check": "Kiwix external service must be configured (ExternalService::TYPE_KIWIX)"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "archive": {
+            "type": "string",
+            "description": "Archive name (e.g., devdocs_en_laravel)"
+          },
+          "path": {
+            "type": "string",
+            "description": "Article path within the archive"
+          },
+          "summary_only": {
+            "type": "boolean",
+            "default": false,
+            "description": "Return only the lead section (first paragraphs before table of contents). Useful for getting article summaries."
+          },
+          "max_paragraphs": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Limit content to first N paragraphs. Useful for previews or when full content is too large."
+          }
+        },
+        "required": [
+          "archive",
+          "path"
+        ]
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), archive (string), path (string), title (string), content (string), truncated (boolean), original_length (integer)"
+        }
+      }
+    },
+    {
+      "name": "list_confluence_spaces",
+      "title": "List Confluence Spaces",
+      "description": "List available Confluence spaces.\n\n**Space Types:**\n- `global`: Organization-wide spaces\n- `personal`: User-specific spaces\n- `knowledge_base`: Knowledge base spaces\n\nReturns space keys, names, and descriptions. Space keys can be used with `search_confluence` to filter results.\n\n**Workflow:** Use the `key` field as `space` parameter in `search_confluence` to search within a specific space.",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "conditional": {
+        "config_key": "documcp.confluence.enabled",
+        "default": true,
+        "additional_check": "Confluence external service must be configured (ExternalService::TYPE_CONFLUENCE)"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query to filter spaces by name, key, or description"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "global",
+              "personal",
+              "knowledge_base"
+            ],
+            "description": "Filter by space type: global (organization-wide) or personal (user-specific)"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Maximum number of results (default: 50, max: 100)"
+          }
+        },
+        "required": []
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), spaces (array of {key, name, description, type}), count (integer)"
+        }
+      }
+    },
+    {
+      "name": "search_confluence",
+      "title": "Search Confluence",
+      "description": "Search Confluence pages using CQL (Confluence Query Language) or simple text queries.\n\n**Search Methods:**\n- `query`: Full-text search across page content\n- `cql`: Advanced search using Confluence Query Language\n\n**CQL Examples:**\n- `text ~ \"search term\"` - Full-text search\n- `space = \"DEV\" AND type = page` - Pages in specific space\n- `title ~ \"API\"` - Title contains text\n- `label = \"documentation\"` - Pages with label\n- `lastModified >= \"2024-01-01\"` - Recently modified\n\nReturns page ID, title, space key, URL, excerpt, and labels. Max 50 results.\n\n**Workflow:** Use `id` from results with `read_confluence_page` (as `page_id`) to fetch full page content.",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "conditional": {
+        "config_key": "documcp.confluence.enabled",
+        "default": true,
+        "additional_check": "Confluence external service must be configured (ExternalService::TYPE_CONFLUENCE)"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cql": {
+            "type": "string",
+            "description": "CQL (Confluence Query Language) query for advanced search. Takes precedence over simple query."
+          },
+          "query": {
+            "type": "string",
+            "description": "Simple full-text search query. Searches across page content."
+          },
+          "space": {
+            "type": "string",
+            "description": "Filter results to a specific space by key (e.g., \"DEV\", \"DOCS\")"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 25,
+            "minimum": 1,
+            "maximum": 50,
+            "description": "Maximum number of results (default: 25, max: 50)"
+          }
+        },
+        "required": [],
+        "notes": "At least one of 'cql' or 'query' must be provided. Validated at runtime."
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), cql (string, the effective CQL query used), results (array of {id, title, space_key, web_url, excerpt, labels, content_length}), count (integer), total_size (integer), has_more (boolean)"
+        }
+      }
+    },
+    {
+      "name": "read_confluence_page",
+      "title": "Read Confluence Page",
+      "description": "Read the full content of a Confluence page as markdown.\n\n**Page Identification:**\n- `page_id`: Confluence page ID (from search results)\n- `space_key` + `title`: Space key and exact page title\n\n**Content Options:**\n- `summary_only`: Returns first section only\n- `max_paragraphs`: Limits content to first N paragraphs\n\nReturns page metadata (ID, title, space, URL, version, dates, labels, ancestors) and markdown content.",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "conditional": {
+        "config_key": "documcp.confluence.enabled",
+        "default": true,
+        "additional_check": "Confluence external service must be configured (ExternalService::TYPE_CONFLUENCE)"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page_id": {
+            "type": "string",
+            "description": "Confluence page ID (from search results). Use this OR space_key + title."
+          },
+          "space_key": {
+            "type": "string",
+            "description": "Space key (e.g., \"DEV\"). Use with title parameter."
+          },
+          "title": {
+            "type": "string",
+            "description": "Exact page title. Use with space_key parameter."
+          },
+          "summary_only": {
+            "type": "boolean",
+            "default": false,
+            "description": "Return only the lead section (first paragraphs before first heading). Useful for quick overviews."
+          },
+          "max_paragraphs": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Limit content to first N paragraphs. Useful for previews."
+          }
+        },
+        "required": [],
+        "notes": "Either 'page_id' OR both 'space_key' and 'title' must be provided. Validated at runtime."
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), page ({id, title, space_key, web_url, version, created_at, updated_at, labels, ancestors}), content (string, markdown), truncated (boolean), original_length (integer)"
+        }
+      }
+    },
+    {
+      "name": "list_git_templates",
+      "title": "List Git Templates",
+      "description": "List available Git templates for project bootstrapping.\n\n**Template Categories:**\n- `claude`: CLAUDE.md templates with AI assistant instructions\n- `memory-bank`: Memory Bank documentation structures\n- `project`: Full project scaffolding templates\n\nReturns template name, description, category, file count, and sync status.\nUse `get_template_structure` for detailed file listing.\n\n**Workflow:** Use the `uuid` field with `get_template_structure` to see files and variables, or `get_deployment_guide` to get all essential files at once.",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "conditional": {
+        "config_key": "documcp.git_templates.enabled",
+        "default": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "memory-bank",
+              "project"
+            ],
+            "description": "Filter by category: claude, memory-bank, project"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Maximum number of results (default: 50, max: 100)"
+          }
+        },
+        "required": []
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), templates (array of {uuid, name, description, category, tags, file_count, total_size, status, created_at, updated_at, last_synced_at}), count (integer)"
+        }
+      }
+    },
+    {
+      "name": "search_git_templates",
+      "title": "Search Git Templates",
+      "description": "Full-text search across Git template README files and metadata.\n\nUse this to find templates by:\n- Content (searches README.md)\n- Purpose or technology\n- Template name or description\n\nReturns matching templates with relevance ranking.\nUse `get_template_structure` for detailed file listing of a specific template.\n\n**Workflow:** Use `uuid` from results with `get_template_structure` to explore files, or `get_deployment_guide` for complete bootstrap instructions.",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "conditional": {
+        "config_key": "documcp.git_templates.enabled",
+        "default": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query (searches README content, name, description)"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "memory-bank",
+              "project"
+            ],
+            "description": "Filter by category"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 50,
+            "description": "Maximum number of results (default: 10, max: 50)"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), query (string), results (array of {uuid, name, description, category, tags, created_at, updated_at}), total (integer)"
+        }
+      }
+    },
+    {
+      "name": "get_template_structure",
+      "title": "Get Template Structure",
+      "description": "Get the structure and metadata of a Git template.\n\nReturns:\n- File tree showing all template files\n- List of essential files (CLAUDE.md, memory-bank/*, etc.)\n- Required variables ({{project_name}}, etc.)\n- Template manifest if available\n\nUse this before `get_template_file` to understand the template contents.\n\n**Workflow:** Use file paths with `get_template_file` to read individual files, or `get_deployment_guide` to get all essential files with variable substitution.",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "conditional": {
+        "config_key": "documcp.git_templates.enabled",
+        "default": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Template UUID (from list_git_templates or search_git_templates)"
+          }
+        },
+        "required": [
+          "uuid"
+        ]
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), template (object with file tree, essential files, required variables, manifest)"
+        }
+      }
+    },
+    {
+      "name": "get_template_file",
+      "title": "Get Template File",
+      "description": "Retrieve a specific file from a Git template.\n\nOptionally provide variables to substitute {{placeholders}} in the content.\n\n**Common Variables:**\n- `project_name`: Project identifier\n- `project_description`: Brief description\n- `author`: Author name\n- `date`: Current date\n\nReturns file content with substitutions applied.",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "conditional": {
+        "config_key": "documcp.git_templates.enabled",
+        "default": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Template UUID"
+          },
+          "path": {
+            "type": "string",
+            "description": "File path within the template (e.g., CLAUDE.md, memory-bank/activeContext.md)"
+          },
+          "variables": {
+            "type": "string",
+            "description": "JSON object of variables for {{placeholder}} substitution. Example: {\"project_name\": \"MyApp\", \"author\": \"Jane Doe\"}",
+            "notes": "Uses $schema->string() as workaround for free-form key-value maps. JSON-decoded internally."
+          }
+        },
+        "required": [
+          "uuid",
+          "path"
+        ]
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), file ({path, filename, extension, size_bytes, is_essential, content_hash, created_at, updated_at}), content (string), unresolved_variables (array of strings)"
+        }
+      }
+    },
+    {
+      "name": "get_deployment_guide",
+      "title": "Get Deployment Guide",
+      "description": "Generate a deployment guide with all essential files for a Git template.\n\nThis tool provides:\n- Step-by-step deployment instructions\n- All essential file contents (CLAUDE.md, memory-bank/*, etc.)\n- Variable substitution applied to content\n- List of any unresolved variables\n\nUse this to bootstrap a new project with the template structure.\nThe AI agent can then write these files to the target project.",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "conditional": {
+        "config_key": "documcp.git_templates.enabled",
+        "default": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Template UUID"
+          },
+          "variables": {
+            "type": "string",
+            "description": "JSON object of variables for {{placeholder}} substitution. Example: {\"project_name\": \"MyApp\", \"author\": \"Jane Doe\"}",
+            "notes": "Uses $schema->string() as workaround for free-form key-value maps. JSON-decoded internally."
+          }
+        },
+        "required": [
+          "uuid"
+        ]
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), guide (object with deployment instructions, files, and unresolved variables)"
+        }
+      }
+    },
+    {
+      "name": "download_template",
+      "title": "Download Template",
+      "description": "Download a complete Git template as a base64-encoded archive (zip or tar.gz).\n\nReturns the entire template in a single response, reducing deployment from ~45 API calls to 1.\n\n**Formats:** zip (default), tar.gz\n\nOptionally apply variable substitutions ({{KEY}} placeholders) to all files. Decode the base64 `archive_base64` field and save as the indicated filename.",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "conditional": {
+        "config_key": "documcp.git_templates.enabled",
+        "default": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Template UUID"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "zip",
+              "tar.gz"
+            ],
+            "default": "zip",
+            "description": "Archive format: zip (default) or tar.gz"
+          },
+          "variables": {
+            "type": "string",
+            "description": "JSON object of variables for {{placeholder}} substitution. Example: {\"project_name\": \"MyApp\"}",
+            "notes": "Uses $schema->string() as workaround for free-form key-value maps. JSON-decoded internally."
+          }
+        },
+        "required": [
+          "uuid"
+        ]
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), template (string), filename (string), format (string), size_bytes (integer), file_count (integer), archive_base64 (string), optional unresolved_variables (array), optional hint (string), usage (string with decode instructions)"
+        }
+      }
+    }
+  ],
+  "prompts": [
+    {
+      "name": "document_analysis",
+      "title": "document_analysis",
+      "description": "Analyze documents (summarize, compare, extract, assess). Args: document_ids*, task, focus, length",
+      "conditional": null,
+      "arguments": [
+        {
+          "name": "document_ids",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": "UUIDs of documents to analyze",
+          "required": true
+        },
+        {
+          "name": "task",
+          "type": "string",
+          "enum": [
+            "summarize",
+            "compare",
+            "extract",
+            "assess"
+          ],
+          "default": "summarize",
+          "description": "Analysis task: \"summarize\", \"compare\", \"extract\", or \"assess\"",
+          "required": false
+        },
+        {
+          "name": "focus",
+          "type": "string",
+          "enum": [
+            "technical",
+            "business",
+            "overview",
+            "actionable"
+          ],
+          "default": "overview",
+          "description": "Focus area: \"technical\", \"business\", \"overview\", or \"actionable\"",
+          "required": false
+        },
+        {
+          "name": "length",
+          "type": "string",
+          "enum": [
+            "brief",
+            "detailed",
+            "comprehensive"
+          ],
+          "default": "detailed",
+          "description": "Analysis length: \"brief\" (3-5 points), \"detailed\" (10-15 points), or \"comprehensive\" (full analysis)",
+          "required": false
+        }
+      ],
+      "messagesStructure": {
+        "roles": [
+          "assistant",
+          "user"
+        ],
+        "messages": [
+          {
+            "role": "assistant",
+            "description": "System context with tool reference (read_document), task-specific output structure guidance, focus guidance, and length guidance"
+          },
+          {
+            "role": "user",
+            "description": "Document references (doc://{uuid}), task label, parameters (task, focus, length), and instructions to read each document then provide analysis"
+          }
+        ]
+      }
+    },
+    {
+      "name": "search_query_builder",
+      "title": "search_query_builder",
+      "description": "Build effective search queries with keyword analysis and filters. Args: goal*, context, file_types",
+      "conditional": null,
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string",
+          "description": "What are you trying to find? Describe your search goal.",
+          "required": true
+        },
+        {
+          "name": "context",
+          "type": "string",
+          "default": "",
+          "description": "Optional: Additional context about your search (domain, project, specific topics)",
+          "required": false
+        },
+        {
+          "name": "file_types",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "markdown",
+              "pdf",
+              "docx",
+              "xlsx",
+              "html"
+            ]
+          },
+          "default": [],
+          "description": "Optional: Preferred file types to search",
+          "required": false
+        }
+      ],
+      "messagesStructure": {
+        "roles": [
+          "assistant",
+          "user"
+        ],
+        "messages": [
+          {
+            "role": "assistant",
+            "description": "System context with search_documents tool reference, query optimization tips, and output structure (keyword analysis, recommended queries, filter recommendations, search strategy, example tool call)"
+          },
+          {
+            "role": "user",
+            "description": "Search goal, optional context, optional file type preferences, and request for keyword analysis and query variations"
+          }
+        ]
+      }
+    },
+    {
+      "name": "knowledge_base_builder",
+      "title": "knowledge_base_builder",
+      "description": "Create and organize knowledge base documents with templates. Args: goal*, content_type, scope",
+      "conditional": null,
+      "arguments": [
+        {
+          "name": "goal",
+          "type": "string",
+          "description": "What knowledge to capture (e.g., \"document our API endpoints\")",
+          "required": true
+        },
+        {
+          "name": "content_type",
+          "type": "string",
+          "enum": [
+            "guide",
+            "reference",
+            "runbook",
+            "notes"
+          ],
+          "default": "guide",
+          "description": "Document structure template: guide, reference, runbook, or notes",
+          "required": false
+        },
+        {
+          "name": "scope",
+          "type": "string",
+          "enum": [
+            "single",
+            "collection",
+            "organize"
+          ],
+          "default": "single",
+          "description": "Scope of work: single document, collection of related documents, or organize existing",
+          "required": false
+        }
+      ],
+      "messagesStructure": {
+        "roles": [
+          "assistant",
+          "user"
+        ],
+        "messages": [
+          {
+            "role": "assistant",
+            "description": "System context with create_document/update_document/search_documents tool reference, content type template (guide/reference/runbook/notes structure), scope workflow, tagging best practices, and visibility guidance"
+          },
+          {
+            "role": "user",
+            "description": "Goal, content type, scope, and request to build knowledge into well-structured documents"
+          }
+        ]
+      }
+    },
+    {
+      "name": "git_template_setup",
+      "title": "git_template_setup",
+      "description": "Discover and deploy project templates (CLAUDE.md, Memory Bank). Args: intent*, category, depth",
+      "conditional": {
+        "config_key": "documcp.git_templates.enabled",
+        "default": true
+      },
+      "arguments": [
+        {
+          "name": "intent",
+          "type": "string",
+          "description": "What you want to set up (e.g., \"CLAUDE.md for a Laravel project\", \"Memory Bank for a Python CLI tool\")",
+          "required": true
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "enum": [
+            "claude",
+            "memory-bank",
+            "project"
+          ],
+          "description": "Template category filter: \"claude\" for AI assistant instructions, \"memory-bank\" for documentation structures, \"project\" for full scaffolding",
+          "required": false
+        },
+        {
+          "name": "depth",
+          "type": "string",
+          "enum": [
+            "browse",
+            "preview",
+            "deploy"
+          ],
+          "default": "deploy",
+          "description": "How deep to go: \"browse\" to list/search, \"preview\" to inspect structure, \"deploy\" to set up files",
+          "required": false
+        }
+      ],
+      "messagesStructure": {
+        "roles": [
+          "assistant",
+          "user"
+        ],
+        "messages": [
+          {
+            "role": "assistant",
+            "description": "System context with available tools (list_git_templates, search_git_templates, get_template_structure, get_template_file, get_deployment_guide), tool call examples, template categories, and depth-specific workflow (browse/preview/deploy)"
+          },
+          {
+            "role": "user",
+            "description": "Intent, category filter, depth label, and request to find and set up the right template"
+          }
+        ]
+      }
+    },
+    {
+      "name": "zim_research",
+      "title": "zim_research",
+      "description": "Research ZIM archives (DevDocs, Wikipedia, Stack Exchange). Args: topic*, depth, preferred_sources",
+      "conditional": {
+        "config_key": "documcp.zim.enabled",
+        "default": false,
+        "additional_check": "Kiwix external service must be configured (ExternalService::TYPE_KIWIX)"
+      },
+      "arguments": [
+        {
+          "name": "topic",
+          "type": "string",
+          "description": "The topic or question you want to research",
+          "required": true
+        },
+        {
+          "name": "depth",
+          "type": "string",
+          "enum": [
+            "quick",
+            "standard",
+            "deep"
+          ],
+          "default": "standard",
+          "description": "Research depth: \"quick\" for brief overview, \"standard\" for balanced research, \"deep\" for comprehensive investigation",
+          "required": false
+        },
+        {
+          "name": "preferred_sources",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "devdocs",
+              "wikipedia",
+              "stackoverflow"
+            ]
+          },
+          "default": [],
+          "description": "Preferred archive types to search (leave empty for automatic selection)",
+          "required": false
+        }
+      ],
+      "messagesStructure": {
+        "roles": [
+          "assistant",
+          "user"
+        ],
+        "messages": [
+          {
+            "role": "assistant",
+            "description": "System context with 4-step research workflow (discover archives, search articles, read content, synthesize), tool call examples for list_zim_archives/search_zim/read_zim_article, tips for effective research, and archive category descriptions"
+          },
+          {
+            "role": "user",
+            "description": "Research topic, depth guidance (quick/standard/deep), recommended sources based on topic analysis, and instruction to begin research"
+          }
+        ]
+      }
+    },
+    {
+      "name": "confluence_research",
+      "title": "confluence_research",
+      "description": "Research Confluence spaces and pages with CQL search. Args: topic*, space, depth",
+      "conditional": {
+        "config_key": "documcp.confluence.enabled",
+        "default": true,
+        "additional_check": "Confluence external service must be configured (ExternalService::TYPE_CONFLUENCE)"
+      },
+      "arguments": [
+        {
+          "name": "topic",
+          "type": "string",
+          "description": "The topic or question to research",
+          "required": true
+        },
+        {
+          "name": "space",
+          "type": "string",
+          "default": "",
+          "description": "Optional space key to limit search (e.g., \"DEV\", \"DOCS\")",
+          "required": false
+        },
+        {
+          "name": "depth",
+          "type": "string",
+          "enum": [
+            "quick",
+            "standard",
+            "deep"
+          ],
+          "default": "standard",
+          "description": "Research depth: quick, standard, or deep",
+          "required": false
+        }
+      ],
+      "messagesStructure": {
+        "roles": [
+          "assistant",
+          "user"
+        ],
+        "messages": [
+          {
+            "role": "assistant",
+            "description": "System context with available tools (list_confluence_spaces, search_confluence, read_confluence_page), tool call examples, CQL reference, and tips for effective research"
+          },
+          {
+            "role": "user",
+            "description": "Research topic, space filter, depth guidance (quick/standard/deep), and request to research and provide comprehensive summary"
+          }
+        ]
+      }
+    },
+    {
+      "name": "cross_source_research",
+      "title": "cross_source_research",
+      "description": "Research across all sources (Documents, ZIM, Confluence, Git Templates). Args: topic*, sources, depth",
+      "conditional": null,
+      "arguments": [
+        {
+          "name": "topic",
+          "type": "string",
+          "description": "The topic or question to research",
+          "required": true
+        },
+        {
+          "name": "sources",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "documents",
+              "zim",
+              "confluence",
+              "git_templates"
+            ]
+          },
+          "default": [],
+          "description": "Sources to search (empty = all available)",
+          "required": false
+        },
+        {
+          "name": "depth",
+          "type": "string",
+          "enum": [
+            "quick",
+            "standard",
+            "deep"
+          ],
+          "default": "standard",
+          "description": "Research depth: quick, standard, or deep",
+          "required": false
+        }
+      ],
+      "messagesStructure": {
+        "roles": [
+          "assistant",
+          "user"
+        ],
+        "messages": [
+          {
+            "role": "assistant",
+            "description": "System context with source-specific tool references (conditionally included based on sources parameter): Documents (search_documents, read_document), ZIM (list_zim_archives, search_zim, read_zim_article), Confluence (list_confluence_spaces, search_confluence, read_confluence_page), Git Templates (search_git_templates, get_template_structure, get_template_file), plus synthesis guidance"
+          },
+          {
+            "role": "user",
+            "description": "Research topic, selected sources, depth guidance (quick/standard/deep), and request to research across configured sources and provide comprehensive synthesis"
+          }
+        ]
+      }
+    }
+  ],
+  "toolRegistrationOrder": [
+    "unified_search",
+    "search_documents",
+    "read_document",
+    "create_document",
+    "update_document",
+    "delete_document",
+    "list_zim_archives",
+    "search_zim",
+    "read_zim_article",
+    "list_confluence_spaces",
+    "search_confluence",
+    "read_confluence_page",
+    "list_git_templates",
+    "search_git_templates",
+    "get_template_structure",
+    "get_template_file",
+    "get_deployment_guide",
+    "download_template"
+  ],
+  "promptRegistrationOrder": [
+    "document_analysis",
+    "search_query_builder",
+    "knowledge_base_builder",
+    "git_template_setup",
+    "zim_research",
+    "confluence_research",
+    "cross_source_research"
+  ],
+  "conditionalRegistrationSummary": {
+    "always_available": [
+      "unified_search",
+      "search_documents",
+      "read_document",
+      "create_document",
+      "update_document",
+      "delete_document",
+      "document_analysis",
+      "search_query_builder",
+      "knowledge_base_builder",
+      "cross_source_research"
+    ],
+    "requires_kiwix_service": {
+      "config_key": "documcp.zim.enabled",
+      "external_service": "ExternalService::TYPE_KIWIX",
+      "tools": [
+        "list_zim_archives",
+        "search_zim",
+        "read_zim_article"
+      ],
+      "prompts": [
+        "zim_research"
+      ]
+    },
+    "requires_confluence_service": {
+      "config_key": "documcp.confluence.enabled",
+      "external_service": "ExternalService::TYPE_CONFLUENCE",
+      "tools": [
+        "list_confluence_spaces",
+        "search_confluence",
+        "read_confluence_page"
+      ],
+      "prompts": [
+        "confluence_research"
+      ]
+    },
+    "requires_git_templates_enabled": {
+      "config_key": "documcp.git_templates.enabled",
+      "tools": [
+        "list_git_templates",
+        "search_git_templates",
+        "get_template_structure",
+        "get_template_file",
+        "get_deployment_guide",
+        "download_template"
+      ],
+      "prompts": [
+        "git_template_setup"
+      ]
+    }
+  }
+}
