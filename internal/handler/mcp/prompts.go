@@ -486,11 +486,11 @@ func (h *Handler) handleConfluenceResearch(_ context.Context, req *mcp.GetPrompt
 
 Confluence Query Language (CQL) enables precise searches:
 
-- ` + "`text ~ \"search terms\"`" + ` - Full-text search
-- ` + "`space = \"ENG\" AND text ~ \"deployment\"`" + ` - Space-scoped search
-- ` + "`type = \"page\" AND label = \"architecture\"`" + ` - Filter by label
-- ` + "`ancestor = \"12345\"`" + ` - Search within a page hierarchy
-- ` + "`lastModified >= \"2024-01-01\"`" + ` - Recent content
+- `+"`text ~ \"search terms\"`"+` - Full-text search
+- `+"`space = \"ENG\" AND text ~ \"deployment\"`"+` - Space-scoped search
+- `+"`type = \"page\" AND label = \"architecture\"`"+` - Filter by label
+- `+"`ancestor = \"12345\"`"+` - Search within a page hierarchy
+- `+"`lastModified >= \"2024-01-01\"`"+` - Recent content
 
 ## Workflow
 

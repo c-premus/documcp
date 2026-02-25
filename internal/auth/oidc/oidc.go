@@ -239,12 +239,12 @@ func (h *Handler) findOrCreateUser(ctx context.Context, sub, email, name string)
 
 	// Create new user
 	user = &model.User{
-		Name:         name,
-		Email:        email,
-		OIDCSub:      sql.NullString{String: sub, Valid: true},
-		OIDCProvider: sql.NullString{String: h.provider.Endpoint().AuthURL, Valid: true},
+		Name:            name,
+		Email:           email,
+		OIDCSub:         sql.NullString{String: sub, Valid: true},
+		OIDCProvider:    sql.NullString{String: h.provider.Endpoint().AuthURL, Valid: true},
 		EmailVerifiedAt: sql.NullTime{Time: time.Now(), Valid: true},
-		IsAdmin:      false,
+		IsAdmin:         false,
 	}
 	if err := h.repo.CreateUser(ctx, user); err != nil {
 		return nil, fmt.Errorf("creating user: %w", err)

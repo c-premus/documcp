@@ -11,6 +11,7 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oidc"
 	"git.999.haus/chris/DocuMCP-go/internal/handler"
+	apihandler "git.999.haus/chris/DocuMCP-go/internal/handler/api"
 	oauthhandler "git.999.haus/chris/DocuMCP-go/internal/handler/oauth"
 )
 
@@ -22,6 +23,10 @@ type Deps struct {
 	OIDCHandler  *oidc.Handler         // nil if OIDC is not configured
 	OAuthService *oauth.Service        // for middleware (nil if OAuth not configured)
 	SessionStore sessions.Store        // for middleware (nil if sessions not configured)
+
+	// Phase 3: Document pipeline & search
+	DocumentHandler *apihandler.DocumentHandler // nil if not configured
+	SearchHandler   *apihandler.SearchHandler   // nil if Meilisearch not configured
 }
 
 // RegisterRoutes configures all middleware and route groups on the server.
@@ -85,9 +90,26 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		s.logger.Info("OIDC auth endpoints registered")
 	}
 
-	// REST API (TODO)
+	// REST API
 	r.Route("/api", func(r chi.Router) {
-		// TODO: register API handlers
+		// Document endpoints
+		if deps.DocumentHandler != nil {
+			r.Route("/documents", func(r chi.Router) {
+				r.Get("/", deps.DocumentHandler.List)
+				r.Post("/", deps.DocumentHandler.Upload)
+				r.Get("/{uuid}", deps.DocumentHandler.Show)
+				r.Put("/{uuid}", deps.DocumentHandler.Update)
+				r.Delete("/{uuid}", deps.DocumentHandler.Delete)
+			})
+			s.logger.Info("document API endpoints registered")
+		}
+
+		// Search endpoints
+		if deps.SearchHandler != nil {
+			r.Get("/search", deps.SearchHandler.Search)
+			r.Get("/search/unified", deps.SearchHandler.FederatedSearch)
+			s.logger.Info("search API endpoints registered")
+		}
 	})
 
 	// Admin UI (TODO)

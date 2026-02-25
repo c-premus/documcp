@@ -11,13 +11,13 @@ import (
 // --- Response types ---
 
 type unifiedSearchResponse struct {
-	Success            bool     `json:"success"`
-	Message            string   `json:"message,omitempty"`
-	Query              string   `json:"query"`
-	Results            []any    `json:"results"`
-	Total              int      `json:"total"`
-	SourcesSearched    []string `json:"sources_searched"`
-	ProcessingTimeMs   int      `json:"processing_time_ms"`
+	Success          bool     `json:"success"`
+	Message          string   `json:"message,omitempty"`
+	Query            string   `json:"query"`
+	Results          []any    `json:"results"`
+	Total            int      `json:"total"`
+	SourcesSearched  []string `json:"sources_searched"`
+	ProcessingTimeMs int      `json:"processing_time_ms"`
 }
 
 // --- Tool registration ---

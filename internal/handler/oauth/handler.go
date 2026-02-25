@@ -14,11 +14,11 @@ import (
 
 // Handler holds dependencies for all OAuth HTTP handlers.
 type Handler struct {
-	service      *oauth.Service
-	store        sessions.Store
-	oauthCfg     config.OAuthConfig
-	appURL       string
-	logger       *slog.Logger
+	service  *oauth.Service
+	store    sessions.Store
+	oauthCfg config.OAuthConfig
+	appURL   string
+	logger   *slog.Logger
 }
 
 // Config holds the dependencies for creating a new Handler.
@@ -33,11 +33,11 @@ type Config struct {
 // New creates a new OAuth handler.
 func New(cfg Config) *Handler {
 	return &Handler{
-		service:      cfg.Service,
-		store:        cfg.SessionStore,
-		oauthCfg:     cfg.OAuthCfg,
-		appURL:       cfg.AppURL,
-		logger:       cfg.Logger,
+		service:  cfg.Service,
+		store:    cfg.SessionStore,
+		oauthCfg: cfg.OAuthCfg,
+		appURL:   cfg.AppURL,
+		logger:   cfg.Logger,
 	}
 }
 
