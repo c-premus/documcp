@@ -6,7 +6,10 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"git.999.haus/chris/DocuMCP-go/internal/client/confluence"
+	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
+	"git.999.haus/chris/DocuMCP-go/internal/search"
 	"git.999.haus/chris/DocuMCP-go/internal/service"
 )
 
@@ -60,6 +63,11 @@ type Handler struct {
 	confluenceSpaceRepo *repository.ConfluenceSpaceRepository
 	gitTemplateRepo     *repository.GitTemplateRepository
 	searchQueryRepo     *repository.SearchQueryRepository
+
+	// External service clients (nil means service not configured)
+	kiwixClient      *kiwix.Client
+	confluenceClient *confluence.Client
+	searcher         *search.Searcher
 }
 
 // Config holds all optional dependencies for the MCP handler.
@@ -79,6 +87,11 @@ type Config struct {
 	ZimArchiveRepo      *repository.ZimArchiveRepository
 	ConfluenceSpaceRepo *repository.ConfluenceSpaceRepository
 	GitTemplateRepo     *repository.GitTemplateRepository
+
+	// External service clients (nil means service not configured)
+	KiwixClient      *kiwix.Client
+	ConfluenceClient *confluence.Client
+	Searcher         *search.Searcher
 
 	// Feature flags
 	ZimEnabled          bool
@@ -108,6 +121,9 @@ func New(cfg Config) *Handler {
 		confluenceSpaceRepo: cfg.ConfluenceSpaceRepo,
 		gitTemplateRepo:     cfg.GitTemplateRepo,
 		searchQueryRepo:     cfg.SearchQueryRepo,
+		kiwixClient:         cfg.KiwixClient,
+		confluenceClient:    cfg.ConfluenceClient,
+		searcher:            cfg.Searcher,
 	}
 
 	// Register tools

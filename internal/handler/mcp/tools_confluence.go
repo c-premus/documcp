@@ -6,6 +6,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"git.999.haus/chris/DocuMCP-go/internal/client/confluence"
 	"git.999.haus/chris/DocuMCP-go/internal/dto"
 )
 
@@ -33,8 +34,12 @@ type searchConfluenceResponse struct {
 }
 
 type readConfluencePageResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message,omitempty"`
+	Success        bool   `json:"success"`
+	Page           any    `json:"page,omitempty"`
+	Content        string `json:"content,omitempty"`
+	OriginalLength int    `json:"original_length,omitempty"`
+	Truncated      bool   `json:"truncated,omitempty"`
+	Message        string `json:"message,omitempty"`
 }
 
 // --- Tool registration ---
@@ -144,20 +149,100 @@ func (h *Handler) handleListConfluenceSpaces(ctx context.Context, _ *mcp.CallToo
 	return nil, resp, nil
 }
 
-func (h *Handler) handleSearchConfluence(_ context.Context, _ *mcp.CallToolRequest, _ dto.SearchConfluenceInput) (*mcp.CallToolResult, searchConfluenceResponse, error) {
-	resp := searchConfluenceResponse{
-		Success: false,
-		Results: []any{},
-		Count:   0,
-		Message: "Confluence search integration not yet implemented",
+func (h *Handler) handleSearchConfluence(ctx context.Context, _ *mcp.CallToolRequest, input dto.SearchConfluenceInput) (*mcp.CallToolResult, searchConfluenceResponse, error) {
+	if h.confluenceClient == nil {
+		return nil, searchConfluenceResponse{
+			Success: false,
+			Results: []any{},
+			Message: "Confluence service not configured",
+		}, nil
 	}
-	return nil, resp, nil
+
+	limit := input.Limit
+	if limit <= 0 {
+		limit = 25
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	result, err := h.confluenceClient.SearchPages(ctx, confluence.SearchPagesParams{
+		CQL:   input.CQL,
+		Query: input.Query,
+		Space: input.Space,
+		Limit: limit,
+	})
+	if err != nil {
+		return nil, searchConfluenceResponse{}, fmt.Errorf("searching confluence: %w", err)
+	}
+
+	items := make([]any, 0, len(result.Pages))
+	for _, p := range result.Pages {
+		items = append(items, map[string]any{
+			"id":        p.ID,
+			"title":     p.Title,
+			"space_key": p.SpaceKey,
+			"web_url":   p.WebURL,
+			"excerpt":   p.Excerpt,
+			"labels":    p.Labels,
+		})
+	}
+
+	return nil, searchConfluenceResponse{
+		Success: true,
+		CQL:     result.CQL,
+		Results: items,
+		Count:   len(items),
+	}, nil
 }
 
-func (h *Handler) handleReadConfluencePage(_ context.Context, _ *mcp.CallToolRequest, _ dto.ReadConfluencePageInput) (*mcp.CallToolResult, readConfluencePageResponse, error) {
-	resp := readConfluencePageResponse{
-		Success: false,
-		Message: "Confluence page reading not yet implemented",
+func (h *Handler) handleReadConfluencePage(ctx context.Context, _ *mcp.CallToolRequest, input dto.ReadConfluencePageInput) (*mcp.CallToolResult, readConfluencePageResponse, error) {
+	if h.confluenceClient == nil {
+		return nil, readConfluencePageResponse{
+			Success: false,
+			Message: "Confluence service not configured",
+		}, nil
 	}
-	return nil, resp, nil
+
+	var page *confluence.Page
+	var err error
+
+	if input.PageID != "" {
+		page, err = h.confluenceClient.ReadPage(ctx, input.PageID)
+	} else if input.SpaceKey != "" && input.Title != "" {
+		page, err = h.confluenceClient.ReadPageByTitle(ctx, input.SpaceKey, input.Title)
+	} else {
+		return nil, readConfluencePageResponse{
+			Success: false,
+			Message: "Either page_id or both space_key and title are required",
+		}, nil
+	}
+
+	if err != nil {
+		return nil, readConfluencePageResponse{}, fmt.Errorf("reading confluence page: %w", err)
+	}
+
+	content := page.Content
+	originalLength := len(content)
+	content, truncated := truncateContent(content, input.SummaryOnly, input.MaxParagraphs)
+
+	meta := map[string]any{
+		"id":         page.ID,
+		"title":      page.Title,
+		"space_key":  page.SpaceKey,
+		"web_url":    page.WebURL,
+		"version":    page.Version,
+		"created_at": page.CreatedAt,
+		"updated_at": page.UpdatedAt,
+		"labels":     page.Labels,
+		"ancestors":  page.Ancestors,
+	}
+
+	return nil, readConfluencePageResponse{
+		Success:        true,
+		Page:           meta,
+		Content:        content,
+		OriginalLength: originalLength,
+		Truncated:      truncated,
+	}, nil
 }

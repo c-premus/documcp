@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,6 +21,8 @@ import (
 
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oidc"
+	"git.999.haus/chris/DocuMCP-go/internal/client/confluence"
+	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
 	"git.999.haus/chris/DocuMCP-go/internal/config"
 	"git.999.haus/chris/DocuMCP-go/internal/database"
 	"git.999.haus/chris/DocuMCP-go/internal/extractor"
@@ -121,6 +124,36 @@ func New(cfg *config.Config) (*App, error) {
 		}
 	}
 
+	// --- External Service Clients ---
+	// Look up configured external services from the database and create clients.
+	var kiwixClient *kiwix.Client
+	var confluenceClient *confluence.Client
+
+	kiwixServices, err := externalServiceRepo.FindEnabledByType(context.Background(), "kiwix")
+	if err != nil {
+		logger.Warn("failed to look up kiwix services", "error", err)
+	} else if len(kiwixServices) > 0 {
+		svc := kiwixServices[0]
+		kiwixClient = kiwix.NewClient(svc.BaseURL, logger)
+		logger.Info("Kiwix client configured", "base_url", svc.BaseURL)
+	}
+
+	confluenceServices, err := externalServiceRepo.FindEnabledByType(context.Background(), "confluence")
+	if err != nil {
+		logger.Warn("failed to look up confluence services", "error", err)
+	} else if len(confluenceServices) > 0 {
+		svc := confluenceServices[0]
+		// API key is stored in the api_key column (format: "email:token" or just token)
+		email := ""
+		apiToken := svc.APIKey.String
+		if parts := strings.SplitN(apiToken, ":", 2); len(parts) == 2 {
+			email = parts[0]
+			apiToken = parts[1]
+		}
+		confluenceClient = confluence.NewClient(svc.BaseURL, email, apiToken, logger)
+		logger.Info("Confluence client configured", "base_url", svc.BaseURL)
+	}
+
 	// --- Content Extractors ---
 	extractorRegistry := extractor.NewRegistry(
 		pdfext.New(),
@@ -149,6 +182,7 @@ func New(cfg *config.Config) (*App, error) {
 		storagePath,
 	)
 	oauthService := oauth.NewService(oauthRepo, cfg.OAuth, cfg.App.URL, logger)
+	externalServiceSvc := service.NewExternalServiceService(externalServiceRepo, logger)
 
 	// --- OAuth Handler ---
 	oauthH := oauthhandler.New(oauthhandler.Config{
@@ -178,6 +212,12 @@ func New(cfg *config.Config) (*App, error) {
 	if searcher != nil {
 		searchH = apihandler.NewSearchHandler(searcher, logger)
 	}
+	zimH := apihandler.NewZimHandler(zimArchiveRepo, kiwixClient, logger)
+	confluenceH := apihandler.NewConfluenceHandler(confluenceSpaceRepo, confluenceClient, logger)
+	gitTemplateH := apihandler.NewGitTemplateHandler(gitTemplateRepo, logger)
+	externalServiceH := apihandler.NewExternalServiceHandler(externalServiceSvc, logger)
+	userH := apihandler.NewUserHandler(oauthRepo, logger)
+	oauthClientH := apihandler.NewOAuthClientHandler(oauthRepo, logger)
 
 	// --- MCP Handler ---
 	mcpH := mcphandler.New(mcphandler.Config{
@@ -191,6 +231,9 @@ func New(cfg *config.Config) (*App, error) {
 		ZimArchiveRepo:      zimArchiveRepo,
 		ConfluenceSpaceRepo: confluenceSpaceRepo,
 		GitTemplateRepo:     gitTemplateRepo,
+		KiwixClient:         kiwixClient,
+		ConfluenceClient:    confluenceClient,
+		Searcher:            searcher,
 		ZimEnabled:          true,
 		ConfluenceEnabled:   true,
 		GitTemplatesEnabled: true,
@@ -207,14 +250,20 @@ func New(cfg *config.Config) (*App, error) {
 	}, logger)
 
 	srv.RegisterRoutes(server.Deps{
-		Version:         cfg.DocuMCP.ServerVersion,
-		MCPHandler:      mcpH,
-		OAuthHandler:    oauthH,
-		OIDCHandler:     oidcH,
-		OAuthService:    oauthService,
-		SessionStore:    sessionStore,
-		DocumentHandler: documentH,
-		SearchHandler:   searchH,
+		Version:                cfg.DocuMCP.ServerVersion,
+		MCPHandler:             mcpH,
+		OAuthHandler:           oauthH,
+		OIDCHandler:            oidcH,
+		OAuthService:           oauthService,
+		SessionStore:           sessionStore,
+		DocumentHandler:        documentH,
+		SearchHandler:          searchH,
+		ZimHandler:             zimH,
+		ConfluenceHandler:      confluenceH,
+		GitTemplateHandler:     gitTemplateH,
+		ExternalServiceHandler: externalServiceH,
+		UserHandler:            userH,
+		OAuthClientHandler:     oauthClientH,
 	})
 
 	logger.Info("MCP server configured",

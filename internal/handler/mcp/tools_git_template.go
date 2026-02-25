@@ -16,6 +16,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"git.999.haus/chris/DocuMCP-go/internal/dto"
+	"git.999.haus/chris/DocuMCP-go/internal/search"
 )
 
 // --- Response types ---
@@ -346,16 +347,104 @@ func (h *Handler) handleListGitTemplates(
 }
 
 func (h *Handler) handleSearchGitTemplates(
-	_ context.Context,
+	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	input dto.SearchGitTemplatesInput,
 ) (*mcp.CallToolResult, searchGitTemplatesResponse, error) {
+	if h.searcher == nil {
+		// Fall back to DB search if searcher is not available
+		limit := input.Limit
+		if limit <= 0 {
+			limit = 10
+		}
+		if limit > 50 {
+			limit = 50
+		}
+
+		templates, err := h.gitTemplateRepo.Search(ctx, input.Query, input.Category, limit)
+		if err != nil {
+			return nil, searchGitTemplatesResponse{}, fmt.Errorf("searching git templates: %w", err)
+		}
+
+		results := make([]any, 0, len(templates))
+		for _, gt := range templates {
+			item := map[string]any{
+				"uuid":       gt.UUID,
+				"name":       gt.Name,
+				"file_count": gt.FileCount,
+				"status":     gt.Status,
+			}
+			if gt.Description.Valid {
+				item["description"] = gt.Description.String
+			}
+			if gt.Category.Valid {
+				item["category"] = gt.Category.String
+			}
+			results = append(results, item)
+		}
+
+		return nil, searchGitTemplatesResponse{
+			Success: true,
+			Query:   input.Query,
+			Results: results,
+			Total:   len(results),
+		}, nil
+	}
+
+	limit := int64(input.Limit)
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	var filters []string
+	filters = append(filters, "__soft_deleted = false")
+	if input.Category != "" {
+		filters = append(filters, fmt.Sprintf(`category = "%s"`, input.Category))
+	}
+
+	resp, err := h.searcher.Search(ctx, search.SearchParams{
+		Query:    input.Query,
+		IndexUID: search.IndexGitTemplates,
+		Filters:  strings.Join(filters, " AND "),
+		Limit:    limit,
+	})
+	if err != nil {
+		return nil, searchGitTemplatesResponse{}, fmt.Errorf("searching git templates: %w", err)
+	}
+
+	results := make([]any, 0, len(resp.Hits))
+	for _, hit := range resp.Hits {
+		var m map[string]any
+		if err := hit.DecodeInto(&m); err != nil {
+			continue
+		}
+		result := map[string]any{
+			"uuid": m["uuid"],
+			"name": m["name"],
+		}
+		if desc, ok := m["description"]; ok {
+			result["description"] = desc
+		}
+		if cat, ok := m["category"]; ok {
+			result["category"] = cat
+		}
+		if fc, ok := m["file_count"]; ok {
+			result["file_count"] = fc
+		}
+		if status, ok := m["status"]; ok {
+			result["status"] = status
+		}
+		results = append(results, result)
+	}
+
 	return nil, searchGitTemplatesResponse{
-		Success: false,
-		Message: "Meilisearch search not yet implemented",
+		Success: true,
 		Query:   input.Query,
-		Results: []any{},
-		Total:   0,
+		Results: results,
+		Total:   len(results),
 	}, nil
 }
 

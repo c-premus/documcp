@@ -11,6 +11,7 @@ import (
 
 	"git.999.haus/chris/DocuMCP-go/internal/dto"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"git.999.haus/chris/DocuMCP-go/internal/search"
 	"git.999.haus/chris/DocuMCP-go/internal/service"
 )
 
@@ -120,16 +121,83 @@ func (h *Handler) registerDocumentTools() {
 // --- Tool handlers ---
 
 func (h *Handler) handleSearchDocuments(
-	_ context.Context,
+	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	input dto.SearchDocumentsInput,
 ) (*mcp.CallToolResult, searchDocumentsResponse, error) {
+	if h.searcher == nil {
+		return nil, searchDocumentsResponse{
+			Success: false,
+			Query:   input.Query,
+			Count:   0,
+			Results: []any{},
+			Message: "Search service not configured",
+		}, nil
+	}
+
+	limit := int64(input.Limit)
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	// Build filter string
+	var filters []string
+	filters = append(filters, "__soft_deleted = false")
+	if input.FileType != "" {
+		filters = append(filters, fmt.Sprintf(`file_type = "%s"`, input.FileType))
+	}
+	if len(input.Tags) > 0 {
+		for _, tag := range input.Tags {
+			filters = append(filters, fmt.Sprintf(`tags = "%s"`, tag))
+		}
+	}
+
+	resp, err := h.searcher.Search(ctx, search.SearchParams{
+		Query:    input.Query,
+		IndexUID: search.IndexDocuments,
+		Filters:  strings.Join(filters, " AND "),
+		Limit:    limit,
+	})
+	if err != nil {
+		return nil, searchDocumentsResponse{}, fmt.Errorf("searching documents: %w", err)
+	}
+
+	results := make([]any, 0, len(resp.Hits))
+	for _, hit := range resp.Hits {
+		var m map[string]any
+		if err := hit.DecodeInto(&m); err != nil {
+			continue
+		}
+		result := map[string]any{
+			"uuid":      m["uuid"],
+			"title":     m["title"],
+			"file_type": m["file_type"],
+		}
+		if desc, ok := m["description"]; ok {
+			result["description"] = desc
+		}
+		if tags, ok := m["tags"]; ok {
+			result["tags"] = tags
+		}
+		if wc, ok := m["word_count"]; ok {
+			result["content_length"] = wc
+		}
+		if input.IncludeContent {
+			if content, ok := m["content"]; ok {
+				result["content"] = content
+			}
+		}
+		results = append(results, result)
+	}
+
 	return nil, searchDocumentsResponse{
-		Success: false,
+		Success: true,
 		Query:   input.Query,
-		Count:   0,
-		Results: []any{},
-		Message: "Meilisearch search not yet implemented. Use read_document with a known UUID.",
+		Count:   len(results),
+		Results: results,
 	}, nil
 }
 
