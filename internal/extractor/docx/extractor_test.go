@@ -225,6 +225,208 @@ func TestDOCXExtractor_Extract_CancelledContext(t *testing.T) {
 	}
 }
 
+func TestDOCXExtractor_Extract_MissingDocumentXML(t *testing.T) {
+	t.Parallel()
+
+	// Create a ZIP archive that lacks word/document.xml.
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "no-doc.docx")
+
+	f, err := os.Create(filePath)
+	if err != nil {
+		t.Fatalf("creating temp file: %v", err)
+	}
+
+	zw := zip.NewWriter(f)
+	// Write a dummy file, not word/document.xml.
+	w, err := zw.Create("dummy.txt")
+	if err != nil {
+		t.Fatalf("creating dummy in zip: %v", err)
+	}
+	if _, err := w.Write([]byte("hello")); err != nil {
+		t.Fatalf("writing dummy: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("closing zip writer: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("closing file: %v", err)
+	}
+
+	ext := docx.New()
+	_, err = ext.Extract(context.Background(), filePath)
+	if err == nil {
+		t.Fatal("Extract() expected error for missing document.xml, got nil")
+	}
+}
+
+func TestDOCXExtractor_Extract_MetadataEdgeCases(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		metadata         *coreProps
+		wantMetadataKeys []string
+		wantNoMetadata   bool
+	}{
+		{
+			name:           "no metadata when core.xml is absent",
+			metadata:       nil,
+			wantNoMetadata: true,
+		},
+		{
+			name: "only creator present in metadata",
+			metadata: &coreProps{
+				Creator: "Jane Doe",
+			},
+			wantMetadataKeys: []string{"creator"},
+		},
+		{
+			name: "only description present in metadata",
+			metadata: &coreProps{
+				Description: "A test document.",
+			},
+			wantMetadataKeys: []string{"description"},
+		},
+		{
+			name: "all metadata fields populated",
+			metadata: &coreProps{
+				Title:       "Full Metadata",
+				Creator:     "Author Name",
+				Description: "Describes everything.",
+			},
+			wantMetadataKeys: []string{"title", "creator", "description"},
+		},
+		{
+			name:           "empty core.xml fields produce no metadata",
+			metadata:       &coreProps{},
+			wantNoMetadata: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			filePath := createDocx(t, []string{"body"}, tt.metadata)
+
+			ext := docx.New()
+			result, err := ext.Extract(context.Background(), filePath)
+			if err != nil {
+				t.Fatalf("Extract() unexpected error: %v", err)
+			}
+
+			if tt.wantNoMetadata {
+				if len(result.Metadata) > 0 {
+					t.Errorf("expected nil or empty metadata, got %v", result.Metadata)
+				}
+				return
+			}
+
+			for _, key := range tt.wantMetadataKeys {
+				if _, ok := result.Metadata[key]; !ok {
+					t.Errorf("expected key %q in metadata, got %v", key, result.Metadata)
+				}
+			}
+		})
+	}
+}
+
+func TestDOCXExtractor_Extract_MultiRunParagraph(t *testing.T) {
+	t.Parallel()
+
+	// Build a document.xml with multiple <w:r><w:t> in one <w:p>.
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "multi-run.docx")
+
+	f, err := os.Create(filePath)
+	if err != nil {
+		t.Fatalf("creating temp file: %v", err)
+	}
+
+	zw := zip.NewWriter(f)
+	w, err := zw.Create("word/document.xml")
+	if err != nil {
+		t.Fatalf("creating document.xml: %v", err)
+	}
+
+	docXML := `<?xml version="1.0" encoding="UTF-8"?>` +
+		`<w:document xmlns:w="` + wNS + `"><w:body>` +
+		`<w:p><w:r><w:t>Hello </w:t></w:r><w:r><w:t>World</w:t></w:r></w:p>` +
+		`</w:body></w:document>`
+
+	if _, err := w.Write([]byte(docXML)); err != nil {
+		t.Fatalf("writing document.xml: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("closing zip writer: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("closing file: %v", err)
+	}
+
+	ext := docx.New()
+	result, err := ext.Extract(context.Background(), filePath)
+	if err != nil {
+		t.Fatalf("Extract() unexpected error: %v", err)
+	}
+
+	if !strings.Contains(result.Content, "Hello") || !strings.Contains(result.Content, "World") {
+		t.Errorf("Content = %q, want both 'Hello' and 'World'", result.Content)
+	}
+}
+
+func TestDOCXExtractor_Extract_WhitespaceOnlyParagraph(t *testing.T) {
+	t.Parallel()
+
+	// Build a document.xml where one paragraph is only whitespace.
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "whitespace.docx")
+
+	f, err := os.Create(filePath)
+	if err != nil {
+		t.Fatalf("creating temp file: %v", err)
+	}
+
+	zw := zip.NewWriter(f)
+	w, err := zw.Create("word/document.xml")
+	if err != nil {
+		t.Fatalf("creating document.xml: %v", err)
+	}
+
+	docXML := `<?xml version="1.0" encoding="UTF-8"?>` +
+		`<w:document xmlns:w="` + wNS + `"><w:body>` +
+		`<w:p><w:r><w:t>Real content</w:t></w:r></w:p>` +
+		`<w:p><w:r><w:t>   </w:t></w:r></w:p>` +
+		`<w:p><w:r><w:t>After blank</w:t></w:r></w:p>` +
+		`</w:body></w:document>`
+
+	if _, err := w.Write([]byte(docXML)); err != nil {
+		t.Fatalf("writing document.xml: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("closing zip writer: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("closing file: %v", err)
+	}
+
+	ext := docx.New()
+	result, err := ext.Extract(context.Background(), filePath)
+	if err != nil {
+		t.Fatalf("Extract() unexpected error: %v", err)
+	}
+
+	// Whitespace-only paragraph should be excluded.
+	if strings.Contains(result.Content, "\n\n\n\n") {
+		t.Errorf("Content should not have triple-newline gaps from whitespace paragraphs: %q", result.Content)
+	}
+
+	if result.WordCount != 4 {
+		t.Errorf("WordCount = %d, want 4 (whitespace paragraph excluded)", result.WordCount)
+	}
+}
+
 func TestDOCXExtractor_Supports(t *testing.T) {
 	t.Parallel()
 
@@ -237,6 +439,7 @@ func TestDOCXExtractor_Supports(t *testing.T) {
 		{"application/pdf", false},
 		{"text/plain", false},
 		{"", false},
+		{"APPLICATION/VND.OPENXMLFORMATS-OFFICEDOCUMENT.WORDPROCESSINGML.DOCUMENT", false},
 	}
 
 	ext := docx.New()

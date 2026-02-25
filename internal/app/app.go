@@ -35,6 +35,7 @@ import (
 	apihandler "git.999.haus/chris/DocuMCP-go/internal/handler/api"
 	mcphandler "git.999.haus/chris/DocuMCP-go/internal/handler/mcp"
 	oauthhandler "git.999.haus/chris/DocuMCP-go/internal/handler/oauth"
+	"git.999.haus/chris/DocuMCP-go/internal/observability"
 	"git.999.haus/chris/DocuMCP-go/internal/queue"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
 	"git.999.haus/chris/DocuMCP-go/internal/search"
@@ -44,11 +45,13 @@ import (
 
 // App holds all application dependencies wired together.
 type App struct {
-	Config     *config.Config
-	DB         *sqlx.DB
-	Logger     *slog.Logger
-	Server     *server.Server
-	WorkerPool *queue.Pool
+	Config        *config.Config
+	DB            *sqlx.DB
+	Logger        *slog.Logger
+	Metrics       *observability.Metrics
+	Server        *server.Server
+	WorkerPool    *queue.Pool
+	tracerShutdown func(context.Context) error
 }
 
 // New creates a new App, wiring all dependencies together.
@@ -253,6 +256,20 @@ func New(cfg *config.Config) (*App, error) {
 		GitTemplatesEnabled: true,
 	})
 
+	// --- Observability ---
+	tracerShutdown, err := observability.InitTracer(context.Background(), cfg.OTEL)
+	if err != nil {
+		return nil, fmt.Errorf("initializing tracer: %w", err)
+	}
+	if cfg.OTEL.Enabled {
+		// Wrap the slog handler to inject trace_id and span_id into log entries.
+		logger = slog.New(observability.NewTracedHandler(logger.Handler()))
+		logger.Info("OpenTelemetry tracing enabled", "endpoint", cfg.OTEL.Endpoint)
+	}
+
+	metrics := observability.NewMetrics()
+	logger.Info("Prometheus metrics registered")
+
 	// --- HTTP Server ---
 	srv := server.New(server.Config{
 		Host:           cfg.Server.Host,
@@ -279,6 +296,8 @@ func New(cfg *config.Config) (*App, error) {
 		UserHandler:            userH,
 		OAuthClientHandler:     oauthClientH,
 		AdminHandler:           adminH,
+		Metrics:                metrics,
+		OTELEnabled:            cfg.OTEL.Enabled,
 	})
 
 	logger.Info("MCP server configured",
@@ -287,11 +306,13 @@ func New(cfg *config.Config) (*App, error) {
 	)
 
 	return &App{
-		Config:     cfg,
-		DB:         db,
-		Logger:     logger,
-		Server:     srv,
-		WorkerPool: workerPool,
+		Config:         cfg,
+		DB:             db,
+		Logger:         logger,
+		Metrics:        metrics,
+		Server:         srv,
+		WorkerPool:     workerPool,
+		tracerShutdown: tracerShutdown,
 	}, nil
 }
 
@@ -328,6 +349,13 @@ func (a *App) Start(ctx context.Context) error {
 func (a *App) Close() error {
 	if a.WorkerPool != nil {
 		a.WorkerPool.Shutdown()
+	}
+	if a.tracerShutdown != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := a.tracerShutdown(ctx); err != nil {
+			a.Logger.Error("flushing tracer spans", "error", err)
+		}
 	}
 	if a.DB != nil {
 		if err := a.DB.Close(); err != nil {

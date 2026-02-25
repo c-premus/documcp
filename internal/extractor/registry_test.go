@@ -2,6 +2,8 @@ package extractor_test
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"testing"
 
 	"git.999.haus/chris/DocuMCP-go/internal/extractor"
@@ -18,15 +20,12 @@ func (m *mockExtractor) Extract(_ context.Context, _ string) (*extractor.Extract
 }
 
 func (m *mockExtractor) Supports(mimeType string) bool {
-	for _, mt := range m.mimeTypes {
-		if mt == mimeType {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.mimeTypes, mimeType)
 }
 
 func TestRegistry_ForMIMEType(t *testing.T) {
+	t.Parallel()
+
 	pdfExtractor := &mockExtractor{
 		name:      "pdf",
 		mimeTypes: []string{"application/pdf"},
@@ -69,6 +68,13 @@ func TestRegistry_ForMIMEType(t *testing.T) {
 			wantErr:    false,
 		},
 		{
+			name:       "returns correct extractor for alternate markdown MIME type",
+			extractors: []extractor.Extractor{pdfExtractor, htmlExtractor, markdownExtractor},
+			mimeType:   "text/x-markdown",
+			wantName:   "markdown",
+			wantErr:    false,
+		},
+		{
 			name:       "returns error for unsupported MIME type",
 			extractors: []extractor.Extractor{pdfExtractor, htmlExtractor},
 			mimeType:   "image/png",
@@ -92,10 +98,30 @@ func TestRegistry_ForMIMEType(t *testing.T) {
 			wantName: "first-html",
 			wantErr:  false,
 		},
+		{
+			name:       "returns error for empty MIME type string",
+			extractors: []extractor.Extractor{pdfExtractor, htmlExtractor},
+			mimeType:   "",
+			wantErr:    true,
+		},
+		{
+			name:       "MIME type matching is case-sensitive",
+			extractors: []extractor.Extractor{htmlExtractor},
+			mimeType:   "TEXT/HTML",
+			wantErr:    true,
+		},
+		{
+			name:       "nil extractors slice creates valid empty registry",
+			extractors: nil,
+			mimeType:   "text/html",
+			wantErr:    true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			registry := extractor.NewRegistry(tt.extractors...)
 
 			ext, err := registry.ForMIMEType(tt.mimeType)
@@ -122,5 +148,29 @@ func TestRegistry_ForMIMEType(t *testing.T) {
 				t.Errorf("Extract().Content = %q, want %q (wrong extractor returned)", content.Content, wantContent)
 			}
 		})
+	}
+}
+
+func TestRegistry_ForMIMEType_ErrorContainsMIMEType(t *testing.T) {
+	t.Parallel()
+
+	registry := extractor.NewRegistry()
+
+	_, err := registry.ForMIMEType("application/octet-stream")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "application/octet-stream") {
+		t.Errorf("error message %q should contain the MIME type %q", err.Error(), "application/octet-stream")
+	}
+}
+
+func TestNewRegistry_ReturnsNonNil(t *testing.T) {
+	t.Parallel()
+
+	registry := extractor.NewRegistry()
+	if registry == nil {
+		t.Fatal("NewRegistry() returned nil")
 	}
 }
