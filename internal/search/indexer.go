@@ -109,3 +109,179 @@ func (ix *Indexer) WaitForTask(ctx context.Context, taskUID int64) error {
 func (ix *Indexer) Searcher() *Searcher {
 	return NewSearcher(ix.client, ix.logger)
 }
+
+// ---------------------------------------------------------------------------
+// ZIM archive indexing
+// ---------------------------------------------------------------------------
+
+// ZimArchiveRecord represents a ZIM archive to be indexed in Meilisearch.
+type ZimArchiveRecord struct {
+	UUID         string   `json:"uuid"`
+	Name         string   `json:"name"`
+	Title        string   `json:"title"`
+	Description  string   `json:"description,omitempty"`
+	Language     string   `json:"language"`
+	Category     string   `json:"category,omitempty"`
+	Creator      string   `json:"creator,omitempty"`
+	Tags         []string `json:"tags,omitempty"`
+	ArticleCount int64    `json:"article_count"`
+}
+
+// IndexZimArchive adds or updates a ZIM archive in the zim_archives index.
+func (ix *Indexer) IndexZimArchive(ctx context.Context, rec ZimArchiveRecord) error {
+	idx := ix.client.ms.Index(IndexZimArchives)
+	task, err := idx.AddDocumentsWithContext(ctx, []ZimArchiveRecord{rec}, nil)
+	if err != nil {
+		return fmt.Errorf("indexing ZIM archive %s: %w", rec.UUID, err)
+	}
+
+	ix.logger.Debug("ZIM archive indexed", "uuid", rec.UUID, "task_uid", task.TaskUID)
+	return nil
+}
+
+// DeleteZimArchive removes a ZIM archive from the index by UUID.
+func (ix *Indexer) DeleteZimArchive(ctx context.Context, uuid string) error {
+	idx := ix.client.ms.Index(IndexZimArchives)
+	task, err := idx.DeleteDocumentWithContext(ctx, uuid, nil)
+	if err != nil {
+		return fmt.Errorf("deleting ZIM archive %s from index: %w", uuid, err)
+	}
+
+	ix.logger.Debug("ZIM archive removed from index", "uuid", uuid, "task_uid", task.TaskUID)
+	return nil
+}
+
+// IndexZimArchiveBatch adds or updates multiple ZIM archives in the zim_archives index.
+func (ix *Indexer) IndexZimArchiveBatch(ctx context.Context, recs []ZimArchiveRecord) error {
+	if len(recs) == 0 {
+		return nil
+	}
+
+	idx := ix.client.ms.Index(IndexZimArchives)
+	task, err := idx.AddDocumentsWithContext(ctx, recs, nil)
+	if err != nil {
+		return fmt.Errorf("batch indexing %d ZIM archives: %w", len(recs), err)
+	}
+
+	ix.logger.Info("ZIM archives batch indexed", "count", len(recs), "task_uid", task.TaskUID)
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Confluence space indexing
+// ---------------------------------------------------------------------------
+
+// ConfluenceSpaceRecord represents a Confluence space to be indexed.
+type ConfluenceSpaceRecord struct {
+	UUID              string `json:"uuid"`
+	ConfluenceID      string `json:"confluence_id"`
+	Key               string `json:"key"`
+	Name              string `json:"name"`
+	Description       string `json:"description,omitempty"`
+	Type              string `json:"type"`
+	Status            string `json:"status,omitempty"`
+	ExternalServiceID int64  `json:"external_service_id"`
+	IsEnabled         bool   `json:"is_enabled"`
+	SoftDeleted       bool   `json:"__soft_deleted"`
+}
+
+// IndexConfluenceSpace adds or updates a Confluence space in the confluence_spaces index.
+func (ix *Indexer) IndexConfluenceSpace(ctx context.Context, rec ConfluenceSpaceRecord) error {
+	idx := ix.client.ms.Index(IndexConfluenceSpaces)
+	task, err := idx.AddDocumentsWithContext(ctx, []ConfluenceSpaceRecord{rec}, nil)
+	if err != nil {
+		return fmt.Errorf("indexing Confluence space %s: %w", rec.UUID, err)
+	}
+
+	ix.logger.Debug("Confluence space indexed", "uuid", rec.UUID, "task_uid", task.TaskUID)
+	return nil
+}
+
+// DeleteConfluenceSpace removes a Confluence space from the index by UUID.
+func (ix *Indexer) DeleteConfluenceSpace(ctx context.Context, uuid string) error {
+	idx := ix.client.ms.Index(IndexConfluenceSpaces)
+	task, err := idx.DeleteDocumentWithContext(ctx, uuid, nil)
+	if err != nil {
+		return fmt.Errorf("deleting Confluence space %s from index: %w", uuid, err)
+	}
+
+	ix.logger.Debug("Confluence space removed from index", "uuid", uuid, "task_uid", task.TaskUID)
+	return nil
+}
+
+// SoftDeleteConfluenceSpace marks a Confluence space as soft-deleted in the index
+// rather than removing it. Soft-deleted records are filtered out via __soft_deleted=false.
+func (ix *Indexer) SoftDeleteConfluenceSpace(ctx context.Context, uuid string) error {
+	idx := ix.client.ms.Index(IndexConfluenceSpaces)
+	record := map[string]any{
+		"uuid":           uuid,
+		"__soft_deleted": true,
+	}
+	task, err := idx.AddDocumentsWithContext(ctx, []map[string]any{record}, nil)
+	if err != nil {
+		return fmt.Errorf("soft-deleting Confluence space %s in index: %w", uuid, err)
+	}
+
+	ix.logger.Debug("Confluence space soft-deleted in index", "uuid", uuid, "task_uid", task.TaskUID)
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Git template indexing
+// ---------------------------------------------------------------------------
+
+// GitTemplateRecord represents a Git template to be indexed.
+type GitTemplateRecord struct {
+	UUID          string   `json:"uuid"`
+	Name          string   `json:"name"`
+	Slug          string   `json:"slug"`
+	Description   string   `json:"description,omitempty"`
+	ReadmeContent string   `json:"readme_content,omitempty"`
+	Category      string   `json:"category,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
+	UserID        *int64   `json:"user_id,omitempty"`
+	IsPublic      bool     `json:"is_public"`
+	Status        string   `json:"status"`
+	SoftDeleted   bool     `json:"__soft_deleted"`
+}
+
+// IndexGitTemplate adds or updates a Git template in the git_templates index.
+func (ix *Indexer) IndexGitTemplate(ctx context.Context, rec GitTemplateRecord) error {
+	idx := ix.client.ms.Index(IndexGitTemplates)
+	task, err := idx.AddDocumentsWithContext(ctx, []GitTemplateRecord{rec}, nil)
+	if err != nil {
+		return fmt.Errorf("indexing Git template %s: %w", rec.UUID, err)
+	}
+
+	ix.logger.Debug("Git template indexed", "uuid", rec.UUID, "task_uid", task.TaskUID)
+	return nil
+}
+
+// DeleteGitTemplate removes a Git template from the index by UUID.
+func (ix *Indexer) DeleteGitTemplate(ctx context.Context, uuid string) error {
+	idx := ix.client.ms.Index(IndexGitTemplates)
+	task, err := idx.DeleteDocumentWithContext(ctx, uuid, nil)
+	if err != nil {
+		return fmt.Errorf("deleting Git template %s from index: %w", uuid, err)
+	}
+
+	ix.logger.Debug("Git template removed from index", "uuid", uuid, "task_uid", task.TaskUID)
+	return nil
+}
+
+// SoftDeleteGitTemplate marks a Git template as soft-deleted in the index
+// rather than removing it. Soft-deleted records are filtered out via __soft_deleted=false.
+func (ix *Indexer) SoftDeleteGitTemplate(ctx context.Context, uuid string) error {
+	idx := ix.client.ms.Index(IndexGitTemplates)
+	record := map[string]any{
+		"uuid":           uuid,
+		"__soft_deleted": true,
+	}
+	task, err := idx.AddDocumentsWithContext(ctx, []map[string]any{record}, nil)
+	if err != nil {
+		return fmt.Errorf("soft-deleting Git template %s in index: %w", uuid, err)
+	}
+
+	ix.logger.Debug("Git template soft-deleted in index", "uuid", uuid, "task_uid", task.TaskUID)
+	return nil
+}
