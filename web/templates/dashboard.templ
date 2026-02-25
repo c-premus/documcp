@@ -1,0 +1,43 @@
+package templates
+
+import "fmt"
+
+// DashboardStats holds aggregate counts for the dashboard.
+type DashboardStats struct {
+	Documents       int
+	Users           int
+	OAuthClients    int
+	ZimArchives     int
+	ConfluenceSpaces int
+	GitTemplates    int
+	HasZim          bool
+	HasConfluence   bool
+	HasGitTemplates bool
+}
+
+templ DashboardPage(data PageData, stats DashboardStats) {
+	@Base(data) {
+		<div class="sm:flex sm:items-center sm:justify-between mb-8">
+			<h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
+		</div>
+		<div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+			@statCard("Documents", stats.Documents, "/admin/documents", true)
+			@statCard("Users", stats.Users, "/admin/users", true)
+			@statCard("OAuth Clients", stats.OAuthClients, "/admin/oauth-clients", true)
+			@statCard("ZIM Archives", stats.ZimArchives, "/admin/zim-archives", stats.HasZim)
+			@statCard("Confluence Spaces", stats.ConfluenceSpaces, "/admin/confluence-spaces", stats.HasConfluence)
+			@statCard("Git Templates", stats.GitTemplates, "/admin/git-templates", stats.HasGitTemplates)
+		</div>
+	}
+}
+
+templ statCard(label string, count int, url string, visible bool) {
+	if visible {
+		<a href={ templ.SafeURL(url) } class="overflow-hidden rounded-lg bg-white shadow hover:shadow-md transition-shadow">
+			<div class="px-4 py-5 sm:p-6">
+				<dt class="truncate text-sm font-medium text-gray-500">{ label }</dt>
+				<dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">{ fmt.Sprint(count) }</dd>
+			</div>
+		</a>
+	}
+}

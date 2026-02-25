@@ -139,6 +139,16 @@ func (r *DocumentRepository) ReplaceTags(ctx context.Context, documentID int64, 
 	return nil
 }
 
+// Count returns the total number of non-deleted documents.
+func (r *DocumentRepository) Count(ctx context.Context) (int, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM documents WHERE deleted_at IS NULL`).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting documents: %w", err)
+	}
+	return count, nil
+}
+
 // CreateVersion inserts a new document version and sets the generated ID.
 func (r *DocumentRepository) CreateVersion(ctx context.Context, version *model.DocumentVersion) error {
 	err := r.db.QueryRowContext(ctx,

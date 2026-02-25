@@ -9,8 +9,10 @@ import (
 	"github.com/gorilla/sessions"
 
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
+	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oidc"
 	"git.999.haus/chris/DocuMCP-go/internal/handler"
+	adminhandler "git.999.haus/chris/DocuMCP-go/internal/handler/admin"
 	apihandler "git.999.haus/chris/DocuMCP-go/internal/handler/api"
 	oauthhandler "git.999.haus/chris/DocuMCP-go/internal/handler/oauth"
 )
@@ -35,6 +37,9 @@ type Deps struct {
 	ExternalServiceHandler *apihandler.ExternalServiceHandler
 	UserHandler            *apihandler.UserHandler
 	OAuthClientHandler     *apihandler.OAuthClientHandler
+
+	// Phase 5: Admin UI
+	AdminHandler *adminhandler.Handler
 }
 
 // RegisterRoutes configures all middleware and route groups on the server.
@@ -173,22 +178,75 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		}
 	})
 
-	// Admin UI and management
-	r.Route("/admin", func(r chi.Router) {
-		// Admin API endpoints
-		if deps.UserHandler != nil {
+	// Admin UI
+	if deps.AdminHandler != nil {
+		// Login page — no auth required
+		r.Get("/admin/login", deps.AdminHandler.Login)
+
+		r.Route("/admin", func(r chi.Router) {
+			// Protect all admin routes with session auth + admin check
+			if deps.SessionStore != nil && deps.OAuthService != nil {
+				r.Use(authmiddleware.SessionAuth(deps.SessionStore, deps.OAuthService))
+				r.Use(authmiddleware.RequireAdmin)
+			}
+
+			// Dashboard
+			r.Get("/", deps.AdminHandler.Dashboard)
+
+			// Documents
+			r.Route("/documents", func(r chi.Router) {
+				r.Get("/", deps.AdminHandler.DocumentList)
+				r.Post("/", deps.AdminHandler.DocumentUpload)
+				r.Get("/{uuid}", deps.AdminHandler.DocumentDetail)
+				r.Delete("/{uuid}", deps.AdminHandler.DocumentDelete)
+			})
+
+			// Users
 			r.Route("/users", func(r chi.Router) {
-				r.Get("/", deps.UserHandler.List)
-				r.Get("/{uuid}", deps.UserHandler.Show)
+				r.Get("/", deps.AdminHandler.UserList)
+				r.Get("/{id}", deps.AdminHandler.UserDetail)
+				r.Post("/{id}/toggle-admin", deps.AdminHandler.UserToggleAdmin)
 			})
-			s.logger.Info("Admin user endpoints registered")
-		}
-		if deps.OAuthClientHandler != nil {
+
+			// OAuth Clients
 			r.Route("/oauth-clients", func(r chi.Router) {
-				r.Get("/", deps.OAuthClientHandler.List)
-				r.Get("/{id}", deps.OAuthClientHandler.Show)
+				r.Get("/", deps.AdminHandler.OAuthClientList)
+				r.Post("/", deps.AdminHandler.OAuthClientCreate)
+				r.Get("/{id}", deps.AdminHandler.OAuthClientDetail)
+				r.Post("/{id}/revoke", deps.AdminHandler.OAuthClientRevoke)
 			})
-			s.logger.Info("Admin OAuth client endpoints registered")
-		}
-	})
+
+			// External Services
+			r.Route("/external-services", func(r chi.Router) {
+				r.Get("/", deps.AdminHandler.ExternalServiceList)
+				r.Post("/", deps.AdminHandler.ExternalServiceCreate)
+				r.Get("/{uuid}", deps.AdminHandler.ExternalServiceDetail)
+				r.Post("/{uuid}/health-check", deps.AdminHandler.ExternalServiceHealthCheck)
+				r.Delete("/{uuid}", deps.AdminHandler.ExternalServiceDelete)
+			})
+
+			// ZIM Archives
+			r.Route("/zim-archives", func(r chi.Router) {
+				r.Get("/", deps.AdminHandler.ZimArchiveList)
+				r.Post("/{uuid}/toggle-enabled", deps.AdminHandler.ZimArchiveToggleEnabled)
+				r.Post("/{uuid}/toggle-searchable", deps.AdminHandler.ZimArchiveToggleSearchable)
+			})
+
+			// Confluence Spaces
+			r.Route("/confluence-spaces", func(r chi.Router) {
+				r.Get("/", deps.AdminHandler.ConfluenceSpaceList)
+				r.Post("/{uuid}/toggle-enabled", deps.AdminHandler.ConfluenceSpaceToggleEnabled)
+				r.Post("/{uuid}/toggle-searchable", deps.AdminHandler.ConfluenceSpaceToggleSearchable)
+			})
+
+			// Git Templates
+			r.Route("/git-templates", func(r chi.Router) {
+				r.Get("/", deps.AdminHandler.GitTemplateList)
+				r.Post("/", deps.AdminHandler.GitTemplateCreate)
+				r.Get("/{uuid}", deps.AdminHandler.GitTemplateDetail)
+				r.Delete("/{uuid}", deps.AdminHandler.GitTemplateDelete)
+			})
+		})
+		s.logger.Info("Admin UI endpoints registered")
+	}
 }

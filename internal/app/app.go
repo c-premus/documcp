@@ -31,6 +31,7 @@ import (
 	markdownext "git.999.haus/chris/DocuMCP-go/internal/extractor/markdown"
 	pdfext "git.999.haus/chris/DocuMCP-go/internal/extractor/pdf"
 	xlsxext "git.999.haus/chris/DocuMCP-go/internal/extractor/xlsx"
+	adminhandler "git.999.haus/chris/DocuMCP-go/internal/handler/admin"
 	apihandler "git.999.haus/chris/DocuMCP-go/internal/handler/api"
 	mcphandler "git.999.haus/chris/DocuMCP-go/internal/handler/mcp"
 	oauthhandler "git.999.haus/chris/DocuMCP-go/internal/handler/oauth"
@@ -219,6 +220,19 @@ func New(cfg *config.Config) (*App, error) {
 	userH := apihandler.NewUserHandler(oauthRepo, logger)
 	oauthClientH := apihandler.NewOAuthClientHandler(oauthRepo, logger)
 
+	// --- Admin Handler ---
+	adminH := adminhandler.NewHandler(
+		documentRepo,
+		oauthRepo,
+		externalServiceRepo,
+		zimArchiveRepo,
+		confluenceSpaceRepo,
+		gitTemplateRepo,
+		documentPipeline,
+		externalServiceSvc,
+		logger,
+	)
+
 	// --- MCP Handler ---
 	mcpH := mcphandler.New(mcphandler.Config{
 		ServerName:          cfg.DocuMCP.ServerName,
@@ -264,6 +278,7 @@ func New(cfg *config.Config) (*App, error) {
 		ExternalServiceHandler: externalServiceH,
 		UserHandler:            userH,
 		OAuthClientHandler:     oauthClientH,
+		AdminHandler:           adminH,
 	})
 
 	logger.Info("MCP server configured",
