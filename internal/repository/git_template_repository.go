@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -9,6 +10,18 @@ import (
 
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 )
+
+// GitTemplateFileInsert holds the fields needed to insert a git template file.
+type GitTemplateFileInsert struct {
+	Path        string
+	Filename    string
+	Extension   string
+	Content     string
+	ContentHash string
+	SizeBytes   int64
+	IsEssential bool
+	Variables   []string
+}
 
 // GitTemplateRepository handles git template persistence.
 type GitTemplateRepository struct {
@@ -80,3 +93,189 @@ func (r *GitTemplateRepository) FindFileByPath(ctx context.Context, templateID i
 	}
 	return &file, nil
 }
+
+// FindBySlug returns a git template by its slug, if enabled and not soft-deleted.
+func (r *GitTemplateRepository) FindBySlug(ctx context.Context, slug string) (*model.GitTemplate, error) {
+	var tmpl model.GitTemplate
+	err := r.db.GetContext(ctx, &tmpl,
+		`SELECT * FROM git_templates WHERE slug = $1 AND deleted_at IS NULL AND is_enabled = true`, slug)
+	if err != nil {
+		return nil, fmt.Errorf("finding git template by slug %s: %w", slug, err)
+	}
+	return &tmpl, nil
+}
+
+// Create inserts a new git template and sets the generated ID, UUID, and timestamps.
+func (r *GitTemplateRepository) Create(ctx context.Context, tmpl *model.GitTemplate) error {
+	err := r.db.QueryRowContext(ctx,
+		`INSERT INTO git_templates (
+			uuid, name, slug, description, repository_url, branch, git_token,
+			readme_content, manifest, category, tags, user_id,
+			is_public, is_enabled, status, error_message,
+			file_count, total_size_bytes,
+			created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7,
+			$8, $9, $10, $11, $12,
+			$13, $14, $15, $16,
+			$17, $18,
+			NOW(), NOW()
+		) RETURNING id, created_at, updated_at`,
+		tmpl.UUID, tmpl.Name, tmpl.Slug, tmpl.Description,
+		tmpl.RepositoryURL, tmpl.Branch, tmpl.GitToken,
+		tmpl.ReadmeContent, tmpl.Manifest, tmpl.Category, tmpl.Tags, tmpl.UserID,
+		tmpl.IsPublic, tmpl.IsEnabled, tmpl.Status, tmpl.ErrorMessage,
+		tmpl.FileCount, tmpl.TotalSizeBytes,
+	).Scan(&tmpl.ID, &tmpl.CreatedAt, &tmpl.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("creating git template %q: %w", tmpl.Name, err)
+	}
+	return nil
+}
+
+// Update updates an existing git template by its ID.
+func (r *GitTemplateRepository) Update(ctx context.Context, tmpl *model.GitTemplate) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE git_templates SET
+			name = $1, slug = $2, description = $3, repository_url = $4,
+			branch = $5, git_token = $6, readme_content = $7, manifest = $8,
+			category = $9, tags = $10, is_public = $11, is_enabled = $12,
+			status = $13, error_message = $14, updated_at = NOW()
+		WHERE id = $15 AND deleted_at IS NULL`,
+		tmpl.Name, tmpl.Slug, tmpl.Description, tmpl.RepositoryURL,
+		tmpl.Branch, tmpl.GitToken, tmpl.ReadmeContent, tmpl.Manifest,
+		tmpl.Category, tmpl.Tags, tmpl.IsPublic, tmpl.IsEnabled,
+		tmpl.Status, tmpl.ErrorMessage, tmpl.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating git template %d: %w", tmpl.ID, err)
+	}
+	return nil
+}
+
+// SoftDelete marks a git template as deleted by setting deleted_at.
+func (r *GitTemplateRepository) SoftDelete(ctx context.Context, id int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE git_templates SET deleted_at = NOW(), updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL`, id)
+	if err != nil {
+		return fmt.Errorf("soft deleting git template %d: %w", id, err)
+	}
+	return nil
+}
+
+// UpdateSyncStatus updates the sync-related fields for a git template.
+func (r *GitTemplateRepository) UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE git_templates SET
+			status = $1,
+			last_commit_sha = $2,
+			file_count = $3,
+			total_size_bytes = $4,
+			error_message = CASE WHEN $5 = '' THEN NULL ELSE $5 END,
+			last_synced_at = NOW(),
+			updated_at = NOW()
+		WHERE id = $6`,
+		status, commitSHA, fileCount, totalSize, errMsg, templateID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating sync status for git template %d: %w", templateID, err)
+	}
+	return nil
+}
+
+// ReplaceFiles deletes existing files for a template and inserts new ones in a transaction.
+func (r *GitTemplateRepository) ReplaceFiles(ctx context.Context, templateID int64, files []GitTemplateFileInsert) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction for replacing files on template %d: %w", templateID, err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	_, err = tx.ExecContext(ctx,
+		`DELETE FROM git_template_files WHERE git_template_id = $1`, templateID)
+	if err != nil {
+		return fmt.Errorf("deleting files for git template %d: %w", templateID, err)
+	}
+
+	for _, f := range files {
+		var variablesJSON *string
+		if len(f.Variables) > 0 {
+			b, jsonErr := json.Marshal(f.Variables)
+			if jsonErr != nil {
+				return fmt.Errorf("marshalling variables for file %q: %w", f.Path, jsonErr)
+			}
+			s := string(b)
+			variablesJSON = &s
+		}
+
+		var ext *string
+		if f.Extension != "" {
+			ext = &f.Extension
+		}
+		var contentHash *string
+		if f.ContentHash != "" {
+			contentHash = &f.ContentHash
+		}
+
+		_, err = tx.ExecContext(ctx,
+			`INSERT INTO git_template_files (
+				uuid, git_template_id, path, filename, extension,
+				content, size_bytes, content_hash, is_essential, variables,
+				created_at, updated_at
+			) VALUES (
+				gen_random_uuid(), $1, $2, $3, $4,
+				$5, $6, $7, $8, $9,
+				NOW(), NOW()
+			)`,
+			templateID, f.Path, f.Filename, ext,
+			f.Content, f.SizeBytes, contentHash, f.IsEssential, variablesJSON,
+		)
+		if err != nil {
+			return fmt.Errorf("inserting file %q for git template %d: %w", f.Path, templateID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing file replacement for git template %d: %w", templateID, err)
+	}
+	return nil
+}
+
+// Search returns git templates matching a text query and optional category filter.
+// It searches across name, description, and readme_content using ILIKE.
+func (r *GitTemplateRepository) Search(ctx context.Context, query, category string, limit int) ([]model.GitTemplate, error) {
+	q := `SELECT * FROM git_templates WHERE is_enabled = true AND deleted_at IS NULL`
+	args := []any{}
+	argIdx := 1
+
+	if query != "" {
+		likeQuery := "%" + query + "%"
+		q += fmt.Sprintf(` AND (name ILIKE $%d OR description ILIKE $%d OR readme_content ILIKE $%d)`,
+			argIdx, argIdx+1, argIdx+2)
+		args = append(args, likeQuery, likeQuery, likeQuery)
+		argIdx += 3
+	}
+
+	if category != "" {
+		q += fmt.Sprintf(` AND category = $%d`, argIdx)
+		args = append(args, category)
+		argIdx++
+	}
+
+	q += ` ORDER BY name`
+
+	if limit <= 0 {
+		limit = 50
+	}
+	q += fmt.Sprintf(` LIMIT $%d`, argIdx)
+	args = append(args, limit)
+
+	var templates []model.GitTemplate
+	err := r.db.SelectContext(ctx, &templates, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("searching git templates for %q: %w", query, err)
+	}
+	return templates, nil
+}
+

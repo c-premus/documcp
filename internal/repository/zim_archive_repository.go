@@ -2,13 +2,31 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 )
+
+// ZimArchiveUpsert holds the fields needed to upsert a ZIM archive from a catalog sync.
+type ZimArchiveUpsert struct {
+	Name         string
+	Title        string
+	Description  string
+	Language     string
+	Category     string
+	Creator      string
+	Publisher    string
+	Favicon      string
+	ArticleCount int64
+	MediaCount   int64
+	FileSize     int64
+	Tags         []string
+}
 
 // ZimArchiveRepository handles ZIM archive persistence.
 type ZimArchiveRepository struct {
@@ -81,4 +99,119 @@ func (r *ZimArchiveRepository) FindByUUID(ctx context.Context, uuid string) (*mo
 		return nil, fmt.Errorf("finding zim archive by uuid %s: %w", uuid, err)
 	}
 	return &archive, nil
+}
+
+// UpsertFromCatalog inserts or updates a ZIM archive from a catalog sync entry.
+// On conflict by name, it updates the mutable fields and sets last_synced_at.
+func (r *ZimArchiveRepository) UpsertFromCatalog(ctx context.Context, serviceID int64, entry ZimArchiveUpsert) error {
+	var tagsJSON *string
+	if len(entry.Tags) > 0 {
+		b, err := json.Marshal(entry.Tags)
+		if err != nil {
+			return fmt.Errorf("marshalling tags for zim archive %q: %w", entry.Name, err)
+		}
+		s := string(b)
+		tagsJSON = &s
+	}
+
+	_, err := r.db.ExecContext(ctx,
+		`INSERT INTO zim_archives (
+			uuid, name, slug, title, description, language, category,
+			creator, publisher, favicon, article_count, media_count,
+			file_size, tags, external_service_id, is_enabled,
+			last_synced_at, created_at, updated_at
+		) VALUES (
+			gen_random_uuid(), $1, $2, $3, $4, $5, $6,
+			$7, $8, $9, $10, $11,
+			$12, $13, $14, true,
+			NOW(), NOW(), NOW()
+		)
+		ON CONFLICT (name) DO UPDATE SET
+			title = EXCLUDED.title,
+			description = EXCLUDED.description,
+			language = EXCLUDED.language,
+			category = EXCLUDED.category,
+			creator = EXCLUDED.creator,
+			publisher = EXCLUDED.publisher,
+			favicon = EXCLUDED.favicon,
+			article_count = EXCLUDED.article_count,
+			media_count = EXCLUDED.media_count,
+			file_size = EXCLUDED.file_size,
+			tags = EXCLUDED.tags,
+			external_service_id = EXCLUDED.external_service_id,
+			last_synced_at = NOW(),
+			updated_at = NOW()`,
+		entry.Name, slugifyName(entry.Name), entry.Title, nullStr(entry.Description),
+		nullStr(entry.Language), nullStr(entry.Category),
+		nullStr(entry.Creator), nullStr(entry.Publisher), nullStr(entry.Favicon),
+		entry.ArticleCount, entry.MediaCount,
+		entry.FileSize, tagsJSON, serviceID,
+	)
+	if err != nil {
+		return fmt.Errorf("upserting zim archive %q: %w", entry.Name, err)
+	}
+	return nil
+}
+
+// DisableOrphaned disables ZIM archives belonging to the given service that are
+// not in the activeNames list. Returns the number of rows affected.
+func (r *ZimArchiveRepository) DisableOrphaned(ctx context.Context, serviceID int64, activeNames []string) (int, error) {
+	if len(activeNames) == 0 {
+		// Disable all archives for this service.
+		result, err := r.db.ExecContext(ctx,
+			`UPDATE zim_archives SET is_enabled = false, updated_at = NOW()
+			WHERE external_service_id = $1 AND is_enabled = true`, serviceID)
+		if err != nil {
+			return 0, fmt.Errorf("disabling all orphaned zim archives for service %d: %w", serviceID, err)
+		}
+		n, _ := result.RowsAffected()
+		return int(n), nil
+	}
+
+	query, args, err := sqlx.In(
+		`UPDATE zim_archives SET is_enabled = false, updated_at = NOW()
+		WHERE external_service_id = ? AND is_enabled = true AND name NOT IN (?)`,
+		serviceID, activeNames)
+	if err != nil {
+		return 0, fmt.Errorf("building IN clause for zim archive orphan check: %w", err)
+	}
+
+	query = r.db.Rebind(query)
+
+	result, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("disabling orphaned zim archives for service %d: %w", serviceID, err)
+	}
+
+	n, _ := result.RowsAffected()
+	return int(n), nil
+}
+
+// nullStr returns a pointer to s if non-empty, nil otherwise. Used for nullable columns.
+func nullStr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// slugifyName converts a name to a URL-friendly slug.
+func slugifyName(name string) string {
+	s := strings.ToLower(strings.TrimSpace(name))
+	s = strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			return r
+		}
+		if r == ' ' || r == '-' || r == '_' {
+			return '-'
+		}
+		return -1
+	}, s)
+
+	for strings.Contains(s, "--") {
+		s = strings.ReplaceAll(s, "--", "-")
+	}
+	s = strings.Trim(s, "-")
+
+	return s
 }

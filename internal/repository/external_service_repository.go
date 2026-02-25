@@ -42,3 +42,127 @@ func (r *ExternalServiceRepository) FindByUUID(ctx context.Context, uuid string)
 	}
 	return &svc, nil
 }
+
+// FindBySlug returns an external service by its slug.
+func (r *ExternalServiceRepository) FindBySlug(ctx context.Context, slug string) (*model.ExternalService, error) {
+	var svc model.ExternalService
+	err := r.db.GetContext(ctx, &svc,
+		`SELECT * FROM external_services WHERE slug = $1`, slug)
+	if err != nil {
+		return nil, fmt.Errorf("finding external service by slug %s: %w", slug, err)
+	}
+	return &svc, nil
+}
+
+// List returns external services with optional type/status filters and pagination.
+// Returns the matching services and the total count (before LIMIT/OFFSET).
+func (r *ExternalServiceRepository) List(ctx context.Context, serviceType, status string, limit, offset int) ([]model.ExternalService, int, error) {
+	where := ``
+	args := []any{}
+	argIdx := 1
+
+	if serviceType != "" {
+		where += fmt.Sprintf(` AND type = $%d`, argIdx)
+		args = append(args, serviceType)
+		argIdx++
+	}
+
+	if status != "" {
+		where += fmt.Sprintf(` AND status = $%d`, argIdx)
+		args = append(args, status)
+		argIdx++
+	}
+
+	// Count total matching rows.
+	countQuery := `SELECT COUNT(*) FROM external_services WHERE 1=1` + where
+	var total int
+	if err := r.db.GetContext(ctx, &total, countQuery, args...); err != nil {
+		return nil, 0, fmt.Errorf("counting external services: %w", err)
+	}
+
+	// Fetch paginated results.
+	if limit <= 0 {
+		limit = 50
+	}
+
+	q := `SELECT * FROM external_services WHERE 1=1` + where + ` ORDER BY priority, name`
+	q += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, argIdx, argIdx+1)
+	args = append(args, limit, offset)
+
+	var services []model.ExternalService
+	if err := r.db.SelectContext(ctx, &services, q, args...); err != nil {
+		return nil, 0, fmt.Errorf("listing external services: %w", err)
+	}
+
+	return services, total, nil
+}
+
+// Create inserts a new external service and sets the generated ID on svc.
+func (r *ExternalServiceRepository) Create(ctx context.Context, svc *model.ExternalService) error {
+	err := r.db.QueryRowContext(ctx,
+		`INSERT INTO external_services (
+			uuid, name, slug, type, base_url, api_key, config,
+			priority, status, is_enabled, is_env_managed,
+			created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7,
+			$8, $9, $10, $11,
+			NOW(), NOW()
+		) RETURNING id, created_at, updated_at`,
+		svc.UUID, svc.Name, svc.Slug, svc.Type, svc.BaseURL, svc.APIKey, svc.Config,
+		svc.Priority, svc.Status, svc.IsEnabled, svc.IsEnvManaged,
+	).Scan(&svc.ID, &svc.CreatedAt, &svc.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("creating external service %q: %w", svc.Name, err)
+	}
+	return nil
+}
+
+// Update updates an existing external service by its ID.
+func (r *ExternalServiceRepository) Update(ctx context.Context, svc *model.ExternalService) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE external_services SET
+			name = $1, slug = $2, base_url = $3, api_key = $4, config = $5,
+			priority = $6, is_enabled = $7, updated_at = NOW()
+		WHERE id = $8`,
+		svc.Name, svc.Slug, svc.BaseURL, svc.APIKey, svc.Config,
+		svc.Priority, svc.IsEnabled, svc.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating external service %d: %w", svc.ID, err)
+	}
+	return nil
+}
+
+// Delete removes an external service by its ID.
+func (r *ExternalServiceRepository) Delete(ctx context.Context, id int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`DELETE FROM external_services WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("deleting external service %d: %w", id, err)
+	}
+	return nil
+}
+
+// UpdateHealthStatus updates health-related fields for an external service.
+// On a healthy status, consecutive_failures resets to 0.
+// On an unhealthy status, consecutive_failures increments and error_count increments.
+func (r *ExternalServiceRepository) UpdateHealthStatus(ctx context.Context, id int64, status string, latencyMs int, lastError string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE external_services SET
+			status = $1,
+			last_latency_ms = $2,
+			last_check_at = NOW(),
+			last_error = CASE WHEN $1 = 'unhealthy' THEN $3 ELSE last_error END,
+			last_error_at = CASE WHEN $1 = 'unhealthy' THEN NOW() ELSE last_error_at END,
+			consecutive_failures = CASE WHEN $1 = 'healthy' THEN 0 ELSE consecutive_failures + 1 END,
+			error_count = CASE WHEN $1 = 'unhealthy' THEN error_count + 1 ELSE error_count END,
+			updated_at = NOW()
+		WHERE id = $4`,
+		status, latencyMs, lastError, id,
+	)
+	if err != nil {
+		return fmt.Errorf("updating health status for external service %d: %w", id, err)
+	}
+	return nil
+}

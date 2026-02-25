@@ -10,6 +10,18 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 )
 
+// ConfluenceSpaceUpsert holds the fields needed to upsert a Confluence space from an API sync.
+type ConfluenceSpaceUpsert struct {
+	ConfluenceID string
+	Key          string
+	Name         string
+	Description  string
+	Type         string
+	Status       string
+	HomepageID   string
+	IconURL      string
+}
+
 // ConfluenceSpaceRepository handles Confluence space persistence.
 type ConfluenceSpaceRepository struct {
 	db     *sqlx.DB
@@ -75,4 +87,88 @@ func (r *ConfluenceSpaceRepository) FindByUUID(ctx context.Context, uuid string)
 		return nil, fmt.Errorf("finding confluence space by uuid %s: %w", uuid, err)
 	}
 	return &space, nil
+}
+
+// UpsertFromAPI inserts or updates a Confluence space from an API sync.
+// On conflict by key, it updates the mutable fields and sets last_synced_at.
+func (r *ConfluenceSpaceRepository) UpsertFromAPI(ctx context.Context, serviceID int64, space ConfluenceSpaceUpsert) error {
+	spaceType := space.Type
+	if spaceType == "" {
+		spaceType = "global"
+	}
+	spaceStatus := space.Status
+	if spaceStatus == "" {
+		spaceStatus = "current"
+	}
+
+	_, err := r.db.ExecContext(ctx,
+		`INSERT INTO confluence_spaces (
+			uuid, confluence_id, key, name, description, type, status,
+			homepage_id, icon_url, external_service_id, is_enabled,
+			last_synced_at, created_at, updated_at
+		) VALUES (
+			gen_random_uuid(), $1, $2, $3, $4, $5, $6,
+			$7, $8, $9, true,
+			NOW(), NOW(), NOW()
+		)
+		ON CONFLICT (key) DO UPDATE SET
+			confluence_id = EXCLUDED.confluence_id,
+			name = EXCLUDED.name,
+			description = EXCLUDED.description,
+			type = EXCLUDED.type,
+			status = EXCLUDED.status,
+			homepage_id = EXCLUDED.homepage_id,
+			icon_url = EXCLUDED.icon_url,
+			external_service_id = EXCLUDED.external_service_id,
+			last_synced_at = NOW(),
+			updated_at = NOW()`,
+		space.ConfluenceID, space.Key, space.Name, nullableStr(space.Description),
+		spaceType, spaceStatus,
+		nullableStr(space.HomepageID), nullableStr(space.IconURL), serviceID,
+	)
+	if err != nil {
+		return fmt.Errorf("upserting confluence space %q: %w", space.Key, err)
+	}
+	return nil
+}
+
+// DisableOrphaned disables Confluence spaces belonging to the given service that
+// are not in the activeKeys list. Returns the number of rows affected.
+func (r *ConfluenceSpaceRepository) DisableOrphaned(ctx context.Context, serviceID int64, activeKeys []string) (int, error) {
+	if len(activeKeys) == 0 {
+		result, err := r.db.ExecContext(ctx,
+			`UPDATE confluence_spaces SET is_enabled = false, updated_at = NOW()
+			WHERE external_service_id = $1 AND is_enabled = true`, serviceID)
+		if err != nil {
+			return 0, fmt.Errorf("disabling all orphaned confluence spaces for service %d: %w", serviceID, err)
+		}
+		n, _ := result.RowsAffected()
+		return int(n), nil
+	}
+
+	query, args, err := sqlx.In(
+		`UPDATE confluence_spaces SET is_enabled = false, updated_at = NOW()
+		WHERE external_service_id = ? AND is_enabled = true AND key NOT IN (?)`,
+		serviceID, activeKeys)
+	if err != nil {
+		return 0, fmt.Errorf("building IN clause for confluence space orphan check: %w", err)
+	}
+
+	query = r.db.Rebind(query)
+
+	result, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("disabling orphaned confluence spaces for service %d: %w", serviceID, err)
+	}
+
+	n, _ := result.RowsAffected()
+	return int(n), nil
+}
+
+// nullableStr returns a pointer to s if non-empty, nil otherwise. Used for nullable columns.
+func nullableStr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
