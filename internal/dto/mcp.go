@@ -1,0 +1,146 @@
+package dto
+
+// --- Document tools ---
+
+// SearchDocumentsInput holds parameters for searching uploaded documents.
+type SearchDocumentsInput struct {
+	Query           string   `json:"query" jsonschema:"Search query text (supports keywords, phrases),required"`
+	FileType        string   `json:"file_type,omitempty" jsonschema:"Filter by file type: markdown, pdf, docx, xlsx, html"`
+	Tags            []string `json:"tags,omitempty" jsonschema:"Filter by document tags (AND logic)"`
+	Limit           int      `json:"limit,omitempty" jsonschema:"Maximum results (default 10, max 100)"`
+	IncludeSnippets bool     `json:"include_snippets,omitempty" jsonschema:"Include matched text context snippets"`
+	IncludeContent  bool     `json:"include_content,omitempty" jsonschema:"Include full document content"`
+}
+
+// ReadDocumentInput holds parameters for reading a single document by UUID.
+type ReadDocumentInput struct {
+	UUID          string `json:"uuid" jsonschema:"UUID of the document to read,required"`
+	SummaryOnly   bool   `json:"summary_only,omitempty" jsonschema:"Return only the lead section"`
+	MaxParagraphs int    `json:"max_paragraphs,omitempty" jsonschema:"Limit content to first N paragraphs (1-100)"`
+}
+
+// CreateDocumentInput holds parameters for creating a new document.
+type CreateDocumentInput struct {
+	Title       string   `json:"title" jsonschema:"Document title (max 255 chars),required"`
+	Content     string   `json:"content" jsonschema:"Full document content,required"`
+	FileType    string   `json:"file_type" jsonschema:"Document file type: markdown or html,required"`
+	Description string   `json:"description,omitempty" jsonschema:"Brief description or summary (max 1000 chars)"`
+	IsPublic    bool     `json:"is_public,omitempty" jsonschema:"Make document publicly readable"`
+	Tags        []string `json:"tags,omitempty" jsonschema:"Topic tags for categorization"`
+}
+
+// UpdateDocumentInput holds parameters for updating an existing document.
+type UpdateDocumentInput struct {
+	UUID        string   `json:"uuid" jsonschema:"Document UUID to update,required"`
+	Title       string   `json:"title,omitempty" jsonschema:"New title (max 255 chars)"`
+	Description string   `json:"description,omitempty" jsonschema:"New description (max 1000 chars)"`
+	IsPublic    *bool    `json:"is_public,omitempty" jsonschema:"Update public visibility"`
+	Tags        []string `json:"tags,omitempty" jsonschema:"New tags (replaces existing)"`
+}
+
+// DeleteDocumentInput holds parameters for deleting a document by UUID.
+type DeleteDocumentInput struct {
+	UUID string `json:"uuid" jsonschema:"UUID of document to delete,required"`
+}
+
+// --- ZIM tools ---
+
+// ListZimArchivesInput holds parameters for listing available ZIM archives.
+type ListZimArchivesInput struct {
+	Query    string `json:"query,omitempty" jsonschema:"Search query to filter archives by title or description"`
+	Category string `json:"category,omitempty" jsonschema:"Filter by category: devdocs, wikipedia, stack_exchange, other"`
+	Language string `json:"language,omitempty" jsonschema:"Filter by language code (e.g. en, de, fr)"`
+	Limit    int    `json:"limit,omitempty" jsonschema:"Max results (default 50, max 100)"`
+}
+
+// SearchZimInput holds parameters for searching within a ZIM archive.
+type SearchZimInput struct {
+	Archive    string `json:"archive" jsonschema:"Archive name to search (e.g. devdocs_en_laravel),required"`
+	Query      string `json:"query" jsonschema:"Search query,required"`
+	SearchType string `json:"search_type,omitempty" jsonschema:"Search type: fulltext (default) or suggest"`
+	Limit      int    `json:"limit,omitempty" jsonschema:"Max results (default 20, max 50)"`
+}
+
+// ReadZimArticleInput holds parameters for reading an article from a ZIM archive.
+type ReadZimArticleInput struct {
+	Archive       string `json:"archive" jsonschema:"Archive name,required"`
+	Path          string `json:"path" jsonschema:"Article path within the archive,required"`
+	SummaryOnly   bool   `json:"summary_only,omitempty" jsonschema:"Return only the lead section"`
+	MaxParagraphs int    `json:"max_paragraphs,omitempty" jsonschema:"Limit to first N paragraphs (1-100)"`
+}
+
+// --- Confluence tools ---
+
+// ListConfluenceSpacesInput holds parameters for listing Confluence spaces.
+type ListConfluenceSpacesInput struct {
+	Query string `json:"query,omitempty" jsonschema:"Search query to filter spaces"`
+	Type  string `json:"type,omitempty" jsonschema:"Filter by type: global, personal, knowledge_base"`
+	Limit int    `json:"limit,omitempty" jsonschema:"Max results (default 50, max 100)"`
+}
+
+// SearchConfluenceInput holds parameters for searching Confluence content.
+type SearchConfluenceInput struct {
+	CQL   string `json:"cql,omitempty" jsonschema:"CQL query (takes precedence over simple query)"`
+	Query string `json:"query,omitempty" jsonschema:"Simple full-text search query"`
+	Space string `json:"space,omitempty" jsonschema:"Filter to specific space by key"`
+	Limit int    `json:"limit,omitempty" jsonschema:"Max results (default 25, max 50)"`
+}
+
+// ReadConfluencePageInput holds parameters for reading a Confluence page.
+type ReadConfluencePageInput struct {
+	PageID        string `json:"page_id,omitempty" jsonschema:"Confluence page ID"`
+	SpaceKey      string `json:"space_key,omitempty" jsonschema:"Space key (use with title)"`
+	Title         string `json:"title,omitempty" jsonschema:"Exact page title (use with space_key)"`
+	SummaryOnly   bool   `json:"summary_only,omitempty" jsonschema:"Return only lead section"`
+	MaxParagraphs int    `json:"max_paragraphs,omitempty" jsonschema:"Limit to first N paragraphs (1-100)"`
+}
+
+// --- Git Template tools ---
+
+// ListGitTemplatesInput holds parameters for listing available git templates.
+type ListGitTemplatesInput struct {
+	Category string `json:"category,omitempty" jsonschema:"Filter by category: claude, memory-bank, project"`
+	Limit    int    `json:"limit,omitempty" jsonschema:"Max results (default 50, max 100)"`
+}
+
+// SearchGitTemplatesInput holds parameters for searching git templates.
+type SearchGitTemplatesInput struct {
+	Query    string `json:"query" jsonschema:"Search query text,required"`
+	Category string `json:"category,omitempty" jsonschema:"Filter by category"`
+	Limit    int    `json:"limit,omitempty" jsonschema:"Max results (default 10, max 50)"`
+}
+
+// GetTemplateStructureInput holds parameters for retrieving a template's file structure.
+type GetTemplateStructureInput struct {
+	UUID string `json:"uuid" jsonschema:"Template UUID,required"`
+}
+
+// GetTemplateFileInput holds parameters for reading a single file from a template.
+type GetTemplateFileInput struct {
+	UUID      string `json:"uuid" jsonschema:"Template UUID,required"`
+	Path      string `json:"path" jsonschema:"File path within the template,required"`
+	Variables string `json:"variables,omitempty" jsonschema:"JSON object of variables for placeholder substitution"`
+}
+
+// GetDeploymentGuideInput holds parameters for retrieving a template's deployment guide.
+type GetDeploymentGuideInput struct {
+	UUID      string `json:"uuid" jsonschema:"Template UUID,required"`
+	Variables string `json:"variables,omitempty" jsonschema:"JSON object of variables for placeholder substitution"`
+}
+
+// DownloadTemplateInput holds parameters for downloading a template archive.
+type DownloadTemplateInput struct {
+	UUID      string `json:"uuid" jsonschema:"Template UUID,required"`
+	Format    string `json:"format,omitempty" jsonschema:"Archive format: zip (default) or tar.gz"`
+	Variables string `json:"variables,omitempty" jsonschema:"JSON object of variables for placeholder substitution"`
+}
+
+// --- Unified Search ---
+
+// UnifiedSearchInput holds parameters for searching across all content sources.
+type UnifiedSearchInput struct {
+	Query  string   `json:"query" jsonschema:"Search text (1-255 characters),required"`
+	Types  []string `json:"types,omitempty" jsonschema:"Filter to specific content types: document, git_template, zim_archive, confluence_space"`
+	Limit  int      `json:"limit,omitempty" jsonschema:"Max results across all sources (default 20, max 100)"`
+	Offset int      `json:"offset,omitempty" jsonschema:"Pagination offset (default 0)"`
+}

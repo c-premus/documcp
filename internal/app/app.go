@@ -15,7 +15,10 @@ import (
 
 	"git.999.haus/chris/DocuMCP-go/internal/config"
 	"git.999.haus/chris/DocuMCP-go/internal/database"
+	mcphandler "git.999.haus/chris/DocuMCP-go/internal/handler/mcp"
+	"git.999.haus/chris/DocuMCP-go/internal/repository"
 	"git.999.haus/chris/DocuMCP-go/internal/server"
+	"git.999.haus/chris/DocuMCP-go/internal/service"
 )
 
 // App holds all application dependencies wired together.
@@ -51,6 +54,35 @@ func New(cfg *config.Config) (*App, error) {
 
 	logger.Info("database migrations applied")
 
+	// --- Repositories ---
+	documentRepo := repository.NewDocumentRepository(db, logger)
+	externalServiceRepo := repository.NewExternalServiceRepository(db, logger)
+	zimArchiveRepo := repository.NewZimArchiveRepository(db, logger)
+	confluenceSpaceRepo := repository.NewConfluenceSpaceRepository(db, logger)
+	gitTemplateRepo := repository.NewGitTemplateRepository(db, logger)
+	searchQueryRepo := repository.NewSearchQueryRepository(db, logger)
+
+	// --- Services ---
+	documentService := service.NewDocumentService(documentRepo, logger)
+
+	// --- MCP Handler ---
+	mcpH := mcphandler.New(mcphandler.Config{
+		ServerName:          cfg.DocuMCP.ServerName,
+		ServerVersion:       cfg.DocuMCP.ServerVersion,
+		Logger:              logger,
+		DocumentService:     documentService,
+		DocumentRepo:        documentRepo,
+		SearchQueryRepo:     searchQueryRepo,
+		ExternalServiceRepo: externalServiceRepo,
+		ZimArchiveRepo:      zimArchiveRepo,
+		ConfluenceSpaceRepo: confluenceSpaceRepo,
+		GitTemplateRepo:     gitTemplateRepo,
+		ZimEnabled:          true,
+		ConfluenceEnabled:   true,
+		GitTemplatesEnabled: true,
+	})
+
+	// --- HTTP Server ---
 	srv := server.New(server.Config{
 		Host:           cfg.Server.Host,
 		Port:           cfg.Server.Port,
@@ -60,7 +92,15 @@ func New(cfg *config.Config) (*App, error) {
 		TrustedProxies: cfg.Server.TrustedProxies,
 	}, logger)
 
-	srv.RegisterRoutes(cfg.DocuMCP.ServerVersion)
+	srv.RegisterRoutes(server.Deps{
+		Version:    cfg.DocuMCP.ServerVersion,
+		MCPHandler: mcpH,
+	})
+
+	logger.Info("MCP server configured",
+		"name", cfg.DocuMCP.ServerName,
+		"version", cfg.DocuMCP.ServerVersion,
+	)
 
 	return &App{
 		Config: cfg,

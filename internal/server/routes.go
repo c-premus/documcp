@@ -10,9 +10,14 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/handler"
 )
 
+// Deps holds handler dependencies injected from the app layer.
+type Deps struct {
+	Version    string
+	MCPHandler http.Handler // nil if MCP is not configured
+}
+
 // RegisterRoutes configures all middleware and route groups on the server.
-// The version string is embedded in the health response.
-func (s *Server) RegisterRoutes(version string) {
+func (s *Server) RegisterRoutes(deps Deps) {
 	r := s.router
 
 	// Built-in chi middleware
@@ -26,13 +31,17 @@ func (s *Server) RegisterRoutes(version string) {
 	r.Use(RequestLogger(s.logger))
 
 	// Health check
-	health := handler.NewHealthHandler(version)
+	health := handler.NewHealthHandler(deps.Version)
 	r.Method(http.MethodGet, "/health", health)
 
-	// MCP endpoint (TODO)
-	r.Route("/documcp", func(r chi.Router) {
-		// TODO: register MCP handlers
-	})
+	// MCP endpoint
+	if deps.MCPHandler != nil {
+		r.Route("/documcp", func(r chi.Router) {
+			r.Handle("/*", deps.MCPHandler)
+			r.Handle("/", deps.MCPHandler)
+		})
+		s.logger.Info("MCP endpoint registered", "path", "/documcp")
+	}
 
 	// OAuth endpoints (TODO)
 	r.Route("/oauth", func(r chi.Router) {

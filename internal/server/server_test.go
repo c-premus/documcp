@@ -20,7 +20,7 @@ func newTestServer(t *testing.T) *server.Server {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := server.DefaultConfig()
 	srv := server.New(cfg, logger)
-	srv.RegisterRoutes("test-version")
+	srv.RegisterRoutes(server.Deps{Version: "test-version"})
 
 	return srv
 }
