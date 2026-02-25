@@ -67,6 +67,52 @@ func TestMarkdownExtractor_Extract(t *testing.T) {
 			wantWordCount: 5,
 			wantHasTitle:  false,
 		},
+		{
+			name:          "h3 heading is not treated as title",
+			content:       "### Third Level\n\nBody.",
+			wantWordCount: 4,
+			wantHasTitle:  false,
+		},
+		{
+			name:          "first h1 wins when multiple h1 headings exist",
+			content:       "# First Title\n\n# Second Title\n\nBody.",
+			wantTitle:     "First Title",
+			wantHasTitle:  true,
+			wantWordCount: 7,
+		},
+		{
+			name:          "heading with only hash and space but no text is not a title",
+			content:       "# \n\nBody text.",
+			wantHasTitle:  false,
+			wantWordCount: 3,
+		},
+		{
+			name:          "title found on non-first line",
+			content:       "Some preamble text.\n\n# Late Title\n\nBody.",
+			wantTitle:     "Late Title",
+			wantHasTitle:  true,
+			wantWordCount: 7,
+		},
+		{
+			name:          "content with unicode characters",
+			content:       "# Ubersicht\n\nDies ist ein Test mit Umlauten.",
+			wantTitle:     "Ubersicht",
+			wantHasTitle:  true,
+			wantWordCount: 8,
+		},
+		{
+			name:          "whitespace-only file returns zero word count",
+			content:       "   \n\n   \t\n",
+			wantWordCount: 0,
+			wantHasTitle:  false,
+		},
+		{
+			name:          "content preserved exactly including trailing newline",
+			content:       "Line one\nLine two\n",
+			wantContent:   "Line one\nLine two\n",
+			wantWordCount: 4,
+			wantHasTitle:  false,
+		},
 	}
 
 	for _, tt := range tests {

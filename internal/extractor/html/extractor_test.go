@@ -65,6 +65,63 @@ func TestHTMLExtractor_Extract(t *testing.T) {
 			htmlContent:  `<html><head><title>   </title></head><body><p>text</p></body></html>`,
 			wantHasTitle: false,
 		},
+		{
+			name:            "style tags are stripped during sanitization",
+			htmlContent:     `<html><body><style>body{color:red}</style><p>Styled text</p></body></html>`,
+			wantContains:    []string{"Styled text"},
+			wantNotContains: []string{"color:red", "style"},
+			wantHasTitle:    false,
+		},
+		{
+			name:            "inline event handlers are stripped",
+			htmlContent:     `<html><body><p onclick="alert('xss')">Click me</p></body></html>`,
+			wantContains:    []string{"Click me"},
+			wantNotContains: []string{"onclick", "alert"},
+			wantHasTitle:    false,
+		},
+		{
+			name:         "anchor tags preserve link text",
+			htmlContent:  `<html><body><a href="https://example.com">Example Link</a></body></html>`,
+			wantContains: []string{"Example Link"},
+			wantHasTitle: false,
+		},
+		{
+			name:         "unordered list items are preserved",
+			htmlContent:  `<html><body><ul><li>First</li><li>Second</li><li>Third</li></ul></body></html>`,
+			wantContains: []string{"First", "Second", "Third"},
+			wantHasTitle: false,
+		},
+		{
+			name:         "nested tags preserve innermost text",
+			htmlContent:  `<html><body><p><strong><em>Bold italic</em></strong></p></body></html>`,
+			wantContains: []string{"Bold italic"},
+			wantHasTitle: false,
+		},
+		{
+			name:          "whitespace-only body produces zero word count",
+			htmlContent:   `<html><body>   </body></html>`,
+			wantWordCount: 0,
+			wantHasTitle:  false,
+		},
+		{
+			name:         "title with HTML entities",
+			htmlContent:  `<html><head><title>Tom &amp; Jerry</title></head><body><p>Cartoon</p></body></html>`,
+			wantTitle:    "Tom &amp; Jerry",
+			wantHasTitle: true,
+		},
+		{
+			name:         "case-insensitive title tag matching",
+			htmlContent:  `<html><head><TITLE>Upper Title</TITLE></head><body><p>text</p></body></html>`,
+			wantTitle:    "Upper Title",
+			wantHasTitle: true,
+		},
+		{
+			name:          "word count counts correctly for multi-paragraph HTML",
+			htmlContent:   `<html><body><p>one two</p><p>three four five</p></body></html>`,
+			wantContains:  []string{"one two", "three four five"},
+			wantWordCount: 5,
+			wantHasTitle:  false,
+		},
 	}
 
 	for _, tt := range tests {

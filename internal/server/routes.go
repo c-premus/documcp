@@ -8,13 +8,14 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/gorilla/sessions"
 
-	"github.com/c-premus/documcp/internal/auth/oauth"
 	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
+	"github.com/c-premus/documcp/internal/auth/oauth"
 	"github.com/c-premus/documcp/internal/auth/oidc"
 	"github.com/c-premus/documcp/internal/handler"
 	adminhandler "github.com/c-premus/documcp/internal/handler/admin"
 	apihandler "github.com/c-premus/documcp/internal/handler/api"
 	oauthhandler "github.com/c-premus/documcp/internal/handler/oauth"
+	"github.com/c-premus/documcp/internal/observability"
 )
 
 // Deps holds handler dependencies injected from the app layer.
@@ -40,6 +41,10 @@ type Deps struct {
 
 	// Phase 5: Admin UI
 	AdminHandler *adminhandler.Handler
+
+	// Observability
+	Metrics      *observability.Metrics // nil disables Prometheus metrics
+	OTELEnabled  bool                   // enables tracing middleware
 }
 
 // RegisterRoutes configures all middleware and route groups on the server.
@@ -52,6 +57,17 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
 
+	// OpenTelemetry tracing middleware
+	if deps.OTELEnabled {
+		r.Use(observability.Tracing("documcp"))
+	}
+
+	// Prometheus metrics middleware (before application middleware so it
+	// captures the full request lifecycle including logging overhead).
+	if deps.Metrics != nil {
+		r.Use(observability.MetricsMiddleware(deps.Metrics))
+	}
+
 	// Application middleware
 	r.Use(SecurityHeaders)
 	r.Use(RequestLogger(s.logger))
@@ -59,6 +75,12 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	// Health check
 	health := handler.NewHealthHandler(deps.Version)
 	r.Method(http.MethodGet, "/health", health)
+
+	// Prometheus metrics endpoint
+	if deps.Metrics != nil {
+		r.Method(http.MethodGet, "/metrics", observability.MetricsHandler())
+		s.logger.Info("Prometheus metrics endpoint registered", "path", "/metrics")
+	}
 
 	// MCP endpoint
 	if deps.MCPHandler != nil {

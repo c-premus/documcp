@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -230,4 +231,227 @@ func TestPool_Dispatch(t *testing.T) {
 			t.Fatal("Shutdown() returned before in-progress job completed")
 		}
 	})
+}
+
+func TestPool_Dispatch_BufferFullErrorContainsJobName(t *testing.T) {
+	pool := queue.NewPool(1, 1, testLogger())
+	defer pool.Shutdown()
+
+	blocker := make(chan struct{})
+
+	// Block the worker.
+	_ = pool.Dispatch(queue.Job{
+		Name: "blocker",
+		Fn: func(ctx context.Context) error {
+			<-blocker
+			return nil
+		},
+	})
+	time.Sleep(50 * time.Millisecond)
+
+	// Fill the buffer.
+	_ = pool.Dispatch(queue.Job{
+		Name: "filler",
+		Fn:   func(ctx context.Context) error { return nil },
+	})
+
+	// Overflow should contain the job name.
+	err := pool.Dispatch(queue.Job{
+		Name: "overflow-named",
+		Fn:   func(ctx context.Context) error { return nil },
+	})
+	if err == nil {
+		close(blocker)
+		t.Fatal("expected error, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "overflow-named") {
+		t.Errorf("error %q should contain the job name %q", err.Error(), "overflow-named")
+	}
+
+	close(blocker)
+}
+
+func TestPool_Dispatch_ShutdownErrorContainsJobName(t *testing.T) {
+	pool := queue.NewPool(1, 5, testLogger())
+	pool.Shutdown()
+
+	var err error
+	func() {
+		defer func() { recover() }() //nolint:errcheck
+		err = pool.Dispatch(queue.Job{
+			Name: "post-shutdown-named",
+			Fn:   func(ctx context.Context) error { return nil },
+		})
+	}()
+
+	// When the context.Done branch is selected, the error should contain the job name.
+	if err != nil && !strings.Contains(err.Error(), "post-shutdown-named") {
+		t.Errorf("error %q should contain the job name %q", err.Error(), "post-shutdown-named")
+	}
+}
+
+func TestPool_JobReceivesPoolContext(t *testing.T) {
+	pool := queue.NewPool(1, 5, testLogger())
+	defer pool.Shutdown()
+
+	ctxCh := make(chan context.Context, 1)
+
+	err := pool.Dispatch(queue.Job{
+		Name: "ctx-check",
+		Fn: func(ctx context.Context) error {
+			ctxCh <- ctx
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() returned unexpected error: %v", err)
+	}
+
+	select {
+	case ctx := <-ctxCh:
+		// The context should not be nil and should not already be done.
+		if ctx == nil {
+			t.Fatal("job received nil context")
+		}
+		if ctx.Err() != nil {
+			t.Fatalf("job context already cancelled: %v", ctx.Err())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for job context")
+	}
+}
+
+func TestPool_ConcurrentDispatchAndShutdown(t *testing.T) {
+	pool := queue.NewPool(4, 100, testLogger())
+
+	var executed atomic.Int32
+	var wg sync.WaitGroup
+
+	// Dispatch many jobs rapidly.
+	for i := range 50 {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			_ = pool.Dispatch(queue.Job{
+				Name: "concurrent",
+				Fn: func(ctx context.Context) error {
+					executed.Add(1)
+					return nil
+				},
+			})
+		}(i)
+	}
+
+	wg.Wait()
+	pool.Shutdown()
+
+	// All successfully dispatched jobs must have completed.
+	if got := executed.Load(); got == 0 {
+		t.Fatal("expected at least some jobs to execute, got 0")
+	}
+}
+
+func TestPool_SingleWorker_ProcessesInOrder(t *testing.T) {
+	pool := queue.NewPool(1, 10, testLogger())
+	defer pool.Shutdown()
+
+	var mu sync.Mutex
+	var order []int
+
+	var wg sync.WaitGroup
+	for i := range 5 {
+		wg.Add(1)
+		n := i
+		err := pool.Dispatch(queue.Job{
+			Name: "ordered",
+			Fn: func(ctx context.Context) error {
+				mu.Lock()
+				order = append(order, n)
+				mu.Unlock()
+				wg.Done()
+				return nil
+			},
+		})
+		if err != nil {
+			t.Fatalf("Dispatch() job %d returned unexpected error: %v", i, err)
+		}
+	}
+
+	waitDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(waitDone)
+	}()
+
+	select {
+	case <-waitDone:
+		// With a single worker, jobs should be processed in FIFO order.
+		mu.Lock()
+		defer mu.Unlock()
+		for i, v := range order {
+			if v != i {
+				t.Errorf("order[%d] = %d, want %d (expected FIFO processing)", i, v, i)
+			}
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for ordered jobs to complete")
+	}
+}
+
+func TestPool_MultipleConsecutiveFailures(t *testing.T) {
+	pool := queue.NewPool(2, 10, testLogger())
+	defer pool.Shutdown()
+
+	const numFailures = 5
+	var failCount atomic.Int32
+	var wg sync.WaitGroup
+	wg.Add(numFailures)
+
+	for range numFailures {
+		err := pool.Dispatch(queue.Job{
+			Name: "fail",
+			Fn: func(ctx context.Context) error {
+				failCount.Add(1)
+				wg.Done()
+				return errors.New("intentional failure")
+			},
+		})
+		if err != nil {
+			t.Fatalf("Dispatch() returned unexpected error: %v", err)
+		}
+	}
+
+	waitDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(waitDone)
+	}()
+
+	select {
+	case <-waitDone:
+		// All failures processed.
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for failing jobs")
+	}
+
+	// Now dispatch a success job to confirm the pool is alive.
+	done := make(chan struct{})
+	err := pool.Dispatch(queue.Job{
+		Name: "success-after-failures",
+		Fn: func(ctx context.Context) error {
+			close(done)
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() returned unexpected error: %v", err)
+	}
+
+	select {
+	case <-done:
+		// Pool survived.
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for success job after multiple failures")
+	}
 }

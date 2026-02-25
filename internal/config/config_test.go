@@ -334,3 +334,184 @@ func TestConfig_Validate_MultipleErrors(t *testing.T) {
 		t.Errorf("error should mention missing username: %s", msg)
 	}
 }
+
+func TestConfig_Validate_ErrorMessageFormat(t *testing.T) {
+	cfg := Config{
+		Database: DatabaseConfig{
+			Host:     "localhost",
+			Username: "admin",
+			// Database is missing.
+		},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	msg := err.Error()
+	if !strings.HasPrefix(msg, "config validation failed:") {
+		t.Errorf("error message should start with 'config validation failed:', got: %s", msg)
+	}
+
+	// Should contain DB_DATABASE hint.
+	if !strings.Contains(msg, "DB_DATABASE") {
+		t.Errorf("error message should mention env var hint DB_DATABASE: %s", msg)
+	}
+}
+
+func TestConfig_Validate_SingleFieldMissing(t *testing.T) {
+	tests := []struct {
+		name   string
+		cfg    Config
+		errMsg string
+	}{
+		{
+			name: "only host missing",
+			cfg: Config{
+				Database: DatabaseConfig{
+					Database: "mydb",
+					Username: "admin",
+				},
+			},
+			errMsg: "database host is required",
+		},
+		{
+			name: "only database missing",
+			cfg: Config{
+				Database: DatabaseConfig{
+					Host:     "localhost",
+					Username: "admin",
+				},
+			},
+			errMsg: "database name is required",
+		},
+		{
+			name: "only username missing",
+			cfg: Config{
+				Database: DatabaseConfig{
+					Host:     "localhost",
+					Database: "mydb",
+				},
+			},
+			errMsg: "database username is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("error %q does not contain %q", err.Error(), tt.errMsg)
+			}
+		})
+	}
+}
+
+func TestConfig_DatabaseDSN_ZeroPort(t *testing.T) {
+	cfg := Config{
+		Database: DatabaseConfig{
+			Host:     "localhost",
+			Port:     0,
+			Username: "user",
+			Database: "db",
+			SSLMode:  "disable",
+		},
+	}
+
+	dsn := cfg.DatabaseDSN()
+	if !strings.Contains(dsn, "port=0") {
+		t.Errorf("DatabaseDSN() should contain port=0 when port is zero, got: %q", dsn)
+	}
+}
+
+func TestConfig_DatabaseDSN_EmptyPassword(t *testing.T) {
+	cfg := Config{
+		Database: DatabaseConfig{
+			Host:     "localhost",
+			Port:     5432,
+			Username: "user",
+			Password: "",
+			Database: "db",
+			SSLMode:  "disable",
+		},
+	}
+
+	dsn := cfg.DatabaseDSN()
+	if strings.Contains(dsn, "password=") {
+		t.Errorf("DatabaseDSN() should not contain password when empty, got: %q", dsn)
+	}
+}
+
+func TestConfig_Validate_ValidWithMinimumFields(t *testing.T) {
+	cfg := Config{
+		Database: DatabaseConfig{
+			Host:     "h",
+			Database: "d",
+			Username: "u",
+		},
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() unexpected error: %v", err)
+	}
+}
+
+func TestLoad_FromYAMLConfigFile(t *testing.T) {
+	// Write a temporary YAML config file and point DOCUMCP_CONFIG_PATH to it.
+	dir := t.TempDir()
+	configFile := dir + "/test-config.yaml"
+	yamlContent := `
+app_name: YAMLApp
+app_env: staging
+server_port: 3000
+db_host: yaml-db-host
+db_database: yamldb
+db_username: yamluser
+`
+	if err := os.WriteFile(configFile, []byte(yamlContent), 0o644); err != nil {
+		t.Fatalf("writing config file: %v", err)
+	}
+
+	setEnv(t, "DOCUMCP_CONFIG_PATH", configFile)
+	// Clear env vars that might override YAML values.
+	for _, key := range []string{"APP_NAME", "APP_ENV", "SERVER_PORT", "DB_HOST", "DB_DATABASE", "DB_USERNAME"} {
+		prev, existed := os.LookupEnv(key)
+		if existed {
+			t.Cleanup(func() { _ = os.Setenv(key, prev) })
+		} else {
+			t.Cleanup(func() { _ = os.Unsetenv(key) })
+		}
+		_ = os.Unsetenv(key)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned unexpected error: %v", err)
+	}
+
+	if cfg.App.Name != "YAMLApp" {
+		t.Errorf("App.Name = %q, want %q", cfg.App.Name, "YAMLApp")
+	}
+	if cfg.App.Env != "staging" {
+		t.Errorf("App.Env = %q, want %q", cfg.App.Env, "staging")
+	}
+	if cfg.Server.Port != 3000 {
+		t.Errorf("Server.Port = %d, want %d", cfg.Server.Port, 3000)
+	}
+	if cfg.Database.Host != "yaml-db-host" {
+		t.Errorf("Database.Host = %q, want %q", cfg.Database.Host, "yaml-db-host")
+	}
+}
+
+func TestLoad_NonExistentExplicitConfigFileReturnsError(t *testing.T) {
+	setEnv(t, "DOCUMCP_CONFIG_PATH", "/nonexistent/path/config.yaml")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() expected error for non-existent explicit config file, got nil")
+	}
+}
