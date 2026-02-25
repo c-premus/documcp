@@ -83,15 +83,15 @@ type OIDCConfig struct {
 
 // OAuthConfig holds OAuth 2.1 authorization server settings.
 type OAuthConfig struct {
-	AuthCodeLifetime     time.Duration `mapstructure:"oauth_authorization_code_lifetime"`
-	AccessTokenLifetime  time.Duration `mapstructure:"oauth_access_token_lifetime"`
-	RefreshTokenLifetime time.Duration `mapstructure:"oauth_refresh_token_lifetime"`
-	DeviceCodeLifetime   time.Duration `mapstructure:"oauth_device_code_lifetime"`
-	DeviceCodeInterval   time.Duration `mapstructure:"oauth_device_polling_interval"`
-	RequirePKCE          bool          `mapstructure:"oauth_pkce_required"`
-	SessionSecret        string        `mapstructure:"oauth_session_secret"`
-	RegistrationEnabled  bool          `mapstructure:"oauth_registration_enabled"`
-	RegistrationRequireAuth bool       `mapstructure:"oauth_registration_require_auth"`
+	AuthCodeLifetime        time.Duration `mapstructure:"oauth_authorization_code_lifetime"`
+	AccessTokenLifetime     time.Duration `mapstructure:"oauth_access_token_lifetime"`
+	RefreshTokenLifetime    time.Duration `mapstructure:"oauth_refresh_token_lifetime"`
+	DeviceCodeLifetime      time.Duration `mapstructure:"oauth_device_code_lifetime"`
+	DeviceCodeInterval      time.Duration `mapstructure:"oauth_device_polling_interval"`
+	RequirePKCE             bool          `mapstructure:"oauth_pkce_required"`
+	SessionSecret           string        `mapstructure:"oauth_session_secret"`
+	RegistrationEnabled     bool          `mapstructure:"oauth_registration_enabled"`
+	RegistrationRequireAuth bool          `mapstructure:"oauth_registration_require_auth"`
 }
 
 // StorageConfig holds file storage settings.
@@ -278,10 +278,10 @@ func Load() (*Config, error) {
 	}
 
 	cfg.OAuth = OAuthConfig{
-		AuthCodeLifetime:     v.GetDuration("oauth_authorization_code_lifetime"),
-		AccessTokenLifetime:  v.GetDuration("oauth_access_token_lifetime"),
-		RefreshTokenLifetime: v.GetDuration("oauth_refresh_token_lifetime"),
-		DeviceCodeLifetime:   v.GetDuration("oauth_device_code_lifetime"),
+		AuthCodeLifetime:        v.GetDuration("oauth_authorization_code_lifetime"),
+		AccessTokenLifetime:     v.GetDuration("oauth_access_token_lifetime"),
+		RefreshTokenLifetime:    v.GetDuration("oauth_refresh_token_lifetime"),
+		DeviceCodeLifetime:      v.GetDuration("oauth_device_code_lifetime"),
 		DeviceCodeInterval:      v.GetDuration("oauth_device_polling_interval"),
 		RequirePKCE:             v.GetBool("oauth_pkce_required"),
 		SessionSecret:           v.GetString("oauth_session_secret"),

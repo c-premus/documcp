@@ -96,13 +96,13 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	// Store pending request in session
 	session.Values["oauth_pending_request"] = map[string]any{
 		"nonce":                 nonce,
-		"client_id":            clientID,
-		"state":                state,
-		"redirect_uri":         redirectURI,
-		"code_challenge":       codeChallenge,
+		"client_id":             clientID,
+		"state":                 state,
+		"redirect_uri":          redirectURI,
+		"code_challenge":        codeChallenge,
 		"code_challenge_method": codeChallengeMethod,
-		"scope":                scope,
-		"timestamp":            time.Now().Unix(),
+		"scope":                 scope,
+		"timestamp":             time.Now().Unix(),
 	}
 	if err := session.Save(r, w); err != nil {
 		h.logger.Error("saving session", "error", err)

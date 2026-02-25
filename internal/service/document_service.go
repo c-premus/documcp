@@ -81,13 +81,13 @@ func (s *DocumentService) Create(ctx context.Context, params CreateDocumentParam
 	now := time.Now()
 
 	doc := &model.Document{
-		UUID:     uuid.New().String(),
-		Title:    params.Title,
-		FileType: params.FileType,
-		FilePath: "",
-		FileSize: int64(len(params.Content)),
-		MIMEType: mimeType,
-		Content:  sql.NullString{String: params.Content, Valid: true},
+		UUID:        uuid.New().String(),
+		Title:       params.Title,
+		FileType:    params.FileType,
+		FilePath:    "",
+		FileSize:    int64(len(params.Content)),
+		MIMEType:    mimeType,
+		Content:     sql.NullString{String: params.Content, Valid: true},
 		ContentHash: sql.NullString{String: contentHash, Valid: true},
 		WordCount:   sql.NullInt64{Int64: wordCount, Valid: true},
 		ProcessedAt: sql.NullTime{Time: now, Valid: true},
@@ -181,10 +181,16 @@ func (s *DocumentService) TagsForDocument(ctx context.Context, documentID int64)
 // mimeTypeForFileType maps a file type string to its MIME type.
 func mimeTypeForFileType(fileType string) string {
 	switch strings.ToLower(fileType) {
-	case "markdown", "md":
+	case "markdown", "md", "txt":
 		return "text/markdown"
-	case "html":
+	case "html", "htm":
 		return "text/html"
+	case "pdf":
+		return "application/pdf"
+	case "docx":
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case "xlsx":
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	default:
 		return "application/octet-stream"
 	}

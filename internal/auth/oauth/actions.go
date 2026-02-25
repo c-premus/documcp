@@ -219,11 +219,11 @@ func (s *Service) GenerateAuthorizationCode(ctx context.Context, params Generate
 	}
 
 	code := &model.OAuthAuthorizationCode{
-		Code:      token.Hash,
-		ClientID:  params.ClientID,
-		UserID:    sql.NullInt64{Int64: params.UserID, Valid: params.UserID > 0},
+		Code:        token.Hash,
+		ClientID:    params.ClientID,
+		UserID:      sql.NullInt64{Int64: params.UserID, Valid: params.UserID > 0},
 		RedirectURI: params.RedirectURI,
-		Scope:     sql.NullString{String: params.Scope, Valid: params.Scope != ""},
+		Scope:       sql.NullString{String: params.Scope, Valid: params.Scope != ""},
 		CodeChallenge: sql.NullString{
 			String: params.CodeChallenge,
 			Valid:  params.CodeChallenge != "",

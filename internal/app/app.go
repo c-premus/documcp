@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -21,19 +22,29 @@ import (
 	"github.com/c-premus/documcp/internal/auth/oidc"
 	"github.com/c-premus/documcp/internal/config"
 	"github.com/c-premus/documcp/internal/database"
+	"github.com/c-premus/documcp/internal/extractor"
+	docxext "github.com/c-premus/documcp/internal/extractor/docx"
+	htmlext "github.com/c-premus/documcp/internal/extractor/html"
+	markdownext "github.com/c-premus/documcp/internal/extractor/markdown"
+	pdfext "github.com/c-premus/documcp/internal/extractor/pdf"
+	xlsxext "github.com/c-premus/documcp/internal/extractor/xlsx"
+	apihandler "github.com/c-premus/documcp/internal/handler/api"
 	mcphandler "github.com/c-premus/documcp/internal/handler/mcp"
 	oauthhandler "github.com/c-premus/documcp/internal/handler/oauth"
+	"github.com/c-premus/documcp/internal/queue"
 	"github.com/c-premus/documcp/internal/repository"
+	"github.com/c-premus/documcp/internal/search"
 	"github.com/c-premus/documcp/internal/server"
 	"github.com/c-premus/documcp/internal/service"
 )
 
 // App holds all application dependencies wired together.
 type App struct {
-	Config *config.Config
-	DB     *sqlx.DB
-	Logger *slog.Logger
-	Server *server.Server
+	Config     *config.Config
+	DB         *sqlx.DB
+	Logger     *slog.Logger
+	Server     *server.Server
+	WorkerPool *queue.Pool
 }
 
 // New creates a new App, wiring all dependencies together.
@@ -90,8 +101,53 @@ func New(cfg *config.Config) (*App, error) {
 	searchQueryRepo := repository.NewSearchQueryRepository(db, logger)
 	oauthRepo := repository.NewOAuthRepository(db, logger)
 
+	// --- Meilisearch ---
+	var searchClient *search.Client
+	var searchIndexer *search.Indexer
+	var searcher *search.Searcher
+
+	if cfg.Meilisearch.Host != "" {
+		searchClient = search.NewClient(cfg.Meilisearch.Host, cfg.Meilisearch.Key, logger)
+		if searchClient.Healthy() {
+			if err := searchClient.ConfigureIndexes(context.Background()); err != nil {
+				logger.Warn("failed to configure Meilisearch indexes", "error", err)
+			} else {
+				logger.Info("Meilisearch connected and indexes configured", "host", cfg.Meilisearch.Host)
+			}
+			searchIndexer = search.NewIndexer(searchClient, logger)
+			searcher = search.NewSearcher(searchClient, logger)
+		} else {
+			logger.Warn("Meilisearch not reachable, search features disabled", "host", cfg.Meilisearch.Host)
+		}
+	}
+
+	// --- Content Extractors ---
+	extractorRegistry := extractor.NewRegistry(
+		pdfext.New(),
+		docxext.New(),
+		xlsxext.New(),
+		htmlext.New(),
+		markdownext.New(),
+	)
+
+	// --- Worker Pool ---
+	workerPool := queue.NewPool(3, 100, logger)
+
+	// --- Storage ---
+	storagePath := filepath.Join(cfg.Storage.BasePath, cfg.Storage.DocumentPath)
+	if err := os.MkdirAll(storagePath, 0o755); err != nil {
+		return nil, fmt.Errorf("creating document storage path: %w", err)
+	}
+
 	// --- Services ---
 	documentService := service.NewDocumentService(documentRepo, logger)
+	documentPipeline := service.NewDocumentPipeline(
+		documentService,
+		extractorRegistry,
+		searchIndexer,
+		workerPool,
+		storagePath,
+	)
 	oauthService := oauth.NewService(oauthRepo, cfg.OAuth, cfg.App.URL, logger)
 
 	// --- OAuth Handler ---
@@ -114,6 +170,13 @@ func New(cfg *config.Config) (*App, error) {
 		logger.Warn("OIDC provider discovery failed, OIDC login disabled", "error", err)
 	} else if oidcH != nil {
 		logger.Info("OIDC provider configured", "provider_url", cfg.OIDC.ProviderURL)
+	}
+
+	// --- API Handlers ---
+	documentH := apihandler.NewDocumentHandler(documentPipeline, documentRepo, logger)
+	var searchH *apihandler.SearchHandler
+	if searcher != nil {
+		searchH = apihandler.NewSearchHandler(searcher, logger)
 	}
 
 	// --- MCP Handler ---
@@ -144,12 +207,14 @@ func New(cfg *config.Config) (*App, error) {
 	}, logger)
 
 	srv.RegisterRoutes(server.Deps{
-		Version:      cfg.DocuMCP.ServerVersion,
-		MCPHandler:   mcpH,
-		OAuthHandler: oauthH,
-		OIDCHandler:  oidcH,
-		OAuthService: oauthService,
-		SessionStore: sessionStore,
+		Version:         cfg.DocuMCP.ServerVersion,
+		MCPHandler:      mcpH,
+		OAuthHandler:    oauthH,
+		OIDCHandler:     oidcH,
+		OAuthService:    oauthService,
+		SessionStore:    sessionStore,
+		DocumentHandler: documentH,
+		SearchHandler:   searchH,
 	})
 
 	logger.Info("MCP server configured",
@@ -158,10 +223,11 @@ func New(cfg *config.Config) (*App, error) {
 	)
 
 	return &App{
-		Config: cfg,
-		DB:     db,
-		Logger: logger,
-		Server: srv,
+		Config:     cfg,
+		DB:         db,
+		Logger:     logger,
+		Server:     srv,
+		WorkerPool: workerPool,
 	}, nil
 }
 
@@ -196,6 +262,9 @@ func (a *App) Start(ctx context.Context) error {
 
 // Close releases all resources held by the application.
 func (a *App) Close() error {
+	if a.WorkerPool != nil {
+		a.WorkerPool.Shutdown()
+	}
 	if a.DB != nil {
 		if err := a.DB.Close(); err != nil {
 			return fmt.Errorf("closing database: %w", err)

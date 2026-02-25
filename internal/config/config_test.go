@@ -334,4 +334,3 @@ func TestConfig_Validate_MultipleErrors(t *testing.T) {
 		t.Errorf("error should mention missing username: %s", msg)
 	}
 }
-
