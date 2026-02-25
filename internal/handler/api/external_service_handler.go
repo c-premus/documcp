@@ -1,0 +1,264 @@
+package api
+
+import (
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+
+	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"git.999.haus/chris/DocuMCP-go/internal/service"
+)
+
+// ExternalServiceHandler handles REST API endpoints for external services.
+type ExternalServiceHandler struct {
+	svc    *service.ExternalServiceService
+	logger *slog.Logger
+}
+
+// NewExternalServiceHandler creates a new ExternalServiceHandler.
+func NewExternalServiceHandler(
+	svc *service.ExternalServiceService,
+	logger *slog.Logger,
+) *ExternalServiceHandler {
+	return &ExternalServiceHandler{
+		svc:    svc,
+		logger: logger,
+	}
+}
+
+// externalServiceResponse is the JSON representation of an external service.
+type externalServiceResponse struct {
+	UUID                string `json:"uuid"`
+	Name                string `json:"name"`
+	Slug                string `json:"slug"`
+	Type                string `json:"type"`
+	BaseURL             string `json:"base_url"`
+	Priority            int    `json:"priority"`
+	Status              string `json:"status"`
+	IsEnabled           bool   `json:"is_enabled"`
+	IsEnvManaged        bool   `json:"is_env_managed"`
+	ErrorCount          int    `json:"error_count"`
+	ConsecutiveFailures int    `json:"consecutive_failures"`
+	LastError           string `json:"last_error,omitempty"`
+	LastErrorAt         string `json:"last_error_at,omitempty"`
+	LastCheckAt         string `json:"last_check_at,omitempty"`
+	LastLatencyMS       int64  `json:"last_latency_ms,omitempty"`
+	CreatedAt           string `json:"created_at,omitempty"`
+	UpdatedAt           string `json:"updated_at,omitempty"`
+}
+
+// List handles GET /api/external-services -- list external services with filters.
+func (h *ExternalServiceHandler) List(w http.ResponseWriter, r *http.Request) {
+	serviceType := r.URL.Query().Get("type")
+	status := r.URL.Query().Get("status")
+
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 {
+		limit = 50
+	}
+
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	services, total, err := h.svc.List(r.Context(), serviceType, status, limit, offset)
+	if err != nil {
+		h.logger.Error("listing external services", "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to list external services")
+		return
+	}
+
+	items := make([]externalServiceResponse, 0, len(services))
+	for i := range services {
+		items = append(items, toExternalServiceResponse(&services[i]))
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"data": items,
+		"meta": map[string]any{
+			"total":  total,
+			"limit":  limit,
+			"offset": offset,
+		},
+	})
+}
+
+// Show handles GET /api/external-services/{uuid} -- get a single external service.
+func (h *ExternalServiceHandler) Show(w http.ResponseWriter, r *http.Request) {
+	svcUUID := chi.URLParam(r, "uuid")
+
+	svc, err := h.svc.FindByUUID(r.Context(), svcUUID)
+	if err != nil {
+		h.logger.Error("finding external service", "uuid", svcUUID, "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to find external service")
+		return
+	}
+	if svc == nil {
+		errorResponse(w, http.StatusNotFound, "external service not found")
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"data": toExternalServiceResponse(svc),
+	})
+}
+
+// Create handles POST /api/external-services -- create a new external service.
+func (h *ExternalServiceHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name     string `json:"name"`
+		Type     string `json:"type"`
+		BaseURL  string `json:"base_url"`
+		APIKey   string `json:"api_key"`
+		Config   string `json:"config"`
+		Priority int    `json:"priority"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errorResponse(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if body.Name == "" {
+		errorResponse(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if body.Type == "" {
+		errorResponse(w, http.StatusBadRequest, "type is required")
+		return
+	}
+	if body.BaseURL == "" {
+		errorResponse(w, http.StatusBadRequest, "base_url is required")
+		return
+	}
+
+	created, err := h.svc.Create(r.Context(), service.CreateExternalServiceParams{
+		Name:     body.Name,
+		Type:     body.Type,
+		BaseURL:  body.BaseURL,
+		APIKey:   body.APIKey,
+		Config:   body.Config,
+		Priority: body.Priority,
+	})
+	if err != nil {
+		h.logger.Error("creating external service", "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to create external service")
+		return
+	}
+
+	jsonResponse(w, http.StatusCreated, map[string]any{
+		"data":    toExternalServiceResponse(created),
+		"message": "External service created successfully.",
+	})
+}
+
+// Update handles PUT /api/external-services/{uuid} -- partial update of an external service.
+func (h *ExternalServiceHandler) Update(w http.ResponseWriter, r *http.Request) {
+	svcUUID := chi.URLParam(r, "uuid")
+
+	var body struct {
+		Name      string `json:"name"`
+		BaseURL   string `json:"base_url"`
+		APIKey    string `json:"api_key"`
+		Config    string `json:"config"`
+		Priority  *int   `json:"priority"`
+		IsEnabled *bool  `json:"is_enabled"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errorResponse(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	updated, err := h.svc.Update(r.Context(), svcUUID, service.UpdateExternalServiceParams{
+		Name:      body.Name,
+		BaseURL:   body.BaseURL,
+		APIKey:    body.APIKey,
+		Config:    body.Config,
+		Priority:  body.Priority,
+		IsEnabled: body.IsEnabled,
+	})
+	if err != nil {
+		h.logger.Error("updating external service", "uuid", svcUUID, "error", err)
+		if strings.Contains(err.Error(), "not found") {
+			errorResponse(w, http.StatusNotFound, "external service not found")
+			return
+		}
+		errorResponse(w, http.StatusInternalServerError, "failed to update external service")
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"data":    toExternalServiceResponse(updated),
+		"message": "External service updated successfully.",
+	})
+}
+
+// Delete handles DELETE /api/external-services/{uuid} -- delete an external service.
+func (h *ExternalServiceHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	svcUUID := chi.URLParam(r, "uuid")
+
+	if err := h.svc.Delete(r.Context(), svcUUID); err != nil {
+		h.logger.Error("deleting external service", "uuid", svcUUID, "error", err)
+		if strings.Contains(err.Error(), "not found") {
+			errorResponse(w, http.StatusNotFound, "external service not found")
+			return
+		}
+		if strings.Contains(err.Error(), "env-managed") {
+			errorResponse(w, http.StatusForbidden, "cannot delete environment-managed external service")
+			return
+		}
+		errorResponse(w, http.StatusInternalServerError, "failed to delete external service")
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"message": "External service deleted successfully.",
+	})
+}
+
+// HealthCheck handles POST /api/external-services/{uuid}/health -- trigger a health check.
+func (h *ExternalServiceHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
+	errorResponse(w, http.StatusNotImplemented, "health check not yet implemented")
+}
+
+// toExternalServiceResponse converts an ExternalService model to its JSON response DTO.
+func toExternalServiceResponse(es *model.ExternalService) externalServiceResponse {
+	resp := externalServiceResponse{
+		UUID:                es.UUID,
+		Name:                es.Name,
+		Slug:                es.Slug,
+		Type:                es.Type,
+		BaseURL:             es.BaseURL,
+		Priority:            es.Priority,
+		Status:              es.Status,
+		IsEnabled:           es.IsEnabled,
+		IsEnvManaged:        es.IsEnvManaged,
+		ErrorCount:          es.ErrorCount,
+		ConsecutiveFailures: es.ConsecutiveFailures,
+	}
+
+	if es.LastError.Valid {
+		resp.LastError = es.LastError.String
+	}
+	if es.LastErrorAt.Valid {
+		resp.LastErrorAt = es.LastErrorAt.Time.Format(time.RFC3339)
+	}
+	if es.LastCheckAt.Valid {
+		resp.LastCheckAt = es.LastCheckAt.Time.Format(time.RFC3339)
+	}
+	if es.LastLatencyMS.Valid {
+		resp.LastLatencyMS = es.LastLatencyMS.Int64
+	}
+	if es.CreatedAt.Valid {
+		resp.CreatedAt = es.CreatedAt.Time.Format(time.RFC3339)
+	}
+	if es.UpdatedAt.Valid {
+		resp.UpdatedAt = es.UpdatedAt.Time.Format(time.RFC3339)
+	}
+
+	return resp
+}
