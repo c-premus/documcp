@@ -27,6 +27,14 @@ type Deps struct {
 	// Phase 3: Document pipeline & search
 	DocumentHandler *apihandler.DocumentHandler // nil if not configured
 	SearchHandler   *apihandler.SearchHandler   // nil if Meilisearch not configured
+
+	// Phase 4: External service clients & REST API
+	ZimHandler             *apihandler.ZimHandler
+	ConfluenceHandler      *apihandler.ConfluenceHandler
+	GitTemplateHandler     *apihandler.GitTemplateHandler
+	ExternalServiceHandler *apihandler.ExternalServiceHandler
+	UserHandler            *apihandler.UserHandler
+	OAuthClientHandler     *apihandler.OAuthClientHandler
 }
 
 // RegisterRoutes configures all middleware and route groups on the server.
@@ -110,10 +118,77 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			r.Get("/search/unified", deps.SearchHandler.FederatedSearch)
 			s.logger.Info("search API endpoints registered")
 		}
+
+		// ZIM archive endpoints
+		if deps.ZimHandler != nil {
+			r.Route("/zim/archives", func(r chi.Router) {
+				r.Get("/", deps.ZimHandler.List)
+				r.Get("/{archive}", deps.ZimHandler.Show)
+				r.Get("/{archive}/search", deps.ZimHandler.Search)
+				r.Get("/{archive}/suggest", deps.ZimHandler.Suggest)
+				r.Get("/{archive}/articles/*", deps.ZimHandler.ReadArticle)
+			})
+			s.logger.Info("ZIM API endpoints registered")
+		}
+
+		// Confluence endpoints
+		if deps.ConfluenceHandler != nil {
+			r.Route("/confluence", func(r chi.Router) {
+				r.Get("/spaces", deps.ConfluenceHandler.ListSpaces)
+				r.Get("/spaces/{key}", deps.ConfluenceHandler.ShowSpace)
+				r.Get("/pages/search", deps.ConfluenceHandler.SearchPages)
+				r.Get("/pages/{id}", deps.ConfluenceHandler.ReadPage)
+			})
+			s.logger.Info("Confluence API endpoints registered")
+		}
+
+		// Git template endpoints
+		if deps.GitTemplateHandler != nil {
+			r.Route("/git-templates", func(r chi.Router) {
+				r.Get("/", deps.GitTemplateHandler.List)
+				r.Post("/", deps.GitTemplateHandler.Create)
+				r.Get("/search", deps.GitTemplateHandler.Search)
+				r.Get("/{uuid}", deps.GitTemplateHandler.Show)
+				r.Put("/{uuid}", deps.GitTemplateHandler.Update)
+				r.Delete("/{uuid}", deps.GitTemplateHandler.Delete)
+				r.Get("/{uuid}/structure", deps.GitTemplateHandler.Structure)
+				r.Get("/{uuid}/files/*", deps.GitTemplateHandler.ReadFile)
+				r.Get("/{uuid}/deployment-guide", deps.GitTemplateHandler.DeploymentGuide)
+				r.Post("/{uuid}/download", deps.GitTemplateHandler.Download)
+			})
+			s.logger.Info("Git template API endpoints registered")
+		}
+
+		// External service endpoints
+		if deps.ExternalServiceHandler != nil {
+			r.Route("/external-services", func(r chi.Router) {
+				r.Get("/", deps.ExternalServiceHandler.List)
+				r.Post("/", deps.ExternalServiceHandler.Create)
+				r.Get("/{uuid}", deps.ExternalServiceHandler.Show)
+				r.Put("/{uuid}", deps.ExternalServiceHandler.Update)
+				r.Delete("/{uuid}", deps.ExternalServiceHandler.Delete)
+				r.Post("/{uuid}/health-check", deps.ExternalServiceHandler.HealthCheck)
+			})
+			s.logger.Info("External service API endpoints registered")
+		}
 	})
 
-	// Admin UI (TODO)
+	// Admin UI and management
 	r.Route("/admin", func(r chi.Router) {
-		// TODO: register admin handlers
+		// Admin API endpoints
+		if deps.UserHandler != nil {
+			r.Route("/users", func(r chi.Router) {
+				r.Get("/", deps.UserHandler.List)
+				r.Get("/{uuid}", deps.UserHandler.Show)
+			})
+			s.logger.Info("Admin user endpoints registered")
+		}
+		if deps.OAuthClientHandler != nil {
+			r.Route("/oauth-clients", func(r chi.Router) {
+				r.Get("/", deps.OAuthClientHandler.List)
+				r.Get("/{id}", deps.OAuthClientHandler.Show)
+			})
+			s.logger.Info("Admin OAuth client endpoints registered")
+		}
 	})
 }

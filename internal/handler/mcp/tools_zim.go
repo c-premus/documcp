@@ -149,30 +149,81 @@ func (h *Handler) handleListZimArchives(ctx context.Context, _ *mcp.CallToolRequ
 	return nil, resp, nil
 }
 
-func (h *Handler) handleSearchZim(_ context.Context, _ *mcp.CallToolRequest, input dto.SearchZimInput) (*mcp.CallToolResult, searchZimResponse, error) {
+func (h *Handler) handleSearchZim(ctx context.Context, _ *mcp.CallToolRequest, input dto.SearchZimInput) (*mcp.CallToolResult, searchZimResponse, error) {
+	if h.kiwixClient == nil {
+		return nil, searchZimResponse{
+			Success: false,
+			Archive: input.Archive,
+			Query:   input.Query,
+			Results: []any{},
+			Message: "Kiwix service not configured",
+		}, nil
+	}
+
 	searchType := input.SearchType
 	if searchType == "" {
 		searchType = "fulltext"
 	}
 
-	resp := searchZimResponse{
-		Success:    false,
+	limit := input.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	results, err := h.kiwixClient.Search(ctx, input.Archive, input.Query, searchType, limit)
+	if err != nil {
+		return nil, searchZimResponse{}, fmt.Errorf("searching zim archive %s: %w", input.Archive, err)
+	}
+
+	items := make([]any, 0, len(results))
+	for _, r := range results {
+		items = append(items, map[string]any{
+			"title":   r.Title,
+			"path":    r.Path,
+			"snippet": r.Snippet,
+			"score":   r.Score,
+		})
+	}
+
+	return nil, searchZimResponse{
+		Success:    true,
 		Archive:    input.Archive,
 		Query:      input.Query,
 		SearchType: searchType,
-		Results:    []any{},
-		Count:      0,
-		Message:    "Kiwix search integration not yet implemented",
-	}
-	return nil, resp, nil
+		Results:    items,
+		Count:      len(items),
+	}, nil
 }
 
-func (h *Handler) handleReadZimArticle(_ context.Context, _ *mcp.CallToolRequest, input dto.ReadZimArticleInput) (*mcp.CallToolResult, readZimArticleResponse, error) {
-	resp := readZimArticleResponse{
-		Success: false,
-		Archive: input.Archive,
-		Path:    input.Path,
-		Message: "Kiwix article reading not yet implemented",
+func (h *Handler) handleReadZimArticle(ctx context.Context, _ *mcp.CallToolRequest, input dto.ReadZimArticleInput) (*mcp.CallToolResult, readZimArticleResponse, error) {
+	if h.kiwixClient == nil {
+		return nil, readZimArticleResponse{
+			Success: false,
+			Archive: input.Archive,
+			Path:    input.Path,
+			Message: "Kiwix service not configured",
+		}, nil
 	}
-	return nil, resp, nil
+
+	article, err := h.kiwixClient.ReadArticle(ctx, input.Archive, input.Path)
+	if err != nil {
+		return nil, readZimArticleResponse{}, fmt.Errorf("reading zim article: %w", err)
+	}
+
+	content := article.Content
+	originalLength := len(content)
+	content, truncated := truncateContent(content, input.SummaryOnly, input.MaxParagraphs)
+
+	return nil, readZimArticleResponse{
+		Success:        true,
+		Archive:        input.Archive,
+		Path:           input.Path,
+		Title:          article.Title,
+		Content:        content,
+		Truncated:      truncated,
+		OriginalLength: originalLength,
+	}, nil
 }
