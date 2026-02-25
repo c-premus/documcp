@@ -377,3 +377,115 @@ func (r *OAuthRepository) UpdateUser(ctx context.Context, user *model.User) erro
 	}
 	return nil
 }
+
+// ListUsers returns a paginated list of users with optional search query.
+func (r *OAuthRepository) ListUsers(ctx context.Context, query string, limit, offset int) ([]model.User, int, error) {
+	where := "1=1"
+	args := []any{}
+	argIdx := 1
+
+	if query != "" {
+		where = fmt.Sprintf("(name ILIKE $%d OR email ILIKE $%d)", argIdx, argIdx+1)
+		likeQuery := "%" + query + "%"
+		args = append(args, likeQuery, likeQuery)
+		argIdx += 2
+	}
+
+	countQuery := "SELECT COUNT(*) FROM users WHERE " + where
+	var total int
+	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("counting users: %w", err)
+	}
+
+	if limit <= 0 {
+		limit = 20
+	}
+
+	selectQuery := fmt.Sprintf(
+		"SELECT * FROM users WHERE %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d",
+		where, argIdx, argIdx+1,
+	)
+	args = append(args, limit, offset)
+
+	var users []model.User
+	if err := r.db.SelectContext(ctx, &users, selectQuery, args...); err != nil {
+		return nil, 0, fmt.Errorf("listing users: %w", err)
+	}
+	return users, total, nil
+}
+
+// ToggleAdmin toggles the is_admin flag for a user.
+func (r *OAuthRepository) ToggleAdmin(ctx context.Context, userID int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE users SET is_admin = NOT is_admin, updated_at = NOW() WHERE id = $1`, userID)
+	if err != nil {
+		return fmt.Errorf("toggling admin for user %d: %w", userID, err)
+	}
+	return nil
+}
+
+// ListClients returns a paginated list of OAuth clients with optional search query.
+func (r *OAuthRepository) ListClients(ctx context.Context, query string, limit, offset int) ([]model.OAuthClient, int, error) {
+	where := "1=1"
+	args := []any{}
+	argIdx := 1
+
+	if query != "" {
+		where = fmt.Sprintf("(client_name ILIKE $%d OR client_id ILIKE $%d)", argIdx, argIdx+1)
+		likeQuery := "%" + query + "%"
+		args = append(args, likeQuery, likeQuery)
+		argIdx += 2
+	}
+
+	countQuery := "SELECT COUNT(*) FROM oauth_clients WHERE " + where
+	var total int
+	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("counting oauth clients: %w", err)
+	}
+
+	if limit <= 0 {
+		limit = 20
+	}
+
+	selectQuery := fmt.Sprintf(
+		"SELECT * FROM oauth_clients WHERE %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d",
+		where, argIdx, argIdx+1,
+	)
+	args = append(args, limit, offset)
+
+	var clients []model.OAuthClient
+	if err := r.db.SelectContext(ctx, &clients, selectQuery, args...); err != nil {
+		return nil, 0, fmt.Errorf("listing oauth clients: %w", err)
+	}
+	return clients, total, nil
+}
+
+// DeactivateClient marks an OAuth client as inactive.
+func (r *OAuthRepository) DeactivateClient(ctx context.Context, clientID int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE oauth_clients SET is_active = false, updated_at = NOW() WHERE id = $1`, clientID)
+	if err != nil {
+		return fmt.Errorf("deactivating oauth client %d: %w", clientID, err)
+	}
+	return nil
+}
+
+// CountUsers returns the total number of users.
+func (r *OAuthRepository) CountUsers(ctx context.Context) (int, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting users: %w", err)
+	}
+	return count, nil
+}
+
+// CountClients returns the total number of OAuth clients.
+func (r *OAuthRepository) CountClients(ctx context.Context) (int, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM oauth_clients`).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting oauth clients: %w", err)
+	}
+	return count, nil
+}

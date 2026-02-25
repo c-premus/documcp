@@ -101,6 +101,63 @@ func (r *ZimArchiveRepository) FindByUUID(ctx context.Context, uuid string) (*mo
 	return &archive, nil
 }
 
+// ListAll returns all ZIM archives (including disabled) with optional search query.
+func (r *ZimArchiveRepository) ListAll(ctx context.Context, query string, limit int) ([]model.ZimArchive, error) {
+	q := `SELECT * FROM zim_archives WHERE 1=1`
+	args := []any{}
+	argIdx := 1
+
+	if query != "" {
+		q += fmt.Sprintf(` AND (name ILIKE $%d OR title ILIKE $%d)`, argIdx, argIdx+1)
+		likeQuery := "%" + query + "%"
+		args = append(args, likeQuery, likeQuery)
+		argIdx += 2
+	}
+
+	q += ` ORDER BY name`
+	if limit > 0 {
+		q += fmt.Sprintf(` LIMIT $%d`, argIdx)
+		args = append(args, limit)
+	}
+
+	var archives []model.ZimArchive
+	err := r.db.SelectContext(ctx, &archives, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("listing all zim archives: %w", err)
+	}
+	return archives, nil
+}
+
+// Count returns the total number of ZIM archives.
+func (r *ZimArchiveRepository) Count(ctx context.Context) (int, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM zim_archives`).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting zim archives: %w", err)
+	}
+	return count, nil
+}
+
+// ToggleEnabled toggles the is_enabled flag for a ZIM archive.
+func (r *ZimArchiveRepository) ToggleEnabled(ctx context.Context, id int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE zim_archives SET is_enabled = NOT is_enabled, updated_at = NOW() WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("toggling enabled for zim archive %d: %w", id, err)
+	}
+	return nil
+}
+
+// ToggleSearchable toggles the is_searchable flag for a ZIM archive.
+func (r *ZimArchiveRepository) ToggleSearchable(ctx context.Context, id int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE zim_archives SET is_searchable = NOT is_searchable, updated_at = NOW() WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("toggling searchable for zim archive %d: %w", id, err)
+	}
+	return nil
+}
+
 // UpsertFromCatalog inserts or updates a ZIM archive from a catalog sync entry.
 // On conflict by name, it updates the mutable fields and sets last_synced_at.
 func (r *ZimArchiveRepository) UpsertFromCatalog(ctx context.Context, serviceID int64, entry ZimArchiveUpsert) error {

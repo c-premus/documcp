@@ -31,6 +31,7 @@ import (
 	markdownext "github.com/c-premus/documcp/internal/extractor/markdown"
 	pdfext "github.com/c-premus/documcp/internal/extractor/pdf"
 	xlsxext "github.com/c-premus/documcp/internal/extractor/xlsx"
+	adminhandler "github.com/c-premus/documcp/internal/handler/admin"
 	apihandler "github.com/c-premus/documcp/internal/handler/api"
 	mcphandler "github.com/c-premus/documcp/internal/handler/mcp"
 	oauthhandler "github.com/c-premus/documcp/internal/handler/oauth"
@@ -219,6 +220,19 @@ func New(cfg *config.Config) (*App, error) {
 	userH := apihandler.NewUserHandler(oauthRepo, logger)
 	oauthClientH := apihandler.NewOAuthClientHandler(oauthRepo, logger)
 
+	// --- Admin Handler ---
+	adminH := adminhandler.NewHandler(
+		documentRepo,
+		oauthRepo,
+		externalServiceRepo,
+		zimArchiveRepo,
+		confluenceSpaceRepo,
+		gitTemplateRepo,
+		documentPipeline,
+		externalServiceSvc,
+		logger,
+	)
+
 	// --- MCP Handler ---
 	mcpH := mcphandler.New(mcphandler.Config{
 		ServerName:          cfg.DocuMCP.ServerName,
@@ -264,6 +278,7 @@ func New(cfg *config.Config) (*App, error) {
 		ExternalServiceHandler: externalServiceH,
 		UserHandler:            userH,
 		OAuthClientHandler:     oauthClientH,
+		AdminHandler:           adminH,
 	})
 
 	logger.Info("MCP server configured",

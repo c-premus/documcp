@@ -89,6 +89,63 @@ func (r *ConfluenceSpaceRepository) FindByUUID(ctx context.Context, uuid string)
 	return &space, nil
 }
 
+// ListAll returns all Confluence spaces (including disabled) with optional search query.
+func (r *ConfluenceSpaceRepository) ListAll(ctx context.Context, query string, limit int) ([]model.ConfluenceSpace, error) {
+	q := `SELECT * FROM confluence_spaces WHERE 1=1`
+	args := []any{}
+	argIdx := 1
+
+	if query != "" {
+		q += fmt.Sprintf(` AND (name ILIKE $%d OR key ILIKE $%d)`, argIdx, argIdx+1)
+		likeQuery := "%" + query + "%"
+		args = append(args, likeQuery, likeQuery)
+		argIdx += 2
+	}
+
+	q += ` ORDER BY name`
+	if limit > 0 {
+		q += fmt.Sprintf(` LIMIT $%d`, argIdx)
+		args = append(args, limit)
+	}
+
+	var spaces []model.ConfluenceSpace
+	err := r.db.SelectContext(ctx, &spaces, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("listing all confluence spaces: %w", err)
+	}
+	return spaces, nil
+}
+
+// Count returns the total number of Confluence spaces.
+func (r *ConfluenceSpaceRepository) Count(ctx context.Context) (int, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM confluence_spaces`).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting confluence spaces: %w", err)
+	}
+	return count, nil
+}
+
+// ToggleEnabled toggles the is_enabled flag for a Confluence space.
+func (r *ConfluenceSpaceRepository) ToggleEnabled(ctx context.Context, id int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE confluence_spaces SET is_enabled = NOT is_enabled, updated_at = NOW() WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("toggling enabled for confluence space %d: %w", id, err)
+	}
+	return nil
+}
+
+// ToggleSearchable toggles the is_searchable flag for a Confluence space.
+func (r *ConfluenceSpaceRepository) ToggleSearchable(ctx context.Context, id int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE confluence_spaces SET is_searchable = NOT is_searchable, updated_at = NOW() WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("toggling searchable for confluence space %d: %w", id, err)
+	}
+	return nil
+}
+
 // UpsertFromAPI inserts or updates a Confluence space from an API sync.
 // On conflict by key, it updates the mutable fields and sets last_synced_at.
 func (r *ConfluenceSpaceRepository) UpsertFromAPI(ctx context.Context, serviceID int64, space ConfluenceSpaceUpsert) error {

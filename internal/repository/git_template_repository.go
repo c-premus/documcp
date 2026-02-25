@@ -94,6 +94,43 @@ func (r *GitTemplateRepository) FindFileByPath(ctx context.Context, templateID i
 	return &file, nil
 }
 
+// ListAll returns all non-deleted git templates (including disabled) with optional search query.
+func (r *GitTemplateRepository) ListAll(ctx context.Context, query string, limit int) ([]model.GitTemplate, error) {
+	q := `SELECT * FROM git_templates WHERE deleted_at IS NULL`
+	args := []any{}
+	argIdx := 1
+
+	if query != "" {
+		q += fmt.Sprintf(` AND (name ILIKE $%d OR description ILIKE $%d)`, argIdx, argIdx+1)
+		likeQuery := "%" + query + "%"
+		args = append(args, likeQuery, likeQuery)
+		argIdx += 2
+	}
+
+	q += ` ORDER BY name`
+	if limit > 0 {
+		q += fmt.Sprintf(` LIMIT $%d`, argIdx)
+		args = append(args, limit)
+	}
+
+	var templates []model.GitTemplate
+	err := r.db.SelectContext(ctx, &templates, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("listing all git templates: %w", err)
+	}
+	return templates, nil
+}
+
+// Count returns the total number of non-deleted git templates.
+func (r *GitTemplateRepository) Count(ctx context.Context) (int, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM git_templates WHERE deleted_at IS NULL`).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting git templates: %w", err)
+	}
+	return count, nil
+}
+
 // FindBySlug returns a git template by its slug, if enabled and not soft-deleted.
 func (r *GitTemplateRepository) FindBySlug(ctx context.Context, slug string) (*model.GitTemplate, error) {
 	var tmpl model.GitTemplate
