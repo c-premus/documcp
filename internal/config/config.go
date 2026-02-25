@@ -83,12 +83,15 @@ type OIDCConfig struct {
 
 // OAuthConfig holds OAuth 2.1 authorization server settings.
 type OAuthConfig struct {
-	AuthCodeLifetime    time.Duration `mapstructure:"oauth_authorization_code_lifetime"`
-	AccessTokenLifetime time.Duration `mapstructure:"oauth_access_token_lifetime"`
+	AuthCodeLifetime     time.Duration `mapstructure:"oauth_authorization_code_lifetime"`
+	AccessTokenLifetime  time.Duration `mapstructure:"oauth_access_token_lifetime"`
 	RefreshTokenLifetime time.Duration `mapstructure:"oauth_refresh_token_lifetime"`
-	DeviceCodeLifetime  time.Duration `mapstructure:"oauth_device_code_lifetime"`
-	DeviceCodeInterval  time.Duration `mapstructure:"oauth_device_polling_interval"`
-	RequirePKCE         bool          `mapstructure:"oauth_pkce_required"`
+	DeviceCodeLifetime   time.Duration `mapstructure:"oauth_device_code_lifetime"`
+	DeviceCodeInterval   time.Duration `mapstructure:"oauth_device_polling_interval"`
+	RequirePKCE          bool          `mapstructure:"oauth_pkce_required"`
+	SessionSecret        string        `mapstructure:"oauth_session_secret"`
+	RegistrationEnabled  bool          `mapstructure:"oauth_registration_enabled"`
+	RegistrationRequireAuth bool       `mapstructure:"oauth_registration_require_auth"`
 }
 
 // StorageConfig holds file storage settings.
@@ -166,6 +169,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oauth_device_code_lifetime", 10*time.Minute)
 	v.SetDefault("oauth_device_polling_interval", 5*time.Second)
 	v.SetDefault("oauth_pkce_required", true)
+	v.SetDefault("oauth_session_secret", "")
+	v.SetDefault("oauth_registration_enabled", true)
+	v.SetDefault("oauth_registration_require_auth", true)
 
 	// Storage
 	v.SetDefault("storage_driver", "local")
@@ -276,8 +282,11 @@ func Load() (*Config, error) {
 		AccessTokenLifetime:  v.GetDuration("oauth_access_token_lifetime"),
 		RefreshTokenLifetime: v.GetDuration("oauth_refresh_token_lifetime"),
 		DeviceCodeLifetime:   v.GetDuration("oauth_device_code_lifetime"),
-		DeviceCodeInterval:   v.GetDuration("oauth_device_polling_interval"),
-		RequirePKCE:          v.GetBool("oauth_pkce_required"),
+		DeviceCodeInterval:      v.GetDuration("oauth_device_polling_interval"),
+		RequirePKCE:             v.GetBool("oauth_pkce_required"),
+		SessionSecret:           v.GetString("oauth_session_secret"),
+		RegistrationEnabled:     v.GetBool("oauth_registration_enabled"),
+		RegistrationRequireAuth: v.GetBool("oauth_registration_require_auth"),
 	}
 
 	cfg.Storage = StorageConfig{

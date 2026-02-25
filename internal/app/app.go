@@ -3,19 +3,26 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
 
+	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
+	"git.999.haus/chris/DocuMCP-go/internal/auth/oidc"
 	"git.999.haus/chris/DocuMCP-go/internal/config"
 	"git.999.haus/chris/DocuMCP-go/internal/database"
 	mcphandler "git.999.haus/chris/DocuMCP-go/internal/handler/mcp"
+	oauthhandler "git.999.haus/chris/DocuMCP-go/internal/handler/oauth"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
 	"git.999.haus/chris/DocuMCP-go/internal/server"
 	"git.999.haus/chris/DocuMCP-go/internal/service"
@@ -54,6 +61,26 @@ func New(cfg *config.Config) (*App, error) {
 
 	logger.Info("database migrations applied")
 
+	// --- Session Store ---
+	sessionSecret := cfg.OAuth.SessionSecret
+	if sessionSecret == "" {
+		// Generate a random secret for development
+		b := make([]byte, 32)
+		if _, err := rand.Read(b); err != nil {
+			return nil, fmt.Errorf("generating session secret: %w", err)
+		}
+		sessionSecret = hex.EncodeToString(b)
+		logger.Warn("no OAUTH_SESSION_SECRET configured, using random secret (sessions will not survive restarts)")
+	}
+	sessionStore := sessions.NewCookieStore([]byte(sessionSecret))
+	sessionStore.Options = &sessions.Options{
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   cfg.App.Env == "production",
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   86400 * 30, // 30 days
+	}
+
 	// --- Repositories ---
 	documentRepo := repository.NewDocumentRepository(db, logger)
 	externalServiceRepo := repository.NewExternalServiceRepository(db, logger)
@@ -61,9 +88,33 @@ func New(cfg *config.Config) (*App, error) {
 	confluenceSpaceRepo := repository.NewConfluenceSpaceRepository(db, logger)
 	gitTemplateRepo := repository.NewGitTemplateRepository(db, logger)
 	searchQueryRepo := repository.NewSearchQueryRepository(db, logger)
+	oauthRepo := repository.NewOAuthRepository(db, logger)
 
 	// --- Services ---
 	documentService := service.NewDocumentService(documentRepo, logger)
+	oauthService := oauth.NewService(oauthRepo, cfg.OAuth, cfg.App.URL, logger)
+
+	// --- OAuth Handler ---
+	oauthH := oauthhandler.New(oauthhandler.Config{
+		Service:      oauthService,
+		SessionStore: sessionStore,
+		OAuthCfg:     cfg.OAuth,
+		AppURL:       cfg.App.URL,
+		Logger:       logger,
+	})
+
+	// --- OIDC Handler ---
+	oidcH, err := oidc.New(context.Background(), oidc.Config{
+		OIDCCfg:      cfg.OIDC,
+		SessionStore: sessionStore,
+		Repo:         oauthRepo,
+		Logger:       logger,
+	})
+	if err != nil {
+		logger.Warn("OIDC provider discovery failed, OIDC login disabled", "error", err)
+	} else if oidcH != nil {
+		logger.Info("OIDC provider configured", "provider_url", cfg.OIDC.ProviderURL)
+	}
 
 	// --- MCP Handler ---
 	mcpH := mcphandler.New(mcphandler.Config{
@@ -93,8 +144,12 @@ func New(cfg *config.Config) (*App, error) {
 	}, logger)
 
 	srv.RegisterRoutes(server.Deps{
-		Version:    cfg.DocuMCP.ServerVersion,
-		MCPHandler: mcpH,
+		Version:      cfg.DocuMCP.ServerVersion,
+		MCPHandler:   mcpH,
+		OAuthHandler: oauthH,
+		OIDCHandler:  oidcH,
+		OAuthService: oauthService,
+		SessionStore: sessionStore,
 	})
 
 	logger.Info("MCP server configured",

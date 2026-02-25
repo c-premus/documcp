@@ -6,14 +6,22 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/gorilla/sessions"
 
+	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
+	"git.999.haus/chris/DocuMCP-go/internal/auth/oidc"
 	"git.999.haus/chris/DocuMCP-go/internal/handler"
+	oauthhandler "git.999.haus/chris/DocuMCP-go/internal/handler/oauth"
 )
 
 // Deps holds handler dependencies injected from the app layer.
 type Deps struct {
-	Version    string
-	MCPHandler http.Handler // nil if MCP is not configured
+	Version      string
+	MCPHandler   http.Handler          // nil if MCP is not configured
+	OAuthHandler *oauthhandler.Handler // nil if OAuth is not configured
+	OIDCHandler  *oidc.Handler         // nil if OIDC is not configured
+	OAuthService *oauth.Service        // for middleware (nil if OAuth not configured)
+	SessionStore sessions.Store        // for middleware (nil if sessions not configured)
 }
 
 // RegisterRoutes configures all middleware and route groups on the server.
@@ -43,10 +51,39 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		s.logger.Info("MCP endpoint registered", "path", "/documcp")
 	}
 
-	// OAuth endpoints (TODO)
-	r.Route("/oauth", func(r chi.Router) {
-		// TODO: register OAuth handlers
-	})
+	// Well-known discovery endpoints
+	if deps.OAuthHandler != nil {
+		r.Get("/.well-known/oauth-authorization-server", deps.OAuthHandler.AuthorizationServerMetadata)
+		r.Get("/.well-known/oauth-protected-resource", deps.OAuthHandler.ProtectedResourceMetadata)
+		r.Get("/.well-known/oauth-protected-resource/*", deps.OAuthHandler.ProtectedResourceMetadata)
+		s.logger.Info("OAuth well-known endpoints registered")
+	}
+
+	// OAuth endpoints
+	if deps.OAuthHandler != nil {
+		r.Route("/oauth", func(r chi.Router) {
+			r.Get("/authorize", deps.OAuthHandler.Authorize)
+			r.Post("/authorize/approve", deps.OAuthHandler.AuthorizeApprove)
+			r.Post("/token", deps.OAuthHandler.Token)
+			r.Post("/revoke", deps.OAuthHandler.Revoke)
+			r.Post("/register", deps.OAuthHandler.Register)
+			r.Post("/device/code", deps.OAuthHandler.DeviceAuthorization)
+			r.Get("/device", deps.OAuthHandler.DeviceVerification)
+			r.Post("/device", deps.OAuthHandler.DeviceVerificationSubmit)
+			r.Post("/device/approve", deps.OAuthHandler.DeviceApprove)
+		})
+		s.logger.Info("OAuth endpoints registered")
+	}
+
+	// OIDC auth endpoints
+	if deps.OIDCHandler != nil {
+		r.Route("/auth", func(r chi.Router) {
+			r.Get("/login", deps.OIDCHandler.Login)
+			r.Get("/callback", deps.OIDCHandler.Callback)
+			r.Post("/logout", deps.OIDCHandler.Logout)
+		})
+		s.logger.Info("OIDC auth endpoints registered")
+	}
 
 	// REST API (TODO)
 	r.Route("/api", func(r chi.Router) {
