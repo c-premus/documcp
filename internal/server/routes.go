@@ -1,11 +1,14 @@
 package server
 
 import (
+	"database/sql"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httprate"
+	"github.com/gorilla/csrf"
 	"github.com/gorilla/sessions"
 
 	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
@@ -45,6 +48,13 @@ type Deps struct {
 	// Observability
 	Metrics      *observability.Metrics // nil disables Prometheus metrics
 	OTELEnabled  bool                   // enables tracing middleware
+
+	// Security
+	CSRFKey  []byte // 32-byte key for CSRF token generation (nil disables CSRF)
+	IsSecure bool   // true when running behind TLS (sets Secure cookie flag)
+
+	// Infrastructure
+	DB *sql.DB // for readiness checks (nil disables /health/ready)
 }
 
 // RegisterRoutes configures all middleware and route groups on the server.
@@ -72,9 +82,15 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	r.Use(SecurityHeaders)
 	r.Use(RequestLogger(s.logger))
 
-	// Health check
+	// Health check (liveness — cheap, no I/O)
 	health := handler.NewHealthHandler(deps.Version)
 	r.Method(http.MethodGet, "/health", health)
+
+	// Readiness probe (checks dependencies like Postgres)
+	if deps.DB != nil {
+		readiness := handler.NewReadinessHandler(deps.Version, deps.DB)
+		r.Method(http.MethodGet, "/health/ready", readiness)
+	}
 
 	// Prometheus metrics endpoint
 	if deps.Metrics != nil {
@@ -82,9 +98,12 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		s.logger.Info("Prometheus metrics endpoint registered", "path", "/metrics")
 	}
 
-	// MCP endpoint
+	// MCP endpoint (protected by bearer token when OAuth is configured)
 	if deps.MCPHandler != nil {
 		r.Route("/documcp", func(r chi.Router) {
+			if deps.OAuthService != nil {
+				r.Use(authmiddleware.BearerToken(deps.OAuthService))
+			}
 			r.Handle("/*", deps.MCPHandler)
 			r.Handle("/", deps.MCPHandler)
 		})
@@ -104,10 +123,26 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		r.Route("/oauth", func(r chi.Router) {
 			r.Get("/authorize", deps.OAuthHandler.Authorize)
 			r.Post("/authorize/approve", deps.OAuthHandler.AuthorizeApprove)
-			r.Post("/token", deps.OAuthHandler.Token)
-			r.Post("/revoke", deps.OAuthHandler.Revoke)
-			r.Post("/register", deps.OAuthHandler.Register)
-			r.Post("/device/code", deps.OAuthHandler.DeviceAuthorization)
+
+			// Rate-limited token endpoint (brute force prevention)
+			r.Group(func(r chi.Router) {
+				r.Use(httprate.LimitByIP(100, time.Minute))
+				r.Post("/token", deps.OAuthHandler.Token)
+				r.Post("/revoke", deps.OAuthHandler.Revoke)
+			})
+
+			// Rate-limited registration endpoint
+			r.Group(func(r chi.Router) {
+				r.Use(httprate.LimitByIP(10, time.Minute))
+				r.Post("/register", deps.OAuthHandler.Register)
+			})
+
+			// Rate-limited device code endpoint
+			r.Group(func(r chi.Router) {
+				r.Use(httprate.LimitByIP(20, time.Minute))
+				r.Post("/device/code", deps.OAuthHandler.DeviceAuthorization)
+			})
+
 			r.Get("/device", deps.OAuthHandler.DeviceVerification)
 			r.Post("/device", deps.OAuthHandler.DeviceVerificationSubmit)
 			r.Post("/device/approve", deps.OAuthHandler.DeviceApprove)
@@ -118,6 +153,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	// OIDC auth endpoints
 	if deps.OIDCHandler != nil {
 		r.Route("/auth", func(r chi.Router) {
+			r.Use(httprate.LimitByIP(30, time.Minute))
 			r.Get("/login", deps.OIDCHandler.Login)
 			r.Get("/callback", deps.OIDCHandler.Callback)
 			r.Post("/logout", deps.OIDCHandler.Logout)
@@ -125,8 +161,13 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		s.logger.Info("OIDC auth endpoints registered")
 	}
 
-	// REST API
+	// REST API (protected by bearer token when OAuth is configured)
 	r.Route("/api", func(r chi.Router) {
+		r.Use(httprate.LimitByIP(300, time.Minute))
+		if deps.OAuthService != nil {
+			r.Use(authmiddleware.BearerToken(deps.OAuthService))
+		}
+
 		// Document endpoints
 		if deps.DocumentHandler != nil {
 			r.Route("/documents", func(r chi.Router) {
@@ -210,6 +251,25 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			if deps.SessionStore != nil && deps.OAuthService != nil {
 				r.Use(authmiddleware.SessionAuth(deps.SessionStore, deps.OAuthService))
 				r.Use(authmiddleware.RequireAdmin)
+			}
+
+			// CSRF protection for all admin state-changing requests.
+			// htmx sends the token via X-CSRF-Token header (configured in layout).
+			if len(deps.CSRFKey) > 0 {
+				r.Use(csrf.Protect(
+					deps.CSRFKey,
+					csrf.Secure(deps.IsSecure),
+					csrf.Path("/admin"),
+					csrf.RequestHeader("X-CSRF-Token"),
+				))
+				// Inject CSRF token into every admin response via a cookie that
+				// the layout template reads and sets as an htmx header.
+				r.Use(func(next http.Handler) http.Handler {
+					return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						w.Header().Set("X-CSRF-Token", csrf.Token(r))
+						next.ServeHTTP(w, r)
+					})
+				})
 			}
 
 			// Dashboard

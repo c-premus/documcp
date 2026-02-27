@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
 )
@@ -22,9 +23,26 @@ func (h *Handler) Token(w http.ResponseWriter, r *http.Request) {
 		DeviceCode   string `json:"device_code"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		oauthError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
-		return
+	contentType := r.Header.Get("Content-Type")
+	if strings.HasPrefix(contentType, "application/x-www-form-urlencoded") {
+		if err := r.ParseForm(); err != nil {
+			oauthError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
+			return
+		}
+		req.GrantType = r.FormValue("grant_type")
+		req.ClientID = r.FormValue("client_id")
+		req.ClientSecret = r.FormValue("client_secret")
+		req.Code = r.FormValue("code")
+		req.RedirectURI = r.FormValue("redirect_uri")
+		req.CodeVerifier = r.FormValue("code_verifier")
+		req.RefreshToken = r.FormValue("refresh_token")
+		req.Scope = r.FormValue("scope")
+		req.DeviceCode = r.FormValue("device_code")
+	} else {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			oauthError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
+			return
+		}
 	}
 
 	// Validate required fields

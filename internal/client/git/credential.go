@@ -3,6 +3,7 @@ package git
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 // writeCredentialScript creates a temporary shell script for GIT_ASKPASS
@@ -14,7 +15,8 @@ func writeCredentialScript(token string) (scriptPath string, cleanup func(), err
 		return "", nil, fmt.Errorf("creating credential script: %w", err)
 	}
 
-	script := fmt.Sprintf("#!/bin/sh\necho '%s'\n", token)
+	safe := strings.ReplaceAll(token, "'", `'\''`)
+	script := fmt.Sprintf("#!/bin/sh\necho '%s'\n", safe)
 	if _, err := f.WriteString(script); err != nil {
 		_ = f.Close()
 		_ = os.Remove(f.Name())

@@ -3,7 +3,9 @@ package oauthhandler
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
+	"strings"
 	"time"
 
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
@@ -16,9 +18,19 @@ func (h *Handler) DeviceAuthorization(w http.ResponseWriter, r *http.Request) {
 		Scope    string `json:"scope"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		oauthError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
-		return
+	contentType := r.Header.Get("Content-Type")
+	if strings.HasPrefix(contentType, "application/x-www-form-urlencoded") {
+		if err := r.ParseForm(); err != nil {
+			oauthError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
+			return
+		}
+		req.ClientID = r.FormValue("client_id")
+		req.Scope = r.FormValue("scope")
+	} else {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			oauthError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
+			return
+		}
 	}
 
 	if req.ClientID == "" {
@@ -59,7 +71,7 @@ func (h *Handler) DeviceVerification(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, deviceVerificationHTML, userCode)
+	_, _ = fmt.Fprintf(w, deviceVerificationHTML, html.EscapeString(userCode))
 }
 
 // DeviceVerificationSubmit handles POST /oauth/device — user submits user_code.
@@ -128,7 +140,7 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 	// Show consent screen
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, deviceConsentHTML, client.ClientName, scope, userCode, userID)
+	_, _ = fmt.Fprintf(w, deviceConsentHTML, html.EscapeString(client.ClientName), html.EscapeString(scope), html.EscapeString(userCode), userID)
 }
 
 // DeviceApprove handles POST /oauth/device/approve — user approves/denies.

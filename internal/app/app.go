@@ -268,6 +268,7 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	metrics := observability.NewMetrics()
+	observability.RegisterDBMetrics(db.DB)
 	logger.Info("Prometheus metrics registered")
 
 	// --- HTTP Server ---
@@ -298,6 +299,9 @@ func New(cfg *config.Config) (*App, error) {
 		AdminHandler:           adminH,
 		Metrics:                metrics,
 		OTELEnabled:            cfg.OTEL.Enabled,
+		CSRFKey:                []byte(sessionSecret)[:32],
+		IsSecure:               cfg.App.Env == "production",
+		DB:                     db.DB,
 	})
 
 	logger.Info("MCP server configured",

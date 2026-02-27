@@ -3,6 +3,7 @@
 package observability
 
 import (
+	"database/sql"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -80,6 +81,42 @@ func NewMetrics() *Metrics {
 	)
 
 	return m
+}
+
+// RegisterDBMetrics registers Prometheus gauges for database/sql.DBStats.
+// The collector reads pool stats on each Prometheus scrape.
+func RegisterDBMetrics(db *sql.DB) {
+	prometheus.MustRegister(&dbStatsCollector{db: db})
+}
+
+// dbStatsCollector implements prometheus.Collector for database/sql pool stats.
+type dbStatsCollector struct {
+	db *sql.DB
+}
+
+var (
+	dbOpenDesc     = prometheus.NewDesc(namespace+"_db_open_connections", "Number of open connections.", nil, nil)
+	dbInUseDesc    = prometheus.NewDesc(namespace+"_db_in_use_connections", "Number of connections in use.", nil, nil)
+	dbIdleDesc     = prometheus.NewDesc(namespace+"_db_idle_connections", "Number of idle connections.", nil, nil)
+	dbWaitCountDesc = prometheus.NewDesc(namespace+"_db_wait_count_total", "Total number of connections waited for.", nil, nil)
+	dbWaitDurDesc  = prometheus.NewDesc(namespace+"_db_wait_duration_seconds_total", "Total time waited for connections.", nil, nil)
+)
+
+func (c *dbStatsCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- dbOpenDesc
+	ch <- dbInUseDesc
+	ch <- dbIdleDesc
+	ch <- dbWaitCountDesc
+	ch <- dbWaitDurDesc
+}
+
+func (c *dbStatsCollector) Collect(ch chan<- prometheus.Metric) {
+	stats := c.db.Stats()
+	ch <- prometheus.MustNewConstMetric(dbOpenDesc, prometheus.GaugeValue, float64(stats.OpenConnections))
+	ch <- prometheus.MustNewConstMetric(dbInUseDesc, prometheus.GaugeValue, float64(stats.InUse))
+	ch <- prometheus.MustNewConstMetric(dbIdleDesc, prometheus.GaugeValue, float64(stats.Idle))
+	ch <- prometheus.MustNewConstMetric(dbWaitCountDesc, prometheus.CounterValue, float64(stats.WaitCount))
+	ch <- prometheus.MustNewConstMetric(dbWaitDurDesc, prometheus.CounterValue, stats.WaitDuration.Seconds())
 }
 
 // MetricsHandler returns an http.Handler that serves Prometheus metrics

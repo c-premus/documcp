@@ -24,8 +24,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags "-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" \
     -o /bin/documcp ./cmd/server
 
-# Stage 2: Runtime
-FROM gcr.io/distroless/static-debian12:nonroot
+# Stage 2: Runtime — Alpine with poppler-utils for PDF extraction.
+FROM alpine:3.21
+
+# Install runtime dependencies for PDF text extraction and TLS.
+RUN apk add --no-cache poppler-utils ca-certificates \
+    && addgroup -S nonroot && adduser -S nonroot -G nonroot
 
 # Copy the compiled binary.
 COPY --from=builder /bin/documcp /documcp

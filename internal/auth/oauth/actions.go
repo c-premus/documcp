@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -386,12 +387,18 @@ func (s *Service) RefreshAccessToken(ctx context.Context, params RefreshTokenPar
 		return nil, fmt.Errorf("revoking old refresh token: %w", err)
 	}
 
-	// Use original scope unless a narrower scope is requested
-	scope := ""
+	// Use original scope unless a narrower scope is requested.
+	// Per RFC 6749 Section 6, the requested scope MUST NOT include any
+	// scope not originally granted by the resource owner.
+	originalScope := ""
 	if accessToken.Scope.Valid {
-		scope = accessToken.Scope.String
+		originalScope = accessToken.Scope.String
 	}
+	scope := originalScope
 	if params.Scope != "" {
+		if !isScopeSubset(params.Scope, originalScope) {
+			return nil, fmt.Errorf("requested scope exceeds original grant")
+		}
 		scope = params.Scope
 	}
 
@@ -700,6 +707,23 @@ func ValidateState(state string) bool {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+// isScopeSubset checks that every scope in requested is also present in original.
+// Scopes are space-delimited strings per RFC 6749.
+func isScopeSubset(requested, original string) bool {
+	originalSet := make(map[string]bool)
+	for _, s := range strings.Split(original, " ") {
+		if s != "" {
+			originalSet[s] = true
+		}
+	}
+	for _, s := range strings.Split(requested, " ") {
+		if s != "" && !originalSet[s] {
+			return false
+		}
+	}
+	return true
+}
 
 // verifyClientAuth checks client secret for confidential clients.
 func (s *Service) verifyClientAuth(client *model.OAuthClient, secret string) error {

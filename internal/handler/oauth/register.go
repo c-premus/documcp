@@ -16,7 +16,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check auth requirement
+	// Check auth requirement — verify admin status from DB, not session cache.
 	if h.oauthCfg.RegistrationRequireAuth {
 		session, _ := h.store.Get(r, sessionName)
 		userID, ok := session.Values["user_id"].(int64)
@@ -25,9 +25,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Check admin
-		isAdmin, _ := session.Values["is_admin"].(bool)
-		if !isAdmin {
+		user, err := h.service.FindUserByID(r.Context(), userID)
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if !user.IsAdmin {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}

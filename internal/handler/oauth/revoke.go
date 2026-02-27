@@ -3,6 +3,7 @@ package oauthhandler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
 )
@@ -16,9 +17,21 @@ func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
 		TokenTypeHint string `json:"token_type_hint"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		oauthError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
-		return
+	contentType := r.Header.Get("Content-Type")
+	if strings.HasPrefix(contentType, "application/x-www-form-urlencoded") {
+		if err := r.ParseForm(); err != nil {
+			oauthError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
+			return
+		}
+		req.Token = r.FormValue("token")
+		req.ClientID = r.FormValue("client_id")
+		req.ClientSecret = r.FormValue("client_secret")
+		req.TokenTypeHint = r.FormValue("token_type_hint")
+	} else {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			oauthError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
+			return
+		}
 	}
 
 	if req.Token == "" {

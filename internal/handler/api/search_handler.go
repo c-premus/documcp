@@ -40,7 +40,13 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 
 	var filters []string
 	if ft := r.URL.Query().Get("file_type"); ft != "" {
-		filters = append(filters, "file_type = \""+ft+"\"")
+		switch ft {
+		case "pdf", "docx", "xlsx", "html", "markdown":
+			filters = append(filters, "file_type = \""+ft+"\"")
+		default:
+			errorResponse(w, http.StatusBadRequest, "invalid file_type filter")
+			return
+		}
 	}
 	// Always exclude soft-deleted documents.
 	filters = append(filters, "__soft_deleted = false")

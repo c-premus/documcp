@@ -3,10 +3,7 @@ package admin
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,8 +14,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/gorilla/csrf"
 
 	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
+	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
 	"git.999.haus/chris/DocuMCP-go/internal/service"
@@ -27,27 +26,27 @@ import (
 
 // Handler serves templ+htmx admin pages.
 type Handler struct {
-	documentRepo        *repository.DocumentRepository
-	oauthRepo           *repository.OAuthRepository
-	externalServiceRepo *repository.ExternalServiceRepository
-	zimArchiveRepo      *repository.ZimArchiveRepository
-	confluenceSpaceRepo *repository.ConfluenceSpaceRepository
-	gitTemplateRepo     *repository.GitTemplateRepository
-	documentPipeline    *service.DocumentPipeline
-	externalServiceSvc  *service.ExternalServiceService
+	documentRepo        DocumentRepo
+	oauthRepo           OAuthRepo
+	externalServiceRepo ExternalServiceRepo
+	zimArchiveRepo      ZimArchiveRepo
+	confluenceSpaceRepo ConfluenceSpaceRepo
+	gitTemplateRepo     GitTemplateRepo
+	documentPipeline    DocumentUploader
+	externalServiceSvc  ExternalServiceHealthChecker
 	logger              *slog.Logger
 }
 
 // NewHandler creates a new admin Handler.
 func NewHandler(
-	documentRepo *repository.DocumentRepository,
-	oauthRepo *repository.OAuthRepository,
-	externalServiceRepo *repository.ExternalServiceRepository,
-	zimArchiveRepo *repository.ZimArchiveRepository,
-	confluenceSpaceRepo *repository.ConfluenceSpaceRepository,
-	gitTemplateRepo *repository.GitTemplateRepository,
-	documentPipeline *service.DocumentPipeline,
-	externalServiceSvc *service.ExternalServiceService,
+	documentRepo DocumentRepo,
+	oauthRepo OAuthRepo,
+	externalServiceRepo ExternalServiceRepo,
+	zimArchiveRepo ZimArchiveRepo,
+	confluenceSpaceRepo ConfluenceSpaceRepo,
+	gitTemplateRepo GitTemplateRepo,
+	documentPipeline DocumentUploader,
+	externalServiceSvc ExternalServiceHealthChecker,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
@@ -87,6 +86,7 @@ func (h *Handler) pageData(r *http.Request, title, activePage string) templates.
 		User:       user,
 		Nav:        nav,
 		ActivePage: activePage,
+		CSRFToken:  csrf.Token(r),
 	}
 }
 
@@ -509,15 +509,11 @@ func (h *Handler) OAuthClientCreate(w http.ResponseWriter, r *http.Request) {
 	// Generate client credentials.
 	clientID := uuid.New().String()
 
-	rawSecret := make([]byte, 32)
-	if _, err := rand.Read(rawSecret); err != nil {
+	plainSecret, hashedSecret, err := oauth.GenerateClientSecret()
+	if err != nil {
 		h.renderError(w, r, "generating client secret", err)
 		return
 	}
-	plainSecret := hex.EncodeToString(rawSecret)
-
-	hash := sha256.Sum256([]byte(plainSecret))
-	hashedSecret := hex.EncodeToString(hash[:])
 
 	// Default grant types and redirect URIs if not provided.
 	if grantTypes == "" {
