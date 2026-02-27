@@ -153,13 +153,13 @@ func (r *ExternalServiceRepository) UpdateHealthStatus(ctx context.Context, id i
 			status = $1,
 			last_latency_ms = $2,
 			last_check_at = NOW(),
-			last_error = CASE WHEN $1 = 'unhealthy' THEN $3 ELSE last_error END,
-			last_error_at = CASE WHEN $1 = 'unhealthy' THEN NOW() ELSE last_error_at END,
-			consecutive_failures = CASE WHEN $1 = 'healthy' THEN 0 ELSE consecutive_failures + 1 END,
-			error_count = CASE WHEN $1 = 'unhealthy' THEN error_count + 1 ELSE error_count END,
+			last_error = CASE WHEN $3 = 'unhealthy' THEN $4 ELSE last_error END,
+			last_error_at = CASE WHEN $5 = 'unhealthy' THEN NOW() ELSE last_error_at END,
+			consecutive_failures = CASE WHEN $6 = 'healthy' THEN 0 ELSE consecutive_failures + 1 END,
+			error_count = CASE WHEN $7 = 'unhealthy' THEN error_count + 1 ELSE error_count END,
 			updated_at = NOW()
-		WHERE id = $4`,
-		status, latencyMs, lastError, id,
+		WHERE id = $8`,
+		status, latencyMs, status, lastError, status, status, status, id,
 	)
 	if err != nil {
 		return fmt.Errorf("updating health status for external service %d: %w", id, err)
