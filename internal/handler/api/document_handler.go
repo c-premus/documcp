@@ -42,7 +42,6 @@ type documentResponse struct {
 	Title       string   `json:"title"`
 	Description string   `json:"description,omitempty"`
 	FileType    string   `json:"file_type"`
-	FilePath    string   `json:"file_path,omitempty"`
 	FileSize    int64    `json:"file_size"`
 	MIMEType    string   `json:"mime_type"`
 	WordCount   int64    `json:"word_count,omitempty"`
@@ -247,7 +246,6 @@ func toDocumentResponse(doc *model.Document, tags []model.DocumentTag) documentR
 		Title:       doc.Title,
 		Description: doc.Description.String,
 		FileType:    doc.FileType,
-		FilePath:    doc.FilePath,
 		FileSize:    doc.FileSize,
 		MIMEType:    doc.MIMEType,
 		WordCount:   doc.WordCount.Int64,

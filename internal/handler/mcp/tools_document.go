@@ -147,11 +147,13 @@ func (h *Handler) handleSearchDocuments(
 	var filters []string
 	filters = append(filters, "__soft_deleted = false")
 	if input.FileType != "" {
-		filters = append(filters, fmt.Sprintf(`file_type = "%s"`, input.FileType))
+		sanitized := strings.ReplaceAll(input.FileType, `"`, "")
+		filters = append(filters, fmt.Sprintf(`file_type = "%s"`, sanitized))
 	}
 	if len(input.Tags) > 0 {
 		for _, tag := range input.Tags {
-			filters = append(filters, fmt.Sprintf(`tags = "%s"`, tag))
+			sanitized := strings.ReplaceAll(tag, `"`, "")
+			filters = append(filters, fmt.Sprintf(`tags = "%s"`, sanitized))
 		}
 	}
 

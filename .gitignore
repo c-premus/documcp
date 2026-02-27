@@ -1,6 +1,7 @@
 # Local settings with permissions (may contain sensitive patterns)
 .claude/settings.local.json
 .env
+.devcontainer/.env
 # Don't ignore these - they should be committed:
 # .claude/settings.json
 # .claude/skills/

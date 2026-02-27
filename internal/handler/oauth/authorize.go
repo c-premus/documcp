@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"time"
@@ -114,15 +115,15 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = fmt.Fprintf(w, consentHTML,
-		client.ClientName,
-		scope,
-		clientID,
-		redirectURI,
-		state,
-		scope,
-		codeChallenge,
-		codeChallengeMethod,
-		nonce,
+		html.EscapeString(client.ClientName),
+		html.EscapeString(scope),
+		html.EscapeString(clientID),
+		html.EscapeString(redirectURI),
+		html.EscapeString(state),
+		html.EscapeString(scope),
+		html.EscapeString(codeChallenge),
+		html.EscapeString(codeChallengeMethod),
+		html.EscapeString(nonce),
 	)
 }
 

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
@@ -98,9 +99,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	session, _ := h.store.Get(r, sessionName)
 	session.Values["oidc_state"] = state
 
-	// Preserve redirect destination
+	// Preserve redirect destination (validated to prevent open redirect).
 	redirect := r.URL.Query().Get("redirect")
-	if redirect != "" {
+	if redirect != "" && isSafeRedirect(redirect) {
 		session.Values["oidc_redirect"] = redirect
 	}
 
@@ -188,7 +189,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if redirect == "" {
+	if redirect == "" || !isSafeRedirect(redirect) {
 		redirect = "/admin"
 	}
 	http.Redirect(w, r, redirect, http.StatusFound)
@@ -256,6 +257,27 @@ func (h *Handler) findOrCreateUser(ctx context.Context, sub, email, name string)
 	)
 
 	return user, nil
+}
+
+// isSafeRedirect validates that a redirect path is a same-origin relative path
+// to prevent open redirect attacks.
+func isSafeRedirect(redirect string) bool {
+	if redirect == "" {
+		return false
+	}
+	// Must start with /
+	if !strings.HasPrefix(redirect, "/") {
+		return false
+	}
+	// Must not contain // (protocol-relative URL)
+	if strings.Contains(redirect, "//") {
+		return false
+	}
+	// Must not contain backslash (some browsers normalize \\ to //)
+	if strings.Contains(redirect, "\\") {
+		return false
+	}
+	return true
 }
 
 func generateState() (string, error) {
