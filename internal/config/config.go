@@ -24,6 +24,16 @@ type Config struct {
 	Storage     StorageConfig
 	OTEL        OTELConfig
 	DocuMCP     DocuMCPConfig
+	Scheduler   SchedulerConfig
+}
+
+// SchedulerConfig holds cron schedule expressions for background sync jobs.
+// Empty schedule strings disable the corresponding job.
+type SchedulerConfig struct {
+	Enabled            bool   `mapstructure:"scheduler_enabled"`
+	KiwixSchedule      string `mapstructure:"scheduler_kiwix_schedule"`
+	ConfluenceSchedule string `mapstructure:"scheduler_confluence_schedule"`
+	GitSchedule        string `mapstructure:"scheduler_git_schedule"`
 }
 
 // AppConfig holds general application settings.
@@ -189,6 +199,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("documcp_endpoint", "/documcp")
 	v.SetDefault("documcp_name", "DocuMCP")
 	v.SetDefault("documcp_version", "0.1.0")
+
+	// Scheduler
+	v.SetDefault("scheduler_enabled", false)
+	v.SetDefault("scheduler_kiwix_schedule", "0 */6 * * *")      // every 6 hours
+	v.SetDefault("scheduler_confluence_schedule", "0 */4 * * *")  // every 4 hours
+	v.SetDefault("scheduler_git_schedule", "0 * * * *")           // every hour
 }
 
 // Load reads configuration from environment variables and an optional YAML
@@ -307,6 +323,13 @@ func Load() (*Config, error) {
 		Endpoint:      v.GetString("documcp_endpoint"),
 		ServerName:    v.GetString("documcp_name"),
 		ServerVersion: v.GetString("documcp_version"),
+	}
+
+	cfg.Scheduler = SchedulerConfig{
+		Enabled:            v.GetBool("scheduler_enabled"),
+		KiwixSchedule:      v.GetString("scheduler_kiwix_schedule"),
+		ConfluenceSchedule: v.GetString("scheduler_confluence_schedule"),
+		GitSchedule:        v.GetString("scheduler_git_schedule"),
 	}
 
 	return cfg, nil

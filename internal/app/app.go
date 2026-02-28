@@ -38,6 +38,7 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/observability"
 	"git.999.haus/chris/DocuMCP-go/internal/queue"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
+	"git.999.haus/chris/DocuMCP-go/internal/scheduler"
 	"git.999.haus/chris/DocuMCP-go/internal/search"
 	"git.999.haus/chris/DocuMCP-go/internal/server"
 	"git.999.haus/chris/DocuMCP-go/internal/service"
@@ -45,12 +46,13 @@ import (
 
 // App holds all application dependencies wired together.
 type App struct {
-	Config        *config.Config
-	DB            *sqlx.DB
-	Logger        *slog.Logger
-	Metrics       *observability.Metrics
-	Server        *server.Server
-	WorkerPool    *queue.Pool
+	Config         *config.Config
+	DB             *sqlx.DB
+	Logger         *slog.Logger
+	Metrics        *observability.Metrics
+	Server         *server.Server
+	WorkerPool     *queue.Pool
+	Scheduler      *scheduler.Scheduler
 	tracerShutdown func(context.Context) error
 }
 
@@ -309,6 +311,35 @@ func New(cfg *config.Config) (*App, error) {
 		"version", cfg.DocuMCP.ServerVersion,
 	)
 
+	// --- Scheduler ---
+	var sched *scheduler.Scheduler
+	if cfg.Scheduler.Enabled {
+		gitTempDir := filepath.Join(cfg.Storage.BasePath, "git")
+		if err := os.MkdirAll(gitTempDir, 0o755); err != nil {
+			return nil, fmt.Errorf("creating git temp path: %w", err)
+		}
+
+		sched = scheduler.New(
+			scheduler.Config{
+				KiwixSchedule:      cfg.Scheduler.KiwixSchedule,
+				ConfluenceSchedule: cfg.Scheduler.ConfluenceSchedule,
+				GitSchedule:        cfg.Scheduler.GitSchedule,
+				Logger:             logger,
+			},
+			externalServiceRepo,
+			zimArchiveRepo,
+			confluenceSpaceRepo,
+			gitTemplateRepo,
+			searchIndexer,
+			gitTempDir,
+		)
+		logger.Info("scheduler configured",
+			"kiwix_schedule", cfg.Scheduler.KiwixSchedule,
+			"confluence_schedule", cfg.Scheduler.ConfluenceSchedule,
+			"git_schedule", cfg.Scheduler.GitSchedule,
+		)
+	}
+
 	return &App{
 		Config:         cfg,
 		DB:             db,
@@ -316,6 +347,7 @@ func New(cfg *config.Config) (*App, error) {
 		Metrics:        metrics,
 		Server:         srv,
 		WorkerPool:     workerPool,
+		Scheduler:      sched,
 		tracerShutdown: tracerShutdown,
 	}, nil
 }
@@ -325,6 +357,10 @@ func New(cfg *config.Config) (*App, error) {
 func (a *App) Start(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if a.Scheduler != nil {
+		a.Scheduler.Start()
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -351,6 +387,9 @@ func (a *App) Start(ctx context.Context) error {
 
 // Close releases all resources held by the application.
 func (a *App) Close() error {
+	if a.Scheduler != nil {
+		<-a.Scheduler.Stop().Done()
+	}
 	if a.WorkerPool != nil {
 		a.WorkerPool.Shutdown()
 	}
