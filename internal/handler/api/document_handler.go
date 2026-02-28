@@ -3,8 +3,10 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -131,7 +133,7 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	title := r.FormValue("title")
 	if title == "" {
-		title = strings.TrimSuffix(header.Filename, "")
+		title = strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename))
 		if title == "" {
 			title = header.Filename
 		}
@@ -161,8 +163,7 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.logger.Error("uploading document", "error", err)
 		status := http.StatusInternalServerError
-		if strings.Contains(err.Error(), "unsupported file type") ||
-			strings.Contains(err.Error(), "exceeds maximum size") {
+		if errors.Is(err, service.ErrUnsupportedFileType) || errors.Is(err, service.ErrFileTooLarge) {
 			status = http.StatusBadRequest
 		}
 		errorResponse(w, status, err.Error())
@@ -200,7 +201,7 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		h.logger.Error("updating document", "uuid", docUUID, "error", err)
-		if strings.Contains(err.Error(), "not found") {
+		if errors.Is(err, service.ErrNotFound) {
 			errorResponse(w, http.StatusNotFound, "document not found")
 			return
 		}
@@ -221,7 +222,7 @@ func (h *DocumentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.pipeline.Delete(r.Context(), docUUID); err != nil {
 		h.logger.Error("deleting document", "uuid", docUUID, "error", err)
-		if strings.Contains(err.Error(), "not found") {
+		if errors.Is(err, service.ErrNotFound) {
 			errorResponse(w, http.StatusNotFound, "document not found")
 			return
 		}

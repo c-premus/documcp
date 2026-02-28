@@ -30,6 +30,21 @@ func SecurityHeaders(next http.Handler) http.Handler {
 	})
 }
 
+// MaxBodySize returns middleware that limits request body size. Requests with
+// Content-Type multipart/form-data are excluded (file uploads have their own
+// limits). This prevents denial of service via oversized JSON payloads.
+func MaxBodySize(maxBytes int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ct := r.Header.Get("Content-Type")
+			if !strings.HasPrefix(ct, "multipart/form-data") {
+				r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // RequestLogger returns middleware that logs each request using slog.
 // It captures method, path, status code, duration, and request ID.
 func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {

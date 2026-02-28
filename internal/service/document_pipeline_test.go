@@ -97,8 +97,8 @@ func TestDocumentPipeline_Upload(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !strings.Contains(err.Error(), "file exceeds maximum size") {
-			t.Errorf("error %q does not contain %q", err.Error(), "file exceeds maximum size")
+		if !errors.Is(err, ErrFileTooLarge) {
+			t.Errorf("expected ErrFileTooLarge, got: %v", err)
 		}
 	})
 
@@ -119,8 +119,8 @@ func TestDocumentPipeline_Upload(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !strings.Contains(err.Error(), "unsupported file type") {
-			t.Errorf("error %q does not contain %q", err.Error(), "unsupported file type")
+		if !errors.Is(err, ErrUnsupportedFileType) {
+			t.Errorf("expected ErrUnsupportedFileType, got: %v", err)
 		}
 	})
 

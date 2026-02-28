@@ -174,14 +174,19 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set session
+	// Regenerate session to prevent session fixation attacks:
+	// preserve redirect, expire old session, then create a new one.
+	redirect, _ := session.Values["oidc_redirect"].(string)
+
+	session.Options.MaxAge = -1
+	if err := session.Save(r, w); err != nil {
+		h.logger.Error("expiring old session", "error", err)
+	}
+
+	session, _ = h.store.New(r, sessionName)
 	session.Values["user_id"] = user.ID
 	session.Values["is_admin"] = user.IsAdmin
 	session.Values["user_email"] = user.Email
-
-	// Get redirect destination
-	redirect, _ := session.Values["oidc_redirect"].(string)
-	delete(session.Values, "oidc_redirect")
 
 	if err := session.Save(r, w); err != nil {
 		h.logger.Error("saving session", "error", err)

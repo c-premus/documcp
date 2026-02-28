@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 
@@ -90,15 +91,18 @@ func hashSHA256(s string) string {
 }
 
 // randomString generates a cryptographically random string of the given length
-// using the unreserved URI character set.
+// using the unreserved URI character set with rejection sampling to avoid
+// modulo bias.
 func randomString(length int) (string, error) {
 	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+	charsetLen := big.NewInt(int64(len(charset)))
 	b := make([]byte, length)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
 	for i := range b {
-		b[i] = charset[int(b[i])%len(charset)]
+		n, err := rand.Int(rand.Reader, charsetLen)
+		if err != nil {
+			return "", fmt.Errorf("generating random byte: %w", err)
+		}
+		b[i] = charset[n.Int64()]
 	}
 	return string(b), nil
 }

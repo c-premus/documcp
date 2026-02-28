@@ -38,21 +38,23 @@ type SchedulerConfig struct {
 
 // AppConfig holds general application settings.
 type AppConfig struct {
-	Name     string `mapstructure:"app_name"`
-	Env      string `mapstructure:"app_env"`
-	Debug    bool   `mapstructure:"app_debug"`
-	URL      string `mapstructure:"app_url"`
-	Timezone string `mapstructure:"app_timezone"`
+	Name             string `mapstructure:"app_name"`
+	Env              string `mapstructure:"app_env"`
+	Debug            bool   `mapstructure:"app_debug"`
+	URL              string `mapstructure:"app_url"`
+	Timezone         string `mapstructure:"app_timezone"`
+	InternalAPIToken string `mapstructure:"internal_api_token"`
 }
 
 // ServerConfig holds HTTP server settings.
 type ServerConfig struct {
-	Host           string        `mapstructure:"server_host"`
-	Port           int           `mapstructure:"server_port"`
-	TrustedProxies []string      `mapstructure:"trusted_proxies"`
-	ReadTimeout    time.Duration `mapstructure:"server_read_timeout"`
-	WriteTimeout   time.Duration `mapstructure:"server_write_timeout"`
-	IdleTimeout    time.Duration `mapstructure:"server_idle_timeout"`
+	Host              string        `mapstructure:"server_host"`
+	Port              int           `mapstructure:"server_port"`
+	TrustedProxies    []string      `mapstructure:"trusted_proxies"`
+	ReadTimeout       time.Duration `mapstructure:"server_read_timeout"`
+	WriteTimeout      time.Duration `mapstructure:"server_write_timeout"`
+	IdleTimeout       time.Duration `mapstructure:"server_idle_timeout"`
+	ReadHeaderTimeout time.Duration `mapstructure:"server_read_header_timeout"`
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
@@ -135,6 +137,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("app_debug", false)
 	v.SetDefault("app_url", "http://localhost")
 	v.SetDefault("app_timezone", "UTC")
+	v.SetDefault("internal_api_token", "")
 
 	// Server
 	v.SetDefault("server_host", "0.0.0.0")
@@ -143,6 +146,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server_read_timeout", 30*time.Second)
 	v.SetDefault("server_write_timeout", 30*time.Second)
 	v.SetDefault("server_idle_timeout", 120*time.Second)
+	v.SetDefault("server_read_header_timeout", 5*time.Second)
 
 	// Database
 	v.SetDefault("db_host", "127.0.0.1")
@@ -150,7 +154,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("db_database", "")
 	v.SetDefault("db_username", "")
 	v.SetDefault("db_password", "")
-	v.SetDefault("db_sslmode", "disable")
+	v.SetDefault("db_sslmode", "require")
 	v.SetDefault("db_max_open_conns", 25)
 	v.SetDefault("db_max_idle_conns", 5)
 	v.SetDefault("db_max_lifetime", 5*time.Minute)
@@ -245,20 +249,22 @@ func Load() (*Config, error) {
 
 	// Populate each section by binding env vars and unmarshalling.
 	cfg.App = AppConfig{
-		Name:     v.GetString("app_name"),
-		Env:      v.GetString("app_env"),
-		Debug:    v.GetBool("app_debug"),
-		URL:      v.GetString("app_url"),
-		Timezone: v.GetString("app_timezone"),
+		Name:             v.GetString("app_name"),
+		Env:              v.GetString("app_env"),
+		Debug:            v.GetBool("app_debug"),
+		URL:              v.GetString("app_url"),
+		Timezone:         v.GetString("app_timezone"),
+		InternalAPIToken: v.GetString("internal_api_token"),
 	}
 
 	cfg.Server = ServerConfig{
-		Host:           v.GetString("server_host"),
-		Port:           v.GetInt("server_port"),
-		TrustedProxies: v.GetStringSlice("trusted_proxies"),
-		ReadTimeout:    v.GetDuration("server_read_timeout"),
-		WriteTimeout:   v.GetDuration("server_write_timeout"),
-		IdleTimeout:    v.GetDuration("server_idle_timeout"),
+		Host:              v.GetString("server_host"),
+		Port:              v.GetInt("server_port"),
+		TrustedProxies:    v.GetStringSlice("trusted_proxies"),
+		ReadTimeout:       v.GetDuration("server_read_timeout"),
+		WriteTimeout:      v.GetDuration("server_write_timeout"),
+		IdleTimeout:       v.GetDuration("server_idle_timeout"),
+		ReadHeaderTimeout: v.GetDuration("server_read_header_timeout"),
 	}
 
 	cfg.Database = DatabaseConfig{

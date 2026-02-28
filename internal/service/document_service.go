@@ -125,7 +125,7 @@ func (s *DocumentService) Update(ctx context.Context, docUUID string, params Upd
 		return nil, fmt.Errorf("finding document for update: %w", err)
 	}
 	if doc == nil {
-		return nil, fmt.Errorf("document %s not found", docUUID)
+		return nil, fmt.Errorf("document %s: %w", docUUID, ErrNotFound)
 	}
 
 	if params.Title != "" {
@@ -163,7 +163,7 @@ func (s *DocumentService) Delete(ctx context.Context, docUUID string) error {
 		return fmt.Errorf("finding document for deletion: %w", err)
 	}
 	if doc == nil {
-		return fmt.Errorf("document %s not found", docUUID)
+		return fmt.Errorf("document %s: %w", docUUID, ErrNotFound)
 	}
 
 	if err := s.repo.SoftDelete(ctx, doc.ID); err != nil {

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // newTestServer creates an httptest.Server that routes requests to handler
@@ -27,9 +28,17 @@ func newTestServer(t *testing.T, handlers map[string]http.HandlerFunc) *httptest
 }
 
 // newTestClient creates a Client pointing at the given test server URL with
-// a fresh cache and a no-op logger.
+// a fresh cache and a no-op logger. It constructs the client directly to
+// bypass SSRF validation (test servers bind to localhost).
 func newTestClient(baseURL string) *Client {
-	return NewClient(baseURL, "user@example.com", "test-token", slog.Default())
+	return &Client{
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		email:      "user@example.com",
+		apiToken:   "test-token",
+		httpClient: &http.Client{Timeout: 15 * time.Second},
+		cache:      newCache(),
+		logger:     slog.Default(),
+	}
 }
 
 // jsonResponse writes a JSON-encoded value with HTTP 200.
@@ -109,7 +118,14 @@ func TestDoGet_SendsBasicAuthHeader(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(srv.URL, email, token, slog.Default())
+	client := &Client{
+		baseURL:    strings.TrimRight(srv.URL, "/"),
+		email:      email,
+		apiToken:   token,
+		httpClient: &http.Client{Timeout: 15 * time.Second},
+		cache:      newCache(),
+		logger:     slog.Default(),
+	}
 	_ = client.Health(context.Background())
 
 	want := "Basic " + expectedCreds
@@ -1226,37 +1242,27 @@ func TestDoGet_ErrorResponseIncludesBody(t *testing.T) {
 
 // --- NewClient ---
 
-func TestNewClient_TrimsTrailingSlash(t *testing.T) {
-	tests := []struct {
-		name    string
-		baseURL string
-		want    string
-	}{
-		{
-			name:    "no trailing slash unchanged",
-			baseURL: "https://wiki.example.com",
-			want:    "https://wiki.example.com",
-		},
-		{
-			name:    "single trailing slash trimmed",
-			baseURL: "https://wiki.example.com/",
-			want:    "https://wiki.example.com",
-		},
-		{
-			name:    "multiple trailing slashes trimmed",
-			baseURL: "https://wiki.example.com///",
-			want:    "https://wiki.example.com",
-		},
-	}
+func TestNewClient_Validation(t *testing.T) {
+	t.Run("rejects localhost URL", func(t *testing.T) {
+		_, err := NewClient("http://localhost:8080", "user", "token", slog.Default())
+		if err == nil {
+			t.Fatal("expected error for localhost URL")
+		}
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient(tt.baseURL, "user", "token", slog.Default())
-			if client.baseURL != tt.want {
-				t.Errorf("baseURL = %q, want %q", client.baseURL, tt.want)
-			}
-		})
-	}
+	t.Run("rejects private IP URL", func(t *testing.T) {
+		_, err := NewClient("http://192.168.1.1:8080", "user", "token", slog.Default())
+		if err == nil {
+			t.Fatal("expected error for private IP URL")
+		}
+	})
+
+	t.Run("rejects loopback IP URL", func(t *testing.T) {
+		_, err := NewClient("http://127.0.0.1:8080", "user", "token", slog.Default())
+		if err == nil {
+			t.Fatal("expected error for loopback IP URL")
+		}
+	})
 }
 
 // --- buildSearchCQL ---

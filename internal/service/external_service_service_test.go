@@ -593,8 +593,8 @@ func TestExternalServiceService_Update(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !strings.Contains(err.Error(), "not found") {
-			t.Errorf("error %q does not contain %q", err.Error(), "not found")
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("expected ErrNotFound, got: %v", err)
 		}
 	})
 
@@ -704,8 +704,8 @@ func TestExternalServiceService_Delete(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !strings.Contains(err.Error(), "not found") {
-			t.Errorf("error %q does not contain %q", err.Error(), "not found")
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("expected ErrNotFound, got: %v", err)
 		}
 	})
 
@@ -727,8 +727,8 @@ func TestExternalServiceService_Delete(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !strings.Contains(err.Error(), "cannot delete env-managed") {
-			t.Errorf("error %q does not contain %q", err.Error(), "cannot delete env-managed")
+		if !errors.Is(err, ErrEnvManaged) {
+			t.Errorf("expected ErrEnvManaged, got: %v", err)
 		}
 	})
 
@@ -912,8 +912,8 @@ func TestExternalServiceService_CheckHealth(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !strings.Contains(err.Error(), "not found") {
-			t.Errorf("error %q does not contain %q", err.Error(), "not found")
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("expected ErrNotFound, got: %v", err)
 		}
 	})
 

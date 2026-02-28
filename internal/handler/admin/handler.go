@@ -20,6 +20,7 @@ import (
 	"github.com/c-premus/documcp/internal/auth/oauth"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/repository"
+	"github.com/c-premus/documcp/internal/security"
 	"github.com/c-premus/documcp/internal/service"
 	templates "github.com/c-premus/documcp/web/templates"
 )
@@ -698,7 +699,12 @@ type simpleHealthChecker struct {
 }
 
 // Health performs a GET request to the base URL to check service availability.
+// It validates the URL against SSRF attacks before making the request.
 func (c *simpleHealthChecker) Health(ctx context.Context) error {
+	if err := security.ValidateExternalURL(c.baseURL); err != nil {
+		return fmt.Errorf("blocked health check URL: %w", err)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL, nil)
 	if err != nil {
 		return fmt.Errorf("creating health check request: %w", err)
