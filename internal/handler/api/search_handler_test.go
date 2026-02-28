@@ -99,6 +99,27 @@ func TestSearchHandler_Search(t *testing.T) {
 			t.Errorf("Content-Type = %q, want application/json", ct)
 		}
 	})
+
+	t.Run("returns 400 for invalid file_type filter", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestSearchHandler()
+		req := httptest.NewRequest(http.MethodGet, "/api/search?q=test&file_type=exe", nil)
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "invalid file_type filter" {
+			t.Errorf("message = %v, want 'invalid file_type filter'", msg)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
