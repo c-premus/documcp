@@ -57,7 +57,11 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Fatalf("connecting to test database: %v", err)
 	}
-	defer testDB.Close()
+	defer func() {
+		if err := testDB.Close(); err != nil {
+			log.Printf("closing test database: %v", err)
+		}
+	}()
 
 	if err := database.RunMigrations(testDB.DB, "../../migrations"); err != nil {
 		log.Fatalf("running migrations: %v", err)
