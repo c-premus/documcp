@@ -2,6 +2,9 @@ package pdf_test
 
 import (
 	"context"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"git.999.haus/chris/DocuMCP-go/internal/extractor/pdf"
@@ -57,5 +60,43 @@ func TestPDFExtractor_Extract_CancelledContext(t *testing.T) {
 	// Either way, we expect an error.
 	if err == nil {
 		t.Fatal("Extract() expected error for cancelled context, got nil")
+	}
+}
+
+func TestPDFExtractor_Extract_SamplePDF(t *testing.T) {
+	t.Parallel()
+
+	if _, err := exec.LookPath("pdftotext"); err != nil {
+		t.Skip("pdftotext not available")
+	}
+
+	_, thisFile, _, _ := runtime.Caller(0)
+	fixturePath := filepath.Join(filepath.Dir(thisFile), "..", "..", "testutil", "testdata", "sample.pdf")
+
+	ext := pdf.New()
+	result, err := ext.Extract(context.Background(), fixturePath)
+	if err != nil {
+		t.Fatalf("Extract() unexpected error: %v", err)
+	}
+
+	if result.Content == "" {
+		t.Error("Extract() Content is empty, want non-empty")
+	}
+
+	if result.WordCount <= 0 {
+		t.Errorf("Extract() WordCount = %d, want > 0", result.WordCount)
+	}
+
+	if result.Metadata == nil {
+		t.Fatal("Extract() Metadata is nil, want non-nil map")
+	}
+
+	if pages, ok := result.Metadata["Pages"]; ok {
+		pagesStr, isString := pages.(string)
+		if !isString {
+			t.Errorf("Extract() Metadata[\"Pages\"] type = %T, want string", pages)
+		} else if pagesStr == "" {
+			t.Error("Extract() Metadata[\"Pages\"] is empty, want non-empty string")
+		}
 	}
 }

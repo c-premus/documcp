@@ -485,3 +485,38 @@ func WithGitTemplateIsEnabled(enabled bool) GitTemplateOption {
 func WithGitTemplateStatus(status string) GitTemplateOption {
 	return func(gt *model.GitTemplate) { gt.Status = status }
 }
+
+// ---------------------------------------------------------------------------
+// SearchQuery
+// ---------------------------------------------------------------------------
+
+// SearchQueryOption configures a SearchQuery created by NewSearchQuery.
+type SearchQueryOption func(*model.SearchQuery)
+
+// NewSearchQuery returns a SearchQuery with sensible defaults.
+func NewSearchQuery(opts ...SearchQueryOption) *model.SearchQuery {
+	sq := &model.SearchQuery{
+		Query:        "test search",
+		ResultsCount: 10,
+	}
+	for _, opt := range opts {
+		opt(sq)
+	}
+	return sq
+}
+
+func WithSearchQueryUserID(uid int64) SearchQueryOption {
+	return func(sq *model.SearchQuery) { sq.UserID = nullInt64(uid) }
+}
+
+func WithSearchQueryQuery(q string) SearchQueryOption {
+	return func(sq *model.SearchQuery) { sq.Query = q }
+}
+
+func WithSearchQueryResultsCount(n int) SearchQueryOption {
+	return func(sq *model.SearchQuery) { sq.ResultsCount = n }
+}
+
+func WithSearchQueryFilters(filters string) SearchQueryOption {
+	return func(sq *model.SearchQuery) { sq.Filters = nullString(filters) }
+}
