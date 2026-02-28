@@ -423,3 +423,312 @@ func TestDocumentRepository_CreateVersion(t *testing.T) {
 		})
 	}
 }
+
+func boolPtr(b bool) *bool { return &b }
+
+func TestDocumentRepository_List(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewDocumentRepository(testDB, discardLogger())
+
+	// Create 4 documents: 3 active, 1 soft-deleted.
+	doc1 := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("list-doc-001")),
+		testutil.WithDocumentTitle("Alpha Report"),
+		testutil.WithDocumentFileType("pdf"),
+		testutil.WithDocumentStatus("completed"),
+		testutil.WithDocumentIsPublic(true),
+	)
+	doc2 := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("list-doc-002")),
+		testutil.WithDocumentTitle("Beta Report"),
+		testutil.WithDocumentFileType("pdf"),
+		testutil.WithDocumentStatus("processing"),
+		testutil.WithDocumentIsPublic(false),
+	)
+	doc3 := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("list-doc-003")),
+		testutil.WithDocumentTitle("Gamma Notes"),
+		testutil.WithDocumentFileType("markdown"),
+		testutil.WithDocumentStatus("completed"),
+		testutil.WithDocumentIsPublic(true),
+	)
+	doc4 := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("list-doc-004")),
+		testutil.WithDocumentTitle("Deleted Doc"),
+		testutil.WithDocumentFileType("pdf"),
+		testutil.WithDocumentStatus("completed"),
+	)
+
+	for _, doc := range []*model.Document{doc1, doc2, doc3, doc4} {
+		if err := repo.Create(ctx, doc); err != nil {
+			t.Fatalf("Create(%s) error: %v", doc.Title, err)
+		}
+	}
+
+	// Soft-delete doc4 so it is excluded from queries.
+	if err := repo.SoftDelete(ctx, doc4.ID); err != nil {
+		t.Fatalf("SoftDelete(doc4) error: %v", err)
+	}
+
+	t.Run("no filters", func(t *testing.T) {
+		result, err := repo.List(ctx, DocumentListParams{})
+		if err != nil {
+			t.Fatalf("List() error: %v", err)
+		}
+		if result.Total != 3 {
+			t.Errorf("Total = %d, want 3", result.Total)
+		}
+		if len(result.Documents) != 3 {
+			t.Errorf("len(Documents) = %d, want 3", len(result.Documents))
+		}
+	})
+
+	t.Run("filter by file_type", func(t *testing.T) {
+		result, err := repo.List(ctx, DocumentListParams{FileType: "pdf"})
+		if err != nil {
+			t.Fatalf("List() error: %v", err)
+		}
+		if result.Total != 2 {
+			t.Errorf("Total = %d, want 2", result.Total)
+		}
+	})
+
+	t.Run("filter by status", func(t *testing.T) {
+		result, err := repo.List(ctx, DocumentListParams{Status: "completed"})
+		if err != nil {
+			t.Fatalf("List() error: %v", err)
+		}
+		if result.Total != 2 {
+			t.Errorf("Total = %d, want 2", result.Total)
+		}
+	})
+
+	t.Run("filter by is_public", func(t *testing.T) {
+		result, err := repo.List(ctx, DocumentListParams{IsPublic: boolPtr(true)})
+		if err != nil {
+			t.Fatalf("List() error: %v", err)
+		}
+		if result.Total != 2 {
+			t.Errorf("Total = %d, want 2", result.Total)
+		}
+	})
+
+	t.Run("filter by user_id", func(t *testing.T) {
+		// Create a user and assign doc1 to them.
+		oauthRepo := NewOAuthRepository(testDB, discardLogger())
+		user := testutil.NewUser(
+			testutil.WithUserID(0),
+			testutil.WithUserEmail("list-user@example.com"),
+		)
+		if err := oauthRepo.CreateUser(ctx, user); err != nil {
+			t.Fatalf("CreateUser() error: %v", err)
+		}
+		doc1.UserID = sql.NullInt64{Int64: user.ID, Valid: true}
+		if err := repo.Update(ctx, doc1); err != nil {
+			t.Fatalf("Update() error: %v", err)
+		}
+
+		uid := user.ID
+		result, err := repo.List(ctx, DocumentListParams{UserID: &uid})
+		if err != nil {
+			t.Fatalf("List() error: %v", err)
+		}
+		if result.Total != 1 {
+			t.Errorf("Total = %d, want 1", result.Total)
+		}
+	})
+
+	t.Run("filter by query", func(t *testing.T) {
+		result, err := repo.List(ctx, DocumentListParams{Query: "Report"})
+		if err != nil {
+			t.Fatalf("List() error: %v", err)
+		}
+		if result.Total != 2 {
+			t.Errorf("Total = %d, want 2", result.Total)
+		}
+	})
+
+	t.Run("combined filters", func(t *testing.T) {
+		result, err := repo.List(ctx, DocumentListParams{
+			FileType: "pdf",
+			Status:   "completed",
+		})
+		if err != nil {
+			t.Fatalf("List() error: %v", err)
+		}
+		if result.Total != 1 {
+			t.Errorf("Total = %d, want 1", result.Total)
+		}
+	})
+
+	t.Run("pagination limit", func(t *testing.T) {
+		result, err := repo.List(ctx, DocumentListParams{Limit: 2})
+		if err != nil {
+			t.Fatalf("List() error: %v", err)
+		}
+		if result.Total != 3 {
+			t.Errorf("Total = %d, want 3", result.Total)
+		}
+		if len(result.Documents) != 2 {
+			t.Errorf("len(Documents) = %d, want 2", len(result.Documents))
+		}
+	})
+
+	t.Run("pagination offset", func(t *testing.T) {
+		result, err := repo.List(ctx, DocumentListParams{Limit: 2, Offset: 2})
+		if err != nil {
+			t.Fatalf("List() error: %v", err)
+		}
+		if result.Total != 3 {
+			t.Errorf("Total = %d, want 3", result.Total)
+		}
+		if len(result.Documents) != 1 {
+			t.Errorf("len(Documents) = %d, want 1", len(result.Documents))
+		}
+	})
+
+	t.Run("order by title asc", func(t *testing.T) {
+		result, err := repo.List(ctx, DocumentListParams{
+			OrderBy:  "title",
+			OrderDir: "asc",
+		})
+		if err != nil {
+			t.Fatalf("List() error: %v", err)
+		}
+		if len(result.Documents) == 0 {
+			t.Fatal("expected at least one document")
+		}
+		if result.Documents[0].Title != "Alpha Report" {
+			t.Errorf("first doc title = %q, want %q", result.Documents[0].Title, "Alpha Report")
+		}
+	})
+
+	t.Run("order by updated_at asc", func(t *testing.T) {
+		result, err := repo.List(ctx, DocumentListParams{
+			OrderBy:  "updated_at",
+			OrderDir: "asc",
+		})
+		if err != nil {
+			t.Fatalf("List() error: %v", err)
+		}
+		if len(result.Documents) == 0 {
+			t.Fatal("expected at least one document")
+		}
+	})
+
+	t.Run("order by title desc", func(t *testing.T) {
+		result, err := repo.List(ctx, DocumentListParams{
+			OrderBy:  "title",
+			OrderDir: "desc",
+		})
+		if err != nil {
+			t.Fatalf("List() error: %v", err)
+		}
+		if len(result.Documents) == 0 {
+			t.Fatal("expected at least one document")
+		}
+		if got := result.Documents[0].Title; got != "Gamma Notes" {
+			t.Errorf("first doc title = %q, want prefix %q", got, "Gamma Notes")
+		}
+	})
+
+	t.Run("default limit caps at 20", func(t *testing.T) {
+		result, err := repo.List(ctx, DocumentListParams{Limit: 0})
+		if err != nil {
+			t.Fatalf("List() error: %v", err)
+		}
+		if result.Total != 3 {
+			t.Errorf("Total = %d, want 3", result.Total)
+		}
+		if len(result.Documents) != 3 {
+			t.Errorf("len(Documents) = %d, want 3", len(result.Documents))
+		}
+	})
+}
+
+func TestDocumentRepository_FindByStatus(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewDocumentRepository(testDB, discardLogger())
+
+	// Create 4 documents: 2 pending, 1 completed, 1 pending (soft-deleted).
+	pending1 := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("status-pending-001")),
+		testutil.WithDocumentTitle("Pending One"),
+		testutil.WithDocumentStatus("pending"),
+	)
+	pending2 := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("status-pending-002")),
+		testutil.WithDocumentTitle("Pending Two"),
+		testutil.WithDocumentStatus("pending"),
+	)
+	completed1 := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("status-completed-001")),
+		testutil.WithDocumentTitle("Completed One"),
+		testutil.WithDocumentStatus("completed"),
+	)
+	pendingDeleted := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("status-pending-deleted")),
+		testutil.WithDocumentTitle("Pending Deleted"),
+		testutil.WithDocumentStatus("pending"),
+	)
+
+	for _, doc := range []*model.Document{pending1, pending2, completed1, pendingDeleted} {
+		if err := repo.Create(ctx, doc); err != nil {
+			t.Fatalf("Create(%s) error: %v", doc.Title, err)
+		}
+	}
+
+	if err := repo.SoftDelete(ctx, pendingDeleted.ID); err != nil {
+		t.Fatalf("SoftDelete(pendingDeleted) error: %v", err)
+	}
+
+	t.Run("finds pending", func(t *testing.T) {
+		docs, err := repo.FindByStatus(ctx, "pending", 10)
+		if err != nil {
+			t.Fatalf("FindByStatus() error: %v", err)
+		}
+		if len(docs) != 2 {
+			t.Errorf("len(docs) = %d, want 2", len(docs))
+		}
+	})
+
+	t.Run("finds completed", func(t *testing.T) {
+		docs, err := repo.FindByStatus(ctx, "completed", 10)
+		if err != nil {
+			t.Fatalf("FindByStatus() error: %v", err)
+		}
+		if len(docs) != 1 {
+			t.Errorf("len(docs) = %d, want 1", len(docs))
+		}
+	})
+
+	t.Run("respects limit", func(t *testing.T) {
+		docs, err := repo.FindByStatus(ctx, "pending", 1)
+		if err != nil {
+			t.Fatalf("FindByStatus() error: %v", err)
+		}
+		if len(docs) != 1 {
+			t.Errorf("len(docs) = %d, want 1", len(docs))
+		}
+	})
+
+	t.Run("no matches", func(t *testing.T) {
+		docs, err := repo.FindByStatus(ctx, "error", 10)
+		if err != nil {
+			t.Fatalf("FindByStatus() error: %v", err)
+		}
+		if len(docs) != 0 {
+			t.Errorf("len(docs) = %d, want 0", len(docs))
+		}
+	})
+}
