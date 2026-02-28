@@ -343,11 +343,27 @@ func TestOAuthRepository_RefreshTokens(t *testing.T) {
 		assert.Equal(t, accessToken.ID, found.AccessTokenID)
 	})
 
-	t.Run("RevokeRefreshTokenByAccessTokenID", func(t *testing.T) {
-		require.NoError(t, repo.RevokeRefreshTokenByAccessTokenID(ctx, accessToken.ID))
+	t.Run("RevokeRefreshToken", func(t *testing.T) {
+		require.NoError(t, repo.RevokeRefreshToken(ctx, refreshToken.ID))
 
 		// FindRefreshTokenByToken only returns non-revoked, non-expired tokens.
 		_, err := repo.FindRefreshTokenByToken(ctx, "hashed-refresh-token-abc")
+		require.Error(t, err)
+	})
+
+	t.Run("RevokeRefreshTokenByAccessTokenID", func(t *testing.T) {
+		// Create a second refresh token for this test since the first is already revoked.
+		rt2 := &model.OAuthRefreshToken{
+			Token:         "hashed-refresh-token-def",
+			AccessTokenID: accessToken.ID,
+			ExpiresAt:     time.Now().Add(24 * time.Hour),
+			Revoked:       false,
+		}
+		require.NoError(t, repo.CreateRefreshToken(ctx, rt2))
+
+		require.NoError(t, repo.RevokeRefreshTokenByAccessTokenID(ctx, accessToken.ID))
+
+		_, err := repo.FindRefreshTokenByToken(ctx, "hashed-refresh-token-def")
 		require.Error(t, err)
 	})
 }
@@ -420,6 +436,14 @@ func TestOAuthRepository_DeviceCodes(t *testing.T) {
 		assert.Equal(t, "approved", found.Status)
 		assert.True(t, found.UserID.Valid)
 		assert.Equal(t, user.ID, found.UserID.Int64)
+	})
+
+	t.Run("UpdateDeviceCodeStatus_NilUserID", func(t *testing.T) {
+		require.NoError(t, repo.UpdateDeviceCodeStatus(ctx, dc.ID, "denied", nil))
+
+		found, err := repo.FindDeviceCodeByDeviceCode(ctx, "hashed-device-code-999")
+		require.NoError(t, err)
+		assert.Equal(t, "denied", found.Status)
 	})
 
 	t.Run("UpdateDeviceCodeLastPolled", func(t *testing.T) {

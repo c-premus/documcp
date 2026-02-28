@@ -105,6 +105,23 @@ func TestZimArchiveRepository_UpsertFromCatalog(t *testing.T) {
 		assert.Equal(t, "wikipedia-english", found.Slug)
 	})
 
+	t.Run("slug with special characters", func(t *testing.T) {
+		entry := ZimArchiveUpsert{
+			Name:     "Wikivoyage — Europe (2024)",
+			Title:    "Wikivoyage Europe",
+			Language: "en",
+		}
+
+		err := repo.UpsertFromCatalog(ctx, svc.ID, entry)
+		require.NoError(t, err)
+
+		found, err := repo.FindByName(ctx, "Wikivoyage — Europe (2024)")
+		require.NoError(t, err)
+
+		// Special chars stripped, spaces→hyphens, no consecutive hyphens.
+		assert.Equal(t, "wikivoyage-europe-2024", found.Slug)
+	})
+
 	t.Run("with empty optional fields", func(t *testing.T) {
 		minimalEntry := ZimArchiveUpsert{
 			Name:     "Minimal Archive",
