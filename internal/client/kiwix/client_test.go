@@ -157,7 +157,7 @@ func TestFetchCatalog(t *testing.T) {
 				t.Errorf("unexpected path: %s", r.URL.Path)
 			}
 			w.Header().Set("Content-Type", "application/xml")
-			fmt.Fprint(w, sampleOPDSCatalog())
+			_, _ = fmt.Fprint(w, sampleOPDSCatalog())
 		}))
 		defer srv.Close()
 
@@ -231,7 +231,7 @@ func TestFetchCatalog(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			callCount++
 			w.Header().Set("Content-Type", "application/xml")
-			fmt.Fprint(w, sampleOPDSCatalog())
+			_, _ = fmt.Fprint(w, sampleOPDSCatalog())
 		}))
 		defer srv.Close()
 
@@ -276,7 +276,7 @@ func TestFetchCatalog(t *testing.T) {
 	t.Run("returns error on malformed XML", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/xml")
-			fmt.Fprint(w, "<broken xml><<>>>>>")
+			_, _ = fmt.Fprint(w, "<broken xml><<>>>>>")
 		}))
 		defer srv.Close()
 
@@ -294,7 +294,7 @@ func TestFetchCatalog(t *testing.T) {
 		emptyFeed := `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/xml")
-			fmt.Fprint(w, emptyFeed)
+			_, _ = fmt.Fprint(w, emptyFeed)
 		}))
 		defer srv.Close()
 
@@ -328,7 +328,7 @@ func TestSearch(t *testing.T) {
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `[
+			_, _ = fmt.Fprint(w, `[
 				{"label":"Go Tutorial","value":"go-tutorial","path":"A/Go_Tutorial"},
 				{"label":"Go Modules","value":"go-modules","path":"A/Go_Modules"}
 			]`)
@@ -371,7 +371,7 @@ func TestSearch(t *testing.T) {
 			}
 
 			// Return HTML like Kiwix fulltext search does.
-			fmt.Fprint(w, `<html><body>
+			_, _ = fmt.Fprint(w, `<html><body>
 				<a href="/devdocs-go/A/Goroutines">Goroutines</a>
 				<cite>Concurrency primitives in Go</cite>
 				<a href="/devdocs-go/A/Channels">Channels</a>
@@ -406,7 +406,7 @@ func TestSearch(t *testing.T) {
 				t.Errorf("limit = %q, want 10", r.URL.Query().Get("limit"))
 			}
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `[]`)
+			_, _ = fmt.Fprint(w, `[]`)
 		}))
 		defer srv.Close()
 
@@ -453,7 +453,7 @@ func TestSearch(t *testing.T) {
 	t.Run("returns error on malformed suggest JSON", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{not valid json]`)
+			_, _ = fmt.Fprint(w, `{not valid json]`)
 		}))
 		defer srv.Close()
 
@@ -469,7 +469,7 @@ func TestSearch(t *testing.T) {
 
 	t.Run("fulltext returns empty slice for HTML with no results", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprint(w, `<html><body><p>No results found</p></body></html>`)
+			_, _ = fmt.Fprint(w, `<html><body><p>No results found</p></body></html>`)
 		}))
 		defer srv.Close()
 
@@ -486,7 +486,7 @@ func TestSearch(t *testing.T) {
 	t.Run("suggest returns empty slice for empty JSON array", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `[]`)
+			_, _ = fmt.Fprint(w, `[]`)
 		}))
 		defer srv.Close()
 
@@ -520,7 +520,7 @@ func TestReadArticle(t *testing.T) {
 				t.Errorf("path = %q, want /devdocs-go/A/Goroutines", r.URL.Path)
 			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			fmt.Fprint(w, articleHTML)
+			_, _ = fmt.Fprint(w, articleHTML)
 		}))
 		defer srv.Close()
 
@@ -548,7 +548,7 @@ func TestReadArticle(t *testing.T) {
 	t.Run("falls back to path segment when no title tag", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html")
-			fmt.Fprint(w, `<html><body><p>No title here.</p></body></html>`)
+			_, _ = fmt.Fprint(w, `<html><body><p>No title here.</p></body></html>`)
 		}))
 		defer srv.Close()
 
@@ -574,7 +574,7 @@ func TestReadArticle(t *testing.T) {
 
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html")
-			fmt.Fprint(w, htmlWithScripts)
+			_, _ = fmt.Fprint(w, htmlWithScripts)
 		}))
 		defer srv.Close()
 
