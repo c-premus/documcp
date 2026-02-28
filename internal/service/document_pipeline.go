@@ -77,13 +77,13 @@ func NewDocumentPipeline(
 // dispatches background jobs for extraction and indexing.
 func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentParams) (*model.Document, error) {
 	if params.FileSize > maxUploadSize {
-		return nil, fmt.Errorf("file exceeds maximum size of %d bytes", maxUploadSize)
+		return nil, fmt.Errorf("%w: %d bytes exceeds limit of %d", ErrFileTooLarge, params.FileSize, maxUploadSize)
 	}
 
 	ext := strings.ToLower(filepath.Ext(params.FileName))
 	mimeType, ok := allowedMIMETypes[ext]
 	if !ok {
-		return nil, fmt.Errorf("unsupported file type %q", ext)
+		return nil, fmt.Errorf("%w: %q", ErrUnsupportedFileType, ext)
 	}
 
 	fileType := strings.TrimPrefix(ext, ".")
@@ -148,7 +148,7 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 	}
 
 	// Dispatch background extraction job.
-	p.dispatchExtraction(doc.ID, docUUID, absPath, mimeType)
+	p.dispatchExtraction(doc.ID, docUUID)
 
 	created, err := p.repo.FindByID(ctx, doc.ID)
 	if err != nil {
@@ -262,17 +262,19 @@ func (p *DocumentPipeline) IndexDocument(ctx context.Context, doc *model.Documen
 }
 
 // dispatchExtraction sends an extraction job to the worker pool.
-func (p *DocumentPipeline) dispatchExtraction(docID int64, docUUID, _, _ string) {
+func (p *DocumentPipeline) dispatchExtraction(docID int64, docUUID string) {
 	if p.pool == nil {
 		return
 	}
 
-	_ = p.pool.Dispatch(queue.Job{
+	if err := p.pool.Dispatch(queue.Job{
 		Name: fmt.Sprintf("extract:%s", docUUID),
 		Fn: func(ctx context.Context) error {
 			return p.ProcessDocument(ctx, docID)
 		},
-	})
+	}); err != nil {
+		p.logger.Error("failed to dispatch extraction job", "doc_id", docID, "uuid", docUUID, "error", err)
+	}
 }
 
 // dispatchIndexing sends an indexing job to the worker pool.
@@ -284,7 +286,7 @@ func (p *DocumentPipeline) dispatchIndexing(doc *model.Document) {
 	docID := doc.ID
 	docUUID := doc.UUID
 
-	_ = p.pool.Dispatch(queue.Job{
+	if err := p.pool.Dispatch(queue.Job{
 		Name: fmt.Sprintf("index:%s", docUUID),
 		Fn: func(ctx context.Context) error {
 			freshDoc, err := p.repo.FindByID(ctx, docID)
@@ -293,7 +295,9 @@ func (p *DocumentPipeline) dispatchIndexing(doc *model.Document) {
 			}
 			return p.IndexDocument(ctx, freshDoc)
 		},
-	})
+	}); err != nil {
+		p.logger.Error("failed to dispatch indexing job", "doc_id", docID, "uuid", docUUID, "error", err)
+	}
 }
 
 // markFailed updates a document's status to "failed" with an error message.

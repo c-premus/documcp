@@ -13,22 +13,24 @@ import (
 
 // Config holds HTTP server configuration.
 type Config struct {
-	Host           string
-	Port           int
-	ReadTimeout    time.Duration
-	WriteTimeout   time.Duration
-	IdleTimeout    time.Duration
-	TrustedProxies []string
+	Host              string
+	Port              int
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
+	ReadHeaderTimeout time.Duration
+	TrustedProxies    []string
 }
 
 // DefaultConfig returns a Config with sensible defaults.
 func DefaultConfig() Config {
 	return Config{
-		Host:         "0.0.0.0",
-		Port:         8080,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Host:              "0.0.0.0",
+		Port:              8080,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 }
 
@@ -46,11 +48,12 @@ func New(cfg Config, logger *slog.Logger) *Server {
 	s := &Server{
 		router: r,
 		httpServer: &http.Server{
-			Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
-			Handler:      r,
-			ReadTimeout:  cfg.ReadTimeout,
-			WriteTimeout: cfg.WriteTimeout,
-			IdleTimeout:  cfg.IdleTimeout,
+			Addr:              fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+			Handler:           r,
+			ReadTimeout:       cfg.ReadTimeout,
+			WriteTimeout:      cfg.WriteTimeout,
+			IdleTimeout:       cfg.IdleTimeout,
+			ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		},
 		logger: logger,
 	}

@@ -122,7 +122,7 @@ func (s *ExternalServiceService) Update(ctx context.Context, svcUUID string, par
 		return nil, fmt.Errorf("finding external service for update: %w", err)
 	}
 	if svc == nil {
-		return nil, fmt.Errorf("external service %s not found", svcUUID)
+		return nil, fmt.Errorf("external service %s: %w", svcUUID, ErrNotFound)
 	}
 
 	if params.Name != "" {
@@ -164,11 +164,11 @@ func (s *ExternalServiceService) Delete(ctx context.Context, svcUUID string) err
 		return fmt.Errorf("finding external service for deletion: %w", err)
 	}
 	if svc == nil {
-		return fmt.Errorf("external service %s not found", svcUUID)
+		return fmt.Errorf("external service %s: %w", svcUUID, ErrNotFound)
 	}
 
 	if svc.IsEnvManaged {
-		return fmt.Errorf("cannot delete env-managed external service %s", svcUUID)
+		return fmt.Errorf("external service %s: %w", svcUUID, ErrEnvManaged)
 	}
 
 	if err := s.repo.Delete(ctx, svc.ID); err != nil {
@@ -186,7 +186,7 @@ func (s *ExternalServiceService) CheckHealth(ctx context.Context, svcUUID string
 		return nil, fmt.Errorf("finding external service for health check: %w", err)
 	}
 	if svc == nil {
-		return nil, fmt.Errorf("external service %s not found", svcUUID)
+		return nil, fmt.Errorf("external service %s: %w", svcUUID, ErrNotFound)
 	}
 
 	start := time.Now()

@@ -2,10 +2,10 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -183,7 +183,7 @@ func (h *ExternalServiceHandler) Update(w http.ResponseWriter, r *http.Request) 
 	})
 	if err != nil {
 		h.logger.Error("updating external service", "uuid", svcUUID, "error", err)
-		if strings.Contains(err.Error(), "not found") {
+		if errors.Is(err, service.ErrNotFound) {
 			errorResponse(w, http.StatusNotFound, "external service not found")
 			return
 		}
@@ -203,11 +203,11 @@ func (h *ExternalServiceHandler) Delete(w http.ResponseWriter, r *http.Request) 
 
 	if err := h.svc.Delete(r.Context(), svcUUID); err != nil {
 		h.logger.Error("deleting external service", "uuid", svcUUID, "error", err)
-		if strings.Contains(err.Error(), "not found") {
+		if errors.Is(err, service.ErrNotFound) {
 			errorResponse(w, http.StatusNotFound, "external service not found")
 			return
 		}
-		if strings.Contains(err.Error(), "env-managed") {
+		if errors.Is(err, service.ErrEnvManaged) {
 			errorResponse(w, http.StatusForbidden, "cannot delete environment-managed external service")
 			return
 		}

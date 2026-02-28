@@ -20,6 +20,7 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
+	"git.999.haus/chris/DocuMCP-go/internal/security"
 	"git.999.haus/chris/DocuMCP-go/internal/service"
 	templates "git.999.haus/chris/DocuMCP-go/web/templates"
 )
@@ -698,7 +699,12 @@ type simpleHealthChecker struct {
 }
 
 // Health performs a GET request to the base URL to check service availability.
+// It validates the URL against SSRF attacks before making the request.
 func (c *simpleHealthChecker) Health(ctx context.Context) error {
+	if err := security.ValidateExternalURL(c.baseURL); err != nil {
+		return fmt.Errorf("blocked health check URL: %w", err)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL, nil)
 	if err != nil {
 		return fmt.Errorf("creating health check request: %w", err)

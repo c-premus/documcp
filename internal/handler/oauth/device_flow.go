@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/csrf"
+
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
 )
 
@@ -71,7 +73,7 @@ func (h *Handler) DeviceVerification(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, deviceVerificationHTML, html.EscapeString(userCode))
+	_, _ = fmt.Fprintf(w, deviceVerificationHTML, csrf.Token(r), html.EscapeString(userCode))
 }
 
 // DeviceVerificationSubmit handles POST /oauth/device — user submits user_code.
@@ -140,7 +142,7 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 	// Show consent screen
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, deviceConsentHTML, html.EscapeString(client.ClientName), html.EscapeString(scope), html.EscapeString(userCode), userID)
+	_, _ = fmt.Fprintf(w, deviceConsentHTML, html.EscapeString(client.ClientName), html.EscapeString(scope), csrf.Token(r), html.EscapeString(userCode), userID)
 }
 
 // DeviceApprove handles POST /oauth/device/approve — user approves/denies.
@@ -227,6 +229,7 @@ button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:poin
 <h1>Device Authorization</h1>
 <p>Enter the code shown on your device:</p>
 <form method="POST" action="/oauth/device">
+<input type="hidden" name="gorilla.csrf.Token" value="%s">
 <input type="text" name="user_code" value="%s" maxlength="9" placeholder="XXXX-XXXX" required>
 <br><br>
 <button type="submit">Continue</button>
@@ -252,6 +255,7 @@ button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:poin
 <p><span class="client-name">%s</span> is requesting access to your account.</p>
 <p>Scope: <span class="scope">%s</span></p>
 <form method="POST" action="/oauth/device/approve">
+<input type="hidden" name="gorilla.csrf.Token" value="%s">
 <input type="hidden" name="user_code" value="%s">
 <input type="hidden" name="user_id" value="%d">
 <button type="submit" name="approve" value="approve" class="approve">Authorize</button>

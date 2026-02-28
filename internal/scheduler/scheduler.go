@@ -145,7 +145,11 @@ func (s *Scheduler) syncKiwix() {
 	for _, svc := range services {
 		svcLogger := logger.With("service_id", svc.ID, "base_url", svc.BaseURL)
 
-		client := kiwix.NewClient(svc.BaseURL, svcLogger)
+		client, clientErr := kiwix.NewClient(svc.BaseURL, svcLogger)
+		if clientErr != nil {
+			svcLogger.Error("kiwix client URL rejected", "error", clientErr)
+			continue
+		}
 
 		entries, err := client.FetchCatalog(ctx)
 		if err != nil {
@@ -202,7 +206,11 @@ func (s *Scheduler) syncConfluence() {
 			continue
 		}
 
-		client := confluence.NewClient(svc.BaseURL, email, token, svcLogger)
+		client, clientErr := confluence.NewClient(svc.BaseURL, email, token, svcLogger)
+		if clientErr != nil {
+			svcLogger.Error("confluence client URL rejected", "error", clientErr)
+			continue
+		}
 
 		spaces, err := client.ListSpaces(ctx, "", "", 0)
 		if err != nil {

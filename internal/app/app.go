@@ -140,8 +140,13 @@ func New(cfg *config.Config) (*App, error) {
 		logger.Warn("failed to look up kiwix services", "error", err)
 	} else if len(kiwixServices) > 0 {
 		svc := kiwixServices[0]
-		kiwixClient = kiwix.NewClient(svc.BaseURL, logger)
-		logger.Info("Kiwix client configured", "base_url", svc.BaseURL)
+		var kiwixErr error
+		kiwixClient, kiwixErr = kiwix.NewClient(svc.BaseURL, logger)
+		if kiwixErr != nil {
+			logger.Warn("kiwix client URL rejected", "base_url", svc.BaseURL, "error", kiwixErr)
+		} else {
+			logger.Info("Kiwix client configured", "base_url", svc.BaseURL)
+		}
 	}
 
 	confluenceServices, err := externalServiceRepo.FindEnabledByType(context.Background(), "confluence")
@@ -156,8 +161,13 @@ func New(cfg *config.Config) (*App, error) {
 			email = parts[0]
 			apiToken = parts[1]
 		}
-		confluenceClient = confluence.NewClient(svc.BaseURL, email, apiToken, logger)
-		logger.Info("Confluence client configured", "base_url", svc.BaseURL)
+		var confErr error
+		confluenceClient, confErr = confluence.NewClient(svc.BaseURL, email, apiToken, logger)
+		if confErr != nil {
+			logger.Warn("confluence client URL rejected", "base_url", svc.BaseURL, "error", confErr)
+		} else {
+			logger.Info("Confluence client configured", "base_url", svc.BaseURL)
+		}
 	}
 
 	// --- Content Extractors ---
@@ -275,12 +285,13 @@ func New(cfg *config.Config) (*App, error) {
 
 	// --- HTTP Server ---
 	srv := server.New(server.Config{
-		Host:           cfg.Server.Host,
-		Port:           cfg.Server.Port,
-		ReadTimeout:    cfg.Server.ReadTimeout,
-		WriteTimeout:   cfg.Server.WriteTimeout,
-		IdleTimeout:    cfg.Server.IdleTimeout,
-		TrustedProxies: cfg.Server.TrustedProxies,
+		Host:              cfg.Server.Host,
+		Port:              cfg.Server.Port,
+		ReadTimeout:       cfg.Server.ReadTimeout,
+		WriteTimeout:      cfg.Server.WriteTimeout,
+		IdleTimeout:       cfg.Server.IdleTimeout,
+		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
+		TrustedProxies:    cfg.Server.TrustedProxies,
 	}, logger)
 
 	srv.RegisterRoutes(server.Deps{
@@ -304,6 +315,7 @@ func New(cfg *config.Config) (*App, error) {
 		CSRFKey:                []byte(sessionSecret)[:32],
 		IsSecure:               cfg.App.Env == "production",
 		DB:                     db.DB,
+		InternalAPIToken:       cfg.App.InternalAPIToken,
 	})
 
 	logger.Info("MCP server configured",

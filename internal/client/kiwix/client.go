@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"git.999.haus/chris/DocuMCP-go/internal/security"
 )
 
 const (
@@ -36,7 +38,12 @@ type Client struct {
 }
 
 // NewClient creates a new Kiwix HTTP client targeting the given base URL.
-func NewClient(baseURL string, logger *slog.Logger) *Client {
+// It validates the base URL against SSRF attacks.
+func NewClient(baseURL string, logger *slog.Logger) (*Client, error) {
+	if err := security.ValidateExternalURL(baseURL); err != nil {
+		return nil, fmt.Errorf("invalid kiwix base URL: %w", err)
+	}
+
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		httpClient: &http.Client{
@@ -44,7 +51,7 @@ func NewClient(baseURL string, logger *slog.Logger) *Client {
 		},
 		cache:  newCache(),
 		logger: logger,
-	}
+	}, nil
 }
 
 // Health checks whether the Kiwix Serve instance is reachable by fetching
@@ -95,7 +102,7 @@ func (c *Client) FetchCatalog(ctx context.Context) ([]CatalogEntry, error) {
 		return nil, fmt.Errorf("catalog request returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
 	if err != nil {
 		return nil, fmt.Errorf("reading catalog response: %w", err)
 	}
@@ -153,7 +160,7 @@ func (c *Client) Search(ctx context.Context, archiveName, query, searchType stri
 		return nil, fmt.Errorf("search returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
 	if err != nil {
 		return nil, fmt.Errorf("reading search response: %w", err)
 	}
@@ -192,7 +199,7 @@ func (c *Client) ReadArticle(ctx context.Context, archiveName, articlePath strin
 		return nil, fmt.Errorf("article request returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
 	if err != nil {
 		return nil, fmt.Errorf("reading article response: %w", err)
 	}

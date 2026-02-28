@@ -2,34 +2,11 @@ package git
 
 import (
 	"fmt"
-	"net"
 	"net/url"
 	"regexp"
-	"strings"
+
+	"git.999.haus/chris/DocuMCP-go/internal/security"
 )
-
-// privateRanges defines CIDR blocks that are not allowed as clone targets.
-var privateRanges = []string{
-	"10.0.0.0/8",
-	"172.16.0.0/12",
-	"192.168.0.0/16",
-	"169.254.0.0/16",
-	"127.0.0.0/8",
-	"::1/128",
-}
-
-// parsedPrivateRanges holds pre-parsed *net.IPNet entries for privateRanges.
-var parsedPrivateRanges []*net.IPNet
-
-func init() {
-	for _, cidr := range privateRanges {
-		_, network, err := net.ParseCIDR(cidr)
-		if err != nil {
-			panic(fmt.Sprintf("invalid CIDR %q: %v", cidr, err))
-		}
-		parsedPrivateRanges = append(parsedPrivateRanges, network)
-	}
-}
 
 // ValidateRepositoryURL checks that a repository URL is safe to clone.
 // It blocks localhost, loopback, private IPs, and non-HTTPS URLs.
@@ -43,57 +20,8 @@ func ValidateRepositoryURL(rawURL string) error {
 		return fmt.Errorf("repository URL must use https scheme, got %q", parsed.Scheme)
 	}
 
-	hostname := parsed.Hostname()
-	if hostname == "" {
-		return fmt.Errorf("repository URL has no hostname")
-	}
-
-	lower := strings.ToLower(hostname)
-	if lower == "localhost" {
-		return fmt.Errorf("repository URL must not target localhost")
-	}
-
-	// Check if hostname is a literal IP.
-	if ip := net.ParseIP(hostname); ip != nil {
-		if err := checkIP(ip); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	// Resolve hostname and verify all resolved IPs.
-	addrs, err := net.LookupHost(hostname)
-	if err != nil {
-		return fmt.Errorf("resolving repository hostname %q: %w", hostname, err)
-	}
-
-	for _, addr := range addrs {
-		ip := net.ParseIP(addr)
-		if ip == nil {
-			continue
-		}
-		if err := checkIP(ip); err != nil {
-			return fmt.Errorf("repository hostname %q resolves to blocked address: %w", hostname, err)
-		}
-	}
-
-	return nil
-}
-
-// checkIP returns an error if the given IP falls within a private or blocked range.
-func checkIP(ip net.IP) error {
-	if ip.IsLoopback() {
-		return fmt.Errorf("repository URL must not target loopback address %s", ip)
-	}
-
-	if ip.IsUnspecified() {
-		return fmt.Errorf("repository URL must not target unspecified address %s", ip)
-	}
-
-	for _, network := range parsedPrivateRanges {
-		if network.Contains(ip) {
-			return fmt.Errorf("repository URL must not target private address %s (%s)", ip, network)
-		}
+	if err := security.ValidateExternalURL(rawURL); err != nil {
+		return fmt.Errorf("repository URL blocked: %w", err)
 	}
 
 	return nil

@@ -1,7 +1,6 @@
 package git
 
 import (
-	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -346,7 +345,7 @@ func TestValidateRepositoryURL(t *testing.T) {
 			name:    "169.254.x.x rejected",
 			url:     "https://169.254.169.254/repo",
 			wantErr: true,
-			errMsg:  "private",
+			errMsg:  "blocked",
 		},
 
 		// Unspecified address.
@@ -617,45 +616,41 @@ func TestFindReadmeContent(t *testing.T) {
 	}
 }
 
-// --- checkIP ---
+// --- ValidateRepositoryURL IP blocking ---
 
-func TestCheckIP_PublicIPAllowed(t *testing.T) {
+func TestValidateRepositoryURL_PublicIPAllowed(t *testing.T) {
 	tests := []string{
-		"8.8.8.8",
-		"1.1.1.1",
-		"140.82.121.3", // github.com
+		"https://8.8.8.8/repo.git",
+		"https://1.1.1.1/repo.git",
+		"https://140.82.121.3/repo.git",
 	}
 
-	for _, ipStr := range tests {
-		t.Run(ipStr, func(t *testing.T) {
-			ip := parseIPHelper(t, ipStr)
-			if err := checkIP(ip); err != nil {
-				t.Errorf("public IP %s should be allowed: %v", ipStr, err)
+	for _, rawURL := range tests {
+		t.Run(rawURL, func(t *testing.T) {
+			if err := ValidateRepositoryURL(rawURL); err != nil {
+				t.Errorf("public IP URL should be allowed: %v", err)
 			}
 		})
 	}
 }
 
-func TestCheckIP_PrivateIPsBlocked(t *testing.T) {
+func TestValidateRepositoryURL_PrivateIPsBlocked(t *testing.T) {
 	tests := []struct {
 		name string
-		ip   string
+		url  string
 	}{
-		{name: "loopback v4", ip: "127.0.0.1"},
-		{name: "loopback v6", ip: "::1"},
-		{name: "10.x", ip: "10.255.255.255"},
-		{name: "172.16.x", ip: "172.31.0.1"},
-		{name: "192.168.x", ip: "192.168.0.1"},
-		{name: "link-local", ip: "169.254.1.1"},
-		{name: "unspecified v4", ip: "0.0.0.0"},
-		{name: "unspecified v6", ip: "::"},
+		{name: "loopback v4", url: "https://127.0.0.1/repo.git"},
+		{name: "10.x", url: "https://10.255.255.255/repo.git"},
+		{name: "172.16.x", url: "https://172.31.0.1/repo.git"},
+		{name: "192.168.x", url: "https://192.168.0.1/repo.git"},
+		{name: "link-local", url: "https://169.254.1.1/repo.git"},
+		{name: "localhost", url: "https://localhost/repo.git"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ip := parseIPHelper(t, tt.ip)
-			if err := checkIP(ip); err == nil {
-				t.Errorf("private/blocked IP %s should be rejected", tt.ip)
+			if err := ValidateRepositoryURL(tt.url); err == nil {
+				t.Errorf("private/blocked URL %s should be rejected", tt.url)
 			}
 		})
 	}
@@ -678,11 +673,3 @@ func stringSliceEqual(a, b []string) bool {
 	return true
 }
 
-func parseIPHelper(t *testing.T, s string) net.IP {
-	t.Helper()
-	ip := net.ParseIP(s)
-	if ip == nil {
-		t.Fatalf("failed to parse IP %q", s)
-	}
-	return ip
-}

@@ -1,8 +1,10 @@
 package server
 
 import (
+	"crypto/subtle"
 	"database/sql"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -54,7 +56,8 @@ type Deps struct {
 	IsSecure bool   // true when running behind TLS (sets Secure cookie flag)
 
 	// Infrastructure
-	DB *sql.DB // for readiness checks (nil disables /health/ready)
+	DB               *sql.DB // for readiness checks (nil disables /health/ready)
+	InternalAPIToken string  // protects /metrics and /health/ready (empty = unrestricted)
 }
 
 // RegisterRoutes configures all middleware and route groups on the server.
@@ -80,6 +83,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 
 	// Application middleware
 	r.Use(SecurityHeaders)
+	r.Use(MaxBodySize(1 * 1024 * 1024)) // 1 MB default body limit (excludes multipart)
 	r.Use(RequestLogger(s.logger))
 
 	// Health check (liveness — cheap, no I/O)
@@ -92,9 +96,14 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		r.Method(http.MethodGet, "/health/ready", readiness)
 	}
 
-	// Prometheus metrics endpoint
+	// Prometheus metrics endpoint (protected by internal API token if configured)
 	if deps.Metrics != nil {
-		r.Method(http.MethodGet, "/metrics", observability.MetricsHandler())
+		r.Group(func(r chi.Router) {
+			if deps.InternalAPIToken != "" {
+				r.Use(internalTokenAuth(deps.InternalAPIToken))
+			}
+			r.Method(http.MethodGet, "/metrics", observability.MetricsHandler())
+		})
 		s.logger.Info("Prometheus metrics endpoint registered", "path", "/metrics")
 	}
 
@@ -121,6 +130,15 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	// OAuth endpoints
 	if deps.OAuthHandler != nil {
 		r.Route("/oauth", func(r chi.Router) {
+			// CSRF protection for state-changing OAuth forms (consent, device approval).
+			if len(deps.CSRFKey) > 0 {
+				r.Use(csrf.Protect(
+					deps.CSRFKey,
+					csrf.Secure(deps.IsSecure),
+					csrf.Path("/oauth"),
+					csrf.RequestHeader("X-CSRF-Token"),
+				))
+			}
 			r.Get("/authorize", deps.OAuthHandler.Authorize)
 			r.Post("/authorize/approve", deps.OAuthHandler.AuthorizeApprove)
 
@@ -219,7 +237,8 @@ func (s *Server) RegisterRoutes(deps Deps) {
 				r.Get("/{uuid}", deps.GitTemplateHandler.Show)
 				r.Put("/{uuid}", deps.GitTemplateHandler.Update)
 				r.Delete("/{uuid}", deps.GitTemplateHandler.Delete)
-				r.Get("/{uuid}/structure", deps.GitTemplateHandler.Structure)
+				r.Post("/{uuid}/sync", deps.GitTemplateHandler.Sync)
+			r.Get("/{uuid}/structure", deps.GitTemplateHandler.Structure)
 				r.Get("/{uuid}/files/*", deps.GitTemplateHandler.ReadFile)
 				r.Get("/{uuid}/deployment-guide", deps.GitTemplateHandler.DeploymentGuide)
 				r.Post("/{uuid}/download", deps.GitTemplateHandler.Download)
@@ -330,5 +349,26 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			})
 		})
 		s.logger.Info("Admin UI endpoints registered")
+	}
+}
+
+// internalTokenAuth returns a middleware that requires a bearer token matching
+// the configured internal API token. Used to protect operational endpoints
+// like /metrics and /health/ready.
+func internalTokenAuth(token string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			auth := r.Header.Get("Authorization")
+			if !strings.HasPrefix(auth, "Bearer ") {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			provided := strings.TrimPrefix(auth, "Bearer ")
+			if subtle.ConstantTimeCompare([]byte(provided), []byte(token)) != 1 {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
 	}
 }

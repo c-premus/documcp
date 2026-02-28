@@ -12,9 +12,16 @@ import (
 )
 
 // newTestClient creates a Client pointing at the given httptest.Server.
+// It constructs the client directly to bypass SSRF validation (test servers
+// bind to localhost).
 func newTestClient(t *testing.T, serverURL string) *Client {
 	t.Helper()
-	return NewClient(serverURL, slog.Default())
+	return &Client{
+		baseURL:    strings.TrimRight(serverURL, "/"),
+		httpClient: &http.Client{Timeout: 10 * time.Second},
+		cache:      newCache(),
+		logger:     slog.Default(),
+	}
 }
 
 // sampleOPDSCatalog returns a valid OPDS XML catalog with two entries for use
@@ -973,30 +980,56 @@ func TestParseSuggestResponse(t *testing.T) {
 
 func TestNewClient(t *testing.T) {
 	t.Run("trims trailing slash from base URL", func(t *testing.T) {
-		client := NewClient("http://localhost:8080/", slog.Default())
-		if client.baseURL != "http://localhost:8080" {
-			t.Errorf("baseURL = %q, want %q", client.baseURL, "http://localhost:8080")
+		client, err := NewClient("http://example.com:8080/", slog.Default())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if client.baseURL != "http://example.com:8080" {
+			t.Errorf("baseURL = %q, want %q", client.baseURL, "http://example.com:8080")
 		}
 	})
 
 	t.Run("handles URL without trailing slash", func(t *testing.T) {
-		client := NewClient("http://localhost:8080", slog.Default())
-		if client.baseURL != "http://localhost:8080" {
-			t.Errorf("baseURL = %q, want %q", client.baseURL, "http://localhost:8080")
+		client, err := NewClient("http://example.com:8080", slog.Default())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if client.baseURL != "http://example.com:8080" {
+			t.Errorf("baseURL = %q, want %q", client.baseURL, "http://example.com:8080")
 		}
 	})
 
 	t.Run("sets 10 second HTTP client timeout", func(t *testing.T) {
-		client := NewClient("http://localhost:8080", slog.Default())
+		client, err := NewClient("http://example.com:8080", slog.Default())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if client.httpClient.Timeout != 10*time.Second {
 			t.Errorf("timeout = %v, want 10s", client.httpClient.Timeout)
 		}
 	})
 
 	t.Run("initializes cache", func(t *testing.T) {
-		client := NewClient("http://localhost:8080", slog.Default())
+		client, err := NewClient("http://example.com:8080", slog.Default())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if client.cache == nil {
 			t.Fatal("cache should not be nil")
+		}
+	})
+
+	t.Run("rejects localhost URL", func(t *testing.T) {
+		_, err := NewClient("http://localhost:8080", slog.Default())
+		if err == nil {
+			t.Fatal("expected error for localhost URL")
+		}
+	})
+
+	t.Run("rejects private IP URL", func(t *testing.T) {
+		_, err := NewClient("http://192.168.1.1:8080", slog.Default())
+		if err == nil {
+			t.Fatal("expected error for private IP URL")
 		}
 	})
 }

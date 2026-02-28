@@ -479,8 +479,8 @@ func TestDocumentService_Update(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !strings.Contains(err.Error(), "not found") {
-			t.Errorf("error %q does not contain %q", err.Error(), "not found")
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("expected ErrNotFound, got: %v", err)
 		}
 	})
 
@@ -557,8 +557,8 @@ func TestDocumentService_Delete(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !strings.Contains(err.Error(), "not found") {
-			t.Errorf("error %q does not contain %q", err.Error(), "not found")
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("expected ErrNotFound, got: %v", err)
 		}
 	})
 }

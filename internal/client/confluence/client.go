@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"git.999.haus/chris/DocuMCP-go/internal/security"
 )
 
 // Cache TTL constants.
@@ -36,7 +38,12 @@ type Client struct {
 
 // NewClient creates a new Confluence REST API client.
 // All requests use Basic Auth with the provided email and API token.
-func NewClient(baseURL, email, apiToken string, logger *slog.Logger) *Client {
+// It validates the base URL against SSRF attacks.
+func NewClient(baseURL, email, apiToken string, logger *slog.Logger) (*Client, error) {
+	if err := security.ValidateExternalURL(baseURL); err != nil {
+		return nil, fmt.Errorf("invalid confluence base URL: %w", err)
+	}
+
 	return &Client{
 		baseURL:  strings.TrimRight(baseURL, "/"),
 		email:    email,
@@ -46,7 +53,7 @@ func NewClient(baseURL, email, apiToken string, logger *slog.Logger) *Client {
 		},
 		cache:  newCache(),
 		logger: logger,
-	}
+	}, nil
 }
 
 // Health checks connectivity to the Confluence instance.
@@ -264,7 +271,7 @@ func (c *Client) doGet(ctx context.Context, path string, params url.Values) ([]b
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10 MB max
 	if err != nil {
 		return nil, fmt.Errorf("reading response body from %s: %w", path, err)
 	}
@@ -277,6 +284,7 @@ func (c *Client) doGet(ctx context.Context, path string, params url.Values) ([]b
 }
 
 // buildSearchCQL constructs a CQL string from SearchPagesParams.
+// User-supplied values are escaped to prevent CQL injection.
 func buildSearchCQL(params SearchPagesParams) string {
 	var cql string
 
@@ -284,16 +292,24 @@ func buildSearchCQL(params SearchPagesParams) string {
 	case params.CQL != "":
 		cql = params.CQL
 	case params.Query != "":
-		cql = fmt.Sprintf(`text~"%s"`, params.Query)
+		cql = fmt.Sprintf(`text~"%s"`, escapeCQL(params.Query))
 	default:
 		return ""
 	}
 
 	if params.Space != "" {
-		cql = fmt.Sprintf(`space="%s" AND (%s)`, params.Space, cql)
+		cql = fmt.Sprintf(`space="%s" AND (%s)`, escapeCQL(params.Space), cql)
 	}
 
 	return cql
+}
+
+// escapeCQL escapes double quotes and backslashes in user input to prevent
+// CQL injection when embedding values in CQL query strings.
+func escapeCQL(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return s
 }
 
 // contentResultToPage converts a raw API content result into a Page with
