@@ -2,6 +2,10 @@
 .claude/settings.local.json
 .env
 .devcontainer/.env
+
+# Grafana dashboard generator
+grafana/node_modules/
+dist/
 # Don't ignore these - they should be committed:
 # .claude/settings.json
 # .claude/skills/
