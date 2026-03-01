@@ -284,6 +284,18 @@ func New(cfg *config.Config) (*App, error) {
 	logger.Info("Prometheus metrics registered")
 
 	// --- HTTP Server ---
+	trustedProxies, err := config.ParseCIDRs(cfg.Server.TrustedProxies)
+	if err != nil {
+		return nil, fmt.Errorf("parsing TRUSTED_PROXIES: %w", err)
+	}
+	if len(trustedProxies) > 0 {
+		names := make([]string, len(trustedProxies))
+		for i, n := range trustedProxies {
+			names[i] = n.String()
+		}
+		logger.Info("trusted proxies configured", "cidrs", strings.Join(names, ", "))
+	}
+
 	srv := server.New(server.Config{
 		Host:              cfg.Server.Host,
 		Port:              cfg.Server.Port,
@@ -291,7 +303,7 @@ func New(cfg *config.Config) (*App, error) {
 		WriteTimeout:      cfg.Server.WriteTimeout,
 		IdleTimeout:       cfg.Server.IdleTimeout,
 		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
-		TrustedProxies:    cfg.Server.TrustedProxies,
+		TrustedProxies:    trustedProxies,
 	}, logger)
 
 	srv.RegisterRoutes(server.Deps{

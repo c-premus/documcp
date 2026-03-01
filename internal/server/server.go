@@ -19,7 +19,7 @@ type Config struct {
 	WriteTimeout      time.Duration
 	IdleTimeout       time.Duration
 	ReadHeaderTimeout time.Duration
-	TrustedProxies    []string
+	TrustedProxies    []*net.IPNet
 }
 
 // DefaultConfig returns a Config with sensible defaults.
@@ -36,9 +36,10 @@ func DefaultConfig() Config {
 
 // Server wraps an HTTP server with chi routing and structured logging.
 type Server struct {
-	router     chi.Router
-	httpServer *http.Server
-	logger     *slog.Logger
+	router         chi.Router
+	httpServer     *http.Server
+	logger         *slog.Logger
+	trustedProxies []*net.IPNet
 }
 
 // New creates a new HTTP server with the given configuration and logger.
@@ -55,7 +56,8 @@ func New(cfg Config, logger *slog.Logger) *Server {
 			IdleTimeout:       cfg.IdleTimeout,
 			ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		},
-		logger: logger,
+		logger:         logger,
+		trustedProxies: cfg.TrustedProxies,
 	}
 
 	return s

@@ -6,6 +6,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -360,6 +361,38 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// ParseCIDRs parses a list of CIDR strings into net.IPNet values.
+// Bare IPs without a prefix length are treated as /32 (IPv4) or /128 (IPv6).
+func ParseCIDRs(cidrs []string) ([]*net.IPNet, error) {
+	if len(cidrs) == 0 {
+		return nil, nil
+	}
+	nets := make([]*net.IPNet, 0, len(cidrs))
+	for _, entry := range cidrs {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if !strings.Contains(entry, "/") {
+			ip := net.ParseIP(entry)
+			if ip == nil {
+				return nil, fmt.Errorf("invalid IP: %q", entry)
+			}
+			if ip.To4() != nil {
+				entry += "/32"
+			} else {
+				entry += "/128"
+			}
+		}
+		_, cidr, err := net.ParseCIDR(entry)
+		if err != nil {
+			return nil, fmt.Errorf("invalid CIDR: %q: %w", entry, err)
+		}
+		nets = append(nets, cidr)
+	}
+	return nets, nil
 }
 
 // DatabaseDSN builds a PostgreSQL connection string from the database config.

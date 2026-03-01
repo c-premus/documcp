@@ -2,6 +2,7 @@ package server
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -43,6 +44,75 @@ func MaxBodySize(maxBytes int64) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// RealIP returns middleware that sets r.RemoteAddr to the client's real IP
+// address. When trustedProxies is non-empty, forwarded headers (X-Real-IP,
+// X-Forwarded-For) are only honoured if the direct connection originates from
+// a trusted network. When trustedProxies is empty, headers are ignored and
+// RemoteAddr is used as-is — secure by default.
+func RealIP(trustedProxies []*net.IPNet) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.RemoteAddr = extractIP(r, trustedProxies)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// extractIP gets the client IP. When the request originates from a trusted
+// proxy (RemoteAddr falls within a trustedProxies CIDR), it checks X-Real-IP
+// and X-Forwarded-For headers. Otherwise it uses RemoteAddr only, preventing
+// IP spoofing via header manipulation.
+func extractIP(r *http.Request, trustedProxies []*net.IPNet) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+
+	if len(trustedProxies) > 0 {
+		remoteIP := net.ParseIP(host)
+		if remoteIP != nil && ipInNets(remoteIP, trustedProxies) {
+			if ip := r.Header.Get("X-Real-Ip"); ip != "" {
+				if parsed := net.ParseIP(strings.TrimSpace(ip)); parsed != nil {
+					return parsed.String()
+				}
+			}
+			if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+				// Walk from rightmost (most recent proxy) to leftmost,
+				// skipping trusted proxy IPs. The first untrusted IP is
+				// the real client. Prevents spoofing via prepended headers.
+				ips := strings.Split(xff, ",")
+				for i := len(ips) - 1; i >= 0; i-- {
+					candidate := strings.TrimSpace(ips[i])
+					parsed := net.ParseIP(candidate)
+					if parsed == nil {
+						continue
+					}
+					if !ipInNets(parsed, trustedProxies) {
+						return parsed.String()
+					}
+				}
+			}
+		}
+	}
+
+	// Normalize to canonical form so IPv6 variations produce the same
+	// string for rate-limiter keys and log output.
+	if parsed := net.ParseIP(host); parsed != nil {
+		return parsed.String()
+	}
+	return host
+}
+
+// ipInNets returns true if ip is contained in any of the given networks.
+func ipInNets(ip net.IP, nets []*net.IPNet) bool {
+	for _, n := range nets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // RequestLogger returns middleware that logs each request using slog.

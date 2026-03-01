@@ -7,6 +7,60 @@ import (
 	"time"
 )
 
+func TestParseCIDRs(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   []string
+		want    int // number of nets returned
+		wantErr bool
+	}{
+		{"nil input", nil, 0, false},
+		{"empty slice", []string{}, 0, false},
+		{"single CIDR", []string{"10.0.0.0/8"}, 1, false},
+		{"multiple CIDRs", []string{"10.0.0.0/8", "172.16.0.0/12"}, 2, false},
+		{"bare IPv4 auto-promotes to /32", []string{"10.0.0.1"}, 1, false},
+		{"bare IPv6 auto-promotes to /128", []string{"fd00::1"}, 1, false},
+		{"mixed bare and CIDR", []string{"10.0.0.1", "172.16.0.0/12"}, 2, false},
+		{"whitespace trimmed", []string{"  10.0.0.0/8  ", " 172.16.0.0/12 "}, 2, false},
+		{"empty entries skipped", []string{"10.0.0.0/8", "", "  ", "172.16.0.0/12"}, 2, false},
+		{"invalid IP", []string{"not-an-ip"}, 0, true},
+		{"invalid CIDR", []string{"10.0.0.0/99"}, 0, true},
+		{"IPv6 CIDR", []string{"fd00::/8"}, 1, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseCIDRs(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != tt.want {
+				t.Errorf("ParseCIDRs() returned %d nets, want %d", len(got), tt.want)
+			}
+		})
+	}
+}
+
+func TestParseCIDRs_BareIPContains(t *testing.T) {
+	// A bare IPv4 should produce a /32 that contains only that exact IP.
+	nets, err := ParseCIDRs([]string{"10.0.0.1"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(nets) != 1 {
+		t.Fatalf("expected 1 net, got %d", len(nets))
+	}
+	if nets[0].String() != "10.0.0.1/32" {
+		t.Errorf("got %s, want 10.0.0.1/32", nets[0].String())
+	}
+}
+
 // setEnv is a test helper that sets an environment variable and registers
 // cleanup to restore the original value after the test completes.
 func setEnv(t *testing.T, key, value string) {
