@@ -455,3 +455,181 @@ func TestOAuthRepository_DeviceCodes(t *testing.T) {
 		assert.Equal(t, 10, found.Interval)
 	})
 }
+
+// ---------------------------------------------------------------------------
+// PurgeExpiredTokens
+// ---------------------------------------------------------------------------
+
+func TestOAuthRepository_PurgeExpiredTokens(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewOAuthRepository(testDB, discardLogger())
+
+	// FK dependencies: user and client.
+	user := testutil.NewUser(
+		testutil.WithUserID(0),
+		testutil.WithUserEmail("purge-user@example.com"),
+	)
+	require.NoError(t, repo.CreateUser(ctx, user))
+
+	client := testutil.NewOAuthClient(
+		testutil.WithOAuthClientID(0),
+		testutil.WithOAuthClientClientID("purge-client"),
+	)
+	require.NoError(t, repo.CreateClient(ctx, client))
+
+	t.Run("empty database returns zero", func(t *testing.T) {
+		count, err := repo.PurgeExpiredTokens(ctx, 7)
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), count)
+	})
+
+	t.Run("purges expired tokens older than retention", func(t *testing.T) {
+		truncateAll(t)
+
+		// Re-create FK dependencies after truncate.
+		user := testutil.NewUser(
+			testutil.WithUserID(0),
+			testutil.WithUserEmail("purge-user2@example.com"),
+		)
+		require.NoError(t, repo.CreateUser(ctx, user))
+
+		client := testutil.NewOAuthClient(
+			testutil.WithOAuthClientID(0),
+			testutil.WithOAuthClientClientID("purge-client2"),
+		)
+		require.NoError(t, repo.CreateClient(ctx, client))
+
+		// 1. Create an expired access token (expires_at in the past).
+		expiredAT := &model.OAuthAccessToken{
+			Token:     "purge-expired-at-001",
+			ClientID:  client.ID,
+			UserID:    sql.NullInt64{Int64: user.ID, Valid: true},
+			ExpiresAt: time.Now().Add(-1 * time.Hour), // already expired
+			Revoked:   false,
+		}
+		require.NoError(t, repo.CreateAccessToken(ctx, expiredAT))
+
+		// Backdate created_at to beyond the retention period (10 days ago).
+		oldCreatedAt := time.Now().AddDate(0, 0, -10)
+		_, err := testDB.ExecContext(ctx,
+			`UPDATE oauth_access_tokens SET created_at = $1 WHERE id = $2`,
+			oldCreatedAt, expiredAT.ID)
+		require.NoError(t, err)
+
+		// 2. Create an expired refresh token linked to the access token.
+		expiredRT := &model.OAuthRefreshToken{
+			Token:         "purge-expired-rt-001",
+			AccessTokenID: expiredAT.ID,
+			ExpiresAt:     time.Now().Add(-1 * time.Hour), // already expired
+			Revoked:       false,
+		}
+		require.NoError(t, repo.CreateRefreshToken(ctx, expiredRT))
+
+		// Backdate created_at on the refresh token too.
+		_, err = testDB.ExecContext(ctx,
+			`UPDATE oauth_refresh_tokens SET created_at = $1 WHERE id = $2`,
+			oldCreatedAt, expiredRT.ID)
+		require.NoError(t, err)
+
+		// 3. Create a valid (non-expired) access token that should survive.
+		validAT := &model.OAuthAccessToken{
+			Token:     "purge-valid-at-001",
+			ClientID:  client.ID,
+			UserID:    sql.NullInt64{Int64: user.ID, Valid: true},
+			ExpiresAt: time.Now().Add(1 * time.Hour), // still valid
+			Revoked:   false,
+		}
+		require.NoError(t, repo.CreateAccessToken(ctx, validAT))
+
+		// Purge with 7-day retention.
+		count, err := repo.PurgeExpiredTokens(ctx, 7)
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), count) // 1 refresh + 1 access
+
+		// Verify expired tokens are gone.
+		_, err = repo.FindAccessTokenByID(ctx, expiredAT.ID)
+		assert.Error(t, err)
+
+		// Verify valid token still exists.
+		found, err := repo.FindAccessTokenByID(ctx, validAT.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "purge-valid-at-001", found.Token)
+	})
+
+	t.Run("purges revoked tokens older than retention", func(t *testing.T) {
+		truncateAll(t)
+
+		user := testutil.NewUser(
+			testutil.WithUserID(0),
+			testutil.WithUserEmail("purge-revoked@example.com"),
+		)
+		require.NoError(t, repo.CreateUser(ctx, user))
+
+		client := testutil.NewOAuthClient(
+			testutil.WithOAuthClientID(0),
+			testutil.WithOAuthClientClientID("purge-revoked-client"),
+		)
+		require.NoError(t, repo.CreateClient(ctx, client))
+
+		// Create a revoked access token with future expiry but old created_at.
+		revokedAT := &model.OAuthAccessToken{
+			Token:     "purge-revoked-at-001",
+			ClientID:  client.ID,
+			UserID:    sql.NullInt64{Int64: user.ID, Valid: true},
+			ExpiresAt: time.Now().Add(1 * time.Hour), // not expired by time
+			Revoked:   true,                          // but revoked
+		}
+		require.NoError(t, repo.CreateAccessToken(ctx, revokedAT))
+
+		// Backdate created_at beyond retention.
+		oldCreatedAt := time.Now().AddDate(0, 0, -10)
+		_, err := testDB.ExecContext(ctx,
+			`UPDATE oauth_access_tokens SET created_at = $1 WHERE id = $2`,
+			oldCreatedAt, revokedAT.ID)
+		require.NoError(t, err)
+
+		count, err := repo.PurgeExpiredTokens(ctx, 7)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), count)
+
+		_, err = repo.FindAccessTokenByID(ctx, revokedAT.ID)
+		assert.Error(t, err)
+	})
+
+	t.Run("recently created expired tokens within retention are not purged", func(t *testing.T) {
+		truncateAll(t)
+
+		user := testutil.NewUser(
+			testutil.WithUserID(0),
+			testutil.WithUserEmail("purge-recent@example.com"),
+		)
+		require.NoError(t, repo.CreateUser(ctx, user))
+
+		client := testutil.NewOAuthClient(
+			testutil.WithOAuthClientID(0),
+			testutil.WithOAuthClientClientID("purge-recent-client"),
+		)
+		require.NoError(t, repo.CreateClient(ctx, client))
+
+		// Create an expired token but with created_at = now (within 7-day retention).
+		recentExpiredAT := &model.OAuthAccessToken{
+			Token:     "purge-recent-expired-at",
+			ClientID:  client.ID,
+			UserID:    sql.NullInt64{Int64: user.ID, Valid: true},
+			ExpiresAt: time.Now().Add(-1 * time.Hour), // expired
+			Revoked:   false,
+		}
+		require.NoError(t, repo.CreateAccessToken(ctx, recentExpiredAT))
+		// created_at is NOW() by default, so it is within retention.
+
+		count, err := repo.PurgeExpiredTokens(ctx, 7)
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), count)
+
+		// Token should still exist.
+		found, err := repo.FindAccessTokenByID(ctx, recentExpiredAT.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "purge-recent-expired-at", found.Token)
+	})
+}

@@ -1,23 +1,42 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"git.999.haus/chris/DocuMCP-go/internal/repository"
 	"git.999.haus/chris/DocuMCP-go/internal/search"
 )
 
+// searchQueryLister retrieves popular search queries.
+type searchQueryLister interface {
+	PopularQueries(ctx context.Context, limit int) ([]repository.PopularQuery, error)
+}
+
+// titleSuggester provides title autocomplete suggestions.
+type titleSuggester interface {
+	SuggestTitles(ctx context.Context, prefix string, limit int) ([]repository.TitleSuggestion, error)
+}
+
 // SearchHandler handles REST API endpoints for search.
 type SearchHandler struct {
-	searcher *search.Searcher
-	logger   *slog.Logger
+	searcher    *search.Searcher
+	queryLister searchQueryLister
+	suggester   titleSuggester
+	logger      *slog.Logger
 }
 
 // NewSearchHandler creates a new SearchHandler.
-func NewSearchHandler(searcher *search.Searcher, logger *slog.Logger) *SearchHandler {
-	return &SearchHandler{searcher: searcher, logger: logger}
+func NewSearchHandler(searcher *search.Searcher, queryLister searchQueryLister, suggester titleSuggester, logger *slog.Logger) *SearchHandler {
+	return &SearchHandler{
+		searcher:    searcher,
+		queryLister: queryLister,
+		suggester:   suggester,
+		logger:      logger,
+	}
 }
 
 // Search handles GET /api/search — full-text search across documents.
@@ -135,4 +154,78 @@ func (h *SearchHandler) FederatedSearch(w http.ResponseWriter, r *http.Request) 
 		"limit":              limit,
 		"offset":             offset,
 	})
+}
+
+// Popular handles GET /api/search/popular — returns popular search queries.
+func (h *SearchHandler) Popular(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	queries, err := h.queryLister.PopularQueries(r.Context(), limit)
+	if err != nil {
+		h.logger.Error("fetching popular queries", "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to fetch popular queries")
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, queries)
+}
+
+// autocompleteResult is the JSON representation of a title suggestion.
+type autocompleteResult struct {
+	UUID             string `json:"uuid"`
+	Title            string `json:"title"`
+	HighlightedTitle string `json:"highlighted_title"`
+}
+
+// Autocomplete handles GET /api/search/autocomplete — returns title suggestions.
+func (h *SearchHandler) Autocomplete(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("query")
+	if len(query) < 2 || len(query) > 100 {
+		errorResponse(w, http.StatusBadRequest, "query parameter must be between 2 and 100 characters")
+		return
+	}
+
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 {
+		limit = 5
+	}
+	if limit > 10 {
+		limit = 10
+	}
+
+	suggestions, err := h.suggester.SuggestTitles(r.Context(), query, limit)
+	if err != nil {
+		h.logger.Error("fetching title suggestions", "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to fetch suggestions")
+		return
+	}
+
+	results := make([]autocompleteResult, len(suggestions))
+	for i, s := range suggestions {
+		results[i] = autocompleteResult{
+			UUID:             s.UUID,
+			Title:            s.Title,
+			HighlightedTitle: highlightPrefix(s.Title, query),
+		}
+	}
+
+	jsonResponse(w, http.StatusOK, results)
+}
+
+// highlightPrefix wraps the matched prefix portion of title in <em> tags.
+// The match is case-insensitive.
+func highlightPrefix(title, prefix string) string {
+	if len(prefix) > len(title) {
+		return title
+	}
+	if !strings.EqualFold(title[:len(prefix)], prefix) {
+		return title
+	}
+	return "<em>" + title[:len(prefix)] + "</em>" + title[len(prefix):]
 }

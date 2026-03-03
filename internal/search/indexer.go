@@ -2,9 +2,12 @@ package search
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/meilisearch/meilisearch-go"
 )
 
 // DocumentRecord represents a document to be indexed in Meilisearch.
@@ -103,6 +106,44 @@ func (ix *Indexer) WaitForTask(ctx context.Context, taskUID int64) error {
 		return fmt.Errorf("waiting for task %d: %w", taskUID, err)
 	}
 	return nil
+}
+
+// ListIndexedDocumentUUIDs returns a set of all document UUIDs currently in the search index.
+func (ix *Indexer) ListIndexedDocumentUUIDs(ctx context.Context) (map[string]bool, error) {
+	idx := ix.client.ms.Index(IndexDocuments)
+	uuids := make(map[string]bool)
+
+	const pageSize int64 = 1000
+	offset := int64(0)
+
+	for {
+		var result meilisearch.DocumentsResult
+		err := idx.GetDocumentsWithContext(ctx, &meilisearch.DocumentsQuery{
+			Fields: []string{"uuid"},
+			Limit:  pageSize,
+			Offset: offset,
+		}, &result)
+		if err != nil {
+			return nil, fmt.Errorf("listing indexed document uuids at offset %d: %w", offset, err)
+		}
+
+		for _, hit := range result.Results {
+			if raw, ok := hit["uuid"]; ok {
+				var uuid string
+				if err := json.Unmarshal(raw, &uuid); err == nil {
+					uuids[uuid] = true
+				}
+			}
+		}
+
+		offset += int64(len(result.Results))
+		if offset >= result.Total {
+			break
+		}
+	}
+
+	ix.logger.Debug("listed indexed document uuids", "count", len(uuids))
+	return uuids, nil
 }
 
 // Searcher returns a Searcher backed by this indexer's client.

@@ -10,6 +10,12 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 )
 
+// PopularQuery represents a search query with its occurrence count.
+type PopularQuery struct {
+	Query string `db:"query" json:"query"`
+	Count int64  `db:"count" json:"count"`
+}
+
 // SearchQueryRepository handles search query persistence.
 type SearchQueryRepository struct {
 	db     *sqlx.DB
@@ -32,4 +38,19 @@ func (r *SearchQueryRepository) Create(ctx context.Context, sq *model.SearchQuer
 		return fmt.Errorf("creating search query: %w", err)
 	}
 	return nil
+}
+
+// PopularQueries returns the most frequent search queries.
+func (r *SearchQueryRepository) PopularQueries(ctx context.Context, limit int) ([]PopularQuery, error) {
+	var queries []PopularQuery
+	err := r.db.SelectContext(ctx, &queries,
+		`SELECT LOWER(query) AS query, COUNT(*) AS count
+		FROM search_queries
+		GROUP BY LOWER(query)
+		ORDER BY count DESC
+		LIMIT $1`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("querying popular searches: %w", err)
+	}
+	return queries, nil
 }

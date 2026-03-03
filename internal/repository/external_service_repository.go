@@ -21,6 +21,17 @@ func NewExternalServiceRepository(db *sqlx.DB, logger *slog.Logger) *ExternalSer
 	return &ExternalServiceRepository{db: db, logger: logger}
 }
 
+// FindAllEnabled returns all enabled external services regardless of type.
+func (r *ExternalServiceRepository) FindAllEnabled(ctx context.Context) ([]model.ExternalService, error) {
+	var services []model.ExternalService
+	err := r.db.SelectContext(ctx, &services,
+		`SELECT * FROM external_services WHERE is_enabled = true ORDER BY name`)
+	if err != nil {
+		return nil, fmt.Errorf("finding all enabled external services: %w", err)
+	}
+	return services, nil
+}
+
 // FindEnabledByType returns all enabled external services of the given type.
 func (r *ExternalServiceRepository) FindEnabledByType(ctx context.Context, serviceType string) ([]model.ExternalService, error) {
 	var services []model.ExternalService

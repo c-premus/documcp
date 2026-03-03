@@ -4,11 +4,25 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 )
+
+// DocumentFilePath is a lightweight struct for file cleanup operations.
+type DocumentFilePath struct {
+	ID       int64  `db:"id"`
+	UUID     string `db:"uuid"`
+	FilePath string `db:"file_path"`
+}
+
+// TitleSuggestion is returned by autocomplete queries.
+type TitleSuggestion struct {
+	UUID  string `db:"uuid"`
+	Title string `db:"title"`
+}
 
 // DocumentRepository handles document persistence.
 type DocumentRepository struct {
@@ -160,4 +174,107 @@ func (r *DocumentRepository) CreateVersion(ctx context.Context, version *model.D
 		return fmt.Errorf("creating version %d for document %d: %w", version.Version, version.DocumentID, err)
 	}
 	return nil
+}
+
+// ListAllUUIDs returns all document UUIDs including soft-deleted ones.
+func (r *DocumentRepository) ListAllUUIDs(ctx context.Context) ([]string, error) {
+	var uuids []string
+	err := r.db.SelectContext(ctx, &uuids, `SELECT uuid FROM documents`)
+	if err != nil {
+		return nil, fmt.Errorf("listing all document uuids: %w", err)
+	}
+	return uuids, nil
+}
+
+// ListActiveFilePaths returns file paths for non-deleted documents.
+func (r *DocumentRepository) ListActiveFilePaths(ctx context.Context) ([]DocumentFilePath, error) {
+	var paths []DocumentFilePath
+	err := r.db.SelectContext(ctx, &paths,
+		`SELECT id, uuid, file_path FROM documents
+		WHERE deleted_at IS NULL AND file_path IS NOT NULL AND file_path != ''`)
+	if err != nil {
+		return nil, fmt.Errorf("listing active file paths: %w", err)
+	}
+	return paths, nil
+}
+
+// PurgeSoftDeleted deletes documents soft-deleted longer than olderThan duration.
+// Returns deleted file paths for disk cleanup.
+func (r *DocumentRepository) PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]DocumentFilePath, error) {
+	cutoff := time.Now().Add(-olderThan)
+
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("beginning purge soft-deleted transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// 1. Select documents to purge.
+	var paths []DocumentFilePath
+	err = tx.SelectContext(ctx, &paths,
+		`SELECT id, uuid, file_path FROM documents
+		WHERE deleted_at IS NOT NULL AND deleted_at < $1`, cutoff)
+	if err != nil {
+		return nil, fmt.Errorf("selecting soft-deleted documents for purge: %w", err)
+	}
+
+	if len(paths) == 0 {
+		return nil, nil
+	}
+
+	ids := make([]int64, len(paths))
+	for i, p := range paths {
+		ids[i] = p.ID
+	}
+
+	// 2. Delete document_tags.
+	tagQuery, tagArgs, err := sqlx.In(`DELETE FROM document_tags WHERE document_id IN (?)`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("building IN clause for document_tags purge: %w", err)
+	}
+	tagQuery = tx.Rebind(tagQuery)
+	if _, err := tx.ExecContext(ctx, tagQuery, tagArgs...); err != nil {
+		return nil, fmt.Errorf("purging document_tags: %w", err)
+	}
+
+	// 3. Delete document_versions.
+	verQuery, verArgs, err := sqlx.In(`DELETE FROM document_versions WHERE document_id IN (?)`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("building IN clause for document_versions purge: %w", err)
+	}
+	verQuery = tx.Rebind(verQuery)
+	if _, err := tx.ExecContext(ctx, verQuery, verArgs...); err != nil {
+		return nil, fmt.Errorf("purging document_versions: %w", err)
+	}
+
+	// 4. Delete documents.
+	docQuery, docArgs, err := sqlx.In(`DELETE FROM documents WHERE id IN (?)`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("building IN clause for documents purge: %w", err)
+	}
+	docQuery = tx.Rebind(docQuery)
+	if _, err := tx.ExecContext(ctx, docQuery, docArgs...); err != nil {
+		return nil, fmt.Errorf("purging documents: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("committing purge soft-deleted transaction: %w", err)
+	}
+
+	r.logger.Info("purged soft-deleted documents", "count", len(paths))
+	return paths, nil
+}
+
+// SuggestTitles returns title suggestions matching the given prefix (case-insensitive).
+func (r *DocumentRepository) SuggestTitles(ctx context.Context, prefix string, limit int) ([]TitleSuggestion, error) {
+	var suggestions []TitleSuggestion
+	err := r.db.SelectContext(ctx, &suggestions,
+		`SELECT uuid, title FROM documents
+		WHERE deleted_at IS NULL AND is_public = true AND title ILIKE $1
+		ORDER BY title LIMIT $2`,
+		prefix+"%", limit)
+	if err != nil {
+		return nil, fmt.Errorf("suggesting titles with prefix %q: %w", prefix, err)
+	}
+	return suggestions, nil
 }

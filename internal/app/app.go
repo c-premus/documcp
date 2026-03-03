@@ -226,7 +226,7 @@ func New(cfg *config.Config) (*App, error) {
 	documentH := apihandler.NewDocumentHandler(documentPipeline, documentRepo, logger)
 	var searchH *apihandler.SearchHandler
 	if searcher != nil {
-		searchH = apihandler.NewSearchHandler(searcher, logger)
+		searchH = apihandler.NewSearchHandler(searcher, searchQueryRepo, documentRepo, logger)
 	}
 	zimH := apihandler.NewZimHandler(zimArchiveRepo, kiwixClient, logger)
 	confluenceH := apihandler.NewConfluenceHandler(confluenceSpaceRepo, confluenceClient, logger)
@@ -345,22 +345,40 @@ func New(cfg *config.Config) (*App, error) {
 
 		sched = scheduler.New(
 			scheduler.Config{
-				KiwixSchedule:      cfg.Scheduler.KiwixSchedule,
-				ConfluenceSchedule: cfg.Scheduler.ConfluenceSchedule,
-				GitSchedule:        cfg.Scheduler.GitSchedule,
-				Logger:             logger,
+				KiwixSchedule:           cfg.Scheduler.KiwixSchedule,
+				ConfluenceSchedule:      cfg.Scheduler.ConfluenceSchedule,
+				GitSchedule:             cfg.Scheduler.GitSchedule,
+				OAuthCleanupSchedule:    cfg.Scheduler.OAuthCleanupSchedule,
+				OrphanedFilesSchedule:   cfg.Scheduler.OrphanedFilesSchedule,
+				SearchVerifySchedule:    cfg.Scheduler.SearchVerifySchedule,
+				SoftDeletePurgeSchedule: cfg.Scheduler.SoftDeletePurgeSchedule,
+				ZimCleanupSchedule:      cfg.Scheduler.ZimCleanupSchedule,
+				HealthCheckSchedule:     cfg.Scheduler.HealthCheckSchedule,
+				Logger:                  logger,
 			},
-			externalServiceRepo,
-			zimArchiveRepo,
-			confluenceSpaceRepo,
-			gitTemplateRepo,
-			searchIndexer,
-			gitTempDir,
+			scheduler.Deps{
+				Services:      externalServiceRepo,
+				HealthChecker: externalServiceRepo,
+				ZimRepo:       zimArchiveRepo,
+				ConfRepo:      confluenceSpaceRepo,
+				GitRepo:       gitTemplateRepo,
+				OAuthRepo:     oauthRepo,
+				DocRepo:       documentRepo,
+				Indexer:       searchIndexer,
+				GitTempDir:    gitTempDir,
+				StoragePath:   storagePath,
+			},
 		)
 		logger.Info("scheduler configured",
 			"kiwix_schedule", cfg.Scheduler.KiwixSchedule,
 			"confluence_schedule", cfg.Scheduler.ConfluenceSchedule,
 			"git_schedule", cfg.Scheduler.GitSchedule,
+			"oauth_cleanup_schedule", cfg.Scheduler.OAuthCleanupSchedule,
+			"orphaned_files_schedule", cfg.Scheduler.OrphanedFilesSchedule,
+			"search_verify_schedule", cfg.Scheduler.SearchVerifySchedule,
+			"soft_delete_purge_schedule", cfg.Scheduler.SoftDeletePurgeSchedule,
+			"zim_cleanup_schedule", cfg.Scheduler.ZimCleanupSchedule,
+			"health_check_schedule", cfg.Scheduler.HealthCheckSchedule,
 		)
 	}
 

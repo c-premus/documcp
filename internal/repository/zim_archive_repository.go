@@ -101,6 +101,17 @@ func (r *ZimArchiveRepository) FindByUUID(ctx context.Context, uuid string) (*mo
 	return &archive, nil
 }
 
+// FindDisabled returns all disabled ZIM archives.
+func (r *ZimArchiveRepository) FindDisabled(ctx context.Context) ([]model.ZimArchive, error) {
+	var archives []model.ZimArchive
+	err := r.db.SelectContext(ctx, &archives,
+		`SELECT * FROM zim_archives WHERE is_enabled = false`)
+	if err != nil {
+		return nil, fmt.Errorf("finding disabled zim archives: %w", err)
+	}
+	return archives, nil
+}
+
 // ListAll returns all ZIM archives (including disabled) with optional search query.
 func (r *ZimArchiveRepository) ListAll(ctx context.Context, query string, limit int) ([]model.ZimArchive, error) {
 	q := `SELECT * FROM zim_archives WHERE 1=1`

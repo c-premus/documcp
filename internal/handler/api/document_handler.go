@@ -4,15 +4,20 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
 	"git.999.haus/chris/DocuMCP-go/internal/service"
@@ -265,4 +270,234 @@ func formatTime(t sql.NullTime) string {
 		return ""
 	}
 	return t.Time.Format(time.RFC3339)
+}
+
+// Download handles GET /api/documents/{uuid}/download — serve the document file.
+func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
+	docUUID := chi.URLParam(r, "uuid")
+
+	doc, err := h.repo.FindByUUID(r.Context(), docUUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			errorResponse(w, http.StatusNotFound, "document not found")
+			return
+		}
+		h.logger.Error("finding document for download", "uuid", docUUID, "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to find document")
+		return
+	}
+
+	// Check access: document must be public or owned by the authenticated user.
+	if !doc.IsPublic {
+		user, ok := authmiddleware.UserFromContext(r.Context())
+		if !ok || !doc.UserID.Valid || user.ID != doc.UserID.Int64 {
+			errorResponse(w, http.StatusForbidden, "access denied")
+			return
+		}
+	}
+
+	if doc.FilePath == "" {
+		errorResponse(w, http.StatusNotFound, "document has no associated file")
+		return
+	}
+
+	fullPath := filepath.Join(h.pipeline.StoragePath(), doc.FilePath)
+
+	f, err := os.Open(fullPath)
+	if err != nil {
+		h.logger.Error("opening document file", "path", fullPath, "error", err)
+		errorResponse(w, http.StatusNotFound, "file not found")
+		return
+	}
+	defer func() { _ = f.Close() }()
+
+	info, err := f.Stat()
+	if err != nil {
+		h.logger.Error("stat document file", "path", fullPath, "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to read file info")
+		return
+	}
+
+	contentType := doc.MIMEType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	// Determine filename for Content-Disposition.
+	filename := doc.UUID + filepath.Ext(doc.FilePath)
+	if doc.Title != "" {
+		filename = doc.Title + filepath.Ext(doc.FilePath)
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+
+	http.ServeContent(w, r, filename, info.ModTime(), f)
+}
+
+// analyzeResponse is the JSON representation of a document analysis result.
+type analyzeResponse struct {
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
+	WordCount   int      `json:"word_count"`
+	ReadingTime int      `json:"reading_time"`
+	Language    string   `json:"language"`
+}
+
+// Analyze handles POST /api/documents/analyze — extract and analyze an uploaded file.
+func (h *DocumentHandler) Analyze(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(50 << 20); err != nil {
+		errorResponse(w, http.StatusBadRequest, "invalid multipart form")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		errorResponse(w, http.StatusBadRequest, "file is required")
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	mimeType, ok := service.AllowedMIMETypes[ext]
+	if !ok {
+		errorResponse(w, http.StatusBadRequest, fmt.Sprintf("unsupported file type: %q", ext))
+		return
+	}
+
+	// Write to a temp file for extraction.
+	tmpFile, err := os.CreateTemp("", "analyze-*"+ext)
+	if err != nil {
+		h.logger.Error("creating temp file for analysis", "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to process file")
+		return
+	}
+	defer func() {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFile.Name())
+	}()
+
+	if _, err := io.Copy(tmpFile, file); err != nil {
+		h.logger.Error("writing temp file for analysis", "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to process file")
+		return
+	}
+	_ = tmpFile.Close()
+
+	ext2, err := h.pipeline.ExtractorRegistry().ForMIMEType(mimeType)
+	if err != nil {
+		errorResponse(w, http.StatusUnprocessableEntity, fmt.Sprintf("no extractor for type: %s", mimeType))
+		return
+	}
+
+	result, err := ext2.Extract(r.Context(), tmpFile.Name())
+	if err != nil {
+		h.logger.Error("extracting content for analysis", "error", err)
+		errorResponse(w, http.StatusInternalServerError, "content extraction failed")
+		return
+	}
+
+	content := result.Content
+	wordCount := len(strings.Fields(content))
+	readingTime := wordCount / 200
+	if readingTime < 1 {
+		readingTime = 1
+	}
+
+	title := strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename))
+
+	resp := analyzeResponse{
+		Title:       title,
+		Description: firstParagraph(content),
+		Tags:        extractKeywords(content),
+		WordCount:   wordCount,
+		ReadingTime: readingTime,
+		Language:    detectLanguage(content),
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"data": resp,
+	})
+}
+
+// firstParagraph returns the first non-empty paragraph of content, capped at 500 characters.
+func firstParagraph(content string) string {
+	paragraphs := strings.Split(content, "\n\n")
+	for _, p := range paragraphs {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			if len(trimmed) > 500 {
+				return trimmed[:500]
+			}
+			return trimmed
+		}
+	}
+	return ""
+}
+
+// extractKeywords returns the top 5 most frequent non-stop words from content.
+func extractKeywords(content string) []string {
+	stopWords := map[string]struct{}{
+		"the": {}, "a": {}, "an": {}, "and": {}, "or": {}, "but": {},
+		"in": {}, "on": {}, "at": {}, "to": {}, "for": {}, "of": {},
+		"with": {}, "by": {}, "from": {}, "is": {}, "it": {}, "that": {},
+		"this": {}, "was": {}, "are": {}, "be": {}, "has": {}, "have": {},
+		"had": {}, "not": {}, "no": {}, "do": {}, "does": {}, "did": {},
+		"will": {}, "would": {}, "could": {}, "should": {}, "may": {},
+		"might": {}, "can": {}, "shall": {}, "as": {}, "if": {}, "then": {},
+		"than": {}, "so": {}, "up": {}, "out": {}, "about": {}, "into": {},
+		"over": {}, "after": {}, "before": {}, "between": {}, "under": {},
+		"again": {}, "there": {}, "here": {}, "when": {}, "where": {},
+		"why": {}, "how": {}, "all": {}, "each": {}, "every": {}, "both": {},
+		"few": {}, "more": {}, "most": {}, "other": {}, "some": {}, "such": {},
+		"only": {}, "own": {}, "same": {}, "also": {}, "just": {}, "because": {},
+		"its": {}, "i": {}, "me": {}, "my": {}, "we": {}, "our": {}, "you": {},
+		"your": {}, "he": {}, "him": {}, "his": {}, "she": {}, "her": {},
+		"they": {}, "them": {}, "their": {}, "what": {}, "which": {}, "who": {},
+		"whom": {}, "been": {}, "being": {}, "were": {},
+	}
+
+	freq := make(map[string]int)
+	for _, word := range strings.Fields(content) {
+		w := strings.ToLower(strings.Trim(word, ".,;:!?\"'()[]{}"))
+		if len(w) < 3 {
+			continue
+		}
+		if _, stop := stopWords[w]; stop {
+			continue
+		}
+		freq[w]++
+	}
+
+	type wordCount struct {
+		word  string
+		count int
+	}
+	ranked := make([]wordCount, 0, len(freq))
+	for w, c := range freq {
+		ranked = append(ranked, wordCount{word: w, count: c})
+	}
+	sort.Slice(ranked, func(i, j int) bool {
+		if ranked[i].count != ranked[j].count {
+			return ranked[i].count > ranked[j].count
+		}
+		return ranked[i].word < ranked[j].word
+	})
+
+	limit := 5
+	if len(ranked) < limit {
+		limit = len(ranked)
+	}
+	keywords := make([]string, limit)
+	for i := 0; i < limit; i++ {
+		keywords[i] = ranked[i].word
+	}
+	return keywords
+}
+
+// detectLanguage is a placeholder that returns "en".
+func detectLanguage(_ string) string {
+	return "en"
 }

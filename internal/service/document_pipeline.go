@@ -23,8 +23,8 @@ import (
 // maxUploadSize is the maximum allowed file size (50 MB).
 const maxUploadSize = 50 * 1024 * 1024
 
-// allowedMIMETypes maps file extensions to their MIME types.
-var allowedMIMETypes = map[string]string{
+// AllowedMIMETypes maps file extensions to their MIME types.
+var AllowedMIMETypes = map[string]string{
 	".pdf":  "application/pdf",
 	".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 	".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -73,6 +73,16 @@ func NewDocumentPipeline(
 	}
 }
 
+// StoragePath returns the base storage directory for uploaded documents.
+func (p *DocumentPipeline) StoragePath() string {
+	return p.storagePath
+}
+
+// ExtractorRegistry returns the content extractor registry.
+func (p *DocumentPipeline) ExtractorRegistry() *extractor.Registry {
+	return p.extractorRegistry
+}
+
 // Upload stores a file, creates a DB record with status "uploaded", and
 // dispatches background jobs for extraction and indexing.
 func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentParams) (*model.Document, error) {
@@ -81,7 +91,7 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 	}
 
 	ext := strings.ToLower(filepath.Ext(params.FileName))
-	mimeType, ok := allowedMIMETypes[ext]
+	mimeType, ok := AllowedMIMETypes[ext]
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedFileType, ext)
 	}

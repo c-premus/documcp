@@ -375,6 +375,88 @@ func TestExternalServiceRepository_Delete(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestExternalServiceRepository_FindAllEnabled(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewExternalServiceRepository(testDB, discardLogger())
+
+	// Insert services: 2 enabled (different types), 1 disabled.
+	enabledConf := &model.ExternalService{
+		UUID:      testUUID("find-all-enabled-001"),
+		Name:      "Alpha Confluence",
+		Slug:      "alpha-confluence",
+		Type:      "confluence",
+		BaseURL:   "https://confluence.example.com",
+		Priority:  5,
+		Status:    "healthy",
+		IsEnabled: true,
+	}
+	enabledGit := &model.ExternalService{
+		UUID:      testUUID("find-all-enabled-002"),
+		Name:      "Beta Git",
+		Slug:      "beta-git",
+		Type:      "git",
+		BaseURL:   "https://git.example.com",
+		Priority:  1,
+		Status:    "healthy",
+		IsEnabled: true,
+	}
+	disabled := &model.ExternalService{
+		UUID:      testUUID("find-all-enabled-003"),
+		Name:      "Gamma Kiwix",
+		Slug:      "gamma-kiwix",
+		Type:      "kiwix",
+		BaseURL:   "https://kiwix.example.com",
+		Priority:  1,
+		Status:    "unknown",
+		IsEnabled: false,
+	}
+
+	for _, svc := range []*model.ExternalService{enabledConf, enabledGit, disabled} {
+		require.NoError(t, repo.Create(ctx, svc))
+	}
+
+	t.Run("returns only enabled services ordered by name", func(t *testing.T) {
+		results, err := repo.FindAllEnabled(ctx)
+		require.NoError(t, err)
+		assert.Len(t, results, 2)
+
+		// Ordered by name: "Alpha Confluence" before "Beta Git".
+		assert.Equal(t, "Alpha Confluence", results[0].Name)
+		assert.Equal(t, "Beta Git", results[1].Name)
+	})
+
+	t.Run("excludes disabled services", func(t *testing.T) {
+		results, err := repo.FindAllEnabled(ctx)
+		require.NoError(t, err)
+
+		for _, svc := range results {
+			assert.True(t, svc.IsEnabled, "FindAllEnabled should only return enabled services")
+			assert.NotEqual(t, "Gamma Kiwix", svc.Name, "disabled service should not appear")
+		}
+	})
+
+	t.Run("empty when all disabled", func(t *testing.T) {
+		truncateAll(t)
+
+		onlyDisabled := &model.ExternalService{
+			UUID:      testUUID("find-all-enabled-004"),
+			Name:      "Disabled Only",
+			Slug:      "disabled-only",
+			Type:      "git",
+			BaseURL:   "https://disabled.example.com",
+			Priority:  1,
+			Status:    "unknown",
+			IsEnabled: false,
+		}
+		require.NoError(t, repo.Create(ctx, onlyDisabled))
+
+		results, err := repo.FindAllEnabled(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, results)
+	})
+}
+
 func TestExternalServiceRepository_UpdateHealthStatus(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()

@@ -296,6 +296,70 @@ func TestZimArchiveRepository_FindByUUID(t *testing.T) {
 	})
 }
 
+func TestZimArchiveRepository_FindDisabled(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	svc := createTestExternalService(t, ctx)
+	repo := NewZimArchiveRepository(testDB, discardLogger())
+
+	// Insert 3 archives: 2 enabled, 1 disabled.
+	entries := []ZimArchiveUpsert{
+		{Name: "Enabled Archive Alpha", Title: "Alpha", Language: "en", Category: "wikipedia"},
+		{Name: "Enabled Archive Beta", Title: "Beta", Language: "fr", Category: "stackexchange"},
+		{Name: "Disabled Archive Gamma", Title: "Gamma", Language: "de", Category: "wikipedia"},
+	}
+	for _, e := range entries {
+		require.NoError(t, repo.UpsertFromCatalog(ctx, svc.ID, e))
+	}
+
+	// Disable one archive.
+	var disableID int64
+	err := testDB.QueryRowContext(ctx,
+		"SELECT id FROM zim_archives WHERE name = $1", "Disabled Archive Gamma").Scan(&disableID)
+	require.NoError(t, err)
+	require.NoError(t, repo.ToggleEnabled(ctx, disableID))
+
+	t.Run("returns only disabled archives", func(t *testing.T) {
+		results, err := repo.FindDisabled(ctx)
+		require.NoError(t, err)
+		require.Len(t, results, 1)
+		assert.Equal(t, "Disabled Archive Gamma", results[0].Name)
+		assert.False(t, results[0].IsEnabled)
+	})
+
+	t.Run("empty when all enabled", func(t *testing.T) {
+		// Re-enable the disabled archive.
+		require.NoError(t, repo.ToggleEnabled(ctx, disableID))
+
+		results, err := repo.FindDisabled(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, results)
+	})
+
+	t.Run("returns multiple disabled archives", func(t *testing.T) {
+		// Disable two archives.
+		var alphaID, betaID int64
+		err := testDB.QueryRowContext(ctx,
+			"SELECT id FROM zim_archives WHERE name = $1", "Enabled Archive Alpha").Scan(&alphaID)
+		require.NoError(t, err)
+		err = testDB.QueryRowContext(ctx,
+			"SELECT id FROM zim_archives WHERE name = $1", "Enabled Archive Beta").Scan(&betaID)
+		require.NoError(t, err)
+
+		require.NoError(t, repo.ToggleEnabled(ctx, alphaID))
+		require.NoError(t, repo.ToggleEnabled(ctx, betaID))
+
+		results, err := repo.FindDisabled(ctx)
+		require.NoError(t, err)
+		assert.Len(t, results, 2)
+
+		// Verify both are disabled.
+		for _, r := range results {
+			assert.False(t, r.IsEnabled)
+		}
+	})
+}
+
 func TestZimArchiveRepository_ListAllAndCount(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
