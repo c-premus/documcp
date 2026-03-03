@@ -424,6 +424,383 @@ func TestDocumentRepository_CreateVersion(t *testing.T) {
 	}
 }
 
+func TestDocumentRepository_ListAllUUIDs(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewDocumentRepository(testDB, discardLogger())
+
+	t.Run("empty table returns empty slice", func(t *testing.T) {
+		uuids, err := repo.ListAllUUIDs(ctx)
+		if err != nil {
+			t.Fatalf("ListAllUUIDs() error: %v", err)
+		}
+		if len(uuids) != 0 {
+			t.Errorf("ListAllUUIDs() returned %d uuids, want 0", len(uuids))
+		}
+	})
+
+	// Insert 3 documents: 2 active, 1 soft-deleted.
+	doc1 := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("list-uuids-001")),
+		testutil.WithDocumentTitle("UUID Doc One"),
+	)
+	doc2 := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("list-uuids-002")),
+		testutil.WithDocumentTitle("UUID Doc Two"),
+	)
+	doc3 := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("list-uuids-003")),
+		testutil.WithDocumentTitle("UUID Doc Three (Deleted)"),
+	)
+
+	for _, doc := range []*model.Document{doc1, doc2, doc3} {
+		if err := repo.Create(ctx, doc); err != nil {
+			t.Fatalf("Create(%s) error: %v", doc.Title, err)
+		}
+	}
+
+	// Soft-delete the third document.
+	if err := repo.SoftDelete(ctx, doc3.ID); err != nil {
+		t.Fatalf("SoftDelete() error: %v", err)
+	}
+
+	t.Run("returns all UUIDs including soft-deleted", func(t *testing.T) {
+		uuids, err := repo.ListAllUUIDs(ctx)
+		if err != nil {
+			t.Fatalf("ListAllUUIDs() error: %v", err)
+		}
+		if len(uuids) != 3 {
+			t.Fatalf("ListAllUUIDs() returned %d uuids, want 3", len(uuids))
+		}
+
+		// Verify all expected UUIDs are present.
+		uuidSet := make(map[string]bool)
+		for _, u := range uuids {
+			uuidSet[u] = true
+		}
+		for _, want := range []string{testUUID("list-uuids-001"), testUUID("list-uuids-002"), testUUID("list-uuids-003")} {
+			if !uuidSet[want] {
+				t.Errorf("ListAllUUIDs() missing expected UUID %q", want)
+			}
+		}
+	})
+}
+
+func TestDocumentRepository_ListActiveFilePaths(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewDocumentRepository(testDB, discardLogger())
+
+	// Insert documents with varying file path states.
+	docWithPath := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("active-path-001")),
+		testutil.WithDocumentTitle("Doc With Path"),
+		testutil.WithDocumentFilePath("/tmp/documents/file1.pdf"),
+	)
+	docWithPath2 := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("active-path-002")),
+		testutil.WithDocumentTitle("Doc With Path 2"),
+		testutil.WithDocumentFilePath("/tmp/documents/file2.pdf"),
+	)
+	docNoPath := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("active-path-003")),
+		testutil.WithDocumentTitle("Doc Without Path"),
+		testutil.WithDocumentFilePath(""),
+	)
+	docDeletedWithPath := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("active-path-004")),
+		testutil.WithDocumentTitle("Deleted Doc With Path"),
+		testutil.WithDocumentFilePath("/tmp/documents/deleted.pdf"),
+	)
+
+	for _, doc := range []*model.Document{docWithPath, docWithPath2, docNoPath, docDeletedWithPath} {
+		if err := repo.Create(ctx, doc); err != nil {
+			t.Fatalf("Create(%s) error: %v", doc.Title, err)
+		}
+	}
+
+	// Soft-delete one document that has a file path.
+	if err := repo.SoftDelete(ctx, docDeletedWithPath.ID); err != nil {
+		t.Fatalf("SoftDelete() error: %v", err)
+	}
+
+	paths, err := repo.ListActiveFilePaths(ctx)
+	if err != nil {
+		t.Fatalf("ListActiveFilePaths() error: %v", err)
+	}
+
+	// Should return only non-deleted documents with non-empty file paths.
+	if len(paths) != 2 {
+		t.Fatalf("ListActiveFilePaths() returned %d paths, want 2", len(paths))
+	}
+
+	// Verify the returned paths match expected documents.
+	pathSet := make(map[string]string) // uuid -> file_path
+	for _, p := range paths {
+		pathSet[p.UUID] = p.FilePath
+	}
+
+	if fp, ok := pathSet[testUUID("active-path-001")]; !ok || fp != "/tmp/documents/file1.pdf" {
+		t.Errorf("missing or wrong path for doc1: got %q", fp)
+	}
+	if fp, ok := pathSet[testUUID("active-path-002")]; !ok || fp != "/tmp/documents/file2.pdf" {
+		t.Errorf("missing or wrong path for doc2: got %q", fp)
+	}
+
+	// Deleted doc and no-path doc should not appear.
+	if _, ok := pathSet[testUUID("active-path-003")]; ok {
+		t.Error("ListActiveFilePaths() should not include document with empty file path")
+	}
+	if _, ok := pathSet[testUUID("active-path-004")]; ok {
+		t.Error("ListActiveFilePaths() should not include soft-deleted document")
+	}
+}
+
+func TestDocumentRepository_PurgeSoftDeleted(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewDocumentRepository(testDB, discardLogger())
+
+	// 1. Create documents: 1 active, 2 soft-deleted (one old, one recent).
+	activeDoc := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("purge-active")),
+		testutil.WithDocumentTitle("Active Document"),
+		testutil.WithDocumentFilePath("/tmp/active.pdf"),
+	)
+	oldDeletedDoc := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("purge-old-deleted")),
+		testutil.WithDocumentTitle("Old Deleted Document"),
+		testutil.WithDocumentFilePath("/tmp/old-deleted.pdf"),
+	)
+	recentDeletedDoc := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("purge-recent-deleted")),
+		testutil.WithDocumentTitle("Recent Deleted Document"),
+		testutil.WithDocumentFilePath("/tmp/recent-deleted.pdf"),
+	)
+
+	for _, doc := range []*model.Document{activeDoc, oldDeletedDoc, recentDeletedDoc} {
+		if err := repo.Create(ctx, doc); err != nil {
+			t.Fatalf("Create(%s) error: %v", doc.Title, err)
+		}
+	}
+
+	// Add tags and a version to the old soft-deleted document.
+	if err := repo.ReplaceTags(ctx, oldDeletedDoc.ID, []string{"purge-tag-a", "purge-tag-b"}); err != nil {
+		t.Fatalf("ReplaceTags() error: %v", err)
+	}
+	ver := &model.DocumentVersion{
+		DocumentID: oldDeletedDoc.ID,
+		Version:    1,
+		FilePath:   "/tmp/v1/old-deleted.pdf",
+		Content:    sql.NullString{String: "version 1 content", Valid: true},
+	}
+	if err := repo.CreateVersion(ctx, ver); err != nil {
+		t.Fatalf("CreateVersion() error: %v", err)
+	}
+
+	// Soft-delete both documents.
+	if err := repo.SoftDelete(ctx, oldDeletedDoc.ID); err != nil {
+		t.Fatalf("SoftDelete(oldDeletedDoc) error: %v", err)
+	}
+	if err := repo.SoftDelete(ctx, recentDeletedDoc.ID); err != nil {
+		t.Fatalf("SoftDelete(recentDeletedDoc) error: %v", err)
+	}
+
+	// Backdate the old deleted doc's deleted_at to 48 hours ago.
+	_, err := testDB.ExecContext(ctx,
+		`UPDATE documents SET deleted_at = $1 WHERE id = $2`,
+		time.Now().Add(-48*time.Hour), oldDeletedDoc.ID)
+	if err != nil {
+		t.Fatalf("backdating deleted_at: %v", err)
+	}
+
+	// Purge documents soft-deleted more than 24 hours ago.
+	purged, err := repo.PurgeSoftDeleted(ctx, 24*time.Hour)
+	if err != nil {
+		t.Fatalf("PurgeSoftDeleted() error: %v", err)
+	}
+
+	// Only the old deleted document should be purged.
+	if len(purged) != 1 {
+		t.Fatalf("PurgeSoftDeleted() returned %d paths, want 1", len(purged))
+	}
+	if purged[0].UUID != testUUID("purge-old-deleted") {
+		t.Errorf("purged UUID = %q, want %q", purged[0].UUID, testUUID("purge-old-deleted"))
+	}
+	if purged[0].FilePath != "/tmp/old-deleted.pdf" {
+		t.Errorf("purged FilePath = %q, want %q", purged[0].FilePath, "/tmp/old-deleted.pdf")
+	}
+
+	// Verify the old deleted document's tags were removed.
+	var tagCount int
+	err = testDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM document_tags WHERE document_id = $1`, oldDeletedDoc.ID).Scan(&tagCount)
+	if err != nil {
+		t.Fatalf("counting tags: %v", err)
+	}
+	if tagCount != 0 {
+		t.Errorf("tag count for purged doc = %d, want 0", tagCount)
+	}
+
+	// Verify the old deleted document's versions were removed.
+	var versionCount int
+	err = testDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM document_versions WHERE document_id = $1`, oldDeletedDoc.ID).Scan(&versionCount)
+	if err != nil {
+		t.Fatalf("counting versions: %v", err)
+	}
+	if versionCount != 0 {
+		t.Errorf("version count for purged doc = %d, want 0", versionCount)
+	}
+
+	// Verify the old deleted document itself is gone.
+	var docCount int
+	err = testDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM documents WHERE id = $1`, oldDeletedDoc.ID).Scan(&docCount)
+	if err != nil {
+		t.Fatalf("counting purged document: %v", err)
+	}
+	if docCount != 0 {
+		t.Errorf("purged document still exists, want 0")
+	}
+
+	// Active document should still exist.
+	found, err := repo.FindByUUID(ctx, testUUID("purge-active"))
+	if err != nil {
+		t.Fatalf("FindByUUID(active) error: %v", err)
+	}
+	if found.Title != "Active Document" {
+		t.Errorf("active doc title = %q, want %q", found.Title, "Active Document")
+	}
+
+	// Recently deleted document should still exist (in database, not via FindByUUID since soft-deleted).
+	var recentCount int
+	err = testDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM documents WHERE id = $1`, recentDeletedDoc.ID).Scan(&recentCount)
+	if err != nil {
+		t.Fatalf("counting recent deleted document: %v", err)
+	}
+	if recentCount != 1 {
+		t.Errorf("recently deleted document count = %d, want 1", recentCount)
+	}
+}
+
+func TestDocumentRepository_SuggestTitles(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewDocumentRepository(testDB, discardLogger())
+
+	// Create a mix of public and private documents.
+	docs := []struct {
+		uuid     string
+		title    string
+		isPublic bool
+	}{
+		{testUUID("suggest-001"), "Docker Getting Started", true},
+		{testUUID("suggest-002"), "Docker Advanced Topics", true},
+		{testUUID("suggest-003"), "Docker Security", false}, // private
+		{testUUID("suggest-004"), "Golang Basics", true},
+		{testUUID("suggest-005"), "Document Management", true},
+	}
+
+	for _, d := range docs {
+		doc := testutil.NewDocument(
+			testutil.WithDocumentID(0),
+			testutil.WithDocumentUUID(d.uuid),
+			testutil.WithDocumentTitle(d.title),
+			testutil.WithDocumentIsPublic(d.isPublic),
+		)
+		if err := repo.Create(ctx, doc); err != nil {
+			t.Fatalf("Create(%s) error: %v", d.title, err)
+		}
+	}
+
+	// Soft-delete one public document.
+	var deleteID int64
+	err := testDB.QueryRowContext(ctx,
+		`SELECT id FROM documents WHERE uuid = $1`, testUUID("suggest-005")).Scan(&deleteID)
+	if err != nil {
+		t.Fatalf("finding document for soft delete: %v", err)
+	}
+	if err := repo.SoftDelete(ctx, deleteID); err != nil {
+		t.Fatalf("SoftDelete() error: %v", err)
+	}
+
+	t.Run("returns public non-deleted matches ordered by title", func(t *testing.T) {
+		suggestions, err := repo.SuggestTitles(ctx, "Doc", 5)
+		if err != nil {
+			t.Fatalf("SuggestTitles() error: %v", err)
+		}
+		// "Docker Getting Started", "Docker Advanced Topics" match (public, not deleted).
+		// "Docker Security" is private.
+		// "Document Management" is soft-deleted.
+		if len(suggestions) != 2 {
+			t.Fatalf("SuggestTitles() returned %d, want 2", len(suggestions))
+		}
+		// Ordered by title: "Docker Advanced Topics" before "Docker Getting Started".
+		if suggestions[0].Title != "Docker Advanced Topics" {
+			t.Errorf("first suggestion = %q, want %q", suggestions[0].Title, "Docker Advanced Topics")
+		}
+		if suggestions[1].Title != "Docker Getting Started" {
+			t.Errorf("second suggestion = %q, want %q", suggestions[1].Title, "Docker Getting Started")
+		}
+	})
+
+	t.Run("case insensitive matching", func(t *testing.T) {
+		suggestions, err := repo.SuggestTitles(ctx, "doc", 5)
+		if err != nil {
+			t.Fatalf("SuggestTitles() error: %v", err)
+		}
+		// ILIKE should match "Docker..." titles case-insensitively.
+		if len(suggestions) != 2 {
+			t.Fatalf("SuggestTitles() returned %d, want 2", len(suggestions))
+		}
+	})
+
+	t.Run("respects limit", func(t *testing.T) {
+		suggestions, err := repo.SuggestTitles(ctx, "Doc", 1)
+		if err != nil {
+			t.Fatalf("SuggestTitles() error: %v", err)
+		}
+		if len(suggestions) != 1 {
+			t.Fatalf("SuggestTitles() returned %d, want 1", len(suggestions))
+		}
+	})
+
+	t.Run("no matches returns empty", func(t *testing.T) {
+		suggestions, err := repo.SuggestTitles(ctx, "Kubernetes", 5)
+		if err != nil {
+			t.Fatalf("SuggestTitles() error: %v", err)
+		}
+		if len(suggestions) != 0 {
+			t.Errorf("SuggestTitles() returned %d, want 0", len(suggestions))
+		}
+	})
+
+	t.Run("different prefix matches different results", func(t *testing.T) {
+		suggestions, err := repo.SuggestTitles(ctx, "Go", 5)
+		if err != nil {
+			t.Fatalf("SuggestTitles() error: %v", err)
+		}
+		if len(suggestions) != 1 {
+			t.Fatalf("SuggestTitles() returned %d, want 1", len(suggestions))
+		}
+		if suggestions[0].Title != "Golang Basics" {
+			t.Errorf("suggestion = %q, want %q", suggestions[0].Title, "Golang Basics")
+		}
+	})
+}
+
 func boolPtr(b bool) *bool { return &b }
 
 func TestDocumentRepository_List(t *testing.T) {

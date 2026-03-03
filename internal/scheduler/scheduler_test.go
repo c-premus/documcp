@@ -50,19 +50,22 @@ func TestNew(t *testing.T) {
 			Logger:             discardLogger,
 		}
 
-		s := New(cfg, finder, nil, nil, nil, nil, "/tmp/git")
+		s := New(cfg, Deps{
+			Services:   finder,
+			GitTempDir: "/tmp/git",
+		})
 
 		assert.Equal(t, "0 */6 * * *", s.kiwixSchedule)
 		assert.Equal(t, "0 */4 * * *", s.confluenceSchedule)
 		assert.Equal(t, "0 * * * *", s.gitSchedule)
-		assert.Equal(t, "/tmp/git", s.gitTempDir)
-		assert.Same(t, finder, s.services)
+		assert.Equal(t, "/tmp/git", s.deps.GitTempDir)
+		assert.Same(t, finder, s.deps.Services)
 		assert.NotNil(t, s.cron)
 		assert.Same(t, discardLogger, s.logger)
 	})
 
 	t.Run("uses default logger when config logger is nil", func(t *testing.T) {
-		s := New(Config{}, &mockServiceFinder{}, nil, nil, nil, nil, "")
+		s := New(Config{}, Deps{Services: &mockServiceFinder{}})
 
 		assert.NotNil(t, s.logger, "logger should fall back to slog.Default()")
 	})
@@ -92,7 +95,7 @@ func TestStop_NilReceiver(t *testing.T) {
 }
 
 func TestStop_ValidScheduler(t *testing.T) {
-	s := New(Config{Logger: discardLogger}, &mockServiceFinder{}, nil, nil, nil, nil, "")
+	s := New(Config{Logger: discardLogger}, Deps{Services: &mockServiceFinder{}})
 	s.Start()
 
 	ctx := s.Stop()
@@ -107,7 +110,7 @@ func TestStop_ValidScheduler(t *testing.T) {
 
 func TestAddJob(t *testing.T) {
 	t.Run("skips job when schedule is empty", func(t *testing.T) {
-		s := New(Config{Logger: discardLogger}, &mockServiceFinder{}, nil, nil, nil, nil, "")
+		s := New(Config{Logger: discardLogger}, Deps{Services: &mockServiceFinder{}})
 
 		entriesBefore := s.cron.Entries()
 		s.addJob("test-job", "", func() {})
@@ -118,7 +121,7 @@ func TestAddJob(t *testing.T) {
 	})
 
 	t.Run("registers job for valid schedule", func(t *testing.T) {
-		s := New(Config{Logger: discardLogger}, &mockServiceFinder{}, nil, nil, nil, nil, "")
+		s := New(Config{Logger: discardLogger}, Deps{Services: &mockServiceFinder{}})
 
 		s.addJob("test-job", "* * * * *", func() {})
 
@@ -126,7 +129,7 @@ func TestAddJob(t *testing.T) {
 	})
 
 	t.Run("does not register job for invalid cron expression", func(t *testing.T) {
-		s := New(Config{Logger: discardLogger}, &mockServiceFinder{}, nil, nil, nil, nil, "")
+		s := New(Config{Logger: discardLogger}, Deps{Services: &mockServiceFinder{}})
 
 		s.addJob("test-job", "not-a-cron", func() {})
 
@@ -648,7 +651,7 @@ func TestStart_RegistersJobs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := New(tt.cfg, &mockServiceFinder{}, nil, nil, nil, nil, "")
+			s := New(tt.cfg, Deps{Services: &mockServiceFinder{}})
 			s.Start()
 			defer s.Stop()
 

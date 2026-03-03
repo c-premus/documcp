@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 
@@ -488,4 +489,72 @@ func (r *OAuthRepository) CountClients(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("counting oauth clients: %w", err)
 	}
 	return count, nil
+}
+
+// PurgeExpiredTokens deletes expired/revoked tokens older than retentionDays.
+// Order: refresh tokens first (FK to access tokens), then access tokens, then auth codes, then device codes.
+func (r *OAuthRepository) PurgeExpiredTokens(ctx context.Context, retentionDays int) (int64, error) {
+	cutoff := time.Now().AddDate(0, 0, -retentionDays)
+
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("beginning purge expired tokens transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	var totalAffected int64
+
+	// 1. Refresh tokens (FK dependency on access tokens).
+	result, err := tx.ExecContext(ctx,
+		`DELETE FROM oauth_refresh_tokens
+		WHERE (revoked = true OR expires_at < NOW())
+			AND created_at < $1`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("purging expired refresh tokens: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	totalAffected += n
+	r.logger.Info("purged expired refresh tokens", "count", n)
+
+	// 2. Access tokens.
+	result, err = tx.ExecContext(ctx,
+		`DELETE FROM oauth_access_tokens
+		WHERE (revoked = true OR expires_at < NOW())
+			AND created_at < $1`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("purging expired access tokens: %w", err)
+	}
+	n, _ = result.RowsAffected()
+	totalAffected += n
+	r.logger.Info("purged expired access tokens", "count", n)
+
+	// 3. Authorization codes.
+	result, err = tx.ExecContext(ctx,
+		`DELETE FROM oauth_authorization_codes
+		WHERE (revoked = true OR expires_at < NOW())
+			AND created_at < $1`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("purging expired authorization codes: %w", err)
+	}
+	n, _ = result.RowsAffected()
+	totalAffected += n
+	r.logger.Info("purged expired authorization codes", "count", n)
+
+	// 4. Device codes.
+	result, err = tx.ExecContext(ctx,
+		`DELETE FROM oauth_device_codes
+		WHERE (status IN ('expired', 'used') OR expires_at < NOW())
+			AND created_at < $1`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("purging expired device codes: %w", err)
+	}
+	n, _ = result.RowsAffected()
+	totalAffected += n
+	r.logger.Info("purged expired device codes", "count", n)
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("committing purge expired tokens transaction: %w", err)
+	}
+
+	return totalAffected, nil
 }

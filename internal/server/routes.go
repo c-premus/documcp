@@ -191,9 +191,11 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			r.Route("/documents", func(r chi.Router) {
 				r.Get("/", deps.DocumentHandler.List)
 				r.Post("/", deps.DocumentHandler.Upload)
+				r.Post("/analyze", deps.DocumentHandler.Analyze)
 				r.Get("/{uuid}", deps.DocumentHandler.Show)
 				r.Put("/{uuid}", deps.DocumentHandler.Update)
 				r.Delete("/{uuid}", deps.DocumentHandler.Delete)
+				r.Get("/{uuid}/download", deps.DocumentHandler.Download)
 			})
 			s.logger.Info("document API endpoints registered")
 		}
@@ -202,6 +204,8 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		if deps.SearchHandler != nil {
 			r.Get("/search", deps.SearchHandler.Search)
 			r.Get("/search/unified", deps.SearchHandler.FederatedSearch)
+			r.Get("/search/popular", deps.SearchHandler.Popular)
+			r.Get("/search/autocomplete", deps.SearchHandler.Autocomplete)
 			s.logger.Info("search API endpoints registered")
 		}
 
