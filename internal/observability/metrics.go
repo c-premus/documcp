@@ -19,6 +19,12 @@ type Metrics struct {
 	HTTPActiveConnections prometheus.Gauge
 	DocumentCount         prometheus.Gauge
 	SearchLatency         *prometheus.HistogramVec
+
+	// Queue metrics
+	QueueJobsDispatched *prometheus.CounterVec
+	QueueJobsCompleted  *prometheus.CounterVec
+	QueueJobsFailed     *prometheus.CounterVec
+	QueueJobDuration    *prometheus.HistogramVec
 }
 
 // NewMetrics creates and registers all Prometheus metrics with the default
@@ -70,6 +76,43 @@ func NewMetrics() *Metrics {
 			},
 			[]string{"index"},
 		),
+		QueueJobsDispatched: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Subsystem: "queue",
+				Name:      "jobs_dispatched_total",
+				Help:      "Total number of jobs dispatched to the queue.",
+			},
+			[]string{"queue", "job_kind"},
+		),
+		QueueJobsCompleted: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Subsystem: "queue",
+				Name:      "jobs_completed_total",
+				Help:      "Total number of jobs completed successfully.",
+			},
+			[]string{"queue", "job_kind"},
+		),
+		QueueJobsFailed: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Subsystem: "queue",
+				Name:      "jobs_failed_total",
+				Help:      "Total number of jobs that failed.",
+			},
+			[]string{"queue", "job_kind"},
+		),
+		QueueJobDuration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: namespace,
+				Subsystem: "queue",
+				Name:      "job_duration_seconds",
+				Help:      "Duration of job execution in seconds.",
+				Buckets:   []float64{.1, .25, .5, 1, 2.5, 5, 10, 30, 60, 120, 300},
+			},
+			[]string{"queue", "job_kind"},
+		),
 	}
 
 	prometheus.MustRegister(
@@ -78,6 +121,10 @@ func NewMetrics() *Metrics {
 		m.HTTPActiveConnections,
 		m.DocumentCount,
 		m.SearchLatency,
+		m.QueueJobsDispatched,
+		m.QueueJobsCompleted,
+		m.QueueJobsFailed,
+		m.QueueJobDuration,
 	)
 
 	return m

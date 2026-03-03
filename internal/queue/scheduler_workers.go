@@ -1,0 +1,586 @@
+package queue
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/riverqueue/river"
+
+	"git.999.haus/chris/DocuMCP-go/internal/client/confluence"
+	"git.999.haus/chris/DocuMCP-go/internal/client/git"
+	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
+	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"git.999.haus/chris/DocuMCP-go/internal/repository"
+	"git.999.haus/chris/DocuMCP-go/internal/search"
+)
+
+// --- Interfaces (defined where consumed) ---
+
+// ExternalServiceFinder retrieves enabled external services by type.
+type ExternalServiceFinder interface {
+	FindEnabledByType(ctx context.Context, serviceType string) ([]model.ExternalService, error)
+}
+
+// ExternalServiceHealthChecker checks health of external services.
+type ExternalServiceHealthChecker interface {
+	FindAllEnabled(ctx context.Context) ([]model.ExternalService, error)
+	UpdateHealthStatus(ctx context.Context, id int64, status string, latencyMs int, lastError string) error
+}
+
+// SchedulerDeps holds all dependencies needed by scheduler workers.
+type SchedulerDeps struct {
+	Services      ExternalServiceFinder
+	HealthChecker ExternalServiceHealthChecker
+	ZimRepo       *repository.ZimArchiveRepository
+	ConfRepo      *repository.ConfluenceSpaceRepository
+	GitRepo       *repository.GitTemplateRepository
+	OAuthRepo     *repository.OAuthRepository
+	DocRepo       *repository.DocumentRepository
+	Indexer       *search.Indexer
+	GitTempDir    string
+	StoragePath   string
+	Logger        *slog.Logger
+}
+
+// --- Sync Workers ---
+
+// SyncKiwixWorker syncs Kiwix ZIM archives from external services.
+type SyncKiwixWorker struct {
+	river.WorkerDefaults[SyncKiwixArgs]
+	Deps SchedulerDeps
+}
+
+func (w *SyncKiwixWorker) Work(ctx context.Context, _ *river.Job[SyncKiwixArgs]) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	logger := w.Deps.Logger.With("job", "kiwix")
+	logger.Info("starting kiwix sync")
+
+	services, err := w.Deps.Services.FindEnabledByType(ctx, "kiwix")
+	if err != nil {
+		return fmt.Errorf("finding enabled kiwix services: %w", err)
+	}
+
+	if len(services) == 0 {
+		logger.Info("no enabled kiwix services found")
+		return nil
+	}
+
+	for _, svc := range services {
+		svcLogger := logger.With("service_id", svc.ID, "base_url", svc.BaseURL)
+
+		client, clientErr := kiwix.NewClient(svc.BaseURL, svcLogger)
+		if clientErr != nil {
+			svcLogger.Error("kiwix client URL rejected", "error", clientErr)
+			continue
+		}
+
+		entries, err := client.FetchCatalog(ctx)
+		if err != nil {
+			svcLogger.Error("fetching kiwix catalog", "error", err)
+			continue
+		}
+
+		var indexer kiwix.ArchiveIndexer
+		if w.Deps.Indexer != nil {
+			indexer = &kiwixIndexerAdapter{indexer: w.Deps.Indexer}
+		}
+
+		if err := kiwix.Sync(ctx, kiwix.SyncParams{
+			ServiceID: svc.ID,
+			Entries:   entries,
+			Repo:      &kiwixRepoAdapter{repo: w.Deps.ZimRepo},
+			Indexer:   indexer,
+			Logger:    svcLogger,
+		}); err != nil {
+			svcLogger.Error(fmt.Sprintf("syncing kiwix service %d: %v", svc.ID, err))
+			continue
+		}
+
+		svcLogger.Info("kiwix service sync completed", "entries", len(entries))
+	}
+	return nil
+}
+
+// SyncConfluenceWorker syncs Confluence spaces from external services.
+type SyncConfluenceWorker struct {
+	river.WorkerDefaults[SyncConfluenceArgs]
+	Deps SchedulerDeps
+}
+
+func (w *SyncConfluenceWorker) Work(ctx context.Context, _ *river.Job[SyncConfluenceArgs]) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	logger := w.Deps.Logger.With("job", "confluence")
+	logger.Info("starting confluence sync")
+
+	services, err := w.Deps.Services.FindEnabledByType(ctx, "confluence")
+	if err != nil {
+		return fmt.Errorf("finding enabled confluence services: %w", err)
+	}
+
+	if len(services) == 0 {
+		logger.Info("no enabled confluence services found")
+		return nil
+	}
+
+	for _, svc := range services {
+		svcLogger := logger.With("service_id", svc.ID, "base_url", svc.BaseURL)
+
+		email, token, err := parseConfluenceCredentials(svc)
+		if err != nil {
+			svcLogger.Error("parsing confluence credentials", "error", err)
+			continue
+		}
+
+		client, clientErr := confluence.NewClient(svc.BaseURL, email, token, svcLogger)
+		if clientErr != nil {
+			svcLogger.Error("confluence client URL rejected", "error", clientErr)
+			continue
+		}
+
+		spaces, err := client.ListSpaces(ctx, "", "", 0)
+		if err != nil {
+			svcLogger.Error("listing confluence spaces", "error", err)
+			continue
+		}
+
+		var indexer confluence.SpaceIndexer
+		if w.Deps.Indexer != nil {
+			indexer = &confluenceIndexerAdapter{indexer: w.Deps.Indexer}
+		}
+
+		if err := confluence.Sync(ctx, confluence.SyncParams{
+			ServiceID: svc.ID,
+			Spaces:    spaces,
+			Repo:      &confluenceRepoAdapter{repo: w.Deps.ConfRepo},
+			Indexer:   indexer,
+			Logger:    svcLogger,
+		}); err != nil {
+			svcLogger.Error(fmt.Sprintf("syncing confluence service %d: %v", svc.ID, err))
+			continue
+		}
+
+		svcLogger.Info("confluence service sync completed", "spaces", len(spaces))
+	}
+	return nil
+}
+
+// SyncGitTemplatesWorker syncs Git template repositories.
+type SyncGitTemplatesWorker struct {
+	river.WorkerDefaults[SyncGitTemplatesArgs]
+	Deps SchedulerDeps
+}
+
+func (w *SyncGitTemplatesWorker) Work(ctx context.Context, _ *river.Job[SyncGitTemplatesArgs]) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	logger := w.Deps.Logger.With("job", "git")
+	logger.Info("starting git template sync")
+
+	templates, err := w.Deps.GitRepo.List(ctx, "", 100)
+	if err != nil {
+		return fmt.Errorf("listing git templates: %w", err)
+	}
+
+	if len(templates) == 0 {
+		logger.Info("no git templates found")
+		return nil
+	}
+
+	client := git.NewClient(w.Deps.GitTempDir, logger)
+
+	for _, t := range templates {
+		tmplLogger := logger.With("template_id", t.ID, "slug", t.Slug)
+
+		syncTmpl, err := toSyncTemplate(t)
+		if err != nil {
+			tmplLogger.Error("converting git template", "error", err)
+			continue
+		}
+
+		var indexer git.TemplateIndexer
+		if w.Deps.Indexer != nil {
+			indexer = &gitIndexerAdapter{indexer: w.Deps.Indexer}
+		}
+
+		if err := git.Sync(ctx, git.SyncParams{
+			Template: syncTmpl,
+			Client:   client,
+			Repo:     &gitRepoAdapter{repo: w.Deps.GitRepo},
+			Indexer:  indexer,
+			Logger:   tmplLogger,
+		}); err != nil {
+			tmplLogger.Error(fmt.Sprintf("syncing git template %d: %v", t.ID, err))
+			continue
+		}
+
+		tmplLogger.Info("git template sync completed")
+	}
+	return nil
+}
+
+// --- Cleanup Workers ---
+
+// CleanupOAuthTokensWorker purges expired OAuth tokens.
+type CleanupOAuthTokensWorker struct {
+	river.WorkerDefaults[CleanupOAuthTokensArgs]
+	Deps SchedulerDeps
+}
+
+func (w *CleanupOAuthTokensWorker) Work(ctx context.Context, _ *river.Job[CleanupOAuthTokensArgs]) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	if w.Deps.OAuthRepo == nil {
+		w.Deps.Logger.Warn("skipping OAuth cleanup: oauth repository not configured")
+		return nil
+	}
+
+	w.Deps.Logger.Info("starting OAuth token cleanup")
+
+	count, err := w.Deps.OAuthRepo.PurgeExpiredTokens(ctx, 7)
+	if err != nil {
+		return fmt.Errorf("purging expired OAuth tokens: %w", err)
+	}
+
+	w.Deps.Logger.Info("OAuth token cleanup completed", "purged_count", count)
+	return nil
+}
+
+// CleanupOrphanedFilesWorker removes files not referenced by any active document.
+type CleanupOrphanedFilesWorker struct {
+	river.WorkerDefaults[CleanupOrphanedFilesArgs]
+	Deps SchedulerDeps
+}
+
+func (w *CleanupOrphanedFilesWorker) Work(ctx context.Context, _ *river.Job[CleanupOrphanedFilesArgs]) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	if w.Deps.DocRepo == nil || w.Deps.StoragePath == "" {
+		w.Deps.Logger.Warn("skipping orphaned files cleanup: document repository or storage path not configured")
+		return nil
+	}
+
+	logger := w.Deps.Logger.With("job", "orphaned-files")
+	logger.Info("starting orphaned files cleanup")
+
+	activePaths, err := w.Deps.DocRepo.ListActiveFilePaths(ctx)
+	if err != nil {
+		return fmt.Errorf("listing active file paths: %w", err)
+	}
+
+	activeSet := make(map[string]bool, len(activePaths))
+	for _, fp := range activePaths {
+		absPath := filepath.Join(w.Deps.StoragePath, fp.FilePath)
+		activeSet[absPath] = true
+	}
+
+	var deletedCount int
+	walkErr := filepath.WalkDir(w.Deps.StoragePath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !activeSet[path] {
+			if removeErr := os.Remove(path); removeErr != nil {
+				logger.Error("removing orphaned file", "path", path, "error", removeErr)
+			} else {
+				deletedCount++
+			}
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return fmt.Errorf("walking storage directory: %w", walkErr)
+	}
+
+	logger.Info("orphaned files cleanup completed", "deleted_count", deletedCount)
+	return nil
+}
+
+// VerifySearchIndexWorker checks consistency between DB and search index.
+type VerifySearchIndexWorker struct {
+	river.WorkerDefaults[VerifySearchIndexArgs]
+	Deps SchedulerDeps
+}
+
+func (w *VerifySearchIndexWorker) Work(ctx context.Context, _ *river.Job[VerifySearchIndexArgs]) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	if w.Deps.DocRepo == nil || w.Deps.Indexer == nil {
+		w.Deps.Logger.Warn("skipping search index verification: document repository or indexer not configured")
+		return nil
+	}
+
+	logger := w.Deps.Logger.With("job", "search-verify")
+	logger.Info("starting search index verification")
+
+	dbUUIDs, err := w.Deps.DocRepo.ListAllUUIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("listing database document UUIDs: %w", err)
+	}
+
+	dbSet := make(map[string]bool, len(dbUUIDs))
+	for _, uuid := range dbUUIDs {
+		dbSet[uuid] = true
+	}
+
+	indexedSet, err := w.Deps.Indexer.ListIndexedDocumentUUIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("listing indexed document UUIDs: %w", err)
+	}
+
+	var missingCount int
+	for _, uuid := range dbUUIDs {
+		if !indexedSet[uuid] {
+			missingCount++
+			logger.Warn("document missing from search index", "uuid", uuid)
+		}
+	}
+
+	var orphanedCount int
+	for uuid := range indexedSet {
+		if !dbSet[uuid] {
+			orphanedCount++
+			if err := w.Deps.Indexer.DeleteDocument(ctx, uuid); err != nil {
+				logger.Error("removing orphaned document from search index", "uuid", uuid, "error", err)
+			}
+		}
+	}
+
+	logger.Info("search index verification completed",
+		"missing_from_index", missingCount,
+		"orphaned_in_index", orphanedCount,
+	)
+	return nil
+}
+
+// PurgeSoftDeletedWorker permanently removes documents soft-deleted >30 days.
+type PurgeSoftDeletedWorker struct {
+	river.WorkerDefaults[PurgeSoftDeletedArgs]
+	Deps SchedulerDeps
+}
+
+func (w *PurgeSoftDeletedWorker) Work(ctx context.Context, _ *river.Job[PurgeSoftDeletedArgs]) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	if w.Deps.DocRepo == nil {
+		w.Deps.Logger.Warn("skipping soft-delete purge: document repository not configured")
+		return nil
+	}
+
+	logger := w.Deps.Logger.With("job", "soft-delete-purge")
+	logger.Info("starting soft-delete purge")
+
+	purged, err := w.Deps.DocRepo.PurgeSoftDeleted(ctx, 30*24*time.Hour)
+	if err != nil {
+		return fmt.Errorf("purging soft-deleted documents: %w", err)
+	}
+
+	for _, fp := range purged {
+		if fp.FilePath != "" {
+			absPath := filepath.Join(w.Deps.StoragePath, fp.FilePath)
+			if removeErr := os.Remove(absPath); removeErr != nil && !os.IsNotExist(removeErr) {
+				logger.Error("removing purged document file", "path", absPath, "error", removeErr)
+			}
+		}
+
+		if w.Deps.Indexer != nil {
+			if deleteErr := w.Deps.Indexer.DeleteDocument(ctx, fp.UUID); deleteErr != nil {
+				logger.Error("removing purged document from search index", "uuid", fp.UUID, "error", deleteErr)
+			}
+		}
+	}
+
+	logger.Info("soft-delete purge completed", "purged_count", len(purged))
+	return nil
+}
+
+// CleanupDisabledZimWorker removes disabled ZIM archives from search.
+type CleanupDisabledZimWorker struct {
+	river.WorkerDefaults[CleanupDisabledZimArgs]
+	Deps SchedulerDeps
+}
+
+func (w *CleanupDisabledZimWorker) Work(ctx context.Context, _ *river.Job[CleanupDisabledZimArgs]) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	if w.Deps.ZimRepo == nil || w.Deps.Indexer == nil {
+		w.Deps.Logger.Warn("skipping disabled ZIM cleanup: zim repository or indexer not configured")
+		return nil
+	}
+
+	logger := w.Deps.Logger.With("job", "zim-cleanup")
+	logger.Info("starting disabled ZIM archive cleanup")
+
+	archives, err := w.Deps.ZimRepo.FindDisabled(ctx)
+	if err != nil {
+		return fmt.Errorf("finding disabled ZIM archives: %w", err)
+	}
+
+	var cleanedCount int
+	for _, archive := range archives {
+		if err := w.Deps.Indexer.DeleteZimArchive(ctx, archive.UUID); err != nil {
+			logger.Error("removing disabled ZIM archive from search index", "uuid", archive.UUID, "error", err)
+			continue
+		}
+		cleanedCount++
+	}
+
+	logger.Info("disabled ZIM archive cleanup completed", "cleaned_count", cleanedCount)
+	return nil
+}
+
+// HealthCheckServicesWorker performs HTTP health checks on external services.
+type HealthCheckServicesWorker struct {
+	river.WorkerDefaults[HealthCheckServicesArgs]
+	Deps SchedulerDeps
+}
+
+func (w *HealthCheckServicesWorker) Work(ctx context.Context, _ *river.Job[HealthCheckServicesArgs]) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	if w.Deps.HealthChecker == nil {
+		w.Deps.Logger.Warn("skipping health check: health checker not configured")
+		return nil
+	}
+
+	logger := w.Deps.Logger.With("job", "health-check")
+	logger.Info("starting external service health checks")
+
+	services, err := w.Deps.HealthChecker.FindAllEnabled(ctx)
+	if err != nil {
+		return fmt.Errorf("finding enabled external services: %w", err)
+	}
+
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+
+	var healthyCount, unhealthyCount int
+	for _, svc := range services {
+		svcLogger := logger.With("service_id", svc.ID, "base_url", svc.BaseURL)
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, svc.BaseURL, nil)
+		if err != nil {
+			svcLogger.Error("creating health check request", "error", err)
+			if updateErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", 0, fmt.Sprintf("creating request: %v", err)); updateErr != nil {
+				svcLogger.Error("updating health status", "error", updateErr)
+			}
+			unhealthyCount++
+			continue
+		}
+
+		start := time.Now()
+		resp, err := httpClient.Do(req)
+		latencyMs := int(time.Since(start).Milliseconds())
+
+		if err != nil {
+			svcLogger.Warn("health check failed", "error", err, "latency_ms", latencyMs)
+			if updateErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", latencyMs, err.Error()); updateErr != nil {
+				svcLogger.Error("updating health status", "error", updateErr)
+			}
+			unhealthyCount++
+			continue
+		}
+		_ = resp.Body.Close()
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			if updateErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "healthy", latencyMs, ""); updateErr != nil {
+				svcLogger.Error("updating health status", "error", updateErr)
+			}
+			healthyCount++
+		} else {
+			errMsg := fmt.Sprintf("unexpected status code: %d", resp.StatusCode)
+			svcLogger.Warn("health check returned non-2xx", "status_code", resp.StatusCode, "latency_ms", latencyMs)
+			if updateErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", latencyMs, errMsg); updateErr != nil {
+				svcLogger.Error("updating health status", "error", updateErr)
+			}
+			unhealthyCount++
+		}
+	}
+
+	logger.Info("external service health checks completed",
+		"total", len(services),
+		"healthy", healthyCount,
+		"unhealthy", unhealthyCount,
+	)
+	return nil
+}
+
+// --- Helpers (moved from scheduler package) ---
+
+// parseConfluenceCredentials extracts email and API token from the service's
+// APIKey field, which stores them in "email:token" format.
+func parseConfluenceCredentials(svc model.ExternalService) (email, token string, err error) {
+	if !svc.APIKey.Valid || svc.APIKey.String == "" {
+		return "", "", fmt.Errorf("service %d has no API key configured", svc.ID)
+	}
+
+	parts := strings.SplitN(svc.APIKey.String, ":", 2)
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("service %d API key must be in email:token format", svc.ID)
+	}
+
+	return parts[0], parts[1], nil
+}
+
+// toSyncTemplate converts a model.GitTemplate to the git.SyncTemplate type.
+func toSyncTemplate(t model.GitTemplate) (git.SyncTemplate, error) {
+	var tags []string
+	if t.Tags.Valid && t.Tags.String != "" {
+		if err := json.Unmarshal([]byte(t.Tags.String), &tags); err != nil {
+			return git.SyncTemplate{}, fmt.Errorf("parsing tags for template %d: %w", t.ID, err)
+		}
+	}
+
+	description := ""
+	if t.Description.Valid {
+		description = t.Description.String
+	}
+
+	category := ""
+	if t.Category.Valid {
+		category = t.Category.String
+	}
+
+	token := ""
+	if t.GitToken.Valid {
+		token = t.GitToken.String
+	}
+
+	lastCommitSHA := ""
+	if t.LastCommitSHA.Valid {
+		lastCommitSHA = t.LastCommitSHA.String
+	}
+
+	return git.SyncTemplate{
+		ID:            t.ID,
+		UUID:          t.UUID,
+		Name:          t.Name,
+		Slug:          t.Slug,
+		Description:   description,
+		RepositoryURL: t.RepositoryURL,
+		Branch:        t.Branch,
+		Token:         token,
+		Category:      category,
+		Tags:          tags,
+		LastCommitSHA: lastCommitSHA,
+	}, nil
+}

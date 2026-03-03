@@ -17,7 +17,9 @@ import (
 	"time"
 
 	"github.com/gorilla/sessions"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jmoiron/sqlx"
+	"github.com/riverqueue/river"
 
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oidc"
@@ -38,7 +40,6 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/observability"
 	"git.999.haus/chris/DocuMCP-go/internal/queue"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
-	"git.999.haus/chris/DocuMCP-go/internal/scheduler"
 	"git.999.haus/chris/DocuMCP-go/internal/search"
 	"git.999.haus/chris/DocuMCP-go/internal/server"
 	"git.999.haus/chris/DocuMCP-go/internal/service"
@@ -46,14 +47,16 @@ import (
 
 // App holds all application dependencies wired together.
 type App struct {
-	Config         *config.Config
-	DB             *sqlx.DB
-	Logger         *slog.Logger
-	Metrics        *observability.Metrics
-	Server         *server.Server
-	WorkerPool     *queue.Pool
-	Scheduler      *scheduler.Scheduler
-	tracerShutdown func(context.Context) error
+	Config          *config.Config
+	DB              *sqlx.DB
+	Logger          *slog.Logger
+	Metrics         *observability.Metrics
+	Server          *server.Server
+	PgxPool         *pgxpool.Pool
+	RiverClient     *queue.RiverClient
+	EventBus        *queue.EventBus
+	docStatusFinder queue.DocumentStatusFinder
+	tracerShutdown  func(context.Context) error
 }
 
 // New creates a new App, wiring all dependencies together.
@@ -80,6 +83,21 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	logger.Info("database migrations applied")
+
+	// --- pgxpool for River ---
+	pgxPool, err := database.NewPgxPool(context.Background(), cfg.DatabaseDSN(), 10)
+	if err != nil {
+		return nil, fmt.Errorf("creating pgxpool for river: %w", err)
+	}
+
+	logger.Info("pgxpool connected for river queue")
+
+	if err := database.RunRiverMigrations(context.Background(), pgxPool); err != nil {
+		pgxPool.Close()
+		return nil, fmt.Errorf("running river migrations: %w", err)
+	}
+
+	logger.Info("river schema migrations applied")
 
 	// --- Session Store ---
 	sessionSecret := cfg.OAuth.SessionSecret
@@ -179,14 +197,88 @@ func New(cfg *config.Config) (*App, error) {
 		markdownext.New(),
 	)
 
-	// --- Worker Pool ---
-	workerPool := queue.NewPool(3, 100, logger)
-
 	// --- Storage ---
 	storagePath := filepath.Join(cfg.Storage.BasePath, cfg.Storage.DocumentPath)
 	if err := os.MkdirAll(storagePath, 0o755); err != nil {
 		return nil, fmt.Errorf("creating document storage path: %w", err)
 	}
+
+	gitTempDir := filepath.Join(cfg.Storage.BasePath, "git")
+	if err := os.MkdirAll(gitTempDir, 0o755); err != nil {
+		return nil, fmt.Errorf("creating git temp path: %w", err)
+	}
+
+	// --- Observability (Metrics) ---
+	metrics := observability.NewMetrics()
+	observability.RegisterDBMetrics(db.DB)
+	logger.Info("Prometheus metrics registered")
+
+	// --- EventBus ---
+	eventBus := queue.NewEventBus()
+
+	// --- River Workers ---
+	schedulerDeps := queue.SchedulerDeps{
+		Services:      externalServiceRepo,
+		HealthChecker: externalServiceRepo,
+		ZimRepo:       zimArchiveRepo,
+		ConfRepo:      confluenceSpaceRepo,
+		GitRepo:       gitTemplateRepo,
+		OAuthRepo:     oauthRepo,
+		DocRepo:       documentRepo,
+		Indexer:       searchIndexer,
+		GitTempDir:    gitTempDir,
+		StoragePath:   storagePath,
+		Logger:        logger,
+	}
+
+	// Create document workers with nil dependencies (wired after pipeline creation).
+	extractWorker := &queue.DocumentExtractWorker{}
+	indexWorker := &queue.DocumentIndexWorker{}
+	reindexWorker := &queue.ReindexAllWorker{}
+
+	workers := river.NewWorkers()
+	river.AddWorker(workers, extractWorker)
+	river.AddWorker(workers, indexWorker)
+	river.AddWorker(workers, reindexWorker)
+
+	// Register scheduler migration workers.
+	river.AddWorker(workers, &queue.SyncKiwixWorker{Deps: schedulerDeps})
+	river.AddWorker(workers, &queue.SyncConfluenceWorker{Deps: schedulerDeps})
+	river.AddWorker(workers, &queue.SyncGitTemplatesWorker{Deps: schedulerDeps})
+	river.AddWorker(workers, &queue.CleanupOAuthTokensWorker{Deps: schedulerDeps})
+	river.AddWorker(workers, &queue.CleanupOrphanedFilesWorker{Deps: schedulerDeps})
+	river.AddWorker(workers, &queue.VerifySearchIndexWorker{Deps: schedulerDeps})
+	river.AddWorker(workers, &queue.PurgeSoftDeletedWorker{Deps: schedulerDeps})
+	river.AddWorker(workers, &queue.CleanupDisabledZimWorker{Deps: schedulerDeps})
+	river.AddWorker(workers, &queue.HealthCheckServicesWorker{Deps: schedulerDeps})
+
+	// Build periodic jobs from scheduler config (only if scheduler is enabled).
+	var periodicJobs []*river.PeriodicJob
+	if cfg.Scheduler.Enabled {
+		periodicJobs = queue.BuildPeriodicJobs(cfg.Scheduler, logger)
+		logger.Info("periodic jobs configured",
+			"count", len(periodicJobs),
+			"kiwix_schedule", cfg.Scheduler.KiwixSchedule,
+			"confluence_schedule", cfg.Scheduler.ConfluenceSchedule,
+			"git_schedule", cfg.Scheduler.GitSchedule,
+		)
+	}
+
+	// Create River client.
+	riverClient, err := queue.NewRiverClient(queue.RiverConfig{
+		Pool:         pgxPool,
+		EventBus:     eventBus,
+		Logger:       logger,
+		Metrics:      metrics,
+		Workers:      workers,
+		PeriodicJobs: periodicJobs,
+	})
+	if err != nil {
+		pgxPool.Close()
+		return nil, fmt.Errorf("creating river client: %w", err)
+	}
+
+	logger.Info("river queue client configured")
 
 	// --- Services ---
 	documentService := service.NewDocumentService(documentRepo, logger)
@@ -194,9 +286,15 @@ func New(cfg *config.Config) (*App, error) {
 		documentService,
 		extractorRegistry,
 		searchIndexer,
-		workerPool,
+		riverClient,
 		storagePath,
 	)
+
+	// Wire pipeline into document workers (resolves circular dependency).
+	extractWorker.Pipeline = documentPipeline
+	indexWorker.Indexer = documentPipeline
+	reindexWorker.Indexer = documentPipeline
+
 	oauthService := oauth.NewService(oauthRepo, cfg.OAuth, cfg.App.URL, logger)
 	externalServiceSvc := service.NewExternalServiceService(externalServiceRepo, logger)
 
@@ -234,6 +332,10 @@ func New(cfg *config.Config) (*App, error) {
 	externalServiceH := apihandler.NewExternalServiceHandler(externalServiceSvc, logger)
 	userH := apihandler.NewUserHandler(oauthRepo, logger)
 	oauthClientH := apihandler.NewOAuthClientHandler(oauthRepo, logger)
+
+	// --- SSE & Queue Handlers ---
+	sseH := apihandler.NewSSEHandler(eventBus)
+	queueH := apihandler.NewQueueHandler(riverClient)
 
 	// --- Admin Handler ---
 	adminH := adminhandler.NewHandler(
@@ -279,10 +381,6 @@ func New(cfg *config.Config) (*App, error) {
 		logger.Info("OpenTelemetry tracing enabled", "endpoint", cfg.OTEL.Endpoint)
 	}
 
-	metrics := observability.NewMetrics()
-	observability.RegisterDBMetrics(db.DB)
-	logger.Info("Prometheus metrics registered")
-
 	// --- HTTP Server ---
 	trustedProxies, err := config.ParseCIDRs(cfg.Server.TrustedProxies)
 	if err != nil {
@@ -322,6 +420,8 @@ func New(cfg *config.Config) (*App, error) {
 		UserHandler:            userH,
 		OAuthClientHandler:     oauthClientH,
 		AdminHandler:           adminH,
+		SSEHandler:             sseH,
+		QueueHandler:           queueH,
 		Metrics:                metrics,
 		OTELEnabled:            cfg.OTEL.Enabled,
 		CSRFKey:                []byte(sessionSecret)[:32],
@@ -335,62 +435,17 @@ func New(cfg *config.Config) (*App, error) {
 		"version", cfg.DocuMCP.ServerVersion,
 	)
 
-	// --- Scheduler ---
-	var sched *scheduler.Scheduler
-	if cfg.Scheduler.Enabled {
-		gitTempDir := filepath.Join(cfg.Storage.BasePath, "git")
-		if err := os.MkdirAll(gitTempDir, 0o755); err != nil {
-			return nil, fmt.Errorf("creating git temp path: %w", err)
-		}
-
-		sched = scheduler.New(
-			scheduler.Config{
-				KiwixSchedule:           cfg.Scheduler.KiwixSchedule,
-				ConfluenceSchedule:      cfg.Scheduler.ConfluenceSchedule,
-				GitSchedule:             cfg.Scheduler.GitSchedule,
-				OAuthCleanupSchedule:    cfg.Scheduler.OAuthCleanupSchedule,
-				OrphanedFilesSchedule:   cfg.Scheduler.OrphanedFilesSchedule,
-				SearchVerifySchedule:    cfg.Scheduler.SearchVerifySchedule,
-				SoftDeletePurgeSchedule: cfg.Scheduler.SoftDeletePurgeSchedule,
-				ZimCleanupSchedule:      cfg.Scheduler.ZimCleanupSchedule,
-				HealthCheckSchedule:     cfg.Scheduler.HealthCheckSchedule,
-				Logger:                  logger,
-			},
-			scheduler.Deps{
-				Services:      externalServiceRepo,
-				HealthChecker: externalServiceRepo,
-				ZimRepo:       zimArchiveRepo,
-				ConfRepo:      confluenceSpaceRepo,
-				GitRepo:       gitTemplateRepo,
-				OAuthRepo:     oauthRepo,
-				DocRepo:       documentRepo,
-				Indexer:       searchIndexer,
-				GitTempDir:    gitTempDir,
-				StoragePath:   storagePath,
-			},
-		)
-		logger.Info("scheduler configured",
-			"kiwix_schedule", cfg.Scheduler.KiwixSchedule,
-			"confluence_schedule", cfg.Scheduler.ConfluenceSchedule,
-			"git_schedule", cfg.Scheduler.GitSchedule,
-			"oauth_cleanup_schedule", cfg.Scheduler.OAuthCleanupSchedule,
-			"orphaned_files_schedule", cfg.Scheduler.OrphanedFilesSchedule,
-			"search_verify_schedule", cfg.Scheduler.SearchVerifySchedule,
-			"soft_delete_purge_schedule", cfg.Scheduler.SoftDeletePurgeSchedule,
-			"zim_cleanup_schedule", cfg.Scheduler.ZimCleanupSchedule,
-			"health_check_schedule", cfg.Scheduler.HealthCheckSchedule,
-		)
-	}
-
 	return &App{
-		Config:         cfg,
-		DB:             db,
-		Logger:         logger,
-		Metrics:        metrics,
-		Server:         srv,
-		WorkerPool:     workerPool,
-		Scheduler:      sched,
-		tracerShutdown: tracerShutdown,
+		Config:          cfg,
+		DB:              db,
+		Logger:          logger,
+		Metrics:         metrics,
+		Server:          srv,
+		PgxPool:         pgxPool,
+		RiverClient:     riverClient,
+		EventBus:        eventBus,
+		docStatusFinder: &docStatusAdapter{repo: documentRepo},
+		tracerShutdown:  tracerShutdown,
 	}, nil
 }
 
@@ -400,8 +455,15 @@ func (a *App) Start(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if a.Scheduler != nil {
-		a.Scheduler.Start()
+	// Start River queue client for job processing.
+	if a.RiverClient != nil {
+		if err := a.RiverClient.Start(ctx); err != nil {
+			return fmt.Errorf("starting river client: %w", err)
+		}
+		a.Logger.Info("river queue started")
+
+		// Re-dispatch jobs for documents stuck in intermediate states.
+		queue.RecoverStuckDocuments(ctx, a.RiverClient, a.docStatusFinder, a.Logger)
 	}
 
 	errCh := make(chan error, 1)
@@ -429,11 +491,12 @@ func (a *App) Start(ctx context.Context) error {
 
 // Close releases all resources held by the application.
 func (a *App) Close() error {
-	if a.Scheduler != nil {
-		<-a.Scheduler.Stop().Done()
-	}
-	if a.WorkerPool != nil {
-		a.WorkerPool.Shutdown()
+	if a.RiverClient != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := a.RiverClient.Stop(ctx); err != nil {
+			a.Logger.Error("stopping river client", "error", err)
+		}
 	}
 	if a.tracerShutdown != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -441,6 +504,9 @@ func (a *App) Close() error {
 		if err := a.tracerShutdown(ctx); err != nil {
 			a.Logger.Error("flushing tracer spans", "error", err)
 		}
+	}
+	if a.PgxPool != nil {
+		a.PgxPool.Close()
 	}
 	if a.DB != nil {
 		if err := a.DB.Close(); err != nil {
@@ -467,4 +533,21 @@ func newLogger(env string, debug bool, w io.Writer) *slog.Logger {
 	}
 
 	return slog.New(handler)
+}
+
+// docStatusAdapter adapts DocumentRepository.FindByStatus to queue.DocumentStatusFinder.
+type docStatusAdapter struct {
+	repo *repository.DocumentRepository
+}
+
+func (a *docStatusAdapter) FindByStatus(ctx context.Context, status string) ([]queue.StuckDocument, error) {
+	docs, err := a.repo.FindByStatus(ctx, status, 1000)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]queue.StuckDocument, len(docs))
+	for i, d := range docs {
+		result[i] = queue.StuckDocument{ID: d.ID, UUID: d.UUID}
+	}
+	return result, nil
 }

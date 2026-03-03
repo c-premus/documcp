@@ -13,12 +13,19 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
 
 	"git.999.haus/chris/DocuMCP-go/internal/extractor"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/queue"
 	"git.999.haus/chris/DocuMCP-go/internal/search"
 )
+
+// JobInserter inserts jobs into the queue. Defined here (where consumed).
+type JobInserter interface {
+	Insert(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
+}
 
 // maxUploadSize is the maximum allowed file size (50 MB).
 const maxUploadSize = 50 * 1024 * 1024
@@ -52,7 +59,7 @@ type DocumentPipeline struct {
 	*DocumentService
 	extractorRegistry *extractor.Registry
 	indexer           *search.Indexer
-	pool              *queue.Pool
+	inserter          JobInserter
 	storagePath       string
 }
 
@@ -61,14 +68,14 @@ func NewDocumentPipeline(
 	svc *DocumentService,
 	registry *extractor.Registry,
 	indexer *search.Indexer,
-	pool *queue.Pool,
+	inserter JobInserter,
 	storagePath string,
 ) *DocumentPipeline {
 	return &DocumentPipeline{
 		DocumentService:   svc,
 		extractorRegistry: registry,
 		indexer:           indexer,
-		pool:              pool,
+		inserter:          inserter,
 		storagePath:       storagePath,
 	}
 }
@@ -271,43 +278,42 @@ func (p *DocumentPipeline) IndexDocument(ctx context.Context, doc *model.Documen
 	return nil
 }
 
-// dispatchExtraction sends an extraction job to the worker pool.
+// dispatchExtraction enqueues a document extraction job via River.
 func (p *DocumentPipeline) dispatchExtraction(docID int64, docUUID string) {
-	if p.pool == nil {
+	if p.inserter == nil {
 		return
 	}
 
-	if err := p.pool.Dispatch(queue.Job{
-		Name: fmt.Sprintf("extract:%s", docUUID),
-		Fn: func(ctx context.Context) error {
-			return p.ProcessDocument(ctx, docID)
-		},
-	}); err != nil {
+	if _, err := p.inserter.Insert(context.Background(), queue.DocumentExtractArgs{
+		DocumentID: docID,
+		DocUUID:    docUUID,
+	}, nil); err != nil {
 		p.logger.Error("failed to dispatch extraction job", "doc_id", docID, "uuid", docUUID, "error", err)
 	}
 }
 
-// dispatchIndexing sends an indexing job to the worker pool.
+// dispatchIndexing enqueues a document indexing job via River.
 func (p *DocumentPipeline) dispatchIndexing(doc *model.Document) {
-	if p.pool == nil || p.indexer == nil {
+	if p.inserter == nil || p.indexer == nil {
 		return
 	}
 
-	docID := doc.ID
-	docUUID := doc.UUID
-
-	if err := p.pool.Dispatch(queue.Job{
-		Name: fmt.Sprintf("index:%s", docUUID),
-		Fn: func(ctx context.Context) error {
-			freshDoc, err := p.repo.FindByID(ctx, docID)
-			if err != nil {
-				return fmt.Errorf("finding document %d for indexing: %w", docID, err)
-			}
-			return p.IndexDocument(ctx, freshDoc)
-		},
-	}); err != nil {
-		p.logger.Error("failed to dispatch indexing job", "doc_id", docID, "uuid", docUUID, "error", err)
+	if _, err := p.inserter.Insert(context.Background(), queue.DocumentIndexArgs{
+		DocumentID: doc.ID,
+		DocUUID:    doc.UUID,
+	}, nil); err != nil {
+		p.logger.Error("failed to dispatch indexing job", "doc_id", doc.ID, "uuid", doc.UUID, "error", err)
 	}
+}
+
+// IndexDocumentByID fetches a document by ID and indexes it in Meilisearch.
+// Used by the River DocumentIndexWorker.
+func (p *DocumentPipeline) IndexDocumentByID(ctx context.Context, docID int64) error {
+	doc, err := p.repo.FindByID(ctx, docID)
+	if err != nil {
+		return fmt.Errorf("finding document %d for indexing: %w", docID, err)
+	}
+	return p.IndexDocument(ctx, doc)
 }
 
 // markFailed updates a document's status to "failed" with an error message.
