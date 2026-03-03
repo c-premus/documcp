@@ -47,6 +47,10 @@ type Deps struct {
 	// Phase 5: Admin UI
 	AdminHandler *adminhandler.Handler
 
+	// Phase 7: River queue
+	SSEHandler   *apihandler.SSEHandler   // nil if not configured
+	QueueHandler *apihandler.QueueHandler // nil if not configured
+
 	// Observability
 	Metrics      *observability.Metrics // nil disables Prometheus metrics
 	OTELEnabled  bool                   // enables tracing middleware
@@ -261,6 +265,23 @@ func (s *Server) RegisterRoutes(deps Deps) {
 				r.Post("/{uuid}/health-check", deps.ExternalServiceHandler.HealthCheck)
 			})
 			s.logger.Info("External service API endpoints registered")
+		}
+
+		// SSE events
+		if deps.SSEHandler != nil {
+			r.Get("/events/stream", deps.SSEHandler.Stream)
+			s.logger.Info("SSE events endpoint registered", "path", "/api/events/stream")
+		}
+
+		// Queue admin endpoints
+		if deps.QueueHandler != nil {
+			r.Route("/admin/queue", func(r chi.Router) {
+				r.Get("/stats", deps.QueueHandler.Stats)
+				r.Get("/failed", deps.QueueHandler.ListFailed)
+				r.Post("/failed/{id}/retry", deps.QueueHandler.RetryFailed)
+				r.Delete("/failed/{id}", deps.QueueHandler.DeleteFailed)
+			})
+			s.logger.Info("queue admin API endpoints registered")
 		}
 	})
 
