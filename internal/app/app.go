@@ -340,7 +340,7 @@ func New(cfg *config.Config) (*App, error) {
 
 	// --- SSE & Queue Handlers ---
 	sseH := apihandler.NewSSEHandler(eventBus)
-	queueH := apihandler.NewQueueHandler(riverClient)
+	queueH := apihandler.NewQueueHandler(riverClient, logger)
 
 	// --- MCP Handler ---
 	mcpH := mcphandler.New(mcphandler.Config{

@@ -49,7 +49,8 @@ func NewClient(baseURL, email, apiToken string, logger *slog.Logger) (*Client, e
 		email:    email,
 		apiToken: apiToken,
 		httpClient: &http.Client{
-			Timeout: 15 * time.Second,
+			Timeout:   15 * time.Second,
+			Transport: security.SafeTransport(),
 		},
 		cache:  newCache(),
 		logger: logger,

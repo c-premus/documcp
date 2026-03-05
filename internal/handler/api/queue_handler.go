@@ -15,18 +15,19 @@ import (
 // QueueHandler provides REST API for queue management.
 type QueueHandler struct {
 	riverClient *queue.RiverClient
+	logger      *slog.Logger
 }
 
 // NewQueueHandler creates a QueueHandler.
-func NewQueueHandler(riverClient *queue.RiverClient) *QueueHandler {
-	return &QueueHandler{riverClient: riverClient}
+func NewQueueHandler(riverClient *queue.RiverClient, logger *slog.Logger) *QueueHandler {
+	return &QueueHandler{riverClient: riverClient, logger: logger}
 }
 
 // Stats handles GET /api/admin/queue/stats — queue depth and configuration.
 func (h *QueueHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	counts, err := h.riverClient.QueueStats(r.Context())
 	if err != nil {
-		slog.Error("queue stats query failed", "error", err)
+		h.logger.ErrorContext(r.Context(), "queue stats query failed", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to fetch queue stats")
 		return
 	}
@@ -57,7 +58,7 @@ func (h *QueueHandler) ListFailed(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.riverClient.Client().JobList(ctx, params)
 	if err != nil {
-		slog.Error("queue job list failed", "error", err)
+		h.logger.ErrorContext(ctx, "queue job list failed", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to list queue jobs")
 		return
 	}
@@ -100,7 +101,7 @@ func (h *QueueHandler) RetryFailed(w http.ResponseWriter, r *http.Request) {
 
 	job, err := h.riverClient.Client().JobRetry(r.Context(), id)
 	if err != nil {
-		slog.Error("queue job retry failed", "error", err, "job_id", id)
+		h.logger.ErrorContext(r.Context(), "queue job retry failed", "error", err, "job_id", id)
 		errorResponse(w, http.StatusInternalServerError, "failed to retry job")
 		return
 	}
@@ -118,7 +119,7 @@ func (h *QueueHandler) DeleteFailed(w http.ResponseWriter, r *http.Request) {
 
 	job, err := h.riverClient.Client().JobCancel(r.Context(), id)
 	if err != nil {
-		slog.Error("queue job cancel failed", "error", err, "job_id", id)
+		h.logger.ErrorContext(r.Context(), "queue job cancel failed", "error", err, "job_id", id)
 		errorResponse(w, http.StatusInternalServerError, "failed to cancel job")
 		return
 	}

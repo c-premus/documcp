@@ -47,7 +47,8 @@ func NewClient(baseURL string, logger *slog.Logger) (*Client, error) {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout:   10 * time.Second,
+			Transport: security.SafeTransport(),
 		},
 		cache:  newCache(),
 		logger: logger,

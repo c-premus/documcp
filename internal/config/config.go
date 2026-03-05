@@ -352,6 +352,10 @@ func (c *Config) Validate() error {
 		errs = append(errs, "database username is required (DB_USERNAME)")
 	}
 
+	if c.App.Env == "production" && c.OAuth.SessionSecret == "" {
+		errs = append(errs, "OAUTH_SESSION_SECRET is required in production")
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("config validation failed: %s", strings.Join(errs, "; "))
 	}

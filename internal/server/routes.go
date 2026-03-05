@@ -202,16 +202,22 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		// Document endpoints
 		if deps.DocumentHandler != nil {
 			r.Route("/documents", func(r chi.Router) {
+				// Read-only: available to all authenticated users
 				r.Get("/", deps.DocumentHandler.List)
-				r.Post("/", deps.DocumentHandler.Upload)
-				r.Post("/analyze", deps.DocumentHandler.Analyze)
 				r.Get("/trash", deps.DocumentHandler.ListDeleted)
 				r.Get("/{uuid}", deps.DocumentHandler.Show)
-				r.Put("/{uuid}", deps.DocumentHandler.Update)
-				r.Delete("/{uuid}", deps.DocumentHandler.Delete)
 				r.Get("/{uuid}/download", deps.DocumentHandler.Download)
-				r.Post("/{uuid}/restore", deps.DocumentHandler.Restore)
-				r.Delete("/{uuid}/purge", deps.DocumentHandler.Purge)
+
+				// Mutating: admin-only
+				r.Group(func(r chi.Router) {
+					r.Use(authmiddleware.RequireAdmin)
+					r.Post("/", deps.DocumentHandler.Upload)
+					r.Post("/analyze", deps.DocumentHandler.Analyze)
+					r.Put("/{uuid}", deps.DocumentHandler.Update)
+					r.Delete("/{uuid}", deps.DocumentHandler.Delete)
+					r.Post("/{uuid}/restore", deps.DocumentHandler.Restore)
+					r.Delete("/{uuid}/purge", deps.DocumentHandler.Purge)
+				})
 			})
 			s.logger.Info("document API endpoints registered")
 		}
@@ -251,17 +257,23 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		// Git template endpoints
 		if deps.GitTemplateHandler != nil {
 			r.Route("/git-templates", func(r chi.Router) {
+				// Read-only: available to all authenticated users
 				r.Get("/", deps.GitTemplateHandler.List)
-				r.Post("/", deps.GitTemplateHandler.Create)
 				r.Get("/search", deps.GitTemplateHandler.Search)
 				r.Get("/{uuid}", deps.GitTemplateHandler.Show)
-				r.Put("/{uuid}", deps.GitTemplateHandler.Update)
-				r.Delete("/{uuid}", deps.GitTemplateHandler.Delete)
-				r.Post("/{uuid}/sync", deps.GitTemplateHandler.Sync)
-			r.Get("/{uuid}/structure", deps.GitTemplateHandler.Structure)
+				r.Get("/{uuid}/structure", deps.GitTemplateHandler.Structure)
 				r.Get("/{uuid}/files/*", deps.GitTemplateHandler.ReadFile)
 				r.Get("/{uuid}/deployment-guide", deps.GitTemplateHandler.DeploymentGuide)
-				r.Post("/{uuid}/download", deps.GitTemplateHandler.Download)
+
+				// Mutating: admin-only
+				r.Group(func(r chi.Router) {
+					r.Use(authmiddleware.RequireAdmin)
+					r.Post("/", deps.GitTemplateHandler.Create)
+					r.Put("/{uuid}", deps.GitTemplateHandler.Update)
+					r.Delete("/{uuid}", deps.GitTemplateHandler.Delete)
+					r.Post("/{uuid}/sync", deps.GitTemplateHandler.Sync)
+					r.Post("/{uuid}/download", deps.GitTemplateHandler.Download)
+				})
 			})
 			s.logger.Info("Git template API endpoints registered")
 		}
@@ -269,12 +281,18 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		// External service endpoints
 		if deps.ExternalServiceHandler != nil {
 			r.Route("/external-services", func(r chi.Router) {
+				// Read-only: available to all authenticated users
 				r.Get("/", deps.ExternalServiceHandler.List)
-				r.Post("/", deps.ExternalServiceHandler.Create)
 				r.Get("/{uuid}", deps.ExternalServiceHandler.Show)
-				r.Put("/{uuid}", deps.ExternalServiceHandler.Update)
-				r.Delete("/{uuid}", deps.ExternalServiceHandler.Delete)
-				r.Post("/{uuid}/health-check", deps.ExternalServiceHandler.HealthCheck)
+
+				// Mutating: admin-only
+				r.Group(func(r chi.Router) {
+					r.Use(authmiddleware.RequireAdmin)
+					r.Post("/", deps.ExternalServiceHandler.Create)
+					r.Put("/{uuid}", deps.ExternalServiceHandler.Update)
+					r.Delete("/{uuid}", deps.ExternalServiceHandler.Delete)
+					r.Post("/{uuid}/health-check", deps.ExternalServiceHandler.HealthCheck)
+				})
 			})
 			s.logger.Info("External service API endpoints registered")
 		}

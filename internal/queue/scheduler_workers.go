@@ -19,6 +19,7 @@ import (
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/search"
+	"github.com/c-premus/documcp/internal/security"
 )
 
 // --- Interfaces (defined where consumed) ---
@@ -471,7 +472,7 @@ func (w *HealthCheckServicesWorker) Work(ctx context.Context, _ *river.Job[Healt
 		return fmt.Errorf("finding enabled external services: %w", err)
 	}
 
-	httpClient := &http.Client{Timeout: 10 * time.Second}
+	httpClient := &http.Client{Timeout: 10 * time.Second, Transport: security.SafeTransport()}
 
 	var healthyCount, unhealthyCount int
 	for _, svc := range services {
