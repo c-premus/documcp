@@ -365,7 +365,7 @@ func TestBearerToken(t *testing.T) {
 
 		var capturedToken *model.OAuthAccessToken
 		inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-			tok, ok := AccessTokenFromContext(r.Context())
+			tok, ok := r.Context().Value(AccessTokenContextKey).(*model.OAuthAccessToken)
 			if ok {
 				capturedToken = tok
 			}
@@ -807,10 +807,10 @@ func TestUserFromContext(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// AccessTokenFromContext tests
+// AccessTokenContextKey tests
 // ---------------------------------------------------------------------------
 
-func TestAccessTokenFromContext(t *testing.T) {
+func TestAccessTokenContextKey(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns token when present", func(t *testing.T) {
@@ -819,9 +819,9 @@ func TestAccessTokenFromContext(t *testing.T) {
 		token := &model.OAuthAccessToken{ID: 7, Token: "hash"}
 		ctx := context.WithValue(context.Background(), AccessTokenContextKey, token)
 
-		got, ok := AccessTokenFromContext(ctx)
+		got, ok := ctx.Value(AccessTokenContextKey).(*model.OAuthAccessToken)
 		if !ok {
-			t.Fatal("AccessTokenFromContext returned false")
+			t.Fatal("access token not found in context")
 		}
 		if got.ID != 7 {
 			t.Errorf("token ID = %d, want 7", got.ID)
@@ -831,9 +831,9 @@ func TestAccessTokenFromContext(t *testing.T) {
 	t.Run("returns false when token not in context", func(t *testing.T) {
 		t.Parallel()
 
-		_, ok := AccessTokenFromContext(context.Background())
-		if ok {
-			t.Error("AccessTokenFromContext returned true for empty context")
+		val := context.Background().Value(AccessTokenContextKey)
+		if val != nil {
+			t.Error("expected nil for empty context")
 		}
 	})
 }
