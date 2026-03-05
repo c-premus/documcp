@@ -10,7 +10,7 @@ export interface SSEEvent {
   readonly timestamp: string
 }
 
-export function useSSE(url = '/api/events/stream') {
+export function useSSE(url = '/api/admin/events/stream') {
   const connected = ref(false)
   const lastEvent = ref<SSEEvent | null>(null)
   let eventSource: EventSource | null = null

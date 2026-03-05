@@ -147,7 +147,7 @@ func (h *riverErrorHandler) HandleError(ctx context.Context, job *rivertype.JobR
 			JobID:     job.ID,
 			Queue:     job.Queue,
 			Attempt:   job.Attempt,
-			Error:     jobErr.Error(),
+			Error:     "job processing failed",
 			Timestamp: time.Now(),
 		})
 	}
@@ -172,7 +172,7 @@ func (h *riverErrorHandler) HandlePanic(ctx context.Context, job *rivertype.JobR
 			JobID:     job.ID,
 			Queue:     job.Queue,
 			Attempt:   job.Attempt,
-			Error:     fmt.Sprintf("panic: %v", panicVal),
+			Error:     "job panicked",
 			Timestamp: time.Now(),
 		})
 	}
