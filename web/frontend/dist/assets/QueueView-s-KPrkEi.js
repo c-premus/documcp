@@ -1,0 +1,1 @@
+import{d as a,c as o,a as t,o as s}from"./index-DkuSnN5E.js";const u=a({__name:"QueueView",setup(n){return(r,e)=>(s(),o("div",null,[...e[0]||(e[0]=[t("h1",{class:"text-2xl font-bold text-gray-900"},"Queue",-1),t("p",{class:"mt-2 text-gray-600"},"Coming in Phase 9.",-1)])]))}});export{u as default};

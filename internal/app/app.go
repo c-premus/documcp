@@ -37,6 +37,8 @@ import (
 	apihandler "git.999.haus/chris/DocuMCP-go/internal/handler/api"
 	mcphandler "git.999.haus/chris/DocuMCP-go/internal/handler/mcp"
 	oauthhandler "git.999.haus/chris/DocuMCP-go/internal/handler/oauth"
+	frontend "git.999.haus/chris/DocuMCP-go/web/frontend"
+
 	"git.999.haus/chris/DocuMCP-go/internal/observability"
 	"git.999.haus/chris/DocuMCP-go/internal/queue"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
@@ -333,6 +335,10 @@ func New(cfg *config.Config) (*App, error) {
 	userH := apihandler.NewUserHandler(oauthRepo, logger)
 	oauthClientH := apihandler.NewOAuthClientHandler(oauthRepo, logger)
 
+	// --- Auth & SPA Handlers ---
+	authH := apihandler.NewAuthHandler(sessionStore, oauthRepo, logger)
+	spaHandler := frontend.Handler()
+
 	// --- SSE & Queue Handlers ---
 	sseH := apihandler.NewSSEHandler(eventBus)
 	queueH := apihandler.NewQueueHandler(riverClient)
@@ -420,6 +426,8 @@ func New(cfg *config.Config) (*App, error) {
 		UserHandler:            userH,
 		OAuthClientHandler:     oauthClientH,
 		AdminHandler:           adminH,
+		AuthHandler:            authH,
+		SPAHandler:             spaHandler,
 		SSEHandler:             sseH,
 		QueueHandler:           queueH,
 		Metrics:                metrics,

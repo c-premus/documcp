@@ -5,7 +5,11 @@
 
 # Grafana dashboard generator
 grafana/node_modules/
-dist/
+grafana/dist/
+
+# Frontend
+frontend/node_modules/
+frontend/src/api/generated/
 # Don't ignore these - they should be committed:
 # .claude/settings.json
 # .claude/skills/

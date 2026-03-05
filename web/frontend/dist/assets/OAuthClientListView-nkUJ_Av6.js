@@ -1,0 +1,1 @@
+import{d as s,c as a,a as e,o as n}from"./index-DkuSnN5E.js";const i=s({__name:"OAuthClientListView",setup(o){return(l,t)=>(n(),a("div",null,[...t[0]||(t[0]=[e("h1",{class:"text-2xl font-bold text-gray-900"},"OAuth Clients",-1),e("p",{class:"mt-2 text-gray-600"},"Coming in Phase 9.",-1)])]))}});export{i as default};
