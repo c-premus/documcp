@@ -279,14 +279,14 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			s.logger.Info("External service API endpoints registered")
 		}
 
-		// SSE events
-		if deps.SSEHandler != nil {
-			r.Get("/events/stream", deps.SSEHandler.Stream)
-			s.logger.Info("SSE events endpoint registered", "path", "/api/events/stream")
-		}
-
-		// Admin API endpoints
+		// Admin API endpoints (requires admin role)
 		r.Route("/admin", func(r chi.Router) {
+			r.Use(authmiddleware.RequireAdmin)
+
+			// SSE events (admin-only: exposes queue operational data)
+			if deps.SSEHandler != nil {
+				r.Get("/events/stream", deps.SSEHandler.Stream)
+			}
 			// Dashboard stats
 			if deps.DashboardHandler != nil {
 				r.Get("/dashboard/stats", deps.DashboardHandler.Stats)

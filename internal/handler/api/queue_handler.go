@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -25,7 +26,8 @@ func NewQueueHandler(riverClient *queue.RiverClient) *QueueHandler {
 func (h *QueueHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	counts, err := h.riverClient.QueueStats(r.Context())
 	if err != nil {
-		errorResponse(w, http.StatusInternalServerError, err.Error())
+		slog.Error("queue stats query failed", "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to fetch queue stats")
 		return
 	}
 
@@ -55,7 +57,8 @@ func (h *QueueHandler) ListFailed(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.riverClient.Client().JobList(ctx, params)
 	if err != nil {
-		errorResponse(w, http.StatusInternalServerError, err.Error())
+		slog.Error("queue job list failed", "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to list queue jobs")
 		return
 	}
 
@@ -97,7 +100,8 @@ func (h *QueueHandler) RetryFailed(w http.ResponseWriter, r *http.Request) {
 
 	job, err := h.riverClient.Client().JobRetry(r.Context(), id)
 	if err != nil {
-		errorResponse(w, http.StatusInternalServerError, err.Error())
+		slog.Error("queue job retry failed", "error", err, "job_id", id)
+		errorResponse(w, http.StatusInternalServerError, "failed to retry job")
 		return
 	}
 
@@ -114,7 +118,8 @@ func (h *QueueHandler) DeleteFailed(w http.ResponseWriter, r *http.Request) {
 
 	job, err := h.riverClient.Client().JobCancel(r.Context(), id)
 	if err != nil {
-		errorResponse(w, http.StatusInternalServerError, err.Error())
+		slog.Error("queue job cancel failed", "error", err, "job_id", id)
+		errorResponse(w, http.StatusInternalServerError, "failed to cancel job")
 		return
 	}
 
