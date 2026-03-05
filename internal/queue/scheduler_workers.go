@@ -19,6 +19,7 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
 	"git.999.haus/chris/DocuMCP-go/internal/search"
+	"git.999.haus/chris/DocuMCP-go/internal/security"
 )
 
 // --- Interfaces (defined where consumed) ---
@@ -471,7 +472,7 @@ func (w *HealthCheckServicesWorker) Work(ctx context.Context, _ *river.Job[Healt
 		return fmt.Errorf("finding enabled external services: %w", err)
 	}
 
-	httpClient := &http.Client{Timeout: 10 * time.Second}
+	httpClient := &http.Client{Timeout: 10 * time.Second, Transport: security.SafeTransport()}
 
 	var healthyCount, unhealthyCount int
 	for _, svc := range services {

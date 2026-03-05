@@ -3,10 +3,13 @@
 package security
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // privateRanges defines CIDR blocks that are not allowed as request targets.
@@ -80,6 +83,38 @@ func ValidateExternalURL(rawURL string) error {
 	}
 
 	return nil
+}
+
+// SafeTransport returns an *http.Transport whose DialContext hook re-validates
+// every resolved IP against the SSRF block-list at connection time. This
+// prevents DNS rebinding attacks where the initial ValidateExternalURL check
+// passes but the hostname resolves to a private IP by the time the connection
+// is actually established.
+func SafeTransport() *http.Transport {
+	base := http.DefaultTransport.(*http.Transport).Clone()
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+
+	base.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, fmt.Errorf("splitting host:port %q: %w", addr, err)
+		}
+
+		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, fmt.Errorf("resolving %q: %w", host, err)
+		}
+
+		for _, ipAddr := range ips {
+			if err := checkIP(ipAddr.IP); err != nil {
+				return nil, fmt.Errorf("connection to %s blocked: %w", addr, err)
+			}
+		}
+
+		// Connect to the first valid resolved IP to avoid TOCTOU with the OS resolver.
+		return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
+	}
+	return base
 }
 
 // checkIP returns an error if the given IP falls within a private or blocked range.

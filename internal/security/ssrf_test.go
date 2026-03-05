@@ -1,6 +1,8 @@
 package security_test
 
 import (
+	"context"
+	"net/http"
 	"testing"
 
 	"git.999.haus/chris/DocuMCP-go/internal/security"
@@ -104,4 +106,34 @@ func TestValidateExternalURL(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSafeTransport(t *testing.T) {
+	t.Run("returns a non-nil transport", func(t *testing.T) {
+		tr := security.SafeTransport()
+		if tr == nil {
+			t.Fatal("SafeTransport() returned nil")
+		}
+		if tr.DialContext == nil {
+			t.Fatal("SafeTransport() should set a custom DialContext")
+		}
+	})
+
+	t.Run("blocks connection to loopback", func(t *testing.T) {
+		client := &http.Client{Transport: security.SafeTransport()}
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1:1/test", nil)
+		_, err := client.Do(req)
+		if err == nil {
+			t.Fatal("expected error connecting to loopback via SafeTransport")
+		}
+	})
+
+	t.Run("blocks connection to private IP", func(t *testing.T) {
+		client := &http.Client{Transport: security.SafeTransport()}
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://10.0.0.1:1/test", nil)
+		_, err := client.Do(req)
+		if err == nil {
+			t.Fatal("expected error connecting to private IP via SafeTransport")
+		}
+	})
 }
