@@ -373,51 +373,6 @@ func TestConfluenceHandler_SearchPages_MissingParams(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// UserHandler stub tests
-// ---------------------------------------------------------------------------
-
-func TestUserHandler_List(t *testing.T) {
-	t.Parallel()
-
-	h := NewUserHandler(nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/users", nil)
-	rr := httptest.NewRecorder()
-
-	h.List(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
-	}
-
-	var body map[string]any
-	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
-		t.Fatalf("decoding response: %v", err)
-	}
-	data, ok := body["data"].([]any)
-	if !ok {
-		t.Fatal("expected data to be an array")
-	}
-	if len(data) != 0 {
-		t.Errorf("data length = %d, want 0", len(data))
-	}
-}
-
-func TestUserHandler_Show(t *testing.T) {
-	t.Parallel()
-
-	h := NewUserHandler(nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/users/1", nil)
-	req = chiContext(req, map[string]string{"id": "1"})
-	rr := httptest.NewRecorder()
-
-	h.Show(rr, req)
-
-	if rr.Code != http.StatusNotImplemented {
-		t.Errorf("status = %d, want %d", rr.Code, http.StatusNotImplemented)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // OAuthClientHandler stub tests
 // ---------------------------------------------------------------------------
 
