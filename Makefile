@@ -1,4 +1,6 @@
-.PHONY: build test lint fmt tidy run clean migrate
+.PHONY: build test lint fmt tidy run clean migrate \
+       frontend-install frontend-build frontend-dev frontend-test frontend-lint frontend-generate-api \
+       build-all test-all
 
 # Build variables
 BINARY_NAME := documcp
@@ -51,3 +53,28 @@ migrate:
 # Run database migrations down
 migrate-down:
 	go run ./cmd/cli migrate down
+
+# Frontend
+frontend-install:
+	cd frontend && npm install
+
+frontend-build: frontend-install
+	cd frontend && npm run build
+
+frontend-dev:
+	cd frontend && npm run dev
+
+frontend-test:
+	cd frontend && npx vitest run
+
+frontend-lint:
+	cd frontend && npx vue-tsc --noEmit
+
+frontend-generate-api:
+	cd frontend && npm run generate-api
+
+# Combined build
+build-all: frontend-build build
+
+# Combined test
+test-all: test frontend-test

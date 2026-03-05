@@ -1,4 +1,13 @@
-# Stage 1: Build
+# Stage 1: Frontend build
+FROM node:22-alpine AS frontend
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+COPY docs/contracts/openapi.yaml ../docs/contracts/openapi.yaml
+RUN npm run build
+
+# Stage 2: Go build
 FROM golang:1.25-alpine AS builder
 
 # Install build dependencies.
@@ -15,6 +24,9 @@ RUN go mod download
 # Copy the full source tree.
 COPY . .
 
+# Copy the built frontend assets into the embed directory.
+COPY --from=frontend /app/web/frontend/dist ./web/frontend/dist
+
 # Build arguments injected at build time.
 ARG VERSION=dev
 ARG BUILD_TIME=unknown
@@ -24,7 +36,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags "-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" \
     -o /bin/documcp ./cmd/server
 
-# Stage 2: Runtime — Alpine with poppler-utils for PDF extraction.
+# Stage 3: Runtime — Alpine with poppler-utils for PDF extraction.
 FROM alpine:3.21
 
 # Install runtime dependencies for PDF text extraction and TLS.

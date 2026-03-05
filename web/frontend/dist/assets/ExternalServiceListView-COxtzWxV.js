@@ -1,0 +1,1 @@
+import{d as a,c as s,a as t,o as n}from"./index-DkuSnN5E.js";const c=a({__name:"ExternalServiceListView",setup(r){return(o,e)=>(n(),s("div",null,[...e[0]||(e[0]=[t("h1",{class:"text-2xl font-bold text-gray-900"},"External Services",-1),t("p",{class:"mt-2 text-gray-600"},"Coming in Phase 9.",-1)])]))}});export{c as default};

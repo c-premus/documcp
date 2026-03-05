@@ -37,6 +37,8 @@ import (
 	apihandler "github.com/c-premus/documcp/internal/handler/api"
 	mcphandler "github.com/c-premus/documcp/internal/handler/mcp"
 	oauthhandler "github.com/c-premus/documcp/internal/handler/oauth"
+	frontend "github.com/c-premus/documcp/web/frontend"
+
 	"github.com/c-premus/documcp/internal/observability"
 	"github.com/c-premus/documcp/internal/queue"
 	"github.com/c-premus/documcp/internal/repository"
@@ -333,6 +335,10 @@ func New(cfg *config.Config) (*App, error) {
 	userH := apihandler.NewUserHandler(oauthRepo, logger)
 	oauthClientH := apihandler.NewOAuthClientHandler(oauthRepo, logger)
 
+	// --- Auth & SPA Handlers ---
+	authH := apihandler.NewAuthHandler(sessionStore, oauthRepo, logger)
+	spaHandler := frontend.Handler()
+
 	// --- SSE & Queue Handlers ---
 	sseH := apihandler.NewSSEHandler(eventBus)
 	queueH := apihandler.NewQueueHandler(riverClient)
@@ -420,6 +426,8 @@ func New(cfg *config.Config) (*App, error) {
 		UserHandler:            userH,
 		OAuthClientHandler:     oauthClientH,
 		AdminHandler:           adminH,
+		AuthHandler:            authH,
+		SPAHandler:             spaHandler,
 		SSEHandler:             sseH,
 		QueueHandler:           queueH,
 		Metrics:                metrics,

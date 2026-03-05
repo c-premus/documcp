@@ -51,6 +51,10 @@ type Deps struct {
 	SSEHandler   *apihandler.SSEHandler   // nil if not configured
 	QueueHandler *apihandler.QueueHandler // nil if not configured
 
+	// Vue SPA
+	AuthHandler *apihandler.AuthHandler // nil if not configured
+	SPAHandler  http.Handler           // nil if not configured
+
 	// Observability
 	Metrics      *observability.Metrics // nil disables Prometheus metrics
 	OTELEnabled  bool                   // enables tracing middleware
@@ -181,6 +185,12 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			r.Post("/logout", deps.OIDCHandler.Logout)
 		})
 		s.logger.Info("OIDC auth endpoints registered")
+	}
+
+	// Session-based auth endpoint (no bearer token, uses session cookie)
+	if deps.AuthHandler != nil {
+		r.Get("/api/auth/me", deps.AuthHandler.Me)
+		s.logger.Info("auth/me endpoint registered", "path", "/api/auth/me")
 	}
 
 	// REST API (protected by bearer token when OAuth is configured)
@@ -374,6 +384,13 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			})
 		})
 		s.logger.Info("Admin UI endpoints registered")
+	}
+
+	// Vue SPA (must be registered last to avoid shadowing API routes)
+	if deps.SPAHandler != nil {
+		r.Get("/app", http.RedirectHandler("/app/", http.StatusMovedPermanently).ServeHTTP)
+		r.Mount("/app/", http.StripPrefix("/app", deps.SPAHandler))
+		s.logger.Info("SPA handler registered", "path", "/app/*")
 	}
 }
 
