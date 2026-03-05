@@ -664,7 +664,7 @@ func TestHighlightPrefix(t *testing.T) {
 			name:   "returns original title for empty prefix",
 			title:  "Golang Guide",
 			prefix: "",
-			want:   "<em></em>Golang Guide",
+			want:   "Golang Guide",
 		},
 		{
 			name:   "prefix longer than title returns title unchanged",
@@ -701,6 +701,37 @@ func TestHighlightPrefix(t *testing.T) {
 			title:  "Banana",
 			prefix: "C",
 			want:   "Banana",
+		},
+		// XSS prevention tests
+		{
+			name:   "script tag in title and prefix is escaped",
+			title:  "<script>alert(1)</script>",
+			prefix: "<script>",
+			want:   "<em>&lt;script&gt;</em>alert(1)&lt;/script&gt;",
+		},
+		{
+			name:   "ampersand in title and prefix is escaped",
+			title:  "R&D Report",
+			prefix: "R&D",
+			want:   "<em>R&amp;D</em> Report",
+		},
+		{
+			name:   "normal title still highlights correctly",
+			title:  "Hello World",
+			prefix: "Hello",
+			want:   "<em>Hello</em> World",
+		},
+		{
+			name:   "empty prefix returns escaped title",
+			title:  "<b>bold</b>",
+			prefix: "",
+			want:   "&lt;b&gt;bold&lt;/b&gt;",
+		},
+		{
+			name:   "prefix longer than title returns escaped title",
+			title:  "A&B",
+			prefix: "A&B is long",
+			want:   "A&amp;B",
 		},
 	}
 

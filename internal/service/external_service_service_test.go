@@ -268,7 +268,7 @@ func TestExternalServiceService_Create(t *testing.T) {
 		result, err := svc.Create(context.Background(), CreateExternalServiceParams{
 			Name:     "My Kiwix",
 			Type:     "kiwix",
-			BaseURL:  "http://localhost:8080",
+			BaseURL:  "http://93.184.216.34:8080",
 			Priority: 5,
 		})
 		if err != nil {
@@ -287,8 +287,8 @@ func TestExternalServiceService_Create(t *testing.T) {
 		if result.Type != "kiwix" {
 			t.Errorf("Type = %q, want %q", result.Type, "kiwix")
 		}
-		if result.BaseURL != "http://localhost:8080" {
-			t.Errorf("BaseURL = %q, want %q", result.BaseURL, "http://localhost:8080")
+		if result.BaseURL != "http://93.184.216.34:8080" {
+			t.Errorf("BaseURL = %q, want %q", result.BaseURL, "http://93.184.216.34:8080")
 		}
 		if result.Priority != 5 {
 			t.Errorf("Priority = %d, want 5", result.Priority)
@@ -323,7 +323,7 @@ func TestExternalServiceService_Create(t *testing.T) {
 		result, err := svc.Create(context.Background(), CreateExternalServiceParams{
 			Name:    "Confluence",
 			Type:    "confluence",
-			BaseURL: "https://wiki.example.com",
+			BaseURL: "https://93.184.216.34",
 			APIKey:  "secret-key",
 			Config:  `{"timeout": 30}`,
 		})
@@ -361,7 +361,7 @@ func TestExternalServiceService_Create(t *testing.T) {
 		result, err := svc.Create(context.Background(), CreateExternalServiceParams{
 			Name:    "Plain",
 			Type:    "kiwix",
-			BaseURL: "http://example.com",
+			BaseURL: "http://93.184.216.34",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -388,7 +388,7 @@ func TestExternalServiceService_Create(t *testing.T) {
 		_, err := svc.Create(context.Background(), CreateExternalServiceParams{
 			Name:    "Fail",
 			Type:    "kiwix",
-			BaseURL: "http://example.com",
+			BaseURL: "http://93.184.216.34",
 		})
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -415,13 +415,173 @@ func TestExternalServiceService_Create(t *testing.T) {
 		_, err := svc.Create(context.Background(), CreateExternalServiceParams{
 			Name:    "Refetch Fail",
 			Type:    "kiwix",
-			BaseURL: "http://example.com",
+			BaseURL: "http://93.184.216.34",
 		})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
 		if !strings.Contains(err.Error(), "re-fetching created external service") {
 			t.Errorf("error %q does not contain %q", err.Error(), "re-fetching created external service")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// TestExternalServiceService_Create_SSRF
+// ---------------------------------------------------------------------------
+
+func TestExternalServiceService_Create_SSRF(t *testing.T) {
+	t.Parallel()
+
+	t.Run("rejects private IP URL", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockExternalServiceRepo{}
+		svc := NewExternalServiceService(repo, discardLogger())
+
+		_, err := svc.Create(context.Background(), CreateExternalServiceParams{
+			Name:    "Evil",
+			Type:    "kiwix",
+			BaseURL: "http://10.0.0.1/api",
+		})
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "base URL validation") {
+			t.Errorf("error %q does not contain %q", err.Error(), "base URL validation")
+		}
+	})
+
+	t.Run("accepts valid public URL", func(t *testing.T) {
+		t.Parallel()
+
+		var createdSvc *model.ExternalService
+		repo := &mockExternalServiceRepo{
+			createFn: func(_ context.Context, svc *model.ExternalService) error {
+				createdSvc = svc
+				svc.ID = 100
+				return nil
+			},
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.ExternalService, error) {
+				if createdSvc != nil && createdSvc.UUID == uuid {
+					return createdSvc, nil
+				}
+				return nil, sql.ErrNoRows
+			},
+		}
+		svc := NewExternalServiceService(repo, discardLogger())
+
+		result, err := svc.Create(context.Background(), CreateExternalServiceParams{
+			Name:    "Public",
+			Type:    "kiwix",
+			BaseURL: "https://93.184.216.34/api",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.BaseURL != "https://93.184.216.34/api" {
+			t.Errorf("BaseURL = %q, want %q", result.BaseURL, "https://93.184.216.34/api")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// TestExternalServiceService_Update_SSRF
+// ---------------------------------------------------------------------------
+
+func TestExternalServiceService_Update_SSRF(t *testing.T) {
+	t.Parallel()
+
+	existingSvc := func() *model.ExternalService {
+		return &model.ExternalService{
+			ID:        50,
+			UUID:      "ssrf-upd-uuid",
+			Name:      "Original",
+			Slug:      "original",
+			Type:      "kiwix",
+			BaseURL:   "http://93.184.216.34",
+			Priority:  1,
+			IsEnabled: true,
+		}
+	}
+
+	t.Run("rejects private IP URL", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
+				return existingSvc(), nil
+			},
+		}
+		svc := NewExternalServiceService(repo, discardLogger())
+
+		_, err := svc.Update(context.Background(), "ssrf-upd-uuid", UpdateExternalServiceParams{
+			BaseURL: "http://10.0.0.1/api",
+		})
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "base URL validation") {
+			t.Errorf("error %q does not contain %q", err.Error(), "base URL validation")
+		}
+	})
+
+	t.Run("accepts valid public URL", func(t *testing.T) {
+		t.Parallel()
+
+		var updatedSvc *model.ExternalService
+		repo := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
+				if updatedSvc != nil {
+					return updatedSvc, nil
+				}
+				return existingSvc(), nil
+			},
+			updateFn: func(_ context.Context, svc *model.ExternalService) error {
+				updatedSvc = svc
+				return nil
+			},
+		}
+		svc := NewExternalServiceService(repo, discardLogger())
+
+		result, err := svc.Update(context.Background(), "ssrf-upd-uuid", UpdateExternalServiceParams{
+			BaseURL: "https://93.184.216.34/api",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.BaseURL != "https://93.184.216.34/api" {
+			t.Errorf("BaseURL = %q, want %q", result.BaseURL, "https://93.184.216.34/api")
+		}
+	})
+
+	t.Run("empty BaseURL skips validation", func(t *testing.T) {
+		t.Parallel()
+
+		var updatedSvc *model.ExternalService
+		repo := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
+				if updatedSvc != nil {
+					return updatedSvc, nil
+				}
+				return existingSvc(), nil
+			},
+			updateFn: func(_ context.Context, svc *model.ExternalService) error {
+				updatedSvc = svc
+				return nil
+			},
+		}
+		svc := NewExternalServiceService(repo, discardLogger())
+
+		result, err := svc.Update(context.Background(), "ssrf-upd-uuid", UpdateExternalServiceParams{
+			Name: "Renamed Only",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// BaseURL should remain unchanged from the existing service.
+		if result.BaseURL != "http://93.184.216.34" {
+			t.Errorf("BaseURL = %q, want %q (should remain unchanged)", result.BaseURL, "http://93.184.216.34")
 		}
 	})
 }
@@ -497,13 +657,13 @@ func TestExternalServiceService_Update(t *testing.T) {
 		svc := NewExternalServiceService(repo, discardLogger())
 
 		result, err := svc.Update(context.Background(), "upd-uuid", UpdateExternalServiceParams{
-			BaseURL: "http://new.example.com",
+			BaseURL: "http://93.184.216.34",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if result.BaseURL != "http://new.example.com" {
-			t.Errorf("BaseURL = %q, want %q", result.BaseURL, "http://new.example.com")
+		if result.BaseURL != "http://93.184.216.34" {
+			t.Errorf("BaseURL = %q, want %q", result.BaseURL, "http://93.184.216.34")
 		}
 		// Name should remain unchanged.
 		if result.Name != "Original" {

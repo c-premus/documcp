@@ -182,6 +182,10 @@ func (h *GitTemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusBadRequest, "repository_url is required")
 		return
 	}
+	if err := security.ValidateExternalURL(body.RepositoryURL); err != nil {
+		errorResponse(w, http.StatusBadRequest, "Invalid repository URL: "+err.Error())
+		return
+	}
 
 	branch := body.Branch
 	if branch == "" {
@@ -266,6 +270,10 @@ func (h *GitTemplateHandler) Update(w http.ResponseWriter, r *http.Request) {
 		tmpl.Slug = slugifyTemplateName(body.Name)
 	}
 	if body.RepositoryURL != "" {
+		if err := security.ValidateExternalURL(body.RepositoryURL); err != nil {
+			errorResponse(w, http.StatusBadRequest, "Invalid repository URL: "+err.Error())
+			return
+		}
 		tmpl.RepositoryURL = body.RepositoryURL
 	}
 	if body.Description != "" {

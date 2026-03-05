@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"git.999.haus/chris/DocuMCP-go/internal/security"
 )
 
 // ExternalServiceRepo defines repository methods needed by ExternalServiceService.
@@ -85,6 +86,10 @@ func (s *ExternalServiceService) FindByUUID(ctx context.Context, svcUUID string)
 
 // Create creates a new external service with a generated UUID and slug.
 func (s *ExternalServiceService) Create(ctx context.Context, params CreateExternalServiceParams) (*model.ExternalService, error) {
+	if err := security.ValidateExternalURL(params.BaseURL); err != nil {
+		return nil, fmt.Errorf("base URL validation: %w", err)
+	}
+
 	svc := &model.ExternalService{
 		UUID:     uuid.New().String(),
 		Name:     params.Name,
@@ -130,6 +135,9 @@ func (s *ExternalServiceService) Update(ctx context.Context, svcUUID string, par
 		svc.Slug = slugify(params.Name)
 	}
 	if params.BaseURL != "" {
+		if err := security.ValidateExternalURL(params.BaseURL); err != nil {
+			return nil, fmt.Errorf("base URL validation: %w", err)
+		}
 		svc.BaseURL = params.BaseURL
 	}
 	if params.APIKey != "" {

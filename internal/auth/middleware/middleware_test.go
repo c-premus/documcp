@@ -551,8 +551,9 @@ func TestSessionAuth(t *testing.T) {
 		handler.ServeHTTP(rr, req)
 
 		location := rr.Header().Get("Location")
-		if !strings.Contains(location, "redirect=/admin/settings") {
-			t.Errorf("Location = %q, want it to contain redirect=/admin/settings", location)
+		// The redirect value is now URL-encoded to prevent open redirect.
+		if !strings.Contains(location, "redirect=%2Fadmin%2Fsettings") {
+			t.Errorf("Location = %q, want it to contain URL-encoded redirect parameter", location)
 		}
 	})
 
