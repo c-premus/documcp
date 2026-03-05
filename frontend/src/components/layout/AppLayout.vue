@@ -1,7 +1,12 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
 import AppNotifications from './AppNotifications.vue'
+import { useDocumentEvents } from '@/composables/useDocumentEvents'
+
+const { start } = useDocumentEvents()
+onMounted(() => { start() })
 </script>
 
 <template>
