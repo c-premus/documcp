@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { authGuard } from '@/auth/authGuard'
 
 const router = createRouter({
-  history: createWebHistory('/app'),
+  history: createWebHistory('/admin'),
   routes: [
     {
       path: '/',
