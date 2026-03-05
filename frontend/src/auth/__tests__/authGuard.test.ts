@@ -43,7 +43,7 @@ describe('authGuard', () => {
     const to = makeRoute({ fullPath: '/documents' })
     await authGuard(to, makeRoute(), next)
 
-    expect(locationMock.href).toBe('/auth/login?redirect=%2Fdocuments')
+    expect(locationMock.href).toBe('/auth/login?redirect=%2Fadmin%2Fdocuments')
     expect(next).not.toHaveBeenCalled()
   })
 

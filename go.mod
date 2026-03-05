@@ -4,10 +4,10 @@ go 1.25.6
 
 require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.0
-	github.com/a-h/templ v0.3.977
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/httprate v0.15.0
+	github.com/go-jose/go-jose/v4 v4.1.3
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/csrf v1.7.3
 	github.com/gorilla/sessions v1.4.0
@@ -60,7 +60,6 @@ require (
 	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
