@@ -425,6 +425,15 @@ func (r *OAuthRepository) ToggleAdmin(ctx context.Context, userID int64) error {
 	return nil
 }
 
+// DeleteUser hard-deletes a user by ID.
+func (r *OAuthRepository) DeleteUser(ctx context.Context, userID int64) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	if err != nil {
+		return fmt.Errorf("deleting user %d: %w", userID, err)
+	}
+	return nil
+}
+
 // ListClients returns a paginated list of OAuth clients with optional search query.
 func (r *OAuthRepository) ListClients(ctx context.Context, query string, limit, offset int) ([]model.OAuthClient, int, error) {
 	where := "1=1"

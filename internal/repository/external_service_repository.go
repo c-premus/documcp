@@ -155,6 +155,16 @@ func (r *ExternalServiceRepository) Delete(ctx context.Context, id int64) error 
 	return nil
 }
 
+// Count returns the total number of non-deleted external services.
+func (r *ExternalServiceRepository) Count(ctx context.Context) (int, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM external_services WHERE deleted_at IS NULL`).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting external services: %w", err)
+	}
+	return count, nil
+}
+
 // UpdateHealthStatus updates health-related fields for an external service.
 // On a healthy status, consecutive_failures resets to 0.
 // On an unhealthy status, consecutive_failures increments and error_count increments.

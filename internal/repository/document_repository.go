@@ -265,6 +265,94 @@ func (r *DocumentRepository) PurgeSoftDeleted(ctx context.Context, olderThan tim
 	return paths, nil
 }
 
+// FindByUUIDIncludingDeleted returns a document by its UUID, including soft-deleted records.
+func (r *DocumentRepository) FindByUUIDIncludingDeleted(ctx context.Context, uuid string) (*model.Document, error) {
+	var doc model.Document
+	err := r.db.GetContext(ctx, &doc,
+		`SELECT * FROM documents WHERE uuid = $1`, uuid)
+	if err != nil {
+		return nil, fmt.Errorf("finding document (including deleted) by uuid %s: %w", uuid, err)
+	}
+	return &doc, nil
+}
+
+// Restore clears the deleted_at timestamp on a soft-deleted document.
+func (r *DocumentRepository) Restore(ctx context.Context, id int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE documents SET deleted_at = NULL, updated_at = NOW() WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("restoring document %d: %w", id, err)
+	}
+	return nil
+}
+
+// PurgeSingle hard-deletes a single document and its associated tags and versions.
+// Returns the file_path for disk cleanup.
+func (r *DocumentRepository) PurgeSingle(ctx context.Context, id int64) (string, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("beginning purge single transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// Get file path before deletion.
+	var filePath string
+	err = tx.QueryRowContext(ctx,
+		`SELECT COALESCE(file_path, '') FROM documents WHERE id = $1`, id).Scan(&filePath)
+	if err != nil {
+		return "", fmt.Errorf("selecting file path for document %d: %w", id, err)
+	}
+
+	// Delete tags.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM document_tags WHERE document_id = $1`, id); err != nil {
+		return "", fmt.Errorf("purging tags for document %d: %w", id, err)
+	}
+
+	// Delete versions.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM document_versions WHERE document_id = $1`, id); err != nil {
+		return "", fmt.Errorf("purging versions for document %d: %w", id, err)
+	}
+
+	// Delete document.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM documents WHERE id = $1`, id); err != nil {
+		return "", fmt.Errorf("purging document %d: %w", id, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("committing purge single transaction: %w", err)
+	}
+
+	r.logger.Info("purged single document", "id", id)
+	return filePath, nil
+}
+
+// ListDeleted returns soft-deleted documents with pagination.
+func (r *DocumentRepository) ListDeleted(ctx context.Context, limit, offset int) ([]model.Document, int, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	var total int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM documents WHERE deleted_at IS NOT NULL`).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("counting deleted documents: %w", err)
+	}
+
+	var docs []model.Document
+	err = r.db.SelectContext(ctx, &docs,
+		`SELECT * FROM documents WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT $1 OFFSET $2`,
+		limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("listing deleted documents: %w", err)
+	}
+
+	return docs, total, nil
+}
+
 // SuggestTitles returns title suggestions matching the given prefix (case-insensitive).
 func (r *DocumentRepository) SuggestTitles(ctx context.Context, prefix string, limit int) ([]TitleSuggestion, error) {
 	var suggestions []TitleSuggestion

@@ -401,10 +401,7 @@ func (h *DocumentHandler) Analyze(w http.ResponseWriter, r *http.Request) {
 
 	content := result.Content
 	wordCount := len(strings.Fields(content))
-	readingTime := wordCount / 200
-	if readingTime < 1 {
-		readingTime = 1
-	}
+	readingTime := max(wordCount/200, 1)
 
 	title := strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename))
 
@@ -486,15 +483,148 @@ func extractKeywords(content string) []string {
 		return ranked[i].word < ranked[j].word
 	})
 
-	limit := 5
-	if len(ranked) < limit {
-		limit = len(ranked)
-	}
+	limit := min(5, len(ranked))
 	keywords := make([]string, limit)
 	for i := 0; i < limit; i++ {
 		keywords[i] = ranked[i].word
 	}
 	return keywords
+}
+
+// Restore handles POST /api/documents/{uuid}/restore — restore a soft-deleted document.
+func (h *DocumentHandler) Restore(w http.ResponseWriter, r *http.Request) {
+	docUUID := chi.URLParam(r, "uuid")
+
+	doc, err := h.repo.FindByUUIDIncludingDeleted(r.Context(), docUUID)
+	if err != nil {
+		h.logger.Error("finding document for restore", "uuid", docUUID, "error", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			errorResponse(w, http.StatusNotFound, "document not found")
+			return
+		}
+		errorResponse(w, http.StatusInternalServerError, "failed to find document")
+		return
+	}
+
+	if !doc.DeletedAt.Valid {
+		errorResponse(w, http.StatusBadRequest, "document is not deleted")
+		return
+	}
+
+	if err := h.repo.Restore(r.Context(), doc.ID); err != nil {
+		h.logger.Error("restoring document", "uuid", docUUID, "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to restore document")
+		return
+	}
+
+	// Re-fetch to get updated timestamps.
+	doc, err = h.repo.FindByUUID(r.Context(), docUUID)
+	if err != nil {
+		h.logger.Error("fetching restored document", "uuid", docUUID, "error", err)
+		errorResponse(w, http.StatusInternalServerError, "document restored but failed to fetch updated record")
+		return
+	}
+
+	tags, _ := h.repo.TagsForDocument(r.Context(), doc.ID)
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"message": "Document restored successfully.",
+		"data":    toDocumentResponse(doc, tags),
+	})
+}
+
+// Purge handles DELETE /api/documents/{uuid}/purge — permanently delete a document.
+func (h *DocumentHandler) Purge(w http.ResponseWriter, r *http.Request) {
+	docUUID := chi.URLParam(r, "uuid")
+
+	doc, err := h.repo.FindByUUIDIncludingDeleted(r.Context(), docUUID)
+	if err != nil {
+		h.logger.Error("finding document for purge", "uuid", docUUID, "error", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			errorResponse(w, http.StatusNotFound, "document not found")
+			return
+		}
+		errorResponse(w, http.StatusInternalServerError, "failed to find document")
+		return
+	}
+
+	filePath, err := h.repo.PurgeSingle(r.Context(), doc.ID)
+	if err != nil {
+		h.logger.Error("purging document", "uuid", docUUID, "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to purge document")
+		return
+	}
+
+	if filePath != "" {
+		fullPath := filepath.Join(h.pipeline.StoragePath(), filePath)
+		if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
+			h.logger.Error("removing file after purge", "path", fullPath, "error", err)
+		}
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"message": "Document permanently deleted.",
+	})
+}
+
+// BulkPurge handles DELETE /api/admin/documents/purge — purge all soft-deleted documents older than a threshold.
+func (h *DocumentHandler) BulkPurge(w http.ResponseWriter, r *http.Request) {
+	days := 30
+	if d := r.URL.Query().Get("older_than_days"); d != "" {
+		parsed, err := strconv.Atoi(d)
+		if err != nil || parsed < 0 {
+			errorResponse(w, http.StatusBadRequest, "older_than_days must be a non-negative integer")
+			return
+		}
+		days = parsed
+	}
+
+	olderThan := time.Duration(days) * 24 * time.Hour
+
+	paths, err := h.repo.PurgeSoftDeleted(r.Context(), olderThan)
+	if err != nil {
+		h.logger.Error("bulk purging documents", "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to purge documents")
+		return
+	}
+
+	for _, p := range paths {
+		if p.FilePath != "" {
+			fullPath := filepath.Join(h.pipeline.StoragePath(), p.FilePath)
+			if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
+				h.logger.Error("removing file after bulk purge", "path", fullPath, "error", err)
+			}
+		}
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"message": fmt.Sprintf("Purged %d documents.", len(paths)),
+		"count":   len(paths),
+	})
+}
+
+// ListDeleted handles GET /api/documents/trash — list soft-deleted documents.
+func (h *DocumentHandler) ListDeleted(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	docs, total, err := h.repo.ListDeleted(r.Context(), limit, offset)
+	if err != nil {
+		h.logger.Error("listing deleted documents", "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to list deleted documents")
+		return
+	}
+
+	responses := make([]documentResponse, 0, len(docs))
+	for i := range docs {
+		doc := &docs[i]
+		tags, _ := h.repo.TagsForDocument(r.Context(), doc.ID)
+		responses = append(responses, toDocumentResponse(doc, tags))
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"data":  responses,
+		"total": total,
+	})
 }
 
 // detectLanguage is a placeholder that returns "en".
