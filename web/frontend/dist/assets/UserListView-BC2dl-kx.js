@@ -1,1 +1,0 @@
-import{d as s,c as a,a as t,o}from"./index-DkuSnN5E.js";const c=s({__name:"UserListView",setup(n){return(r,e)=>(o(),a("div",null,[...e[0]||(e[0]=[t("h1",{class:"text-2xl font-bold text-gray-900"},"Users",-1),t("p",{class:"mt-2 text-gray-600"},"Coming in Phase 9.",-1)])]))}});export{c as default};

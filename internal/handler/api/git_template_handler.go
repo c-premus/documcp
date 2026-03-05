@@ -22,6 +22,7 @@ import (
 
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
+	"git.999.haus/chris/DocuMCP-go/internal/security"
 )
 
 // GitTemplateHandler handles REST API endpoints for git templates.
@@ -803,4 +804,33 @@ func buildTemplateArchiveTarGz(w *bytes.Buffer, entries []templateArchiveEntry) 
 		return fmt.Errorf("closing tar writer: %w", err)
 	}
 	return gw.Close()
+}
+
+// ValidateURL handles POST /api/admin/git-templates/validate-url -- SSRF validation.
+func (h *GitTemplateHandler) ValidateURL(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		URL string `json:"url"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errorResponse(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if body.URL == "" {
+		errorResponse(w, http.StatusBadRequest, "url is required")
+		return
+	}
+
+	if err := security.ValidateExternalURL(body.URL); err != nil {
+		jsonResponse(w, http.StatusOK, map[string]any{
+			"valid": false,
+			"error": err.Error(),
+		})
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"valid": true,
+	})
 }

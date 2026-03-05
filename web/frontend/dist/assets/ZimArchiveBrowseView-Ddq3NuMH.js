@@ -1,1 +1,0 @@
-import{d as r,c as o,a as t,o as s}from"./index-DkuSnN5E.js";const i=r({__name:"ZimArchiveBrowseView",props:{archive:{}},setup(a){return(n,e)=>(s(),o("div",null,[...e[0]||(e[0]=[t("h1",{class:"text-2xl font-bold text-gray-900"},"ZIM Archive Browser",-1),t("p",{class:"mt-2 text-gray-600"},"Coming in Phase 9.",-1)])]))}});export{i as default};

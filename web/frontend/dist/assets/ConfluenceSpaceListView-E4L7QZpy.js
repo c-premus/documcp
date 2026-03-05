@@ -1,1 +1,0 @@
-import{d as a,c as n,a as t,o}from"./index-DkuSnN5E.js";const r=a({__name:"ConfluenceSpaceListView",setup(s){return(c,e)=>(o(),n("div",null,[...e[0]||(e[0]=[t("h1",{class:"text-2xl font-bold text-gray-900"},"Confluence Spaces",-1),t("p",{class:"mt-2 text-gray-600"},"Coming in Phase 9.",-1)])]))}});export{r as default};

@@ -1,1 +1,0 @@
-import{d as t,c as o,a,o as s}from"./index-DkuSnN5E.js";const c=t({__name:"DashboardView",setup(n){return(r,e)=>(s(),o("div",null,[...e[0]||(e[0]=[a("h1",{class:"text-2xl font-bold text-gray-900"},"Dashboard",-1),a("p",{class:"mt-2 text-gray-600"},"Coming in Phase 9.",-1)])]))}});export{c as default};

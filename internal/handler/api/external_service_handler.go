@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -14,20 +15,28 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/service"
 )
 
+// externalServiceReorderer reorders external services by priority.
+type externalServiceReorderer interface {
+	ReorderPriorities(ctx context.Context, serviceIDs []int64) error
+}
+
 // ExternalServiceHandler handles REST API endpoints for external services.
 type ExternalServiceHandler struct {
-	svc    *service.ExternalServiceService
-	logger *slog.Logger
+	svc       *service.ExternalServiceService
+	reorderer externalServiceReorderer
+	logger    *slog.Logger
 }
 
 // NewExternalServiceHandler creates a new ExternalServiceHandler.
 func NewExternalServiceHandler(
 	svc *service.ExternalServiceService,
+	reorderer externalServiceReorderer,
 	logger *slog.Logger,
 ) *ExternalServiceHandler {
 	return &ExternalServiceHandler{
-		svc:    svc,
-		logger: logger,
+		svc:       svc,
+		reorderer: reorderer,
+		logger:    logger,
 	}
 }
 
@@ -223,6 +232,33 @@ func (h *ExternalServiceHandler) Delete(w http.ResponseWriter, r *http.Request) 
 // HealthCheck handles POST /api/external-services/{uuid}/health -- trigger a health check.
 func (h *ExternalServiceHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	errorResponse(w, http.StatusNotImplemented, "health check not yet implemented")
+}
+
+// Reorder handles PUT /api/admin/external-services/reorder -- update priority ordering.
+func (h *ExternalServiceHandler) Reorder(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ServiceIDs []int64 `json:"service_ids"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errorResponse(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if len(body.ServiceIDs) == 0 {
+		errorResponse(w, http.StatusBadRequest, "service_ids is required")
+		return
+	}
+
+	if err := h.reorderer.ReorderPriorities(r.Context(), body.ServiceIDs); err != nil {
+		h.logger.Error("reordering external services", "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to reorder external services")
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"message": "External services reordered successfully.",
+	})
 }
 
 // toExternalServiceResponse converts an ExternalService model to its JSON response DTO.

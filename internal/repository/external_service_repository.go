@@ -165,6 +165,27 @@ func (r *ExternalServiceRepository) Count(ctx context.Context) (int, error) {
 	return count, nil
 }
 
+// ReorderPriorities updates the priority column for each service based on
+// its position in the provided ID slice (index 0 = priority 0, etc.).
+func (r *ExternalServiceRepository) ReorderPriorities(ctx context.Context, serviceIDs []int64) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning reorder transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	for priority, id := range serviceIDs {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE external_services SET priority = $1, updated_at = NOW() WHERE id = $2`,
+			priority, id,
+		); err != nil {
+			return fmt.Errorf("updating priority for service %d: %w", id, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
 // UpdateHealthStatus updates health-related fields for an external service.
 // On a healthy status, consecutive_failures resets to 0.
 // On an unhealthy status, consecutive_failures increments and error_count increments.
