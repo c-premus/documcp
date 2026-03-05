@@ -28,12 +28,6 @@ func UserFromContext(ctx context.Context) (*model.User, bool) {
 	return user, ok
 }
 
-// AccessTokenFromContext returns the validated access token from the request context.
-func AccessTokenFromContext(ctx context.Context) (*model.OAuthAccessToken, bool) {
-	token, ok := ctx.Value(AccessTokenContextKey).(*model.OAuthAccessToken)
-	return token, ok
-}
-
 // BearerToken validates an OAuth 2.1 bearer token from the Authorization header.
 // On success, it sets the access token and user in the request context.
 func BearerToken(oauthService *oauth.Service) func(http.Handler) http.Handler {

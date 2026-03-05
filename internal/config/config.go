@@ -1,6 +1,6 @@
 // Package config loads and validates application configuration from environment
 // variables and optional YAML config files. It supports both unprefixed env vars
-// (DB_HOST, REDIS_HOST) matching the PHP convention and DOCUMCP_-prefixed variants.
+// (DB_HOST) matching the PHP convention and DOCUMCP_-prefixed variants.
 package config
 
 import (
@@ -18,7 +18,6 @@ type Config struct {
 	App         AppConfig
 	Server      ServerConfig
 	Database    DatabaseConfig
-	Redis       RedisConfig
 	Meilisearch MeilisearchConfig
 	OIDC        OIDCConfig
 	OAuth       OAuthConfig
@@ -75,14 +74,6 @@ type DatabaseConfig struct {
 	MaxOpenConns int           `mapstructure:"db_max_open_conns"`
 	MaxIdleConns int           `mapstructure:"db_max_idle_conns"`
 	MaxLifetime  time.Duration `mapstructure:"db_max_lifetime"`
-}
-
-// RedisConfig holds Redis connection settings.
-type RedisConfig struct {
-	Host     string `mapstructure:"redis_host"`
-	Port     int    `mapstructure:"redis_port"`
-	Password string `mapstructure:"redis_password"`
-	DB       int    `mapstructure:"redis_db"`
 }
 
 // MeilisearchConfig holds Meilisearch connection settings.
@@ -165,12 +156,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("db_max_open_conns", 25)
 	v.SetDefault("db_max_idle_conns", 5)
 	v.SetDefault("db_max_lifetime", 5*time.Minute)
-
-	// Redis
-	v.SetDefault("redis_host", "localhost")
-	v.SetDefault("redis_port", 6379)
-	v.SetDefault("redis_password", "")
-	v.SetDefault("redis_db", 0)
 
 	// Meilisearch
 	v.SetDefault("meilisearch_host", "http://localhost:7700")
@@ -290,13 +275,6 @@ func Load() (*Config, error) {
 		MaxOpenConns: v.GetInt("db_max_open_conns"),
 		MaxIdleConns: v.GetInt("db_max_idle_conns"),
 		MaxLifetime:  v.GetDuration("db_max_lifetime"),
-	}
-
-	cfg.Redis = RedisConfig{
-		Host:     v.GetString("redis_host"),
-		Port:     v.GetInt("redis_port"),
-		Password: v.GetString("redis_password"),
-		DB:       v.GetInt("redis_db"),
 	}
 
 	cfg.Meilisearch = MeilisearchConfig{

@@ -83,7 +83,6 @@ func TestLoad_Defaults(t *testing.T) {
 		"SERVER_HOST", "SERVER_PORT",
 		"DB_HOST", "DB_PORT", "DB_DATABASE", "DB_USERNAME", "DB_PASSWORD", "DB_SSLMODE",
 		"DB_MAX_OPEN_CONNS", "DB_MAX_IDLE_CONNS", "DB_MAX_LIFETIME",
-		"REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD", "REDIS_DB",
 		"MEILISEARCH_HOST", "MEILISEARCH_KEY",
 		"OTEL_ENABLED", "OTEL_SERVICE_NAME", "OTEL_INSECURE",
 		"OAUTH_PKCE_REQUIRED",
@@ -125,11 +124,6 @@ func TestLoad_Defaults(t *testing.T) {
 		{"Database.MaxOpenConns", cfg.Database.MaxOpenConns, 25},
 		{"Database.MaxIdleConns", cfg.Database.MaxIdleConns, 5},
 		{"Database.MaxLifetime", cfg.Database.MaxLifetime, 5 * time.Minute},
-
-		// Redis
-		{"Redis.Host", cfg.Redis.Host, "localhost"},
-		{"Redis.Port", cfg.Redis.Port, 6379},
-		{"Redis.DB", cfg.Redis.DB, 0},
 
 		// Meilisearch
 		{"Meilisearch.Host", cfg.Meilisearch.Host, "http://localhost:7700"},
@@ -190,7 +184,6 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	setEnv(t, "DB_DATABASE", "testdb")
 	setEnv(t, "DB_USERNAME", "testuser")
 	setEnv(t, "DB_PASSWORD", "secret")
-	setEnv(t, "REDIS_PORT", "6380")
 	setEnv(t, "SERVER_PORT", "9090")
 	setEnv(t, "OTEL_ENABLED", "true")
 	setEnv(t, "OAUTH_PKCE_REQUIRED", "false")
@@ -214,7 +207,6 @@ func TestLoad_EnvOverrides(t *testing.T) {
 		{"Database.Database", cfg.Database.Database, "testdb"},
 		{"Database.Username", cfg.Database.Username, "testuser"},
 		{"Database.Password", cfg.Database.Password, "secret"},
-		{"Redis.Port", cfg.Redis.Port, 6380},
 		{"Server.Port", cfg.Server.Port, 9090},
 		{"OTEL.Enabled", cfg.OTEL.Enabled, true},
 		{"OAuth.RequirePKCE", cfg.OAuth.RequirePKCE, false},
