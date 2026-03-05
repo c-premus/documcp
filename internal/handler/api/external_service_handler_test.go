@@ -26,6 +26,7 @@ type mockExternalServiceRepo struct {
 	updateFn            func(ctx context.Context, svc *model.ExternalService) error
 	deleteFn            func(ctx context.Context, id int64) error
 	updateHealthFn      func(ctx context.Context, id int64, status string, latencyMs int, lastError string) error
+	reorderFn           func(ctx context.Context, serviceIDs []int64) error
 }
 
 func (m *mockExternalServiceRepo) FindByUUID(ctx context.Context, uuid string) (*model.ExternalService, error) {
@@ -77,13 +78,20 @@ func (m *mockExternalServiceRepo) UpdateHealthStatus(ctx context.Context, id int
 	return nil
 }
 
+func (m *mockExternalServiceRepo) ReorderPriorities(ctx context.Context, serviceIDs []int64) error {
+	if m.reorderFn != nil {
+		return m.reorderFn(ctx, serviceIDs)
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 func newExternalServiceHandler(mock *mockExternalServiceRepo) *ExternalServiceHandler {
 	svc := service.NewExternalServiceService(mock, testLogger())
-	return NewExternalServiceHandler(svc, testLogger())
+	return NewExternalServiceHandler(svc, mock, testLogger())
 }
 
 func newTestExternalService(uuid string) *model.ExternalService {

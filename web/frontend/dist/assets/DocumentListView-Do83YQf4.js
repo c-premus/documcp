@@ -1,1 +1,0 @@
-import{d as o,c as s,a as t,o as a}from"./index-DkuSnN5E.js";const l=o({__name:"DocumentListView",setup(n){return(r,e)=>(a(),s("div",null,[...e[0]||(e[0]=[t("h1",{class:"text-2xl font-bold text-gray-900"},"Documents",-1),t("p",{class:"mt-2 text-gray-600"},"Coming in Phase 9.",-1)])]))}});export{l as default};

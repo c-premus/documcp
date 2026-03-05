@@ -1,1 +1,0 @@
-import{d as a,c as s,a as t,o}from"./index-DkuSnN5E.js";const i=a({__name:"GitTemplateFilesView",props:{uuid:{}},setup(l){return(n,e)=>(o(),s("div",null,[...e[0]||(e[0]=[t("h1",{class:"text-2xl font-bold text-gray-900"},"Git Template Files",-1),t("p",{class:"mt-2 text-gray-600"},"Coming in Phase 9.",-1)])]))}});export{i as default};

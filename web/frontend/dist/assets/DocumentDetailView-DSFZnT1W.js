@@ -1,1 +1,0 @@
-import{d as a,c as o,a as t,o as n}from"./index-DkuSnN5E.js";const c=a({__name:"DocumentDetailView",props:{uuid:{}},setup(s){return(r,e)=>(n(),o("div",null,[...e[0]||(e[0]=[t("h1",{class:"text-2xl font-bold text-gray-900"},"Document Detail",-1),t("p",{class:"mt-2 text-gray-600"},"Coming in Phase 9.",-1)])]))}});export{c as default};

@@ -313,6 +313,25 @@ func (s *Server) RegisterRoutes(deps Deps) {
 				r.Delete("/documents/purge", deps.DocumentHandler.BulkPurge)
 			}
 
+			// External service reordering
+			if deps.ExternalServiceHandler != nil {
+				r.Put("/external-services/reorder", deps.ExternalServiceHandler.Reorder)
+			}
+
+			// Git template URL validation
+			if deps.GitTemplateHandler != nil {
+				r.Post("/git-templates/validate-url", deps.GitTemplateHandler.ValidateURL)
+			}
+
+			// OAuth client management
+			if deps.OAuthClientHandler != nil {
+				r.Route("/oauth-clients", func(r chi.Router) {
+					r.Get("/", deps.OAuthClientHandler.List)
+					r.Post("/", deps.OAuthClientHandler.Create)
+					r.Post("/{id}/revoke", deps.OAuthClientHandler.Revoke)
+				})
+			}
+
 			// Queue management
 			if deps.QueueHandler != nil {
 				r.Route("/queue", func(r chi.Router) {

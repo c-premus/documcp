@@ -331,7 +331,7 @@ func New(cfg *config.Config) (*App, error) {
 	zimH := apihandler.NewZimHandler(zimArchiveRepo, kiwixClient, logger)
 	confluenceH := apihandler.NewConfluenceHandler(confluenceSpaceRepo, confluenceClient, logger)
 	gitTemplateH := apihandler.NewGitTemplateHandler(gitTemplateRepo, logger)
-	externalServiceH := apihandler.NewExternalServiceHandler(externalServiceSvc, logger)
+	externalServiceH := apihandler.NewExternalServiceHandler(externalServiceSvc, externalServiceRepo, logger)
 	userH := apihandler.NewUserHandler(oauthRepo, logger)
 	oauthClientH := apihandler.NewOAuthClientHandler(oauthRepo, logger)
 

@@ -16,6 +16,8 @@ const STATUS_STYLES: Readonly<Record<string, BadgeStyle>> = {
   indexed: { bg: 'bg-green-100', text: 'text-green-800' },
   failed: { bg: 'bg-red-100', text: 'text-red-800' },
   index_failed: { bg: 'bg-orange-100', text: 'text-orange-800' },
+  active: { bg: 'bg-green-100', text: 'text-green-800' },
+  revoked: { bg: 'bg-red-100', text: 'text-red-800' },
 }
 
 const DEFAULT_STYLE: BadgeStyle = { bg: 'bg-gray-100', text: 'text-gray-800' }
