@@ -509,7 +509,7 @@ func TestExternalServiceHandler_Create(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		reqBody := `{"name":"My Kiwix","type":"kiwix","base_url":"https://kiwix.example.com","priority":5}`
+		reqBody := `{"name":"My Kiwix","type":"kiwix","base_url":"https://93.184.216.34","priority":5}`
 		req := httptest.NewRequest(http.MethodPost, "/api/external-services", strings.NewReader(reqBody))
 		rr := httptest.NewRecorder()
 
@@ -534,8 +534,8 @@ func TestExternalServiceHandler_Create(t *testing.T) {
 		if data["type"] != "kiwix" {
 			t.Errorf("type = %v, want kiwix", data["type"])
 		}
-		if data["base_url"] != "https://kiwix.example.com" {
-			t.Errorf("base_url = %v, want https://kiwix.example.com", data["base_url"])
+		if data["base_url"] != "https://93.184.216.34" {
+			t.Errorf("base_url = %v, want https://93.184.216.34", data["base_url"])
 		}
 		if data["slug"] != "my-kiwix" {
 			t.Errorf("slug = %v, want my-kiwix", data["slug"])
@@ -575,7 +575,7 @@ func TestExternalServiceHandler_Create(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		reqBody := `{"name":"Svc","type":"confluence","base_url":"https://c.com","api_key":"secret-key","config":"{\"foo\":\"bar\"}"}`
+		reqBody := `{"name":"Svc","type":"confluence","base_url":"https://93.184.216.34","api_key":"secret-key","config":"{\"foo\":\"bar\"}"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/external-services", strings.NewReader(reqBody))
 		rr := httptest.NewRecorder()
 
@@ -683,7 +683,7 @@ func TestExternalServiceHandler_Create(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		reqBody := `{"name":"Svc","type":"kiwix","base_url":"https://example.com"}`
+		reqBody := `{"name":"Svc","type":"kiwix","base_url":"https://93.184.216.34"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/external-services", strings.NewReader(reqBody))
 		rr := httptest.NewRecorder()
 

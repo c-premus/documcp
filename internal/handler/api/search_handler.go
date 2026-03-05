@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"html"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -219,13 +220,13 @@ func (h *SearchHandler) Autocomplete(w http.ResponseWriter, r *http.Request) {
 }
 
 // highlightPrefix wraps the matched prefix portion of title in <em> tags.
-// The match is case-insensitive.
+// The match is case-insensitive. Both segments are HTML-escaped to prevent XSS.
 func highlightPrefix(title, prefix string) string {
-	if len(prefix) > len(title) {
-		return title
+	if len(prefix) == 0 || len(prefix) > len(title) {
+		return html.EscapeString(title)
 	}
 	if !strings.EqualFold(title[:len(prefix)], prefix) {
-		return title
+		return html.EscapeString(title)
 	}
-	return "<em>" + title[:len(prefix)] + "</em>" + title[len(prefix):]
+	return "<em>" + html.EscapeString(title[:len(prefix)]) + "</em>" + html.EscapeString(title[len(prefix):])
 }

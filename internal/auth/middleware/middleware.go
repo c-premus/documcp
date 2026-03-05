@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gorilla/sessions"
@@ -74,7 +75,7 @@ func SessionAuth(store sessions.Store, oauthService *oauth.Service) func(http.Ha
 			session, _ := store.Get(r, "documcp_session")
 			userID, ok := session.Values["user_id"].(int64)
 			if !ok || userID == 0 {
-				http.Redirect(w, r, "/auth/login?redirect="+r.URL.RequestURI(), http.StatusFound)
+				http.Redirect(w, r, "/auth/login?redirect="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
 				return
 			}
 
@@ -83,7 +84,7 @@ func SessionAuth(store sessions.Store, oauthService *oauth.Service) func(http.Ha
 				// Session invalid — clear it
 				session.Options.MaxAge = -1
 				_ = session.Save(r, w)
-				http.Redirect(w, r, "/auth/login?redirect="+r.URL.RequestURI(), http.StatusFound)
+				http.Redirect(w, r, "/auth/login?redirect="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
 				return
 			}
 

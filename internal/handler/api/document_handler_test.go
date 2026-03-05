@@ -1396,3 +1396,47 @@ func TestDetectLanguage(t *testing.T) {
 		assert.Equal(t, "en", detectLanguage("日本語テキスト"))
 	})
 }
+
+// ---------------------------------------------------------------------------
+// sanitizeFilename tests
+// ---------------------------------------------------------------------------
+
+func TestSanitizeFilename(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "replaces double quotes with underscore",
+			in:   `my "doc"`,
+			want: "my _doc_",
+		},
+		{
+			name: "replaces backslash with underscore",
+			in:   `my\doc`,
+			want: "my_doc",
+		},
+		{
+			name: "replaces newline with underscore",
+			in:   "my\ndoc",
+			want: "my_doc",
+		},
+		{
+			name: "normal title passes through unchanged",
+			in:   "report",
+			want: "report",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := sanitizeFilename(tt.in)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

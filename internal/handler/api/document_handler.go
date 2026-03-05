@@ -323,10 +323,10 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 		contentType = "application/octet-stream"
 	}
 
-	// Determine filename for Content-Disposition.
+	// Determine filename for Content-Disposition, sanitizing special characters.
 	filename := doc.UUID + filepath.Ext(doc.FilePath)
 	if doc.Title != "" {
-		filename = doc.Title + filepath.Ext(doc.FilePath)
+		filename = sanitizeFilename(doc.Title) + filepath.Ext(doc.FilePath)
 	}
 
 	w.Header().Set("Content-Type", contentType)
@@ -625,6 +625,17 @@ func (h *DocumentHandler) ListDeleted(w http.ResponseWriter, r *http.Request) {
 		"data":  responses,
 		"total": total,
 	})
+}
+
+// sanitizeFilename removes characters that could cause header injection in
+// Content-Disposition values (quotes, backslashes, control characters).
+func sanitizeFilename(name string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '"' || r == '\\' || r < 32 {
+			return '_'
+		}
+		return r
+	}, name)
 }
 
 // detectLanguage is a placeholder that returns "en".
