@@ -51,6 +51,9 @@ type Deps struct {
 	SSEHandler   *apihandler.SSEHandler   // nil if not configured
 	QueueHandler *apihandler.QueueHandler // nil if not configured
 
+	// Phase 9: Dashboard
+	DashboardHandler *apihandler.DashboardHandler // nil if not configured
+
 	// Vue SPA
 	AuthHandler *apihandler.AuthHandler // nil if not configured
 	SPAHandler  http.Handler           // nil if not configured
@@ -206,10 +209,13 @@ func (s *Server) RegisterRoutes(deps Deps) {
 				r.Get("/", deps.DocumentHandler.List)
 				r.Post("/", deps.DocumentHandler.Upload)
 				r.Post("/analyze", deps.DocumentHandler.Analyze)
+				r.Get("/trash", deps.DocumentHandler.ListDeleted)
 				r.Get("/{uuid}", deps.DocumentHandler.Show)
 				r.Put("/{uuid}", deps.DocumentHandler.Update)
 				r.Delete("/{uuid}", deps.DocumentHandler.Delete)
 				r.Get("/{uuid}/download", deps.DocumentHandler.Download)
+				r.Post("/{uuid}/restore", deps.DocumentHandler.Restore)
+				r.Delete("/{uuid}/purge", deps.DocumentHandler.Purge)
 			})
 			s.logger.Info("document API endpoints registered")
 		}
@@ -283,16 +289,41 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			s.logger.Info("SSE events endpoint registered", "path", "/api/events/stream")
 		}
 
-		// Queue admin endpoints
-		if deps.QueueHandler != nil {
-			r.Route("/admin/queue", func(r chi.Router) {
-				r.Get("/stats", deps.QueueHandler.Stats)
-				r.Get("/failed", deps.QueueHandler.ListFailed)
-				r.Post("/failed/{id}/retry", deps.QueueHandler.RetryFailed)
-				r.Delete("/failed/{id}", deps.QueueHandler.DeleteFailed)
-			})
-			s.logger.Info("queue admin API endpoints registered")
-		}
+		// Admin API endpoints
+		r.Route("/admin", func(r chi.Router) {
+			// Dashboard stats
+			if deps.DashboardHandler != nil {
+				r.Get("/dashboard/stats", deps.DashboardHandler.Stats)
+			}
+
+			// User management
+			if deps.UserHandler != nil {
+				r.Route("/users", func(r chi.Router) {
+					r.Get("/", deps.UserHandler.List)
+					r.Post("/", deps.UserHandler.Create)
+					r.Get("/{id}", deps.UserHandler.Show)
+					r.Put("/{id}", deps.UserHandler.Update)
+					r.Delete("/{id}", deps.UserHandler.Delete)
+					r.Post("/{id}/toggle-admin", deps.UserHandler.ToggleAdmin)
+				})
+			}
+
+			// Document bulk purge
+			if deps.DocumentHandler != nil {
+				r.Delete("/documents/purge", deps.DocumentHandler.BulkPurge)
+			}
+
+			// Queue management
+			if deps.QueueHandler != nil {
+				r.Route("/queue", func(r chi.Router) {
+					r.Get("/stats", deps.QueueHandler.Stats)
+					r.Get("/failed", deps.QueueHandler.ListFailed)
+					r.Post("/failed/{id}/retry", deps.QueueHandler.RetryFailed)
+					r.Delete("/failed/{id}", deps.QueueHandler.DeleteFailed)
+				})
+			}
+		})
+		s.logger.Info("admin API endpoints registered")
 	})
 
 	// Admin UI
