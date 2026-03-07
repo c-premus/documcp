@@ -50,6 +50,7 @@ type AppConfig struct {
 	URL              string `mapstructure:"app_url"`
 	Timezone         string `mapstructure:"app_timezone"`
 	InternalAPIToken string `mapstructure:"internal_api_token"`
+	EncryptionKey    string `mapstructure:"encryption_key"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -131,7 +132,7 @@ type DocuMCPConfig struct {
 func setDefaults(v *viper.Viper) {
 	// App
 	v.SetDefault("app_name", "DocuMCP")
-	v.SetDefault("app_env", "production")
+	v.SetDefault("app_env", "development")
 	v.SetDefault("app_debug", false)
 	v.SetDefault("app_url", "http://localhost")
 	v.SetDefault("app_timezone", "UTC")
@@ -407,7 +408,8 @@ func (c *Config) DatabaseDSN() string {
 	)
 
 	if c.Database.Password != "" {
-		dsn += fmt.Sprintf(" password=%s", c.Database.Password)
+		escaped := strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(c.Database.Password)
+		dsn += fmt.Sprintf(" password='%s'", escaped)
 	}
 
 	return dsn

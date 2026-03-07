@@ -1058,10 +1058,18 @@ func TestExternalServiceHandler_Delete(t *testing.T) {
 func TestExternalServiceHandler_HealthCheck(t *testing.T) {
 	t.Parallel()
 
-	t.Run("returns 501 not implemented", func(t *testing.T) {
+	t.Run("returns current service state", func(t *testing.T) {
 		t.Parallel()
 
-		mock := &mockExternalServiceRepo{}
+		mock := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.ExternalService, error) {
+				return &model.ExternalService{
+					UUID:   uuid,
+					Name:   "Test Service",
+					Status: "healthy",
+				}, nil
+			},
+		}
 		h := newExternalServiceHandler(mock)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/external-services/svc-uuid-1/health", nil)
@@ -1070,13 +1078,25 @@ func TestExternalServiceHandler_HealthCheck(t *testing.T) {
 
 		h.HealthCheck(rr, req)
 
-		if rr.Code != http.StatusNotImplemented {
-			t.Errorf("status = %d, want %d", rr.Code, http.StatusNotImplemented)
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
 		}
+	})
 
-		body := decodeJSONBody(t, rr.Body)
-		if msg := body["message"]; msg != "health check not yet implemented" {
-			t.Errorf("message = %v, want 'health check not yet implemented'", msg)
+	t.Run("returns 404 for unknown service", func(t *testing.T) {
+		t.Parallel()
+
+		mock := &mockExternalServiceRepo{}
+		h := newExternalServiceHandler(mock)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/external-services/unknown/health", nil)
+		req = chiContext(req, map[string]string{"uuid": "unknown"})
+		rr := httptest.NewRecorder()
+
+		h.HealthCheck(rr, req)
+
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusNotFound)
 		}
 	})
 }

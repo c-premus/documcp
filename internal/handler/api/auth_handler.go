@@ -31,20 +31,20 @@ func NewAuthHandler(store sessions.Store, finder authUserFinder, logger *slog.Lo
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	session, err := h.sessionStore.Get(r, "documcp_session")
 	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		errorResponse(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	userID, ok := session.Values["user_id"].(int64)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		errorResponse(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 
 	user, err := h.userFinder.FindUserByID(r.Context(), userID)
 	if err != nil {
 		h.logger.Error("finding user for auth/me", "user_id", userID, "error", err)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		errorResponse(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
 

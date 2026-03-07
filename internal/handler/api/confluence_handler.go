@@ -109,12 +109,11 @@ func (h *ConfluenceHandler) SearchPages(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	cql := r.URL.Query().Get("cql")
 	query := r.URL.Query().Get("query")
 	space := r.URL.Query().Get("space")
 
-	if cql == "" && query == "" {
-		errorResponse(w, http.StatusBadRequest, "either 'cql' or 'query' parameter is required")
+	if query == "" {
+		errorResponse(w, http.StatusBadRequest, "'query' parameter is required")
 		return
 	}
 
@@ -126,7 +125,6 @@ func (h *ConfluenceHandler) SearchPages(w http.ResponseWriter, r *http.Request) 
 	start, _ := strconv.Atoi(r.URL.Query().Get("start"))
 
 	result, err := h.confluenceClient.SearchPages(r.Context(), confluence.SearchPagesParams{
-		CQL:   cql,
 		Query: query,
 		Space: space,
 		Limit: limit,

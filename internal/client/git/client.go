@@ -47,6 +47,10 @@ func NewClient(tempDir string, logger *slog.Logger) *Client {
 // set, a temporary GIT_ASKPASS script provides credentials.
 // Returns the path to the cloned directory.
 func (c *Client) Clone(ctx context.Context, params CloneParams) (string, error) {
+	if err := validateBranch(params.Branch); err != nil {
+		return "", err
+	}
+
 	dest := params.Dest
 	if dest == "" {
 		dest = filepath.Join(c.tempDir, filepath.Base(params.URL))
@@ -239,6 +243,17 @@ func (c *Client) LatestCommitSHA(ctx context.Context, repoDir string) (string, e
 	}
 
 	return strings.TrimSpace(stdout.String()), nil
+}
+
+// validateBranch rejects branch names that could be interpreted as git flags.
+func validateBranch(branch string) error {
+	if branch == "" {
+		return fmt.Errorf("branch name must not be empty")
+	}
+	if strings.HasPrefix(branch, "-") {
+		return fmt.Errorf("branch name must not start with a dash")
+	}
+	return nil
 }
 
 // isBinary checks whether data looks like a binary file by searching for null

@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
 )
 
@@ -23,7 +22,7 @@ func NewHealthHandler(version string) *HealthHandler {
 }
 
 // ServeHTTP writes a JSON health response with status 200.
-func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	resp := HealthResponse{
 		Status:  "ok",
 		Version: h.version,
@@ -32,7 +31,5 @@ func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		slog.Error("encoding health response", "error", err)
-	}
+	_ = json.NewEncoder(w).Encode(resp)
 }

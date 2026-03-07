@@ -4,6 +4,7 @@ package authmiddleware
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -36,18 +37,21 @@ func BearerToken(oauthService *oauth.Service) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
+				w.Header().Set("WWW-Authenticate", `Bearer`)
 				jsonError(w, http.StatusUnauthorized, "Bearer token required")
 				return
 			}
 
 			bearerToken := strings.TrimPrefix(authHeader, "Bearer ")
 			if bearerToken == authHeader {
+				w.Header().Set("WWW-Authenticate", `Bearer`)
 				jsonError(w, http.StatusUnauthorized, "Bearer token required")
 				return
 			}
 
 			token, err := oauthService.ValidateAccessToken(r.Context(), bearerToken)
 			if err != nil {
+				w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
 				jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
 				return
 			}
@@ -57,7 +61,9 @@ func BearerToken(oauthService *oauth.Service) func(http.Handler) http.Handler {
 			// Optionally load user
 			if token.UserID.Valid {
 				user, err := oauthService.FindUserByID(r.Context(), token.UserID.Int64)
-				if err == nil {
+				if err != nil {
+					slog.Warn("loading user for bearer token", "user_id", token.UserID.Int64, "error", err)
+				} else {
 					ctx = context.WithValue(ctx, UserContextKey, user)
 				}
 			}
@@ -100,18 +106,12 @@ func RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, ok := UserFromContext(r.Context())
 		if !ok || !user.IsAdmin {
-			if wantsJSON(r) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusForbidden)
-				_ = json.NewEncoder(w).Encode(map[string]any{
-					"error": map[string]any{
-						"message": "Access denied. Admin privileges required.",
-						"code":    403,
-					},
-				})
-			} else {
-				http.Error(w, "Access denied. Admin privileges required.", http.StatusForbidden)
-			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error":   "Forbidden",
+				"message": "Admin privileges required.",
+			})
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -121,10 +121,9 @@ func RequireAdmin(next http.Handler) http.Handler {
 func jsonError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error":   http.StatusText(status),
+		"message": message,
+	})
 }
 
-func wantsJSON(r *http.Request) bool {
-	accept := r.Header.Get("Accept")
-	return strings.Contains(accept, "application/json")
-}

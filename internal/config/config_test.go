@@ -105,7 +105,7 @@ func TestLoad_Defaults(t *testing.T) {
 	}{
 		// App
 		{"App.Name", cfg.App.Name, "DocuMCP"},
-		{"App.Env", cfg.App.Env, "production"},
+		{"App.Env", cfg.App.Env, "development"},
 		{"App.Debug", cfg.App.Debug, false},
 		{"App.URL", cfg.App.URL, "http://localhost"},
 		{"App.Timezone", cfg.App.Timezone, "UTC"},
@@ -318,7 +318,7 @@ func TestConfig_DatabaseDSN(t *testing.T) {
 					SSLMode:  "require",
 				},
 			},
-			want: "host=db.example.com port=5432 user=admin dbname=mydb sslmode=require password=secret",
+			want: "host=db.example.com port=5432 user=admin dbname=mydb sslmode=require password='secret'",
 		},
 		{
 			name: "without password",
@@ -345,7 +345,7 @@ func TestConfig_DatabaseDSN(t *testing.T) {
 					SSLMode:  "verify-full",
 				},
 			},
-			want: "host=10.0.0.1 port=5433 user=app dbname=production sslmode=verify-full password=p@ss",
+			want: "host=10.0.0.1 port=5433 user=app dbname=production sslmode=verify-full password='p@ss'",
 		},
 	}
 

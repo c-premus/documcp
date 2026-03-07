@@ -165,7 +165,7 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 	}
 
 	// Dispatch background extraction job.
-	p.dispatchExtraction(doc.ID, docUUID)
+	p.dispatchExtraction(ctx, doc.ID, docUUID)
 
 	created, err := p.repo.FindByID(ctx, doc.ID)
 	if err != nil {
@@ -217,7 +217,7 @@ func (p *DocumentPipeline) ProcessDocument(ctx context.Context, docID int64) err
 	)
 
 	// Dispatch indexing job.
-	p.dispatchIndexing(doc)
+	p.dispatchIndexing(ctx, doc)
 
 	return nil
 }
@@ -279,12 +279,12 @@ func (p *DocumentPipeline) IndexDocument(ctx context.Context, doc *model.Documen
 }
 
 // dispatchExtraction enqueues a document extraction job via River.
-func (p *DocumentPipeline) dispatchExtraction(docID int64, docUUID string) {
+func (p *DocumentPipeline) dispatchExtraction(ctx context.Context, docID int64, docUUID string) {
 	if p.inserter == nil {
 		return
 	}
 
-	if _, err := p.inserter.Insert(context.Background(), queue.DocumentExtractArgs{
+	if _, err := p.inserter.Insert(ctx, queue.DocumentExtractArgs{
 		DocumentID: docID,
 		DocUUID:    docUUID,
 	}, nil); err != nil {
@@ -293,12 +293,12 @@ func (p *DocumentPipeline) dispatchExtraction(docID int64, docUUID string) {
 }
 
 // dispatchIndexing enqueues a document indexing job via River.
-func (p *DocumentPipeline) dispatchIndexing(doc *model.Document) {
+func (p *DocumentPipeline) dispatchIndexing(ctx context.Context, doc *model.Document) {
 	if p.inserter == nil || p.indexer == nil {
 		return
 	}
 
-	if _, err := p.inserter.Insert(context.Background(), queue.DocumentIndexArgs{
+	if _, err := p.inserter.Insert(ctx, queue.DocumentIndexArgs{
 		DocumentID: doc.ID,
 		DocUUID:    doc.UUID,
 	}, nil); err != nil {

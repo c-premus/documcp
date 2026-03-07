@@ -3,7 +3,6 @@ package handler
 import (
 	"database/sql"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 )
 
@@ -56,7 +55,5 @@ func (h *ReadinessHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(httpStatus)
 
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		slog.Error("encoding readiness response", "error", err)
-	}
+	_ = json.NewEncoder(w).Encode(resp)
 }
