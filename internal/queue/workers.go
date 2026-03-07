@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/riverqueue/river"
+
+	"git.999.haus/chris/DocuMCP-go/internal/observability"
 )
 
 // retryBackoffs defines the exponential backoff schedule for retries.
@@ -36,10 +38,16 @@ type DocumentIndexer interface {
 type DocumentExtractWorker struct {
 	river.WorkerDefaults[DocumentExtractArgs]
 	Pipeline DocumentProcessor
+	Metrics  *observability.Metrics
 }
 
 func (w *DocumentExtractWorker) Work(ctx context.Context, job *river.Job[DocumentExtractArgs]) error {
-	return w.Pipeline.ProcessDocument(ctx, job.Args.DocumentID)
+	start := time.Now()
+	err := w.Pipeline.ProcessDocument(ctx, job.Args.DocumentID)
+	if err == nil {
+		recordJobCompleted(w.Metrics, job.Queue, job.Kind, time.Since(start))
+	}
+	return err
 }
 
 func (w *DocumentExtractWorker) NextRetry(job *river.Job[DocumentExtractArgs]) time.Time {
@@ -50,10 +58,16 @@ func (w *DocumentExtractWorker) NextRetry(job *river.Job[DocumentExtractArgs]) t
 type DocumentIndexWorker struct {
 	river.WorkerDefaults[DocumentIndexArgs]
 	Indexer DocumentIndexer
+	Metrics *observability.Metrics
 }
 
 func (w *DocumentIndexWorker) Work(ctx context.Context, job *river.Job[DocumentIndexArgs]) error {
-	return w.Indexer.IndexDocumentByID(ctx, job.Args.DocumentID)
+	start := time.Now()
+	err := w.Indexer.IndexDocumentByID(ctx, job.Args.DocumentID)
+	if err == nil {
+		recordJobCompleted(w.Metrics, job.Queue, job.Kind, time.Since(start))
+	}
+	return err
 }
 
 func (w *DocumentIndexWorker) NextRetry(job *river.Job[DocumentIndexArgs]) time.Time {
@@ -70,4 +84,13 @@ func (w *ReindexAllWorker) Work(_ context.Context, _ *river.Job[ReindexAllArgs])
 	// Placeholder: full reindex logic would iterate all documents.
 	// This is dispatched manually via the admin API, not via periodic jobs.
 	return nil
+}
+
+// recordJobCompleted increments the completed counter and observes duration.
+func recordJobCompleted(m *observability.Metrics, queue, kind string, d time.Duration) {
+	if m == nil {
+		return
+	}
+	m.QueueJobsCompleted.WithLabelValues(queue, kind).Inc()
+	m.QueueJobDuration.WithLabelValues(queue, kind).Observe(d.Seconds())
 }

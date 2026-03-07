@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/meilisearch/meilisearch-go"
+
+	"git.999.haus/chris/DocuMCP-go/internal/observability"
 )
 
 // SearchResult holds a normalized result from any index.
@@ -40,13 +43,19 @@ type FederatedSearchParams struct {
 
 // Searcher performs search queries against Meilisearch indexes.
 type Searcher struct {
-	client *Client
-	logger *slog.Logger
+	client  *Client
+	logger  *slog.Logger
+	metrics *observability.Metrics
 }
 
 // NewSearcher creates a new Searcher backed by the given Client.
 func NewSearcher(client *Client, logger *slog.Logger) *Searcher {
 	return &Searcher{client: client, logger: logger}
+}
+
+// SetMetrics enables Prometheus latency recording for search operations.
+func (s *Searcher) SetMetrics(m *observability.Metrics) {
+	s.metrics = m
 }
 
 // Search performs a search on a single index.
@@ -68,9 +77,13 @@ func (s *Searcher) Search(ctx context.Context, params SearchParams) (*meilisearc
 		HighlightPostTag:      "</em>",
 	}
 
+	start := time.Now()
 	resp, err := idx.SearchWithContext(ctx, params.Query, req)
 	if err != nil {
 		return nil, fmt.Errorf("searching index %q: %w", params.IndexUID, err)
+	}
+	if s.metrics != nil {
+		s.metrics.SearchLatency.WithLabelValues(params.IndexUID).Observe(time.Since(start).Seconds())
 	}
 
 	return resp, nil
@@ -103,6 +116,7 @@ func (s *Searcher) FederatedSearch(ctx context.Context, params FederatedSearchPa
 		})
 	}
 
+	start := time.Now()
 	resp, err := s.client.ms.MultiSearchWithContext(ctx, &meilisearch.MultiSearchRequest{
 		Federation: &meilisearch.MultiSearchFederation{
 			Limit:  limit,
@@ -112,6 +126,9 @@ func (s *Searcher) FederatedSearch(ctx context.Context, params FederatedSearchPa
 	})
 	if err != nil {
 		return nil, fmt.Errorf("federated search: %w", err)
+	}
+	if s.metrics != nil {
+		s.metrics.SearchLatency.WithLabelValues("federated").Observe(time.Since(start).Seconds())
 	}
 
 	return resp, nil

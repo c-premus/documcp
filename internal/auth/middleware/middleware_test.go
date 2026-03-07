@@ -248,8 +248,8 @@ func TestBearerToken(t *testing.T) {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
 		}
 		body := decodeJSONBody(t, rr.Body)
-		if body["error"] != "Bearer token required" {
-			t.Errorf("error = %v, want 'Bearer token required'", body["error"])
+		if body["message"] != "Bearer token required" {
+			t.Errorf("message = %v, want 'Bearer token required'", body["message"])
 		}
 	})
 
@@ -270,8 +270,8 @@ func TestBearerToken(t *testing.T) {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
 		}
 		body := decodeJSONBody(t, rr.Body)
-		if body["error"] != "Bearer token required" {
-			t.Errorf("error = %v, want 'Bearer token required'", body["error"])
+		if body["message"] != "Bearer token required" {
+			t.Errorf("message = %v, want 'Bearer token required'", body["message"])
 		}
 	})
 
@@ -669,7 +669,7 @@ func TestRequireAdmin(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects non-admin user with JSON when Accept is application/json", func(t *testing.T) {
+	t.Run("rejects non-admin user with consistent JSON error format", func(t *testing.T) {
 		t.Parallel()
 
 		user := &model.User{ID: 2, Name: "Regular User", IsAdmin: false}
@@ -677,7 +677,6 @@ func TestRequireAdmin(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/admin/resource", nil)
 		req = req.WithContext(ctx)
-		req.Header.Set("Accept", "application/json")
 		rr := httptest.NewRecorder()
 
 		handler := RequireAdmin(okHandler())
@@ -695,39 +694,11 @@ func TestRequireAdmin(t *testing.T) {
 		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
 			t.Fatalf("decoding JSON: %v", err)
 		}
-		errObj, ok := body["error"].(map[string]any)
-		if !ok {
-			t.Fatal("response missing 'error' object")
+		if body["error"] != "Forbidden" {
+			t.Errorf("error = %v, want 'Forbidden'", body["error"])
 		}
-		if errObj["message"] != "Access denied. Admin privileges required." {
-			t.Errorf("error message = %v, want 'Access denied. Admin privileges required.'", errObj["message"])
-		}
-		if code, ok := errObj["code"].(float64); !ok || int(code) != 403 {
-			t.Errorf("error code = %v, want 403", errObj["code"])
-		}
-	})
-
-	t.Run("rejects non-admin user with plain text when Accept is not JSON", func(t *testing.T) {
-		t.Parallel()
-
-		user := &model.User{ID: 2, Name: "Regular User", IsAdmin: false}
-		ctx := context.WithValue(context.Background(), UserContextKey, user)
-
-		req := httptest.NewRequest(http.MethodGet, "/admin/resource", nil)
-		req = req.WithContext(ctx)
-		req.Header.Set("Accept", "text/html")
-		rr := httptest.NewRecorder()
-
-		handler := RequireAdmin(okHandler())
-		handler.ServeHTTP(rr, req)
-
-		if rr.Code != http.StatusForbidden {
-			t.Errorf("status = %d, want %d", rr.Code, http.StatusForbidden)
-		}
-
-		body := rr.Body.String()
-		if !strings.Contains(body, "Access denied") {
-			t.Errorf("body = %q, want it to contain 'Access denied'", body)
+		if body["message"] != "Admin privileges required." {
+			t.Errorf("message = %v, want 'Admin privileges required.'", body["message"])
 		}
 	})
 
@@ -839,62 +810,3 @@ func TestAccessTokenContextKey(t *testing.T) {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// wantsJSON tests
-// ---------------------------------------------------------------------------
-
-func TestWantsJSON(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name   string
-		accept string
-		want   bool
-	}{
-		{
-			name:   "application/json",
-			accept: "application/json",
-			want:   true,
-		},
-		{
-			name:   "application/json with charset",
-			accept: "application/json; charset=utf-8",
-			want:   true,
-		},
-		{
-			name:   "text/html",
-			accept: "text/html",
-			want:   false,
-		},
-		{
-			name:   "empty accept header",
-			accept: "",
-			want:   false,
-		},
-		{
-			name:   "wildcard",
-			accept: "*/*",
-			want:   false,
-		},
-		{
-			name:   "multiple types including json",
-			accept: "text/html, application/json",
-			want:   true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			if tt.accept != "" {
-				req.Header.Set("Accept", tt.accept)
-			}
-			got := wantsJSON(req)
-			if got != tt.want {
-				t.Errorf("wantsJSON(Accept=%q) = %v, want %v", tt.accept, got, tt.want)
-			}
-		})
-	}
-}

@@ -179,6 +179,9 @@ func (c *Client) Search(ctx context.Context, archiveName, query, searchType stri
 // ReadArticle fetches an article from a ZIM archive and returns it as plain text.
 // The articlePath is validated to prevent path traversal attacks.
 func (c *Client) ReadArticle(ctx context.Context, archiveName, articlePath string) (*Article, error) {
+	if err := validateArchiveName(archiveName); err != nil {
+		return nil, fmt.Errorf("invalid archive name: %w", err)
+	}
 	if err := validateArticlePath(articlePath); err != nil {
 		return nil, fmt.Errorf("invalid article path: %w", err)
 	}
@@ -237,6 +240,23 @@ func validateArticlePath(path string) error {
 	}
 	if strings.ContainsRune(path, 0) {
 		return fmt.Errorf("path must not contain null bytes")
+	}
+	return nil
+}
+
+// validateArchiveName rejects archive names that could be used for path traversal.
+func validateArchiveName(name string) error {
+	if name == "" {
+		return fmt.Errorf("archive name must not be empty")
+	}
+	if strings.Contains(name, "/") || strings.Contains(name, "\\") {
+		return fmt.Errorf("archive name must not contain path separators")
+	}
+	if strings.Contains(name, "..") {
+		return fmt.Errorf("archive name must not contain dot-dot segments")
+	}
+	if strings.ContainsRune(name, 0) {
+		return fmt.Errorf("archive name must not contain null bytes")
 	}
 	return nil
 }

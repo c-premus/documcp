@@ -2,12 +2,14 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 
 	"github.com/jmoiron/sqlx"
 
+	"git.999.haus/chris/DocuMCP-go/internal/crypto"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 )
 
@@ -25,13 +27,14 @@ type GitTemplateFileInsert struct {
 
 // GitTemplateRepository handles git template persistence.
 type GitTemplateRepository struct {
-	db     *sqlx.DB
-	logger *slog.Logger
+	db        *sqlx.DB
+	logger    *slog.Logger
+	encryptor *crypto.Encryptor // nil disables encryption
 }
 
 // NewGitTemplateRepository creates a new GitTemplateRepository.
-func NewGitTemplateRepository(db *sqlx.DB, logger *slog.Logger) *GitTemplateRepository {
-	return &GitTemplateRepository{db: db, logger: logger}
+func NewGitTemplateRepository(db *sqlx.DB, logger *slog.Logger, enc *crypto.Encryptor) *GitTemplateRepository {
+	return &GitTemplateRepository{db: db, logger: logger, encryptor: enc}
 }
 
 // List returns enabled, non-deleted git templates with an optional category filter.
@@ -58,6 +61,7 @@ func (r *GitTemplateRepository) List(ctx context.Context, category string, limit
 	if err != nil {
 		return nil, fmt.Errorf("listing git templates: %w", err)
 	}
+	r.decryptTokens(templates)
 	return templates, nil
 }
 
@@ -69,6 +73,7 @@ func (r *GitTemplateRepository) FindByUUID(ctx context.Context, uuid string) (*m
 	if err != nil {
 		return nil, fmt.Errorf("finding git template by uuid %s: %w", uuid, err)
 	}
+	r.decryptToken(&tmpl)
 	return &tmpl, nil
 }
 
@@ -118,6 +123,7 @@ func (r *GitTemplateRepository) ListAll(ctx context.Context, query string, limit
 	if err != nil {
 		return nil, fmt.Errorf("listing all git templates: %w", err)
 	}
+	r.decryptTokens(templates)
 	return templates, nil
 }
 
@@ -139,12 +145,17 @@ func (r *GitTemplateRepository) FindBySlug(ctx context.Context, slug string) (*m
 	if err != nil {
 		return nil, fmt.Errorf("finding git template by slug %s: %w", slug, err)
 	}
+	r.decryptToken(&tmpl)
 	return &tmpl, nil
 }
 
 // Create inserts a new git template and sets the generated ID, UUID, and timestamps.
 func (r *GitTemplateRepository) Create(ctx context.Context, tmpl *model.GitTemplate) error {
-	err := r.db.QueryRowContext(ctx,
+	encToken, err := r.encryptToken(tmpl.GitToken)
+	if err != nil {
+		return err
+	}
+	err = r.db.QueryRowContext(ctx,
 		`INSERT INTO git_templates (
 			uuid, name, slug, description, repository_url, branch, git_token,
 			readme_content, manifest, category, tags, user_id,
@@ -159,7 +170,7 @@ func (r *GitTemplateRepository) Create(ctx context.Context, tmpl *model.GitTempl
 			NOW(), NOW()
 		) RETURNING id, created_at, updated_at`,
 		tmpl.UUID, tmpl.Name, tmpl.Slug, tmpl.Description,
-		tmpl.RepositoryURL, tmpl.Branch, tmpl.GitToken,
+		tmpl.RepositoryURL, tmpl.Branch, encToken,
 		tmpl.ReadmeContent, tmpl.Manifest, tmpl.Category, tmpl.Tags, tmpl.UserID,
 		tmpl.IsPublic, tmpl.IsEnabled, tmpl.Status, tmpl.ErrorMessage,
 		tmpl.FileCount, tmpl.TotalSizeBytes,
@@ -172,7 +183,11 @@ func (r *GitTemplateRepository) Create(ctx context.Context, tmpl *model.GitTempl
 
 // Update updates an existing git template by its ID.
 func (r *GitTemplateRepository) Update(ctx context.Context, tmpl *model.GitTemplate) error {
-	_, err := r.db.ExecContext(ctx,
+	encToken, err := r.encryptToken(tmpl.GitToken)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx,
 		`UPDATE git_templates SET
 			name = $1, slug = $2, description = $3, repository_url = $4,
 			branch = $5, git_token = $6, readme_content = $7, manifest = $8,
@@ -180,7 +195,7 @@ func (r *GitTemplateRepository) Update(ctx context.Context, tmpl *model.GitTempl
 			status = $13, error_message = $14, updated_at = NOW()
 		WHERE id = $15 AND deleted_at IS NULL`,
 		tmpl.Name, tmpl.Slug, tmpl.Description, tmpl.RepositoryURL,
-		tmpl.Branch, tmpl.GitToken, tmpl.ReadmeContent, tmpl.Manifest,
+		tmpl.Branch, encToken, tmpl.ReadmeContent, tmpl.Manifest,
 		tmpl.Category, tmpl.Tags, tmpl.IsPublic, tmpl.IsEnabled,
 		tmpl.Status, tmpl.ErrorMessage, tmpl.ID,
 	)
@@ -313,6 +328,39 @@ func (r *GitTemplateRepository) Search(ctx context.Context, query, category stri
 	if err != nil {
 		return nil, fmt.Errorf("searching git templates for %q: %w", query, err)
 	}
+	r.decryptTokens(templates)
 	return templates, nil
+}
+
+// encryptToken encrypts a git token for storage.
+func (r *GitTemplateRepository) encryptToken(token sql.NullString) (sql.NullString, error) {
+	if !token.Valid || token.String == "" {
+		return token, nil
+	}
+	enc, err := r.encryptor.Encrypt(token.String)
+	if err != nil {
+		return sql.NullString{}, fmt.Errorf("encrypting git token: %w", err)
+	}
+	return sql.NullString{String: enc, Valid: true}, nil
+}
+
+// decryptToken decrypts a git token after loading from the database.
+func (r *GitTemplateRepository) decryptToken(tmpl *model.GitTemplate) {
+	if !tmpl.GitToken.Valid || tmpl.GitToken.String == "" {
+		return
+	}
+	dec, err := r.encryptor.Decrypt(tmpl.GitToken.String)
+	if err != nil {
+		r.logger.Warn("decrypting git token (may be plaintext)", "template_id", tmpl.ID, "error", err)
+		return
+	}
+	tmpl.GitToken.String = dec
+}
+
+// decryptTokens decrypts git tokens in a slice of templates.
+func (r *GitTemplateRepository) decryptTokens(templates []model.GitTemplate) {
+	for i := range templates {
+		r.decryptToken(&templates[i])
+	}
 }
 

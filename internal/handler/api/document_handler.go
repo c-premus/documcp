@@ -86,7 +86,10 @@ func (h *DocumentHandler) List(w http.ResponseWriter, r *http.Request) {
 	docs := make([]documentResponse, 0, len(result.Documents))
 	for i := range result.Documents {
 		doc := &result.Documents[i]
-		tags, _ := h.repo.TagsForDocument(r.Context(), doc.ID)
+		tags, tagsErr := h.repo.TagsForDocument(r.Context(), doc.ID)
+		if tagsErr != nil {
+			h.logger.Warn("loading tags for document", "doc_id", doc.ID, "error", tagsErr)
+		}
 		docs = append(docs, toDocumentResponse(doc, tags))
 	}
 
@@ -167,11 +170,11 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	doc, err := h.pipeline.Upload(r.Context(), params)
 	if err != nil {
 		h.logger.Error("uploading document", "error", err)
-		status := http.StatusInternalServerError
 		if errors.Is(err, service.ErrUnsupportedFileType) || errors.Is(err, service.ErrFileTooLarge) {
-			status = http.StatusBadRequest
+			errorResponse(w, http.StatusBadRequest, err.Error())
+		} else {
+			errorResponse(w, http.StatusInternalServerError, "failed to process document upload")
 		}
-		errorResponse(w, status, err.Error())
 		return
 	}
 
@@ -617,7 +620,10 @@ func (h *DocumentHandler) ListDeleted(w http.ResponseWriter, r *http.Request) {
 	responses := make([]documentResponse, 0, len(docs))
 	for i := range docs {
 		doc := &docs[i]
-		tags, _ := h.repo.TagsForDocument(r.Context(), doc.ID)
+		tags, tagsErr := h.repo.TagsForDocument(r.Context(), doc.ID)
+		if tagsErr != nil {
+			h.logger.Warn("loading tags for document", "doc_id", doc.ID, "error", tagsErr)
+		}
 		responses = append(responses, toDocumentResponse(doc, tags))
 	}
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
 )
@@ -221,6 +222,12 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Prevent admin from deleting their own account.
+	if currentUser, ok := authmiddleware.UserFromContext(r.Context()); ok && currentUser.ID == id {
+		errorResponse(w, http.StatusBadRequest, "cannot delete your own account")
+		return
+	}
+
 	if err := h.repo.DeleteUser(r.Context(), id); err != nil {
 		h.logger.Error("deleting user", "id", id, "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to delete user")
@@ -236,6 +243,12 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) ToggleAdmin(w http.ResponseWriter, r *http.Request) {
 	id, ok := h.parseID(w, r)
 	if !ok {
+		return
+	}
+
+	// Prevent admin from demoting themselves.
+	if currentUser, ok := authmiddleware.UserFromContext(r.Context()); ok && currentUser.ID == id {
+		errorResponse(w, http.StatusBadRequest, "cannot change your own admin status")
 		return
 	}
 

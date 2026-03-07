@@ -192,11 +192,21 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		s.logger.Info("auth/me endpoint registered", "path", "/api/auth/me")
 	}
 
-	// REST API (protected by bearer token when OAuth is configured)
+	// REST API (always authenticated)
 	r.Route("/api", func(r chi.Router) {
 		r.Use(httprate.LimitByIP(300, time.Minute))
-		if deps.OAuthService != nil {
+		switch {
+		case deps.OAuthService != nil:
 			r.Use(authmiddleware.BearerToken(deps.OAuthService))
+		default:
+			// No authentication backend configured — block all API access.
+			r.Use(func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusServiceUnavailable)
+					_, _ = w.Write([]byte(`{"error":"Service Unavailable","message":"authentication not configured"}`))
+				})
+			})
 		}
 
 		// Document endpoints

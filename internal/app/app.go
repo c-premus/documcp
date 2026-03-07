@@ -4,6 +4,7 @@ package app
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -16,12 +17,15 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/crypto/hkdf"
+
 	"github.com/gorilla/sessions"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jmoiron/sqlx"
 	"github.com/riverqueue/river"
 
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
+	"git.999.haus/chris/DocuMCP-go/internal/crypto"
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oidc"
 	"git.999.haus/chris/DocuMCP-go/internal/client/confluence"
 	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
@@ -120,12 +124,28 @@ func New(cfg *config.Config) (*App, error) {
 		MaxAge:   86400 * 30, // 30 days
 	}
 
+	// --- Encryption ---
+	var encryptor *crypto.Encryptor
+	if cfg.App.EncryptionKey != "" {
+		var encErr error
+		encryptor, encErr = crypto.NewEncryptor([]byte(cfg.App.EncryptionKey))
+		if encErr != nil {
+			return nil, fmt.Errorf("initializing encryptor: %w", encErr)
+		}
+		logger.Info("encryption at rest enabled")
+	} else {
+		logger.Warn("ENCRYPTION_KEY not set, git tokens will be stored in plaintext")
+	}
+
+	// --- Token HMAC key ---
+	oauth.SetTokenHMACKey(deriveKey([]byte(sessionSecret), "oauth-token-hmac", 32))
+
 	// --- Repositories ---
 	documentRepo := repository.NewDocumentRepository(db, logger)
 	externalServiceRepo := repository.NewExternalServiceRepository(db, logger)
 	zimArchiveRepo := repository.NewZimArchiveRepository(db, logger)
 	confluenceSpaceRepo := repository.NewConfluenceSpaceRepository(db, logger)
-	gitTemplateRepo := repository.NewGitTemplateRepository(db, logger)
+	gitTemplateRepo := repository.NewGitTemplateRepository(db, logger, encryptor)
 	searchQueryRepo := repository.NewSearchQueryRepository(db, logger)
 	oauthRepo := repository.NewOAuthRepository(db, logger)
 
@@ -144,6 +164,7 @@ func New(cfg *config.Config) (*App, error) {
 			}
 			searchIndexer = search.NewIndexer(searchClient, logger)
 			searcher = search.NewSearcher(searchClient, logger)
+			// Metrics are wired after NewMetrics() below.
 		} else {
 			logger.Warn("Meilisearch not reachable, search features disabled", "host", cfg.Meilisearch.Host)
 		}
@@ -212,6 +233,9 @@ func New(cfg *config.Config) (*App, error) {
 	// --- Observability (Metrics) ---
 	metrics := observability.NewMetrics()
 	observability.RegisterDBMetrics(db.DB)
+	if searcher != nil {
+		searcher.SetMetrics(metrics)
+	}
 	logger.Info("Prometheus metrics registered")
 
 	// --- EventBus ---
@@ -291,9 +315,11 @@ func New(cfg *config.Config) (*App, error) {
 		storagePath,
 	)
 
-	// Wire pipeline into document workers (resolves circular dependency).
+	// Wire pipeline and metrics into document workers (resolves circular dependency).
 	extractWorker.Pipeline = documentPipeline
+	extractWorker.Metrics = metrics
 	indexWorker.Indexer = documentPipeline
+	indexWorker.Metrics = metrics
 	reindexWorker.Indexer = documentPipeline
 
 	oauthService := oauth.NewService(oauthRepo, cfg.OAuth, cfg.App.URL, logger)
@@ -337,6 +363,19 @@ func New(cfg *config.Config) (*App, error) {
 	// --- Auth & SPA Handlers ---
 	authH := apihandler.NewAuthHandler(sessionStore, oauthRepo, logger)
 	spaHandler := frontend.Handler()
+
+	// --- Dashboard Handler ---
+	dashboardH := apihandler.NewDashboardHandler(
+		documentRepo,
+		oauthRepo,
+		oauthRepo,
+		externalServiceRepo,
+		zimArchiveRepo,
+		confluenceSpaceRepo,
+		gitTemplateRepo,
+		riverClient,
+		logger,
+	)
 
 	// --- SSE & Queue Handlers ---
 	sseH := apihandler.NewSSEHandler(eventBus)
@@ -413,11 +452,12 @@ func New(cfg *config.Config) (*App, error) {
 		OAuthClientHandler:     oauthClientH,
 		AuthHandler:            authH,
 		SPAHandler:             spaHandler,
+		DashboardHandler:       dashboardH,
 		SSEHandler:             sseH,
 		QueueHandler:           queueH,
 		Metrics:                metrics,
 		OTELEnabled:            cfg.OTEL.Enabled,
-		CSRFKey:                []byte(sessionSecret)[:32],
+		CSRFKey:                deriveKey([]byte(sessionSecret), "csrf-token-key", 32),
 		IsSecure:               cfg.App.Env == "production",
 		DB:                     db.DB,
 		InternalAPIToken:       cfg.App.InternalAPIToken,
@@ -543,4 +583,15 @@ func (a *docStatusAdapter) FindByStatus(ctx context.Context, status string) ([]q
 		result[i] = queue.StuckDocument{ID: d.ID, UUID: d.UUID}
 	}
 	return result, nil
+}
+
+// deriveKey uses HKDF-SHA256 to derive a subkey from a master secret.
+// This ensures different keys for different purposes (e.g. CSRF vs sessions).
+func deriveKey(secret []byte, info string, length int) []byte {
+	r := hkdf.New(sha256.New, secret, nil, []byte(info))
+	key := make([]byte, length)
+	if _, err := io.ReadFull(r, key); err != nil {
+		panic("hkdf: " + err.Error())
+	}
+	return key
 }

@@ -230,8 +230,26 @@ func (h *ExternalServiceHandler) Delete(w http.ResponseWriter, r *http.Request) 
 }
 
 // HealthCheck handles POST /api/external-services/{uuid}/health -- trigger a health check.
+// Health checks run automatically via the scheduler. This endpoint is reserved for future
+// on-demand health checks once per-type client resolution is wired.
 func (h *ExternalServiceHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
-	errorResponse(w, http.StatusNotImplemented, "health check not yet implemented")
+	svcUUID := chi.URLParam(r, "uuid")
+
+	svc, err := h.svc.FindByUUID(r.Context(), svcUUID)
+	if err != nil {
+		h.logger.Error("finding external service for health check", "uuid", svcUUID, "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to find external service")
+		return
+	}
+	if svc == nil {
+		errorResponse(w, http.StatusNotFound, "external service not found")
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"data":    toExternalServiceResponse(svc),
+		"message": "Health checks run automatically via the scheduler.",
+	})
 }
 
 // Reorder handles PUT /api/admin/external-services/reorder -- update priority ordering.

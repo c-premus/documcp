@@ -2,6 +2,7 @@
 package oauth
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,12 +14,24 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// tokenHMACKey holds the server-side key for HMAC-SHA256 token hashing.
+// When set (via SetTokenHMACKey), token hashes are keyed, preventing offline
+// brute-force attacks if the database is compromised.
+// When nil, falls back to plain SHA-256 (still safe for high-entropy tokens).
+var tokenHMACKey []byte //nolint:gochecknoglobals
+
+// SetTokenHMACKey configures the HMAC key used for token hashing.
+// Must be called once at startup before any token operations.
+func SetTokenHMACKey(key []byte) {
+	tokenHMACKey = key
+}
+
 // TokenPair holds a plaintext token and its database-storable hash.
 // The plaintext is returned to the client exactly once; the hash is persisted.
 type TokenPair struct {
 	ID        int64
 	Plaintext string // "{id}|{64_char_random}" — returned to client
-	Hash      string // SHA-256 hex of the 64-char random portion — stored in DB
+	Hash      string // HMAC-SHA256 (or SHA-256 fallback) hex of the random portion — stored in DB
 }
 
 // GenerateToken creates a new token in the format "{id}|{64_char_random}".
@@ -29,7 +42,7 @@ func GenerateToken() (*TokenPair, error) {
 	if err != nil {
 		return nil, fmt.Errorf("generating random token: %w", err)
 	}
-	hash := hashSHA256(random)
+	hash := hashToken(random)
 	return &TokenPair{
 		Plaintext: random, // id prefix added by SetID
 		Hash:      hash,
@@ -43,7 +56,7 @@ func (t *TokenPair) SetID(id int64) {
 }
 
 // ParseToken splits a plaintext token "{id}|{random}" into its components
-// and returns the database ID and the SHA-256 hash of the random portion.
+// and returns the database ID and the keyed hash of the random portion.
 func ParseToken(plaintext string) (id int64, hash string, err error) {
 	parts := strings.SplitN(plaintext, "|", 2)
 	if len(parts) != 2 {
@@ -53,7 +66,7 @@ func ParseToken(plaintext string) (id int64, hash string, err error) {
 	if err != nil {
 		return 0, "", fmt.Errorf("invalid token id: %w", err)
 	}
-	hash = hashSHA256(parts[1])
+	hash = hashToken(parts[1])
 	return id, hash, nil
 }
 
@@ -84,8 +97,14 @@ func GenerateClientSecret() (plaintext string, hashed string, err error) {
 	return plaintext, hashed, nil
 }
 
-// hashSHA256 returns the hex-encoded SHA-256 hash of s.
-func hashSHA256(s string) string {
+// hashToken returns a hex-encoded hash of s.
+// Uses HMAC-SHA256 when a key is configured, otherwise plain SHA-256.
+func hashToken(s string) string {
+	if len(tokenHMACKey) > 0 {
+		mac := hmac.New(sha256.New, tokenHMACKey)
+		mac.Write([]byte(s))
+		return hex.EncodeToString(mac.Sum(nil))
+	}
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
 }
