@@ -153,7 +153,7 @@ func (h *DashboardHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	jsonResponse(w, http.StatusOK, resp)
+	jsonResponse(w, http.StatusOK, map[string]any{"data": resp})
 }
 
 // countOrZero calls fn and returns the result, logging and returning 0 on error.

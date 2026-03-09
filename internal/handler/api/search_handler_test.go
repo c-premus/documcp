@@ -262,12 +262,15 @@ func TestSearchHandler_Popular(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 		assert.Equal(t, 10, capturedLimit, "default limit should be 10")
 
-		var results []repository.PopularQuery
-		err := json.NewDecoder(rr.Body).Decode(&results)
+		var body map[string]any
+		err := json.NewDecoder(rr.Body).Decode(&body)
 		require.NoError(t, err)
-		assert.Len(t, results, 3)
-		assert.Equal(t, "golang", results[0].Query)
-		assert.Equal(t, int64(42), results[0].Count)
+		dataRaw, ok := body["data"].([]any)
+		require.True(t, ok, "expected 'data' key with array value")
+		assert.Len(t, dataRaw, 3)
+		first := dataRaw[0].(map[string]any)
+		assert.Equal(t, "golang", first["query"])
+		assert.Equal(t, float64(42), first["count"])
 	})
 
 	t.Run("respects custom limit parameter", func(t *testing.T) {
@@ -395,10 +398,12 @@ func TestSearchHandler_Popular(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rr.Code)
 
-		var results []repository.PopularQuery
-		err := json.NewDecoder(rr.Body).Decode(&results)
+		var body map[string]any
+		err := json.NewDecoder(rr.Body).Decode(&body)
 		require.NoError(t, err)
-		assert.Empty(t, results)
+		dataRaw, ok := body["data"].([]any)
+		require.True(t, ok, "expected 'data' key with array value")
+		assert.Empty(t, dataRaw)
 	})
 }
 
@@ -480,23 +485,28 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rr.Code)
 
-		var results []autocompleteResult
-		err := json.NewDecoder(rr.Body).Decode(&results)
+		var body map[string]any
+		err := json.NewDecoder(rr.Body).Decode(&body)
 		require.NoError(t, err)
-		require.Len(t, results, 3)
+		dataRaw, ok := body["data"].([]any)
+		require.True(t, ok, "expected 'data' key with array value")
+		require.Len(t, dataRaw, 3)
 
-		assert.Equal(t, "uuid-1", results[0].UUID)
-		assert.Equal(t, "Golang Guide", results[0].Title)
-		assert.Equal(t, "<em>Go</em>lang Guide", results[0].HighlightedTitle)
+		r0 := dataRaw[0].(map[string]any)
+		assert.Equal(t, "uuid-1", r0["uuid"])
+		assert.Equal(t, "Golang Guide", r0["title"])
+		assert.Equal(t, "<em>Go</em>lang Guide", r0["highlighted_title"])
 
-		assert.Equal(t, "uuid-2", results[1].UUID)
-		assert.Equal(t, "Go Patterns", results[1].Title)
-		assert.Equal(t, "<em>Go</em> Patterns", results[1].HighlightedTitle)
+		r1 := dataRaw[1].(map[string]any)
+		assert.Equal(t, "uuid-2", r1["uuid"])
+		assert.Equal(t, "Go Patterns", r1["title"])
+		assert.Equal(t, "<em>Go</em> Patterns", r1["highlighted_title"])
 
 		// "Getting Started" does not start with "go", so no highlight
-		assert.Equal(t, "uuid-3", results[2].UUID)
-		assert.Equal(t, "Getting Started", results[2].Title)
-		assert.Equal(t, "Getting Started", results[2].HighlightedTitle)
+		r2 := dataRaw[2].(map[string]any)
+		assert.Equal(t, "uuid-3", r2["uuid"])
+		assert.Equal(t, "Getting Started", r2["title"])
+		assert.Equal(t, "Getting Started", r2["highlighted_title"])
 	})
 
 	t.Run("respects custom limit parameter", func(t *testing.T) {
@@ -601,10 +611,12 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rr.Code)
 
-		var results []autocompleteResult
-		err := json.NewDecoder(rr.Body).Decode(&results)
+		var body map[string]any
+		err := json.NewDecoder(rr.Body).Decode(&body)
 		require.NoError(t, err)
-		assert.Empty(t, results)
+		dataRaw, ok := body["data"].([]any)
+		require.True(t, ok, "expected 'data' key with array value")
+		assert.Empty(t, dataRaw)
 	})
 
 	t.Run("accepts minimum valid query length of 2", func(t *testing.T) {

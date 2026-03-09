@@ -62,7 +62,8 @@ async function fetchStats(): Promise<void> {
       const body = await res.json().catch(() => ({ message: res.statusText }))
       throw new Error(body.message || res.statusText)
     }
-    stats.value = (await res.json()) as DashboardStats
+    const body = await res.json()
+    stats.value = body.data as DashboardStats
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to fetch dashboard stats'
   } finally {

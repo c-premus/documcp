@@ -5,8 +5,11 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -1019,12 +1022,66 @@ func TestBuildTemplateArchiveTarGz(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Mock implementation of gitTemplateRepo
+// ---------------------------------------------------------------------------
+
+type mockGitTemplateRepo struct {
+	ListFn             func(ctx context.Context, category string, limit int) ([]model.GitTemplate, error)
+	SearchFn           func(ctx context.Context, query, category string, limit int) ([]model.GitTemplate, error)
+	FindByUUIDFn       func(ctx context.Context, uuid string) (*model.GitTemplate, error)
+	CreateFn           func(ctx context.Context, tmpl *model.GitTemplate) error
+	UpdateFn           func(ctx context.Context, tmpl *model.GitTemplate) error
+	SoftDeleteFn       func(ctx context.Context, id int64) error
+	FilesForTemplateFn func(ctx context.Context, templateID int64) ([]model.GitTemplateFile, error)
+	FindFileByPathFn   func(ctx context.Context, templateID int64, path string) (*model.GitTemplateFile, error)
+}
+
+func (m *mockGitTemplateRepo) List(ctx context.Context, category string, limit int) ([]model.GitTemplate, error) {
+	return m.ListFn(ctx, category, limit)
+}
+
+func (m *mockGitTemplateRepo) Search(ctx context.Context, query, category string, limit int) ([]model.GitTemplate, error) {
+	return m.SearchFn(ctx, query, category, limit)
+}
+
+func (m *mockGitTemplateRepo) FindByUUID(ctx context.Context, uuid string) (*model.GitTemplate, error) {
+	return m.FindByUUIDFn(ctx, uuid)
+}
+
+func (m *mockGitTemplateRepo) Create(ctx context.Context, tmpl *model.GitTemplate) error {
+	return m.CreateFn(ctx, tmpl)
+}
+
+func (m *mockGitTemplateRepo) Update(ctx context.Context, tmpl *model.GitTemplate) error {
+	return m.UpdateFn(ctx, tmpl)
+}
+
+func (m *mockGitTemplateRepo) SoftDelete(ctx context.Context, id int64) error {
+	return m.SoftDeleteFn(ctx, id)
+}
+
+func (m *mockGitTemplateRepo) FilesForTemplate(ctx context.Context, templateID int64) ([]model.GitTemplateFile, error) {
+	return m.FilesForTemplateFn(ctx, templateID)
+}
+
+func (m *mockGitTemplateRepo) FindFileByPath(ctx context.Context, templateID int64, path string) (*model.GitTemplateFile, error) {
+	return m.FindFileByPathFn(ctx, templateID, path)
+}
+
+// ---------------------------------------------------------------------------
 // GitTemplateHandler early-return path tests
 // ---------------------------------------------------------------------------
 
 func newTestGitTemplateHandler() *GitTemplateHandler {
 	return &GitTemplateHandler{
 		repo:   nil,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+}
+
+func newGitTemplateHandlerWithMock(repo *mockGitTemplateRepo) *GitTemplateHandler {
+	return &GitTemplateHandler{
+		repo:   repo,
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 }
@@ -1128,24 +1185,25 @@ func TestGitTemplateHandler_Create_Validation(t *testing.T) {
 func TestGitTemplateHandler_Download_Validation(t *testing.T) {
 	t.Parallel()
 
-	t.Run("returns 400 for invalid format", func(t *testing.T) {
+	t.Run("returns 400 for invalid JSON body", func(t *testing.T) {
 		t.Parallel()
 
-		// Download checks format after finding the template. Since repo is nil,
-		// we need to test the JSON decode error path instead.
-		h := newTestGitTemplateHandler()
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return &model.GitTemplate{ID: 1, UUID: "uuid-1", Name: "Test", Slug: "test"}, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
 		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/uuid-1/download",
 			strings.NewReader("not json"))
 		req = chiContext(req, map[string]string{"uuid": "uuid-1"})
 		rr := httptest.NewRecorder()
 
-		// This will fail because repo is nil when trying to find by UUID.
-		// We test a different early-return: invalid JSON body.
-		// Since FindByUUID panics with nil repo, we skip this particular path.
-		// Instead, test the JSON body validation paths that are reachable.
-		_ = h
-		_ = req
-		_ = rr
+		h.Download(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
 	})
 }
 
@@ -1161,4 +1219,467 @@ func TestNewGitTemplateHandler(t *testing.T) {
 	if h.logger != logger {
 		t.Error("logger not set correctly")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// GitTemplateHandler.List tests
+// ---------------------------------------------------------------------------
+
+func TestGitTemplateHandler_List(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns templates with default limit", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			ListFn: func(_ context.Context, category string, limit int) ([]model.GitTemplate, error) {
+				if category != "" {
+					t.Errorf("category = %q, want empty", category)
+				}
+				if limit != 50 {
+					t.Errorf("limit = %d, want 50", limit)
+				}
+				return []model.GitTemplate{
+					{UUID: "t1", Name: "Template One", Slug: "template-one", RepositoryURL: "https://github.com/a/b", Branch: "main", Status: "synced"},
+					{UUID: "t2", Name: "Template Two", Slug: "template-two", RepositoryURL: "https://github.com/c/d", Branch: "main", Status: "pending"},
+				}, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates", nil)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data, ok := body["data"].([]any)
+		if !ok {
+			t.Fatal("data field missing or not an array")
+		}
+		if len(data) != 2 {
+			t.Errorf("data length = %d, want 2", len(data))
+		}
+
+		meta := body["meta"].(map[string]any)
+		if total := meta["total"].(float64); total != 2 {
+			t.Errorf("meta.total = %v, want 2", total)
+		}
+	})
+
+	t.Run("passes category filter and custom limit", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			ListFn: func(_ context.Context, category string, limit int) ([]model.GitTemplate, error) {
+				if category != "devops" {
+					t.Errorf("category = %q, want devops", category)
+				}
+				if limit != 10 {
+					t.Errorf("limit = %d, want 10", limit)
+				}
+				return []model.GitTemplate{}, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates?category=devops&limit=10", nil)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+	})
+
+	t.Run("returns 500 when repo returns error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			ListFn: func(_ context.Context, _ string, _ int) ([]model.GitTemplate, error) {
+				return nil, errors.New("db connection lost")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates", nil)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "failed to list git templates" {
+			t.Errorf("message = %v, want 'failed to list git templates'", msg)
+		}
+	})
+
+	t.Run("returns empty array when no templates exist", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			ListFn: func(_ context.Context, _ string, _ int) ([]model.GitTemplate, error) {
+				return []model.GitTemplate{}, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates", nil)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].([]any)
+		if len(data) != 0 {
+			t.Errorf("data length = %d, want 0", len(data))
+		}
+	})
+
+	t.Run("negative limit defaults to 50", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			ListFn: func(_ context.Context, _ string, limit int) ([]model.GitTemplate, error) {
+				if limit != 50 {
+					t.Errorf("limit = %d, want 50 (default)", limit)
+				}
+				return []model.GitTemplate{}, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates?limit=-5", nil)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// GitTemplateHandler.Show tests
+// ---------------------------------------------------------------------------
+
+func TestGitTemplateHandler_Show(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns template when found", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, uuid string) (*model.GitTemplate, error) {
+				if uuid != "tmpl-uuid-1" {
+					t.Errorf("uuid = %q, want tmpl-uuid-1", uuid)
+				}
+				return &model.GitTemplate{
+					UUID:          "tmpl-uuid-1",
+					Name:          "My Template",
+					Slug:          "my-template",
+					RepositoryURL: "https://github.com/user/repo",
+					Branch:        "main",
+					Status:        "synced",
+					FileCount:     5,
+				}, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/tmpl-uuid-1", nil)
+		req = chiContext(req, map[string]string{"uuid": "tmpl-uuid-1"})
+		rr := httptest.NewRecorder()
+
+		h.Show(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].(map[string]any)
+		if data["uuid"] != "tmpl-uuid-1" {
+			t.Errorf("uuid = %v, want tmpl-uuid-1", data["uuid"])
+		}
+		if data["name"] != "My Template" {
+			t.Errorf("name = %v, want My Template", data["name"])
+		}
+	})
+
+	t.Run("returns 404 when template not found", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return nil, fmt.Errorf("finding template: %w", sql.ErrNoRows)
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/missing", nil)
+		req = chiContext(req, map[string]string{"uuid": "missing"})
+		rr := httptest.NewRecorder()
+
+		h.Show(rr, req)
+
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("returns 500 on unexpected error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return nil, errors.New("connection reset")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/uuid-1", nil)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1"})
+		rr := httptest.NewRecorder()
+
+		h.Show(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// GitTemplateHandler.Delete tests
+// ---------------------------------------------------------------------------
+
+func TestGitTemplateHandler_Delete(t *testing.T) {
+	t.Parallel()
+
+	t.Run("deletes template successfully", func(t *testing.T) {
+		t.Parallel()
+
+		var deletedID int64
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return &model.GitTemplate{ID: 42, UUID: "del-uuid"}, nil
+			},
+			SoftDeleteFn: func(_ context.Context, id int64) error {
+				deletedID = id
+				return nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodDelete, "/api/git-templates/del-uuid", nil)
+		req = chiContext(req, map[string]string{"uuid": "del-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Delete(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		if deletedID != 42 {
+			t.Errorf("deleted ID = %d, want 42", deletedID)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "Git template deleted successfully." {
+			t.Errorf("message = %v, want 'Git template deleted successfully.'", msg)
+		}
+	})
+
+	t.Run("returns 404 when template not found", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return nil, fmt.Errorf("not found: %w", sql.ErrNoRows)
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodDelete, "/api/git-templates/missing", nil)
+		req = chiContext(req, map[string]string{"uuid": "missing"})
+		rr := httptest.NewRecorder()
+
+		h.Delete(rr, req)
+
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("returns 500 when soft delete fails", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return &model.GitTemplate{ID: 1, UUID: "uuid-1"}, nil
+			},
+			SoftDeleteFn: func(_ context.Context, _ int64) error {
+				return errors.New("db write failed")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodDelete, "/api/git-templates/uuid-1", nil)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1"})
+		rr := httptest.NewRecorder()
+
+		h.Delete(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("returns 500 when find returns unexpected error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return nil, errors.New("timeout")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodDelete, "/api/git-templates/uuid-1", nil)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1"})
+		rr := httptest.NewRecorder()
+
+		h.Delete(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// GitTemplateHandler.ValidateURL tests
+// ---------------------------------------------------------------------------
+
+func TestGitTemplateHandler_ValidateURL(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns valid true for safe URL", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestGitTemplateHandler()
+		req := httptest.NewRequest(http.MethodPost, "/api/admin/git-templates/validate-url",
+			strings.NewReader(`{"url":"https://github.com/user/repo"}`))
+		rr := httptest.NewRecorder()
+
+		h.ValidateURL(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if valid := body["valid"].(bool); !valid {
+			t.Error("valid = false, want true")
+		}
+	})
+
+	t.Run("returns valid false for SSRF-blocked URL", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestGitTemplateHandler()
+		req := httptest.NewRequest(http.MethodPost, "/api/admin/git-templates/validate-url",
+			strings.NewReader(`{"url":"http://127.0.0.1:8080/secret"}`))
+		rr := httptest.NewRecorder()
+
+		h.ValidateURL(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if valid := body["valid"].(bool); valid {
+			t.Error("valid = true, want false for localhost URL")
+		}
+		if _, hasErr := body["error"]; !hasErr {
+			t.Error("expected error field in response for blocked URL")
+		}
+	})
+
+	t.Run("returns 400 for invalid JSON", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestGitTemplateHandler()
+		req := httptest.NewRequest(http.MethodPost, "/api/admin/git-templates/validate-url",
+			strings.NewReader("not json"))
+		rr := httptest.NewRecorder()
+
+		h.ValidateURL(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+	})
+
+	t.Run("returns 400 when url is empty", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestGitTemplateHandler()
+		req := httptest.NewRequest(http.MethodPost, "/api/admin/git-templates/validate-url",
+			strings.NewReader(`{"url":""}`))
+		rr := httptest.NewRecorder()
+
+		h.ValidateURL(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+	})
+
+	t.Run("returns valid false for file scheme URL", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestGitTemplateHandler()
+		req := httptest.NewRequest(http.MethodPost, "/api/admin/git-templates/validate-url",
+			strings.NewReader(`{"url":"file:///etc/passwd"}`))
+		rr := httptest.NewRecorder()
+
+		h.ValidateURL(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if valid := body["valid"].(bool); valid {
+			t.Error("valid = true, want false for file:// URL")
+		}
+	})
 }

@@ -19,7 +19,8 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await fetch('/api/auth/me')
       if (response.ok) {
-        user.value = (await response.json()) as User
+        const body = await response.json()
+        user.value = body.data as User
       } else {
         user.value = null
       }

@@ -26,11 +26,6 @@ export interface FailedJob {
   readonly errors?: AttemptError[]
 }
 
-interface FailedJobsResponse {
-  readonly jobs: FailedJob[]
-  readonly count: number
-}
-
 async function api<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, options)
   if (!res.ok) {
@@ -49,21 +44,21 @@ export const useQueueStore = defineStore('queue', () => {
   async function fetchStats(): Promise<QueueStats> {
     loading.value = true
     try {
-      const data = await api<QueueStats>('/api/admin/queue/stats')
-      stats.value = data
-      return data
+      const response = await api<{data: QueueStats}>('/api/admin/queue/stats')
+      stats.value = response.data
+      return response.data
     } finally {
       loading.value = false
     }
   }
 
-  async function fetchFailedJobs(limit?: number): Promise<FailedJobsResponse> {
+  async function fetchFailedJobs(limit?: number): Promise<{data: FailedJob[], meta: {count: number}}> {
     loading.value = true
     try {
       const qs = limit ? `?limit=${limit}` : ''
-      const data = await api<FailedJobsResponse>(`/api/admin/queue/failed${qs}`)
-      failedJobs.value = data.jobs
-      failedCount.value = data.count
+      const data = await api<{data: FailedJob[], meta: {count: number}}>(`/api/admin/queue/failed${qs}`)
+      failedJobs.value = data.data
+      failedCount.value = data.meta.count
       return data
     } finally {
       loading.value = false

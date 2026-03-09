@@ -656,6 +656,33 @@ func TestValidateRepositoryURL_PrivateIPsBlocked(t *testing.T) {
 	}
 }
 
+// --- validateBranch ---
+
+func TestValidateBranch(t *testing.T) {
+	tests := []struct {
+		name    string
+		branch  string
+		wantErr bool
+	}{
+		{name: "valid main", branch: "main", wantErr: false},
+		{name: "valid feature branch", branch: "feature/my-feature", wantErr: false},
+		{name: "valid version tag", branch: "v1.0.0", wantErr: false},
+		{name: "valid with dots", branch: "release.2025.03", wantErr: false},
+		{name: "empty string", branch: "", wantErr: true},
+		{name: "starts with dash", branch: "-branch", wantErr: true},
+		{name: "starts with double dash", branch: "--delete", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateBranch(tt.branch)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateBranch(%q) error = %v, wantErr %v", tt.branch, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // --- helpers ---
 
 func stringSliceEqual(a, b []string) bool {

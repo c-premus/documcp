@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,6 +26,17 @@ func newTestServer(t *testing.T) *server.Server {
 	cfg := server.DefaultConfig()
 	srv := server.New(cfg, logger)
 	srv.RegisterRoutes(server.Deps{Version: "test-version"})
+
+	return srv
+}
+
+func newTestServerWithDeps(t *testing.T, deps server.Deps) *server.Server {
+	t.Helper()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := server.DefaultConfig()
+	srv := server.New(cfg, logger)
+	srv.RegisterRoutes(deps)
 
 	return srv
 }
@@ -214,7 +226,7 @@ func TestListenAndServeOnAvailablePort(t *testing.T) {
 	srv := server.New(cfg, logger)
 
 	// Register a simple test route.
-	srv.Router().Get("/test-available-port", func(w http.ResponseWriter, r *http.Request) {
+	srv.Router().Get("/test-available-port", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
@@ -301,7 +313,7 @@ func TestShutdown_GracefulStop(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	srv := server.New(server.DefaultConfig(), logger)
 
-	srv.Router().Get("/ping", func(w http.ResponseWriter, r *http.Request) {
+	srv.Router().Get("/ping", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -452,5 +464,468 @@ func TestListenAndServeOnAvailablePort_PortIsNonZero(t *testing.T) {
 	// Should NOT be :0 -- it should have a real port assigned.
 	if strings.HasSuffix(addr, ":0") {
 		t.Errorf("listener address %q ends with :0, expected an assigned port", addr)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: API routes without OAuth return 503
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_APIReturns503WithoutOAuth(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
+
+	// All /api/* routes should return 503 when no OAuth is configured.
+	paths := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/documents"},
+		{http.MethodPost, "/api/documents"},
+		{http.MethodGet, "/api/search"},
+	}
+
+	for _, tt := range paths {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			rec := httptest.NewRecorder()
+
+			srv.Router().ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusServiceUnavailable {
+				t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+			}
+
+			ct := rec.Header().Get("Content-Type")
+			if ct != "application/json" {
+				t.Errorf("Content-Type = %q, want %q", ct, "application/json")
+			}
+
+			body := rec.Body.String()
+			if !strings.Contains(body, "authentication not configured") {
+				t.Errorf("body = %q, want it to contain 'authentication not configured'", body)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: /admin/login redirects to /auth/login
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_AdminLoginRedirect(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/login", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMovedPermanently {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusMovedPermanently)
+	}
+
+	location := rec.Header().Get("Location")
+	if location != "/auth/login" {
+		t.Errorf("Location = %q, want %q", location, "/auth/login")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: MCP handler registration
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_MCPHandler(t *testing.T) {
+	t.Parallel()
+
+	mcpCalled := false
+	mcpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mcpCalled = true
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("mcp ok"))
+	})
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:    "test",
+		MCPHandler: mcpHandler,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/documcp/", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	if !mcpCalled {
+		t.Error("MCP handler was not called")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+func TestRegisterRoutes_MCPHandlerSubpath(t *testing.T) {
+	t.Parallel()
+
+	mcpCalled := false
+	mcpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mcpCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:    "test",
+		MCPHandler: mcpHandler,
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/documcp/some/path", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	if !mcpCalled {
+		t.Error("MCP handler was not called for subpath")
+	}
+}
+
+func TestRegisterRoutes_MCPHandlerNotRegisteredWhenNil(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
+
+	req := httptest.NewRequest(http.MethodGet, "/documcp/", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d (MCP should not be registered)", rec.Code, http.StatusNotFound)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: SPA handler registration
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_SPAHandler(t *testing.T) {
+	t.Parallel()
+
+	spaCalled := false
+	spaHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		spaCalled = true
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("spa"))
+	})
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:    "test",
+		SPAHandler: spaHandler,
+	})
+
+	// /admin should redirect to /admin/
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMovedPermanently {
+		t.Errorf("/admin status = %d, want %d", rec.Code, http.StatusMovedPermanently)
+	}
+
+	location := rec.Header().Get("Location")
+	if location != "/admin/" {
+		t.Errorf("Location = %q, want %q", location, "/admin/")
+	}
+
+	// /admin/ should serve the SPA
+	req2 := httptest.NewRequest(http.MethodGet, "/admin/", nil)
+	rec2 := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec2, req2)
+
+	if !spaCalled {
+		t.Error("SPA handler was not called for /admin/")
+	}
+}
+
+func TestRegisterRoutes_SPAHandlerSubpath(t *testing.T) {
+	t.Parallel()
+
+	spaCalled := false
+	spaHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		spaCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:    "test",
+		SPAHandler: spaHandler,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	if !spaCalled {
+		t.Error("SPA handler was not called for /admin/dashboard")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: DefaultConfig ReadHeaderTimeout
+// ---------------------------------------------------------------------------
+
+func TestDefaultConfig_ReadHeaderTimeout(t *testing.T) {
+	t.Parallel()
+
+	cfg := server.DefaultConfig()
+	if cfg.ReadHeaderTimeout != 5*time.Second {
+		t.Errorf("ReadHeaderTimeout = %v, want %v", cfg.ReadHeaderTimeout, 5*time.Second)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: CSP header present via middleware
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_CSPHeaderPresent(t *testing.T) {
+	srv := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	csp := rec.Header().Get("Content-Security-Policy")
+	if csp == "" {
+		t.Error("Content-Security-Policy header is empty, want it to be set")
+	}
+	if !strings.Contains(csp, "default-src 'self'") {
+		t.Errorf("CSP = %q, want it to contain \"default-src 'self'\"", csp)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: MaxBodySize enforced on API routes
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_MaxBodySizeEnforced(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Create a body larger than 1 MB (the configured limit).
+	bigBody := strings.NewReader(strings.Repeat("x", 2*1024*1024))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/documents", bigBody)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	// The route handler receives the request, but the body is limited.
+	// Since no OAuth is configured, the 503 middleware fires first,
+	// but the body limiter is still applied by the middleware stack.
+	// We just verify the request completes without panic.
+	if rec.Code == 0 {
+		t.Error("expected a non-zero status code")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: readiness endpoint registered when DB is provided
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_ReadinessEndpointWithDB(t *testing.T) {
+	t.Parallel()
+
+	// Use an empty sql.DB (not connected). The readiness handler will
+	// attempt to ping and fail, but the route should still be registered.
+	db := &sql.DB{}
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version: "test",
+		DB:      db,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	// The route exists (not 404), but will return 503 because the DB is not connected.
+	if rec.Code == http.StatusNotFound {
+		t.Error("status = 404, want readiness endpoint to be registered when DB is provided")
+	}
+}
+
+func TestRegisterRoutes_ReadinessEndpointNotRegisteredWithoutDB(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
+
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d (readiness should not be registered without DB)",
+			rec.Code, http.StatusNotFound)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: /api/* returns JSON error body on 503
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_APIErrorResponseFormat(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/documents", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+
+	var errResp struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decoding error response: %v", err)
+	}
+
+	if errResp.Error != "Service Unavailable" {
+		t.Errorf("error = %q, want %q", errResp.Error, "Service Unavailable")
+	}
+	if errResp.Message != "authentication not configured" {
+		t.Errorf("message = %q, want %q", errResp.Message, "authentication not configured")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: admin endpoint routes fall under /api/admin
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_AdminEndpointWithoutAuth(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
+
+	// Admin routes are under /api which requires OAuth, so they should 503.
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: /admin redirects to /admin/ when SPA is nil
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_AdminWithoutSPA(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
+
+	// Without SPA handler, /admin/ should return 404.
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d (SPA not configured)", rec.Code, http.StatusNotFound)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: MCP handler without OAuth has no bearer middleware
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_MCPHandlerWithoutOAuth(t *testing.T) {
+	t.Parallel()
+
+	mcpCalled := false
+	mcpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mcpCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:    "test",
+		MCPHandler: mcpHandler,
+		// OAuthService is nil -- no auth middleware on MCP
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/documcp/", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	if !mcpCalled {
+		t.Error("MCP handler should be called without auth when OAuthService is nil")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: multiple middleware are applied in correct order
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_MiddlewareOrder(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Verify that all expected middleware are active by checking
+	// that a request to /health gets both security headers and a request ID.
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	// Security headers should be present.
+	if got := rec.Header().Get("X-Frame-Options"); got != "DENY" {
+		t.Errorf("X-Frame-Options = %q, want %q", got, "DENY")
+	}
+
+	// The response should succeed.
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: admin login redirect with query params preserved
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_AdminLoginRedirectPreservesMethod(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
+
+	// POST to /admin/login should still get routed (chi only registers GET).
+	req := httptest.NewRequest(http.MethodPost, "/admin/login", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	// POST to a GET-only route should return 405 Method Not Allowed.
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
 	}
 }

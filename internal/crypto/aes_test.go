@@ -130,4 +130,49 @@ func TestDecryptInvalidInput(t *testing.T) {
 			t.Fatal("expected error")
 		}
 	})
+
+	t.Run("tampered ciphertext", func(t *testing.T) {
+		ciphertext, err := enc.Encrypt("secret")
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Flip a character in the middle of the ciphertext.
+		tampered := []byte(ciphertext)
+		tampered[len(tampered)/2] ^= 0xFF
+		_, err = enc.Decrypt(string(tampered))
+		if err == nil {
+			t.Fatal("expected error for tampered ciphertext")
+		}
+	})
+
+	t.Run("wrong key cannot decrypt", func(t *testing.T) {
+		ciphertext, err := enc.Encrypt("secret")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		otherKey := make([]byte, 32)
+		if _, err := rand.Read(otherKey); err != nil {
+			t.Fatal(err)
+		}
+		otherEnc, err := NewEncryptor(otherKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = otherEnc.Decrypt(ciphertext)
+		if err == nil {
+			t.Fatal("expected error when decrypting with wrong key")
+		}
+	})
+
+	t.Run("empty string decrypt passthrough", func(t *testing.T) {
+		result, err := enc.Decrypt("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result != "" {
+			t.Fatalf("expected empty string, got %q", result)
+		}
+	})
 }
