@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -11,8 +12,17 @@ import (
 
 	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/repository"
 )
+
+// userRepo defines the methods used by UserHandler — defined where consumed.
+type userRepo interface {
+	ListUsers(ctx context.Context, query string, limit, offset int) ([]model.User, int, error)
+	FindUserByID(ctx context.Context, id int64) (*model.User, error)
+	CreateUser(ctx context.Context, user *model.User) error
+	UpdateUser(ctx context.Context, user *model.User) error
+	DeleteUser(ctx context.Context, id int64) error
+	ToggleAdmin(ctx context.Context, id int64) error
+}
 
 // userResponse is a clean JSON representation of a User,
 // mapping sql.NullString/sql.NullTime to plain values.
@@ -63,13 +73,13 @@ func newUserResponseList(users []model.User) []userResponse {
 
 // UserHandler handles REST API endpoints for user administration.
 type UserHandler struct {
-	repo   *repository.OAuthRepository
+	repo   userRepo
 	logger *slog.Logger
 }
 
 // NewUserHandler creates a new UserHandler.
 func NewUserHandler(
-	repo *repository.OAuthRepository,
+	repo userRepo,
 	logger *slog.Logger,
 ) *UserHandler {
 	return &UserHandler{

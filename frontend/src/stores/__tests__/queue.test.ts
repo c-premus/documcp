@@ -62,7 +62,7 @@ describe('queue store', () => {
   describe('fetchStats', () => {
     it('calls correct URL and sets stats', async () => {
       const stats = mockStats()
-      stubFetch(stats)
+      stubFetch({ data: stats })
 
       const store = useQueueStore()
       const result = await store.fetchStats()
@@ -90,7 +90,7 @@ describe('queue store', () => {
 
       resolvePromise!({
         ok: true,
-        json: () => Promise.resolve(mockStats()),
+        json: () => Promise.resolve({ data: mockStats() }),
       })
       await promise
 
@@ -110,7 +110,7 @@ describe('queue store', () => {
   describe('fetchFailedJobs', () => {
     it('calls correct URL and sets failedJobs/failedCount', async () => {
       const jobs = [mockFailedJob(), mockFailedJob({ id: 2 })]
-      stubFetch({ jobs, count: 2 })
+      stubFetch({ data: jobs, meta: { count: 2 } })
 
       const store = useQueueStore()
       const result = await store.fetchFailedJobs()
@@ -118,11 +118,11 @@ describe('queue store', () => {
       expect(fetch).toHaveBeenCalledWith('/api/admin/queue/failed', undefined)
       expect(store.failedJobs).toEqual(jobs)
       expect(store.failedCount).toBe(2)
-      expect(result).toEqual({ jobs, count: 2 })
+      expect(result).toEqual({ data: jobs, meta: { count: 2 } })
     })
 
     it('appends limit query param when provided', async () => {
-      stubFetch({ jobs: [], count: 0 })
+      stubFetch({ data: [], meta: { count: 0 } })
 
       const store = useQueueStore()
       await store.fetchFailedJobs(25)
@@ -148,7 +148,7 @@ describe('queue store', () => {
 
       resolvePromise!({
         ok: true,
-        json: () => Promise.resolve({ jobs: [], count: 0 }),
+        json: () => Promise.resolve({ data: [], meta: { count: 0 } }),
       })
       await promise
 

@@ -1,14 +1,14 @@
 {
   "metadata": {
     "generated_from": "Source code analysis",
-    "generated_at": "2026-02-24",
+    "generated_at": "2026-03-08",
     "project": "DocuMCP",
     "layers": [
       "models",
       "dtos",
       "actions",
       "services",
-      "controllers",
+      "handlers",
       "mcp_tools",
       "mcp_prompts",
       "middleware",
@@ -19,32 +19,32 @@
   "components": {
     "models": {
       "User": {
-        "file": "app/Models/User.php",
+        "file": "internal/domain/User.go",
         "table": "users",
         "relationships": {
           "documents": { "type": "hasMany", "target": "Document" },
           "oauthClients": { "type": "hasMany", "target": "OAuthClient" },
           "searchQueries": { "type": "hasMany", "target": "SearchQuery" }
         },
-        "traits": ["HasApiTokens", "HasFactory", "Notifiable"],
+        "interfaces": ["TokenHolder"],
         "used_by": [
           "OAuthService",
           "DocumentService",
           "LoginController",
           "OAuthAuthorizationServerController",
-          "LaravelMcpAuth",
+          "MCPAuth",
           "UnifiedSearchTool"
         ]
       },
       "Document": {
-        "file": "app/Models/Document.php",
+        "file": "internal/domain/Document.go",
         "table": "documents",
         "relationships": {
           "user": { "type": "belongsTo", "target": "User" },
           "versions": { "type": "hasMany", "target": "DocumentVersion" },
           "tags": { "type": "hasMany", "target": "DocumentTag" }
         },
-        "traits": ["HasFactory", "DatabaseCompatibility", "Searchable", "SoftDeletes"],
+        "interfaces": ["Searchable", "SoftDeletable"],
         "used_by": [
           "CreateDocumentAction",
           "DeleteDocumentAction",
@@ -72,28 +72,28 @@
         ]
       },
       "DocumentTag": {
-        "file": "app/Models/DocumentTag.php",
+        "file": "internal/domain/DocumentTag.go",
         "table": "document_tags",
         "relationships": {
           "document": { "type": "belongsTo", "target": "Document" }
         },
-        "traits": ["HasFactory"],
+        "interfaces": [],
         "used_by": ["CreateDocumentAction", "UpdateDocumentAction"]
       },
       "DocumentVersion": {
-        "file": "app/Models/DocumentVersion.php",
+        "file": "internal/domain/DocumentVersion.go",
         "table": "document_versions",
         "relationships": {
           "document": { "type": "belongsTo", "target": "Document" }
         },
-        "traits": ["HasFactory"],
+        "interfaces": [],
         "used_by": []
       },
       "ExternalService": {
-        "file": "app/Models/ExternalService.php",
+        "file": "internal/domain/ExternalService.go",
         "table": "external_services",
         "relationships": {},
-        "traits": ["HasFactory"],
+        "interfaces": [],
         "used_by": [
           "ExternalServiceManager",
           "ExternalServiceHealthChecker",
@@ -109,13 +109,13 @@
         ]
       },
       "GitTemplate": {
-        "file": "app/Models/GitTemplate.php",
+        "file": "internal/domain/GitTemplate.go",
         "table": "git_templates",
         "relationships": {
           "user": { "type": "belongsTo", "target": "User" },
           "files": { "type": "hasMany", "target": "GitTemplateFile" }
         },
-        "traits": ["HasFactory", "DatabaseCompatibility", "Searchable", "SoftDeletes"],
+        "interfaces": ["Searchable", "SoftDeletable"],
         "used_by": [
           "ListGitTemplatesAction",
           "SearchGitTemplatesAction",
@@ -136,26 +136,26 @@
         ]
       },
       "GitTemplateFile": {
-        "file": "app/Models/GitTemplateFile.php",
+        "file": "internal/domain/GitTemplateFile.go",
         "table": "git_template_files",
         "relationships": {
           "gitTemplate": { "type": "belongsTo", "target": "GitTemplate" }
         },
-        "traits": ["HasFactory"],
+        "interfaces": [],
         "used_by": [
           "SyncGitTemplateAction",
           "GetTemplateFileAction"
         ]
       },
       "OAuthClient": {
-        "file": "app/Models/OAuthClient.php",
+        "file": "internal/domain/OAuthClient.go",
         "table": "oauth_clients",
         "relationships": {
           "user": { "type": "belongsTo", "target": "User" },
           "authorizationCodes": { "type": "hasMany", "target": "OAuthAuthorizationCode" },
           "accessTokens": { "type": "hasMany", "target": "OAuthAccessToken" }
         },
-        "traits": ["HasFactory"],
+        "interfaces": [],
         "used_by": [
           "RegisterOAuthClientAction",
           "UpdateOAuthClientAction",
@@ -171,14 +171,14 @@
         ]
       },
       "OAuthAccessToken": {
-        "file": "app/Models/OAuthAccessToken.php",
+        "file": "internal/domain/OAuthAccessToken.go",
         "table": "oauth_access_tokens",
         "relationships": {
           "client": { "type": "belongsTo", "target": "OAuthClient" },
           "user": { "type": "belongsTo", "target": "User" },
           "refreshToken": { "type": "hasOne", "target": "OAuthRefreshToken" }
         },
-        "traits": ["HasFactory"],
+        "interfaces": [],
         "used_by": [
           "ExchangeAuthorizationCodeAction",
           "ExchangeDeviceCodeAction",
@@ -186,17 +186,17 @@
           "RevokeTokenAction",
           "PruneExpiredAccessTokensAction",
           "PruneRevokedTokensAction",
-          "LaravelMcpAuth"
+          "MCPAuth"
         ]
       },
       "OAuthAuthorizationCode": {
-        "file": "app/Models/OAuthAuthorizationCode.php",
+        "file": "internal/domain/OAuthAuthorizationCode.go",
         "table": "oauth_authorization_codes",
         "relationships": {
           "client": { "type": "belongsTo", "target": "OAuthClient" },
           "user": { "type": "belongsTo", "target": "User" }
         },
-        "traits": ["HasFactory"],
+        "interfaces": [],
         "used_by": [
           "ExchangeAuthorizationCodeAction",
           "GenerateAuthorizationCodeAction",
@@ -205,13 +205,13 @@
         ]
       },
       "OAuthDeviceCode": {
-        "file": "app/Models/OAuthDeviceCode.php",
+        "file": "internal/domain/OAuthDeviceCode.go",
         "table": "oauth_device_codes",
         "relationships": {
           "client": { "type": "belongsTo", "target": "OAuthClient" },
           "user": { "type": "belongsTo", "target": "User" }
         },
-        "traits": ["HasFactory"],
+        "interfaces": [],
         "used_by": [
           "AuthorizeDeviceCodeAction",
           "ExchangeDeviceCodeAction",
@@ -220,12 +220,12 @@
         ]
       },
       "OAuthRefreshToken": {
-        "file": "app/Models/OAuthRefreshToken.php",
+        "file": "internal/domain/OAuthRefreshToken.go",
         "table": "oauth_refresh_tokens",
         "relationships": {
           "accessToken": { "type": "belongsTo", "target": "OAuthAccessToken" }
         },
-        "traits": ["HasFactory"],
+        "interfaces": [],
         "used_by": [
           "ExchangeAuthorizationCodeAction",
           "ExchangeDeviceCodeAction",
@@ -236,21 +236,21 @@
         ]
       },
       "SearchQuery": {
-        "file": "app/Models/SearchQuery.php",
+        "file": "internal/domain/SearchQuery.go",
         "table": "search_queries",
         "relationships": {
           "user": { "type": "belongsTo", "target": "User" }
         },
-        "traits": ["HasFactory"],
+        "interfaces": [],
         "used_by": ["SearchService"]
       },
       "ZimArchive": {
-        "file": "app/Models/ZimArchive.php",
+        "file": "internal/domain/ZimArchive.go",
         "table": "zim_archives",
         "relationships": {
           "externalService": { "type": "belongsTo", "target": "ExternalService" }
         },
-        "traits": ["HasFactory", "Searchable"],
+        "interfaces": ["Searchable"],
         "used_by": [
           "SearchZimArchivesAction",
           "SearchZimArticlesAction",
@@ -262,12 +262,12 @@
         ]
       },
       "ConfluenceSpace": {
-        "file": "app/Models/ConfluenceSpace.php",
+        "file": "internal/domain/ConfluenceSpace.go",
         "table": "confluence_spaces",
         "relationships": {
           "externalService": { "type": "belongsTo", "target": "ExternalService" }
         },
-        "traits": ["HasFactory", "Searchable"],
+        "interfaces": ["Searchable"],
         "used_by": [
           "ListConfluenceSpacesAction",
           "SyncConfluenceSpacesAction",
@@ -277,649 +277,649 @@
     },
     "dtos": {
       "DetermineAdminStatusDTO": {
-        "file": "app/DTO/Auth/DetermineAdminStatusDTO.php",
+        "file": "internal/domain/auth/DetermineAdminStatusDTO.go",
         "used_by_action": "DetermineAdminStatusFromGroupsAction"
       },
       "ConfluencePageDTO": {
-        "file": "app/DTO/Confluence/ConfluencePageDTO.php",
+        "file": "internal/domain/confluence/ConfluencePageDTO.go",
         "used_by_action": "ReadConfluencePageAction"
       },
       "ConfluenceSearchResultDTO": {
-        "file": "app/DTO/Confluence/ConfluenceSearchResultDTO.php",
+        "file": "internal/domain/confluence/ConfluenceSearchResultDTO.go",
         "used_by_action": "SearchConfluencePagesAction"
       },
       "ConfluenceSpaceDTO": {
-        "file": "app/DTO/Confluence/ConfluenceSpaceDTO.php",
+        "file": "internal/domain/confluence/ConfluenceSpaceDTO.go",
         "used_by_action": "SyncConfluenceSpacesAction"
       },
       "ListConfluenceSpacesDTO": {
-        "file": "app/DTO/Confluence/ListConfluenceSpacesDTO.php",
+        "file": "internal/domain/confluence/ListConfluenceSpacesDTO.go",
         "used_by_action": "ListConfluenceSpacesAction"
       },
       "ReadConfluencePageDTO": {
-        "file": "app/DTO/Confluence/ReadConfluencePageDTO.php",
+        "file": "internal/domain/confluence/ReadConfluencePageDTO.go",
         "used_by_action": "ReadConfluencePageAction"
       },
       "SearchConfluencePagesDTO": {
-        "file": "app/DTO/Confluence/SearchConfluencePagesDTO.php",
+        "file": "internal/domain/confluence/SearchConfluencePagesDTO.go",
         "used_by_action": "SearchConfluencePagesAction"
       },
       "SyncConfluenceSpacesDTO": {
-        "file": "app/DTO/Confluence/SyncConfluenceSpacesDTO.php",
+        "file": "internal/domain/confluence/SyncConfluenceSpacesDTO.go",
         "used_by_action": "SyncConfluenceSpacesAction"
       },
       "AnalyzeDocumentMetadataDTO": {
-        "file": "app/DTO/Documents/AnalyzeDocumentMetadataDTO.php",
+        "file": "internal/domain/document/AnalyzeDocumentMetadataDTO.go",
         "used_by_action": "AnalyzeDocumentMetadataAction"
       },
       "CleanupSoftDeletedDTO": {
-        "file": "app/DTO/Documents/CleanupSoftDeletedDTO.php",
+        "file": "internal/domain/document/CleanupSoftDeletedDTO.go",
         "used_by_action": "CleanupSoftDeletedDocumentsAction"
       },
       "CreateDocumentDTO": {
-        "file": "app/DTO/Documents/CreateDocumentDTO.php",
+        "file": "internal/domain/document/CreateDocumentDTO.go",
         "used_by_action": "CreateDocumentAction"
       },
       "DeleteDocumentDTO": {
-        "file": "app/DTO/Documents/DeleteDocumentDTO.php",
+        "file": "internal/domain/document/DeleteDocumentDTO.go",
         "used_by_action": "DeleteDocumentAction"
       },
       "DocumentDTO": {
-        "file": "app/DTO/Documents/DocumentDTO.php",
+        "file": "internal/domain/document/DocumentDTO.go",
         "used_by_action": null
       },
       "DocumentMetadataSuggestionsDTO": {
-        "file": "app/DTO/Documents/DocumentMetadataSuggestionsDTO.php",
+        "file": "internal/domain/document/DocumentMetadataSuggestionsDTO.go",
         "used_by_action": "AnalyzeDocumentMetadataAction"
       },
       "DocumentStatsDTO": {
-        "file": "app/DTO/Documents/DocumentStatsDTO.php",
+        "file": "internal/domain/document/DocumentStatsDTO.go",
         "used_by_action": null
       },
       "ExtractDocumentContentDTO": {
-        "file": "app/DTO/Documents/ExtractDocumentContentDTO.php",
+        "file": "internal/domain/document/ExtractDocumentContentDTO.go",
         "used_by_action": "ExtractDocumentContentAction"
       },
       "ExtractedContentDTO": {
-        "file": "app/DTO/Documents/ExtractedContentDTO.php",
+        "file": "internal/domain/document/ExtractedContentDTO.go",
         "used_by_action": "ExtractDocumentContentAction"
       },
       "IndexDocumentDTO": {
-        "file": "app/DTO/Documents/IndexDocumentDTO.php",
+        "file": "internal/domain/document/IndexDocumentDTO.go",
         "used_by_action": "IndexDocumentInMeilisearchAction"
       },
       "RestoreDocumentDTO": {
-        "file": "app/DTO/Documents/RestoreDocumentDTO.php",
+        "file": "internal/domain/document/RestoreDocumentDTO.go",
         "used_by_action": "RestoreDocumentAction"
       },
       "SearchDocumentDTO": {
-        "file": "app/DTO/Documents/SearchDocumentDTO.php",
+        "file": "internal/domain/document/SearchDocumentDTO.go",
         "used_by_action": "SearchDocumentsAction"
       },
       "SearchResultsDTO": {
-        "file": "app/DTO/Documents/SearchResultsDTO.php",
+        "file": "internal/domain/document/SearchResultsDTO.go",
         "used_by_action": null
       },
       "UpdateDocumentDTO": {
-        "file": "app/DTO/Documents/UpdateDocumentDTO.php",
+        "file": "internal/domain/document/UpdateDocumentDTO.go",
         "used_by_action": "UpdateDocumentAction"
       },
       "UpdateDocumentStatusDTO": {
-        "file": "app/DTO/Documents/UpdateDocumentStatusDTO.php",
+        "file": "internal/domain/document/UpdateDocumentStatusDTO.go",
         "used_by_action": "UpdateDocumentStatusAction"
       },
       "ExternalServiceConfigDTO": {
-        "file": "app/DTO/ExternalServiceConfigDTO.php",
+        "file": "internal/domain/ExternalServiceConfigDTO.go",
         "used_by_action": null
       },
       "CleanupOrphanedFilesDTO": {
-        "file": "app/DTO/Files/CleanupOrphanedFilesDTO.php",
+        "file": "internal/domain/file/CleanupOrphanedFilesDTO.go",
         "used_by_action": null
       },
       "DeleteOrphanedFilesDTO": {
-        "file": "app/DTO/Files/DeleteOrphanedFilesDTO.php",
+        "file": "internal/domain/file/DeleteOrphanedFilesDTO.go",
         "used_by_action": "DeleteOrphanedFilesAction"
       },
       "OrphanedFileDTO": {
-        "file": "app/DTO/Files/OrphanedFileDTO.php",
+        "file": "internal/domain/file/OrphanedFileDTO.go",
         "used_by_action": "FindOrphanedFilesAction"
       },
       "DeploymentGuideDTO": {
-        "file": "app/DTO/GitTemplate/DeploymentGuideDTO.php",
+        "file": "internal/domain/gittemplate/DeploymentGuideDTO.go",
         "used_by_action": "GenerateDeploymentGuideAction"
       },
       "GenerateDeploymentGuideDTO": {
-        "file": "app/DTO/GitTemplate/GenerateDeploymentGuideDTO.php",
+        "file": "internal/domain/gittemplate/GenerateDeploymentGuideDTO.go",
         "used_by_action": "GenerateDeploymentGuideAction"
       },
       "GenerateTemplateArchiveDTO": {
-        "file": "app/DTO/GitTemplate/GenerateTemplateArchiveDTO.php",
+        "file": "internal/domain/gittemplate/GenerateTemplateArchiveDTO.go",
         "used_by_action": "GenerateTemplateArchiveAction"
       },
       "GetTemplateFileDTO": {
-        "file": "app/DTO/GitTemplate/GetTemplateFileDTO.php",
+        "file": "internal/domain/gittemplate/GetTemplateFileDTO.go",
         "used_by_action": "GetTemplateFileAction"
       },
       "GetTemplateStructureDTO": {
-        "file": "app/DTO/GitTemplate/GetTemplateStructureDTO.php",
+        "file": "internal/domain/gittemplate/GetTemplateStructureDTO.go",
         "used_by_action": "GetTemplateStructureAction"
       },
       "GitTemplateFileDTO": {
-        "file": "app/DTO/GitTemplate/GitTemplateFileDTO.php",
+        "file": "internal/domain/gittemplate/GitTemplateFileDTO.go",
         "used_by_action": "SyncGitTemplateAction"
       },
       "ListGitTemplatesDTO": {
-        "file": "app/DTO/GitTemplate/ListGitTemplatesDTO.php",
+        "file": "internal/domain/gittemplate/ListGitTemplatesDTO.go",
         "used_by_action": "ListGitTemplatesAction"
       },
       "RegisterGitTemplateDTO": {
-        "file": "app/DTO/GitTemplate/RegisterGitTemplateDTO.php",
+        "file": "internal/domain/gittemplate/RegisterGitTemplateDTO.go",
         "used_by_action": "RegisterGitTemplateAction"
       },
       "SearchGitTemplatesDTO": {
-        "file": "app/DTO/GitTemplate/SearchGitTemplatesDTO.php",
+        "file": "internal/domain/gittemplate/SearchGitTemplatesDTO.go",
         "used_by_action": "SearchGitTemplatesAction"
       },
       "SyncGitTemplateDTO": {
-        "file": "app/DTO/GitTemplate/SyncGitTemplateDTO.php",
+        "file": "internal/domain/gittemplate/SyncGitTemplateDTO.go",
         "used_by_action": "SyncGitTemplateAction"
       },
       "TemplateArchiveDTO": {
-        "file": "app/DTO/GitTemplate/TemplateArchiveDTO.php",
+        "file": "internal/domain/gittemplate/TemplateArchiveDTO.go",
         "used_by_action": "GenerateTemplateArchiveAction"
       },
       "TemplateStructureDTO": {
-        "file": "app/DTO/GitTemplate/TemplateStructureDTO.php",
+        "file": "internal/domain/gittemplate/TemplateStructureDTO.go",
         "used_by_action": "GetTemplateStructureAction"
       },
       "HealthCheckResultDTO": {
-        "file": "app/DTO/HealthCheckResultDTO.php",
+        "file": "internal/domain/HealthCheckResultDTO.go",
         "used_by_action": null
       },
       "AuthorizeDeviceCodeDTO": {
-        "file": "app/DTO/OAuth/AuthorizeDeviceCodeDTO.php",
+        "file": "internal/domain/oauth/AuthorizeDeviceCodeDTO.go",
         "used_by_action": "AuthorizeDeviceCodeAction"
       },
       "DeleteOAuthClientDTO": {
-        "file": "app/DTO/OAuth/DeleteOAuthClientDTO.php",
+        "file": "internal/domain/oauth/DeleteOAuthClientDTO.go",
         "used_by_action": "DeleteOAuthClientAction"
       },
       "ExchangeAuthorizationCodeDTO": {
-        "file": "app/DTO/OAuth/ExchangeAuthorizationCodeDTO.php",
+        "file": "internal/domain/oauth/ExchangeAuthorizationCodeDTO.go",
         "used_by_action": "ExchangeAuthorizationCodeAction"
       },
       "ExchangeDeviceCodeDTO": {
-        "file": "app/DTO/OAuth/ExchangeDeviceCodeDTO.php",
+        "file": "internal/domain/oauth/ExchangeDeviceCodeDTO.go",
         "used_by_action": "ExchangeDeviceCodeAction"
       },
       "FetchOIDCUserInfoDTO": {
-        "file": "app/DTO/OAuth/FetchOIDCUserInfoDTO.php",
+        "file": "internal/domain/oauth/FetchOIDCUserInfoDTO.go",
         "used_by_action": "FetchOIDCUserInfoAction"
       },
       "GenerateAuthorizationCodeDTO": {
-        "file": "app/DTO/OAuth/GenerateAuthorizationCodeDTO.php",
+        "file": "internal/domain/oauth/GenerateAuthorizationCodeDTO.go",
         "used_by_action": "GenerateAuthorizationCodeAction"
       },
       "GenerateDeviceCodeDTO": {
-        "file": "app/DTO/OAuth/GenerateDeviceCodeDTO.php",
+        "file": "internal/domain/oauth/GenerateDeviceCodeDTO.go",
         "used_by_action": "GenerateDeviceCodeAction"
       },
       "OIDCDiscoveryDTO": {
-        "file": "app/DTO/OAuth/OIDCDiscoveryDTO.php",
+        "file": "internal/domain/oauth/OIDCDiscoveryDTO.go",
         "used_by_action": "FetchOIDCDiscoveryAction"
       },
       "OIDCTokenDTO": {
-        "file": "app/DTO/OAuth/OIDCTokenDTO.php",
+        "file": "internal/domain/oauth/OIDCTokenDTO.go",
         "used_by_action": "ValidateOIDCTokenAction"
       },
       "RefreshAccessTokenDTO": {
-        "file": "app/DTO/OAuth/RefreshAccessTokenDTO.php",
+        "file": "internal/domain/oauth/RefreshAccessTokenDTO.go",
         "used_by_action": "RefreshAccessTokenAction"
       },
       "RegisterOAuthClientDTO": {
-        "file": "app/DTO/OAuth/RegisterOAuthClientDTO.php",
+        "file": "internal/domain/oauth/RegisterOAuthClientDTO.go",
         "used_by_action": "RegisterOAuthClientAction"
       },
       "RevokeTokenDTO": {
-        "file": "app/DTO/OAuth/RevokeTokenDTO.php",
+        "file": "internal/domain/oauth/RevokeTokenDTO.go",
         "used_by_action": "RevokeTokenAction"
       },
       "TokenPayloadDTO": {
-        "file": "app/DTO/OAuth/TokenPayloadDTO.php",
+        "file": "internal/domain/oauth/TokenPayloadDTO.go",
         "used_by_action": null
       },
       "UpdateOAuthClientDTO": {
-        "file": "app/DTO/OAuth/UpdateOAuthClientDTO.php",
+        "file": "internal/domain/oauth/UpdateOAuthClientDTO.go",
         "used_by_action": "UpdateOAuthClientAction"
       },
       "ValidatePKCEDTO": {
-        "file": "app/DTO/OAuth/ValidatePKCEDTO.php",
+        "file": "internal/domain/oauth/ValidatePKCEDTO.go",
         "used_by_action": "ValidatePKCEAction"
       },
       "FindMissingDocumentsDTO": {
-        "file": "app/DTO/SearchIndex/FindMissingDocumentsDTO.php",
+        "file": "internal/domain/searchindex/FindMissingDocumentsDTO.go",
         "used_by_action": "FindMissingDocumentsAction"
       },
       "IndexDiscrepancyDTO": {
-        "file": "app/DTO/SearchIndex/IndexDiscrepancyDTO.php",
+        "file": "internal/domain/searchindex/IndexDiscrepancyDTO.go",
         "used_by_action": null
       },
       "IndexStatisticsDTO": {
-        "file": "app/DTO/SearchIndex/IndexStatisticsDTO.php",
+        "file": "internal/domain/searchindex/IndexStatisticsDTO.go",
         "used_by_action": "GetIndexStatisticsAction"
       },
       "MissingDocumentDTO": {
-        "file": "app/DTO/SearchIndex/MissingDocumentDTO.php",
+        "file": "internal/domain/searchindex/MissingDocumentDTO.go",
         "used_by_action": "FindMissingDocumentsAction"
       },
       "OrphanedIndexEntryDTO": {
-        "file": "app/DTO/SearchIndex/OrphanedIndexEntryDTO.php",
+        "file": "internal/domain/searchindex/OrphanedIndexEntryDTO.go",
         "used_by_action": "FindOrphanedIndexEntriesAction"
       },
       "ReindexMissingDocumentsDTO": {
-        "file": "app/DTO/SearchIndex/ReindexMissingDocumentsDTO.php",
+        "file": "internal/domain/searchindex/ReindexMissingDocumentsDTO.go",
         "used_by_action": "ReindexMissingDocumentsAction"
       },
       "RemoveOrphanedEntriesDTO": {
-        "file": "app/DTO/SearchIndex/RemoveOrphanedEntriesDTO.php",
+        "file": "internal/domain/searchindex/RemoveOrphanedEntriesDTO.go",
         "used_by_action": "RemoveOrphanedIndexEntriesAction"
       },
       "VerifySearchIndexDTO": {
-        "file": "app/DTO/SearchIndex/VerifySearchIndexDTO.php",
+        "file": "internal/domain/searchindex/VerifySearchIndexDTO.go",
         "used_by_action": null
       },
       "UnifiedSearchDTO": {
-        "file": "app/DTO/Search/UnifiedSearchDTO.php",
+        "file": "internal/domain/search/UnifiedSearchDTO.go",
         "used_by_action": "UnifiedSearchAction"
       },
       "UnifiedSearchResultDTO": {
-        "file": "app/DTO/Search/UnifiedSearchResultDTO.php",
+        "file": "internal/domain/search/UnifiedSearchResultDTO.go",
         "used_by_action": "UnifiedSearchAction"
       },
       "PruneResultsDTO": {
-        "file": "app/DTO/TokenPruning/PruneResultsDTO.php",
+        "file": "internal/domain/oauth/PruneResultsDTO.go",
         "used_by_action": null
       },
       "PruneTokensDTO": {
-        "file": "app/DTO/TokenPruning/PruneTokensDTO.php",
+        "file": "internal/domain/oauth/PruneTokensDTO.go",
         "used_by_action": "PruneExpiredAccessTokensAction"
       },
       "CleanupDisabledArchivesDTO": {
-        "file": "app/DTO/Zim/CleanupDisabledArchivesDTO.php",
+        "file": "internal/domain/zim/CleanupDisabledArchivesDTO.go",
         "used_by_action": "CleanupDisabledArchivesAction"
       },
       "ReadZimArticleDTO": {
-        "file": "app/DTO/Zim/ReadZimArticleDTO.php",
+        "file": "internal/domain/zim/ReadZimArticleDTO.go",
         "used_by_action": "ReadZimArticleAction"
       },
       "SearchZimArchivesDTO": {
-        "file": "app/DTO/Zim/SearchZimArchivesDTO.php",
+        "file": "internal/domain/zim/SearchZimArchivesDTO.go",
         "used_by_action": "SearchZimArchivesAction"
       },
       "SearchZimArticlesDTO": {
-        "file": "app/DTO/Zim/SearchZimArticlesDTO.php",
+        "file": "internal/domain/zim/SearchZimArticlesDTO.go",
         "used_by_action": "SearchZimArticlesAction"
       },
       "SuggestZimArticlesDTO": {
-        "file": "app/DTO/Zim/SuggestZimArticlesDTO.php",
+        "file": "internal/domain/zim/SuggestZimArticlesDTO.go",
         "used_by_action": "SuggestZimArticlesAction"
       },
       "SyncOpdsCatalogDTO": {
-        "file": "app/DTO/Zim/SyncOpdsCatalogDTO.php",
+        "file": "internal/domain/zim/SyncOpdsCatalogDTO.go",
         "used_by_action": "SyncOpdsCatalogAction"
       },
       "ZimArchiveDTO": {
-        "file": "app/DTO/Zim/ZimArchiveDTO.php",
+        "file": "internal/domain/zim/ZimArchiveDTO.go",
         "used_by_action": null
       },
       "ZimArticleDTO": {
-        "file": "app/DTO/Zim/ZimArticleDTO.php",
+        "file": "internal/domain/zim/ZimArticleDTO.go",
         "used_by_action": "ReadZimArticleAction"
       },
       "ZimArticleSearchResultDTO": {
-        "file": "app/DTO/Zim/ZimArticleSearchResultDTO.php",
+        "file": "internal/domain/zim/ZimArticleSearchResultDTO.go",
         "used_by_action": "SearchZimArticlesAction"
       }
     },
     "actions": {
       "DetermineAdminStatusFromGroupsAction": {
-        "file": "app/Actions/Auth/DetermineAdminStatusFromGroupsAction.php",
+        "file": "internal/service/auth/DetermineAdminStatusFromGroupsAction.go",
         "dto": "DetermineAdminStatusDTO",
         "depends_on": [],
         "used_by": ["OAuthService"]
       },
       "ListConfluenceSpacesAction": {
-        "file": "app/Actions/Confluence/ListConfluenceSpacesAction.php",
+        "file": "internal/service/confluence/ListConfluenceSpacesAction.go",
         "dto": "ListConfluenceSpacesDTO",
         "depends_on": ["ConfluenceSpace"],
         "used_by": ["ConfluenceController", "ListConfluenceSpacesTool"]
       },
       "ReadConfluencePageAction": {
-        "file": "app/Actions/Confluence/ReadConfluencePageAction.php",
+        "file": "internal/service/confluence/ReadConfluencePageAction.go",
         "dto": "ReadConfluencePageDTO",
         "depends_on": ["ConfluenceClient"],
         "used_by": ["ConfluenceController", "ReadConfluencePageTool"]
       },
       "SearchConfluencePagesAction": {
-        "file": "app/Actions/Confluence/SearchConfluencePagesAction.php",
+        "file": "internal/service/confluence/SearchConfluencePagesAction.go",
         "dto": "SearchConfluencePagesDTO",
         "depends_on": ["ConfluenceClient"],
         "used_by": ["ConfluenceController", "SearchConfluenceTool"]
       },
       "SyncConfluenceSpacesAction": {
-        "file": "app/Actions/Confluence/SyncConfluenceSpacesAction.php",
+        "file": "internal/service/confluence/SyncConfluenceSpacesAction.go",
         "dto": "SyncConfluenceSpacesDTO",
         "depends_on": ["ConfluenceClient", "ConfluenceSpace"],
         "used_by": []
       },
       "AnalyzeDocumentMetadataAction": {
-        "file": "app/Actions/Documents/AnalyzeDocumentMetadataAction.php",
+        "file": "internal/service/document/AnalyzeDocumentMetadataAction.go",
         "dto": "AnalyzeDocumentMetadataDTO",
         "depends_on": ["TextExtractionService"],
         "used_by": ["DocumentAnalysisController"]
       },
       "CleanupSoftDeletedDocumentsAction": {
-        "file": "app/Actions/Documents/CleanupSoftDeletedDocumentsAction.php",
+        "file": "internal/service/document/CleanupSoftDeletedDocumentsAction.go",
         "dto": "CleanupSoftDeletedDTO",
         "depends_on": ["PermanentlyDeleteDocumentAction", "Document"],
         "used_by": []
       },
       "CreateDocumentAction": {
-        "file": "app/Actions/Documents/CreateDocumentAction.php",
+        "file": "internal/service/document/CreateDocumentAction.go",
         "dto": "CreateDocumentDTO",
         "depends_on": ["Document"],
         "used_by": ["DocumentService", "CreateDocumentTool"]
       },
       "DeleteDocumentAction": {
-        "file": "app/Actions/Documents/DeleteDocumentAction.php",
+        "file": "internal/service/document/DeleteDocumentAction.go",
         "dto": "DeleteDocumentDTO",
         "depends_on": [],
         "used_by": ["DocumentService"]
       },
       "ExtractDocumentContentAction": {
-        "file": "app/Actions/Documents/ExtractDocumentContentAction.php",
+        "file": "internal/service/document/ExtractDocumentContentAction.go",
         "dto": "ExtractDocumentContentDTO",
         "depends_on": ["TextExtractionService", "Document"],
         "used_by": ["ProcessDocumentUploadJob"]
       },
       "IndexDocumentInMeilisearchAction": {
-        "file": "app/Actions/Documents/IndexDocumentInMeilisearchAction.php",
+        "file": "internal/service/document/IndexDocumentInMeilisearchAction.go",
         "dto": "IndexDocumentDTO",
-        "depends_on": ["Meilisearch\\Client"],
+        "depends_on": ["MeilisearchClient"],
         "used_by": ["DocumentService", "ReindexMissingDocumentsAction", "IndexDocumentInMeilisearchJob"]
       },
       "PermanentlyDeleteDocumentAction": {
-        "file": "app/Actions/Documents/PermanentlyDeleteDocumentAction.php",
+        "file": "internal/service/document/PermanentlyDeleteDocumentAction.go",
         "dto": "DeleteDocumentDTO",
         "depends_on": [],
         "used_by": ["CleanupSoftDeletedDocumentsAction", "AdminService"]
       },
       "RestoreDocumentAction": {
-        "file": "app/Actions/Documents/RestoreDocumentAction.php",
+        "file": "internal/service/document/RestoreDocumentAction.go",
         "dto": "RestoreDocumentDTO",
         "depends_on": ["Document"],
         "used_by": []
       },
       "UpdateDocumentAction": {
-        "file": "app/Actions/Documents/UpdateDocumentAction.php",
+        "file": "internal/service/document/UpdateDocumentAction.go",
         "dto": "UpdateDocumentDTO",
         "depends_on": ["Document"],
         "used_by": ["DocumentService"]
       },
       "UpdateDocumentStatusAction": {
-        "file": "app/Actions/Documents/UpdateDocumentStatusAction.php",
+        "file": "internal/service/document/UpdateDocumentStatusAction.go",
         "dto": "UpdateDocumentStatusDTO",
         "depends_on": ["Document"],
         "used_by": ["ProcessDocumentUploadJob"]
       },
       "DeleteOrphanedFilesAction": {
-        "file": "app/Actions/Files/DeleteOrphanedFilesAction.php",
+        "file": "internal/service/file/DeleteOrphanedFilesAction.go",
         "dto": "DeleteOrphanedFilesDTO",
         "depends_on": [],
         "used_by": []
       },
       "FindOrphanedFilesAction": {
-        "file": "app/Actions/Files/FindOrphanedFilesAction.php",
+        "file": "internal/service/file/FindOrphanedFilesAction.go",
         "dto": null,
         "depends_on": ["Document"],
         "used_by": []
       },
       "GenerateDeploymentGuideAction": {
-        "file": "app/Actions/GitTemplate/GenerateDeploymentGuideAction.php",
+        "file": "internal/service/gittemplate/GenerateDeploymentGuideAction.go",
         "dto": "GenerateDeploymentGuideDTO",
         "depends_on": ["GitTemplate"],
         "used_by": ["GitTemplateController", "GetDeploymentGuideTool"]
       },
       "GenerateTemplateArchiveAction": {
-        "file": "app/Actions/GitTemplate/GenerateTemplateArchiveAction.php",
+        "file": "internal/service/gittemplate/GenerateTemplateArchiveAction.go",
         "dto": "GenerateTemplateArchiveDTO",
         "depends_on": ["GitTemplate"],
         "used_by": ["GitTemplateController", "DownloadTemplateTool"]
       },
       "GetTemplateFileAction": {
-        "file": "app/Actions/GitTemplate/GetTemplateFileAction.php",
+        "file": "internal/service/gittemplate/GetTemplateFileAction.go",
         "dto": "GetTemplateFileDTO",
         "depends_on": ["GitTemplateFile"],
         "used_by": ["GitTemplateController", "GetTemplateFileTool"]
       },
       "GetTemplateStructureAction": {
-        "file": "app/Actions/GitTemplate/GetTemplateStructureAction.php",
+        "file": "internal/service/gittemplate/GetTemplateStructureAction.go",
         "dto": "GetTemplateStructureDTO",
         "depends_on": [],
         "used_by": ["GitTemplateController", "GetTemplateStructureTool"]
       },
       "ListGitTemplatesAction": {
-        "file": "app/Actions/GitTemplate/ListGitTemplatesAction.php",
+        "file": "internal/service/gittemplate/ListGitTemplatesAction.go",
         "dto": "ListGitTemplatesDTO",
         "depends_on": ["GitTemplate"],
         "used_by": ["GitTemplateController", "ListGitTemplatesTool"]
       },
       "RegisterGitTemplateAction": {
-        "file": "app/Actions/GitTemplate/RegisterGitTemplateAction.php",
+        "file": "internal/service/gittemplate/RegisterGitTemplateAction.go",
         "dto": "RegisterGitTemplateDTO",
         "depends_on": ["GitTemplate", "SyncGitTemplateJob"],
         "used_by": ["GitTemplateController"]
       },
       "SearchGitTemplatesAction": {
-        "file": "app/Actions/GitTemplate/SearchGitTemplatesAction.php",
+        "file": "internal/service/gittemplate/SearchGitTemplatesAction.go",
         "dto": "SearchGitTemplatesDTO",
-        "depends_on": ["Meilisearch\\Client", "GitTemplate"],
+        "depends_on": ["MeilisearchClient", "GitTemplate"],
         "used_by": ["GitTemplateController", "SearchGitTemplatesTool"]
       },
       "SyncGitTemplateAction": {
-        "file": "app/Actions/GitTemplate/SyncGitTemplateAction.php",
+        "file": "internal/service/gittemplate/SyncGitTemplateAction.go",
         "dto": "SyncGitTemplateDTO",
         "depends_on": ["GitTemplateClient", "GitTemplate", "GitTemplateFile"],
         "used_by": ["GitTemplateController", "SyncGitTemplateJob"]
       },
       "AuthorizeDeviceCodeAction": {
-        "file": "app/Actions/OAuth/AuthorizeDeviceCodeAction.php",
+        "file": "internal/service/oauth/AuthorizeDeviceCodeAction.go",
         "dto": "AuthorizeDeviceCodeDTO",
         "depends_on": ["OAuthDeviceCode"],
         "used_by": ["OAuthAuthorizationServerController"]
       },
       "DeleteOAuthClientAction": {
-        "file": "app/Actions/OAuth/DeleteOAuthClientAction.php",
+        "file": "internal/service/oauth/DeleteOAuthClientAction.go",
         "dto": "DeleteOAuthClientDTO",
         "depends_on": [],
         "used_by": []
       },
       "ExchangeAuthorizationCodeAction": {
-        "file": "app/Actions/OAuth/ExchangeAuthorizationCodeAction.php",
+        "file": "internal/service/oauth/ExchangeAuthorizationCodeAction.go",
         "dto": "ExchangeAuthorizationCodeDTO",
         "depends_on": ["ValidatePKCEAction", "TokenHashingService", "OAuthAccessToken", "OAuthAuthorizationCode", "OAuthClient", "OAuthRefreshToken"],
         "used_by": ["OAuthAuthorizationServerController"]
       },
       "ExchangeDeviceCodeAction": {
-        "file": "app/Actions/OAuth/ExchangeDeviceCodeAction.php",
+        "file": "internal/service/oauth/ExchangeDeviceCodeAction.go",
         "dto": "ExchangeDeviceCodeDTO",
         "depends_on": ["TokenHashingService", "OAuthAccessToken", "OAuthClient", "OAuthDeviceCode", "OAuthRefreshToken"],
         "used_by": ["OAuthAuthorizationServerController"]
       },
       "FetchOIDCDiscoveryAction": {
-        "file": "app/Actions/OAuth/FetchOIDCDiscoveryAction.php",
+        "file": "internal/service/oauth/FetchOIDCDiscoveryAction.go",
         "dto": null,
         "depends_on": [],
         "used_by": ["ValidateOIDCTokenAction", "LoginController"]
       },
       "FetchOIDCUserInfoAction": {
-        "file": "app/Actions/OAuth/FetchOIDCUserInfoAction.php",
+        "file": "internal/service/oauth/FetchOIDCUserInfoAction.go",
         "dto": "FetchOIDCUserInfoDTO",
         "depends_on": [],
         "used_by": ["OAuthService"]
       },
       "GenerateAuthorizationCodeAction": {
-        "file": "app/Actions/OAuth/GenerateAuthorizationCodeAction.php",
+        "file": "internal/service/oauth/GenerateAuthorizationCodeAction.go",
         "dto": "GenerateAuthorizationCodeDTO",
         "depends_on": ["TokenHashingService", "OAuthAuthorizationCode"],
         "used_by": ["OAuthAuthorizationServerController"]
       },
       "GenerateDeviceCodeAction": {
-        "file": "app/Actions/OAuth/GenerateDeviceCodeAction.php",
+        "file": "internal/service/oauth/GenerateDeviceCodeAction.go",
         "dto": "GenerateDeviceCodeDTO",
         "depends_on": ["TokenHashingService", "OAuthClient", "OAuthDeviceCode"],
         "used_by": ["OAuthAuthorizationServerController"]
       },
       "RefreshAccessTokenAction": {
-        "file": "app/Actions/OAuth/RefreshAccessTokenAction.php",
+        "file": "internal/service/oauth/RefreshAccessTokenAction.go",
         "dto": "RefreshAccessTokenDTO",
         "depends_on": ["TokenHashingService", "OAuthAccessToken", "OAuthClient", "OAuthRefreshToken"],
         "used_by": ["OAuthAuthorizationServerController"]
       },
       "RegisterOAuthClientAction": {
-        "file": "app/Actions/OAuth/RegisterOAuthClientAction.php",
+        "file": "internal/service/oauth/RegisterOAuthClientAction.go",
         "dto": "RegisterOAuthClientDTO",
         "depends_on": ["OAuthClient"],
         "used_by": ["OAuthAuthorizationServerController", "OAuthService"]
       },
       "RevokeTokenAction": {
-        "file": "app/Actions/OAuth/RevokeTokenAction.php",
+        "file": "internal/service/oauth/RevokeTokenAction.go",
         "dto": "RevokeTokenDTO",
         "depends_on": ["OAuthAccessToken", "OAuthClient", "OAuthRefreshToken"],
         "used_by": ["OAuthAuthorizationServerController"]
       },
       "UpdateOAuthClientAction": {
-        "file": "app/Actions/OAuth/UpdateOAuthClientAction.php",
+        "file": "internal/service/oauth/UpdateOAuthClientAction.go",
         "dto": "UpdateOAuthClientDTO",
         "depends_on": ["OAuthClient"],
         "used_by": []
       },
       "ValidateOIDCTokenAction": {
-        "file": "app/Actions/OAuth/ValidateOIDCTokenAction.php",
+        "file": "internal/service/oauth/ValidateOIDCTokenAction.go",
         "dto": "OIDCTokenDTO",
         "depends_on": ["FetchOIDCDiscoveryAction"],
         "used_by": ["OAuthService"]
       },
       "ValidatePKCEAction": {
-        "file": "app/Actions/OAuth/ValidatePKCEAction.php",
+        "file": "internal/service/oauth/ValidatePKCEAction.go",
         "dto": "ValidatePKCEDTO",
         "depends_on": [],
         "used_by": ["ExchangeAuthorizationCodeAction"]
       },
       "SearchDocumentsAction": {
-        "file": "app/Actions/Search/SearchDocumentsAction.php",
+        "file": "internal/service/search/SearchDocumentsAction.go",
         "dto": "SearchDocumentDTO",
-        "depends_on": ["Meilisearch\\Client"],
+        "depends_on": ["MeilisearchClient"],
         "used_by": ["SearchService"]
       },
       "UnifiedSearchAction": {
-        "file": "app/Actions/Search/UnifiedSearchAction.php",
+        "file": "internal/service/search/UnifiedSearchAction.go",
         "dto": "UnifiedSearchDTO",
-        "depends_on": ["Meilisearch\\Client", "ExternalServiceManager", "ExternalService"],
+        "depends_on": ["MeilisearchClient", "ExternalServiceManager", "ExternalService"],
         "used_by": ["UnifiedSearchController", "UnifiedSearchTool"]
       },
       "FindMissingDocumentsAction": {
-        "file": "app/Actions/SearchIndex/FindMissingDocumentsAction.php",
+        "file": "internal/service/searchindex/FindMissingDocumentsAction.go",
         "dto": "FindMissingDocumentsDTO",
         "depends_on": ["Document"],
         "used_by": ["SearchIndexVerificationService"]
       },
       "FindOrphanedIndexEntriesAction": {
-        "file": "app/Actions/SearchIndex/FindOrphanedIndexEntriesAction.php",
+        "file": "internal/service/searchindex/FindOrphanedIndexEntriesAction.go",
         "dto": null,
-        "depends_on": ["Document", "Scout\\EngineManager"],
+        "depends_on": ["Document", "MeilisearchClient"],
         "used_by": ["SearchIndexVerificationService"]
       },
       "GetIndexStatisticsAction": {
-        "file": "app/Actions/SearchIndex/GetIndexStatisticsAction.php",
+        "file": "internal/service/searchindex/GetIndexStatisticsAction.go",
         "dto": null,
-        "depends_on": ["Document", "Scout\\EngineManager"],
+        "depends_on": ["Document", "MeilisearchClient"],
         "used_by": ["SearchIndexVerificationService"]
       },
       "ReindexMissingDocumentsAction": {
-        "file": "app/Actions/SearchIndex/ReindexMissingDocumentsAction.php",
+        "file": "internal/service/searchindex/ReindexMissingDocumentsAction.go",
         "dto": "ReindexMissingDocumentsDTO",
         "depends_on": ["IndexDocumentInMeilisearchAction", "Document"],
         "used_by": ["SearchIndexVerificationService"]
       },
       "RemoveOrphanedIndexEntriesAction": {
-        "file": "app/Actions/SearchIndex/RemoveOrphanedIndexEntriesAction.php",
+        "file": "internal/service/searchindex/RemoveOrphanedIndexEntriesAction.go",
         "dto": "RemoveOrphanedEntriesDTO",
-        "depends_on": ["Meilisearch\\Client"],
+        "depends_on": ["MeilisearchClient"],
         "used_by": ["SearchIndexVerificationService"]
       },
       "DeactivateExpiredClientsAction": {
-        "file": "app/Actions/TokenPruning/DeactivateExpiredClientsAction.php",
+        "file": "internal/service/oauth/DeactivateExpiredClientsAction.go",
         "dto": "PruneTokensDTO",
         "depends_on": ["OAuthClient"],
         "used_by": ["OAuthTokenPruningService"]
       },
       "PruneExpiredAccessTokensAction": {
-        "file": "app/Actions/TokenPruning/PruneExpiredAccessTokensAction.php",
+        "file": "internal/service/oauth/PruneExpiredAccessTokensAction.go",
         "dto": "PruneTokensDTO",
         "depends_on": ["OAuthAccessToken"],
         "used_by": ["OAuthTokenPruningService"]
       },
       "PruneExpiredAuthorizationCodesAction": {
-        "file": "app/Actions/TokenPruning/PruneExpiredAuthorizationCodesAction.php",
+        "file": "internal/service/oauth/PruneExpiredAuthorizationCodesAction.go",
         "dto": "PruneTokensDTO",
         "depends_on": ["OAuthAuthorizationCode"],
         "used_by": ["OAuthTokenPruningService"]
       },
       "PruneExpiredRefreshTokensAction": {
-        "file": "app/Actions/TokenPruning/PruneExpiredRefreshTokensAction.php",
+        "file": "internal/service/oauth/PruneExpiredRefreshTokensAction.go",
         "dto": "PruneTokensDTO",
         "depends_on": ["OAuthRefreshToken"],
         "used_by": ["OAuthTokenPruningService"]
       },
       "PruneRevokedTokensAction": {
-        "file": "app/Actions/TokenPruning/PruneRevokedTokensAction.php",
+        "file": "internal/service/oauth/PruneRevokedTokensAction.go",
         "dto": "PruneTokensDTO",
         "depends_on": ["OAuthAccessToken", "OAuthAuthorizationCode", "OAuthRefreshToken"],
         "used_by": ["OAuthTokenPruningService"]
       },
       "CleanupDisabledArchivesAction": {
-        "file": "app/Actions/Zim/CleanupDisabledArchivesAction.php",
+        "file": "internal/service/zim/CleanupDisabledArchivesAction.go",
         "dto": "CleanupDisabledArchivesDTO",
         "depends_on": ["ZimArchive"],
         "used_by": []
       },
       "ReadZimArticleAction": {
-        "file": "app/Actions/Zim/ReadZimArticleAction.php",
+        "file": "internal/service/zim/ReadZimArticleAction.go",
         "dto": "ReadZimArticleDTO",
         "depends_on": ["KiwixServeClient", "ZimArchive"],
         "used_by": ["ZimArchiveController", "ReadZimArticleTool"]
       },
       "SearchZimArchivesAction": {
-        "file": "app/Actions/Zim/SearchZimArchivesAction.php",
+        "file": "internal/service/zim/SearchZimArchivesAction.go",
         "dto": "SearchZimArchivesDTO",
         "depends_on": ["ZimArchive"],
         "used_by": ["ZimArchiveController", "ListZimArchivesTool"]
       },
       "SearchZimArticlesAction": {
-        "file": "app/Actions/Zim/SearchZimArticlesAction.php",
+        "file": "internal/service/zim/SearchZimArticlesAction.go",
         "dto": "SearchZimArticlesDTO",
         "depends_on": ["KiwixServeClient", "ZimArchive"],
         "used_by": ["ZimArchiveController", "SearchZimTool"]
       },
       "SuggestZimArticlesAction": {
-        "file": "app/Actions/Zim/SuggestZimArticlesAction.php",
+        "file": "internal/service/zim/SuggestZimArticlesAction.go",
         "dto": "SuggestZimArticlesDTO",
         "depends_on": ["KiwixServeClient", "ZimArchive"],
         "used_by": ["ZimArchiveController", "SearchZimTool"]
       },
       "SyncOpdsCatalogAction": {
-        "file": "app/Actions/Zim/SyncOpdsCatalogAction.php",
+        "file": "internal/service/zim/SyncOpdsCatalogAction.go",
         "dto": "SyncOpdsCatalogDTO",
         "depends_on": ["KiwixServeClient", "ZimArchive"],
         "used_by": []
@@ -927,169 +927,169 @@
     },
     "services": {
       "AdminService": {
-        "file": "app/Services/AdminService.php",
+        "file": "internal/service/AdminService.go",
         "depends_on": ["PermanentlyDeleteDocumentAction", "Document"],
         "used_by": []
       },
       "ConfluenceClient": {
-        "file": "app/Services/Atlassian/ConfluenceClient.php",
+        "file": "internal/service/confluence/ConfluenceClient.go",
         "depends_on": ["ExternalServiceManager", "ExternalService"],
         "used_by": ["ReadConfluencePageAction", "SearchConfluencePagesAction", "SyncConfluenceSpacesAction"]
       },
       "DocumentService": {
-        "file": "app/Services/DocumentService.php",
+        "file": "internal/service/DocumentService.go",
         "depends_on": ["CreateDocumentAction", "DeleteDocumentAction", "IndexDocumentInMeilisearchAction", "UpdateDocumentAction", "ProcessDocumentUploadJob", "Document", "User"],
         "used_by": ["DocumentController", "ReadDocumentTool", "CreateDocumentTool", "DeleteDocumentTool", "UpdateDocumentTool", "SearchDocumentsTool"]
       },
       "ExternalServiceHealthChecker": {
-        "file": "app/Services/ExternalServiceHealthChecker.php",
+        "file": "internal/service/ExternalServiceHealthChecker.go",
         "depends_on": ["ExternalService"],
         "used_by": ["CheckExternalServiceHealthJob"]
       },
       "ExternalServiceManager": {
-        "file": "app/Services/ExternalServiceManager.php",
+        "file": "internal/service/ExternalServiceManager.go",
         "depends_on": ["ExternalService"],
         "used_by": ["ConfluenceClient", "KiwixServeClient", "UnifiedSearchAction", "ListConfluenceSpacesTool", "SearchConfluenceTool", "ReadConfluencePageTool", "ZimResearchPrompt", "ConfluenceResearchPrompt"]
       },
       "GitTemplateClient": {
-        "file": "app/Services/GitTemplate/GitTemplateClient.php",
+        "file": "internal/service/gittemplate/GitTemplateClient.go",
         "depends_on": ["GitTemplate"],
         "used_by": ["SyncGitTemplateAction", "GitTemplateController"]
       },
       "HealthCheckService": {
-        "file": "app/Services/HealthCheckService.php",
+        "file": "internal/service/HealthCheckService.go",
         "depends_on": [],
         "used_by": ["HealthController"]
       },
       "KiwixServeClient": {
-        "file": "app/Services/Zim/KiwixServeClient.php",
+        "file": "internal/service/zim/KiwixServeClient.go",
         "depends_on": ["ExternalServiceManager", "ExternalService"],
         "used_by": ["ReadZimArticleAction", "SearchZimArticlesAction", "SuggestZimArticlesAction", "SyncOpdsCatalogAction", "ReadZimArticleTool"]
       },
       "MaintenanceNotificationService": {
-        "file": "app/Services/MaintenanceNotificationService.php",
+        "file": "internal/service/MaintenanceNotificationService.go",
         "depends_on": [],
         "used_by": []
       },
       "MeilisearchService": {
-        "file": "app/Services/MeilisearchService.php",
+        "file": "internal/service/MeilisearchService.go",
         "depends_on": [],
         "used_by": []
       },
       "OAuthService": {
-        "file": "app/Services/OAuthService.php",
+        "file": "internal/service/OAuthService.go",
         "depends_on": ["DetermineAdminStatusFromGroupsAction", "FetchOIDCUserInfoAction", "RegisterOAuthClientAction", "ValidateOIDCTokenAction", "OAuthClient", "User"],
-        "used_by": ["LaravelMcpAuth", "LoginController"]
+        "used_by": ["MCPAuth", "LoginController"]
       },
       "OAuthTokenPruningService": {
-        "file": "app/Services/OAuthTokenPruningService.php",
+        "file": "internal/service/OAuthTokenPruningService.go",
         "depends_on": ["DeactivateExpiredClientsAction", "PruneExpiredAccessTokensAction", "PruneExpiredAuthorizationCodesAction", "PruneExpiredRefreshTokensAction", "PruneRevokedTokensAction"],
         "used_by": []
       },
       "SearchIndexVerificationService": {
-        "file": "app/Services/SearchIndexVerificationService.php",
+        "file": "internal/service/SearchIndexVerificationService.go",
         "depends_on": ["FindMissingDocumentsAction", "FindOrphanedIndexEntriesAction", "GetIndexStatisticsAction", "ReindexMissingDocumentsAction", "RemoveOrphanedIndexEntriesAction"],
         "used_by": []
       },
       "SearchService": {
-        "file": "app/Services/SearchService.php",
+        "file": "internal/service/SearchService.go",
         "depends_on": ["SearchDocumentsAction", "SearchQuery"],
         "used_by": ["SearchController", "SearchDocumentsTool"]
       },
       "TextExtractionService": {
-        "file": "app/Services/TextExtractionService.php",
+        "file": "internal/service/TextExtractionService.go",
         "depends_on": ["PdfExtractor", "DocxExtractor", "XlsxExtractor", "HtmlExtractor", "MarkdownExtractor"],
         "used_by": ["AnalyzeDocumentMetadataAction", "ExtractDocumentContentAction"]
       },
       "TokenHashingService": {
-        "file": "app/Services/TokenHashingService.php",
+        "file": "internal/service/TokenHashingService.go",
         "depends_on": [],
         "used_by": ["ExchangeAuthorizationCodeAction", "ExchangeDeviceCodeAction", "RefreshAccessTokenAction", "GenerateAuthorizationCodeAction", "GenerateDeviceCodeAction", "OAuthAccessToken", "OAuthAuthorizationCode", "OAuthDeviceCode", "OAuthRefreshToken"]
       },
       "DocumentMetrics": {
-        "file": "app/Services/Metrics/DocumentMetrics.php",
+        "file": "internal/service/metrics/DocumentMetrics.go",
         "depends_on": [],
         "used_by": ["SearchController", "DocumentController"]
       },
       "PrometheusService": {
-        "file": "app/Services/Metrics/PrometheusService.php",
+        "file": "internal/service/metrics/PrometheusService.go",
         "depends_on": [],
-        "used_by": ["MetricsController", "LaravelMcpAuth"]
+        "used_by": ["MetricsController", "MCPAuth"]
       }
     },
-    "controllers": {
+    "handlers": {
       "DocumentController": {
-        "file": "app/Http/Controllers/Api/DocumentController.php",
+        "file": "internal/handler/api/DocumentController.go",
         "depends_on": ["DocumentService", "DocumentMetrics", "Document"],
-        "form_requests": ["ListDocumentsRequest", "StoreDocumentRequest", "UpdateDocumentRequest"],
+        "input_validation": ["ListDocumentsRequest", "StoreDocumentRequest", "UpdateDocumentRequest"],
         "used_by": []
       },
       "SearchController": {
-        "file": "app/Http/Controllers/Api/SearchController.php",
+        "file": "internal/handler/api/SearchController.go",
         "depends_on": ["SearchService", "DocumentMetrics"],
-        "form_requests": ["SearchDocumentRequest", "AutocompleteSearchRequest"],
+        "input_validation": ["SearchDocumentRequest", "AutocompleteSearchRequest"],
         "used_by": []
       },
       "UnifiedSearchController": {
-        "file": "app/Http/Controllers/Api/UnifiedSearchController.php",
+        "file": "internal/handler/api/UnifiedSearchController.go",
         "depends_on": ["UnifiedSearchAction"],
-        "form_requests": ["UnifiedSearchRequest"],
+        "input_validation": ["UnifiedSearchRequest"],
         "used_by": []
       },
       "ConfluenceController": {
-        "file": "app/Http/Controllers/Api/ConfluenceController.php",
+        "file": "internal/handler/api/ConfluenceController.go",
         "depends_on": ["ListConfluenceSpacesAction", "ReadConfluencePageAction", "SearchConfluencePagesAction", "ConfluenceSpace"],
-        "form_requests": ["ListConfluenceSpacesRequest", "SearchConfluencePagesRequest"],
+        "input_validation": ["ListConfluenceSpacesRequest", "SearchConfluencePagesRequest"],
         "used_by": []
       },
       "ZimArchiveController": {
-        "file": "app/Http/Controllers/Api/ZimArchiveController.php",
+        "file": "internal/handler/api/ZimArchiveController.go",
         "depends_on": ["ReadZimArticleAction", "SearchZimArchivesAction", "SearchZimArticlesAction", "SuggestZimArticlesAction", "ZimArchive"],
-        "form_requests": ["ListZimArchivesRequest", "SearchZimArticlesRequest", "SuggestZimArticlesRequest"],
+        "input_validation": ["ListZimArchivesRequest", "SearchZimArticlesRequest", "SuggestZimArticlesRequest"],
         "used_by": []
       },
       "GitTemplateController": {
-        "file": "app/Http/Controllers/Api/GitTemplateController.php",
+        "file": "internal/handler/api/GitTemplateController.go",
         "depends_on": [
           "GenerateDeploymentGuideAction", "GenerateTemplateArchiveAction", "GetTemplateFileAction",
           "GetTemplateStructureAction", "ListGitTemplatesAction", "RegisterGitTemplateAction",
           "SearchGitTemplatesAction", "SyncGitTemplateAction", "GitTemplateClient", "GitTemplate"
         ],
-        "form_requests": ["ListGitTemplatesRequest", "RegisterGitTemplateRequest", "SearchGitTemplatesRequest", "UpdateGitTemplateRequest", "DownloadTemplateRequest"],
+        "input_validation": ["ListGitTemplatesRequest", "RegisterGitTemplateRequest", "SearchGitTemplatesRequest", "UpdateGitTemplateRequest", "DownloadTemplateRequest"],
         "used_by": []
       },
       "DocumentAnalysisController": {
-        "file": "app/Http/Controllers/Api/DocumentAnalysisController.php",
+        "file": "internal/handler/api/DocumentAnalysisController.go",
         "depends_on": ["AnalyzeDocumentMetadataAction"],
-        "form_requests": ["AnalyzeDocumentRequest"],
+        "input_validation": ["AnalyzeDocumentRequest"],
         "used_by": []
       },
       "HealthController": {
-        "file": "app/Http/Controllers/Api/HealthController.php",
+        "file": "internal/handler/api/HealthController.go",
         "depends_on": ["HealthCheckService"],
-        "form_requests": [],
+        "input_validation": [],
         "used_by": []
       },
       "LoginController": {
-        "file": "app/Http/Controllers/Auth/LoginController.php",
+        "file": "internal/handler/oauth/LoginController.go",
         "depends_on": ["FetchOIDCDiscoveryAction", "OAuthService", "User"],
-        "form_requests": ["LoginRequest"],
+        "input_validation": ["LoginRequest"],
         "used_by": []
       },
       "LogoutController": {
-        "file": "app/Http/Controllers/Auth/LogoutController.php",
+        "file": "internal/handler/oauth/LogoutController.go",
         "depends_on": [],
-        "form_requests": [],
+        "input_validation": [],
         "used_by": []
       },
       "OAuthAuthorizationServerController": {
-        "file": "app/Http/Controllers/Auth/OAuthAuthorizationServerController.php",
+        "file": "internal/handler/oauth/OAuthAuthorizationServerController.go",
         "depends_on": [
           "AuthorizeDeviceCodeAction", "ExchangeAuthorizationCodeAction", "ExchangeDeviceCodeAction",
           "GenerateAuthorizationCodeAction", "GenerateDeviceCodeAction", "RefreshAccessTokenAction",
           "RegisterOAuthClientAction", "RevokeTokenAction", "OAuthClient", "OAuthDeviceCode"
         ],
-        "form_requests": [
+        "input_validation": [
           "AuthorizeApproveRequest", "AuthorizeRequest", "ClientRegistrationRequest",
           "DeviceApproveRequest", "DeviceAuthorizationRequest", "DeviceVerifyRequest",
           "RevokeRequest", "TokenRequest"
@@ -1097,244 +1097,239 @@
         "used_by": []
       },
       "Admin\\DocumentController": {
-        "file": "app/Http/Controllers/Admin/DocumentController.php",
+        "file": "internal/handler/admin/DocumentController.go",
         "depends_on": ["Document"],
-        "form_requests": [],
+        "input_validation": [],
         "used_by": []
       },
       "MetricsController": {
-        "file": "app/Http/Controllers/MetricsController.php",
+        "file": "internal/handler/MetricsController.go",
         "depends_on": ["PrometheusService"],
-        "form_requests": [],
+        "input_validation": [],
         "used_by": []
       }
     },
     "mcp_tools": {
       "UnifiedSearchTool": {
-        "file": "app/Mcp/Tools/UnifiedSearchTool.php",
+        "file": "internal/handler/mcp/UnifiedSearchTool.go",
         "depends_on": ["UnifiedSearchAction", "User"],
         "used_by": []
       },
       "SearchDocumentsTool": {
-        "file": "app/Mcp/Tools/SearchDocumentsTool.php",
+        "file": "internal/handler/mcp/SearchDocumentsTool.go",
         "depends_on": ["SearchService"],
         "used_by": []
       },
       "CreateDocumentTool": {
-        "file": "app/Mcp/Tools/CreateDocumentTool.php",
+        "file": "internal/handler/mcp/CreateDocumentTool.go",
         "depends_on": ["DocumentService", "Document"],
         "used_by": []
       },
       "ReadDocumentTool": {
-        "file": "app/Mcp/Tools/ReadDocumentTool.php",
+        "file": "internal/handler/mcp/ReadDocumentTool.go",
         "depends_on": ["DocumentService"],
         "used_by": []
       },
       "UpdateDocumentTool": {
-        "file": "app/Mcp/Tools/UpdateDocumentTool.php",
+        "file": "internal/handler/mcp/UpdateDocumentTool.go",
         "depends_on": ["DocumentService"],
         "used_by": []
       },
       "DeleteDocumentTool": {
-        "file": "app/Mcp/Tools/DeleteDocumentTool.php",
+        "file": "internal/handler/mcp/DeleteDocumentTool.go",
         "depends_on": ["DocumentService"],
         "used_by": []
       },
       "ListZimArchivesTool": {
-        "file": "app/Mcp/Tools/ListZimArchivesTool.php",
+        "file": "internal/handler/mcp/ListZimArchivesTool.go",
         "depends_on": ["SearchZimArchivesAction"],
         "used_by": []
       },
       "SearchZimTool": {
-        "file": "app/Mcp/Tools/SearchZimTool.php",
+        "file": "internal/handler/mcp/SearchZimTool.go",
         "depends_on": ["SearchZimArticlesAction", "SuggestZimArticlesAction"],
         "used_by": []
       },
       "ReadZimArticleTool": {
-        "file": "app/Mcp/Tools/ReadZimArticleTool.php",
+        "file": "internal/handler/mcp/ReadZimArticleTool.go",
         "depends_on": ["ReadZimArticleAction", "KiwixServeClient"],
         "used_by": []
       },
       "ListConfluenceSpacesTool": {
-        "file": "app/Mcp/Tools/ListConfluenceSpacesTool.php",
+        "file": "internal/handler/mcp/ListConfluenceSpacesTool.go",
         "depends_on": ["ListConfluenceSpacesAction", "ExternalServiceManager", "ExternalService"],
         "used_by": []
       },
       "SearchConfluenceTool": {
-        "file": "app/Mcp/Tools/SearchConfluenceTool.php",
+        "file": "internal/handler/mcp/SearchConfluenceTool.go",
         "depends_on": ["SearchConfluencePagesAction", "ExternalServiceManager", "ExternalService"],
         "used_by": []
       },
       "ReadConfluencePageTool": {
-        "file": "app/Mcp/Tools/ReadConfluencePageTool.php",
+        "file": "internal/handler/mcp/ReadConfluencePageTool.go",
         "depends_on": ["ReadConfluencePageAction", "ExternalServiceManager", "ExternalService"],
         "used_by": []
       },
       "ListGitTemplatesTool": {
-        "file": "app/Mcp/Tools/ListGitTemplatesTool.php",
+        "file": "internal/handler/mcp/ListGitTemplatesTool.go",
         "depends_on": ["ListGitTemplatesAction", "GitTemplate"],
         "used_by": []
       },
       "SearchGitTemplatesTool": {
-        "file": "app/Mcp/Tools/SearchGitTemplatesTool.php",
+        "file": "internal/handler/mcp/SearchGitTemplatesTool.go",
         "depends_on": ["SearchGitTemplatesAction"],
         "used_by": []
       },
       "GetTemplateStructureTool": {
-        "file": "app/Mcp/Tools/GetTemplateStructureTool.php",
+        "file": "internal/handler/mcp/GetTemplateStructureTool.go",
         "depends_on": ["GetTemplateStructureAction", "GitTemplate"],
         "used_by": []
       },
       "GetTemplateFileTool": {
-        "file": "app/Mcp/Tools/GetTemplateFileTool.php",
+        "file": "internal/handler/mcp/GetTemplateFileTool.go",
         "depends_on": ["GetTemplateFileAction", "GitTemplate"],
         "used_by": []
       },
       "GetDeploymentGuideTool": {
-        "file": "app/Mcp/Tools/GetDeploymentGuideTool.php",
+        "file": "internal/handler/mcp/GetDeploymentGuideTool.go",
         "depends_on": ["GenerateDeploymentGuideAction", "GitTemplate"],
         "used_by": []
       },
       "DownloadTemplateTool": {
-        "file": "app/Mcp/Tools/DownloadTemplateTool.php",
+        "file": "internal/handler/mcp/DownloadTemplateTool.go",
         "depends_on": ["GenerateTemplateArchiveAction", "GitTemplate"],
         "used_by": []
       }
     },
     "mcp_prompts": {
       "DocumentAnalysisPrompt": {
-        "file": "app/Mcp/Prompts/DocumentAnalysisPrompt.php",
+        "file": "internal/handler/mcp/DocumentAnalysisPrompt.go",
         "depends_on": [],
         "used_by": []
       },
       "SearchQueryBuilderPrompt": {
-        "file": "app/Mcp/Prompts/SearchQueryBuilderPrompt.php",
+        "file": "internal/handler/mcp/SearchQueryBuilderPrompt.go",
         "depends_on": [],
         "used_by": []
       },
       "KnowledgeBaseBuilderPrompt": {
-        "file": "app/Mcp/Prompts/KnowledgeBaseBuilderPrompt.php",
+        "file": "internal/handler/mcp/KnowledgeBaseBuilderPrompt.go",
         "depends_on": [],
         "used_by": []
       },
       "CrossSourceResearchPrompt": {
-        "file": "app/Mcp/Prompts/CrossSourceResearchPrompt.php",
+        "file": "internal/handler/mcp/CrossSourceResearchPrompt.go",
         "depends_on": [],
         "used_by": []
       },
       "ZimResearchPrompt": {
-        "file": "app/Mcp/Prompts/ZimResearchPrompt.php",
+        "file": "internal/handler/mcp/ZimResearchPrompt.go",
         "depends_on": ["ExternalServiceManager", "ExternalService"],
         "used_by": []
       },
       "GitTemplateSetupPrompt": {
-        "file": "app/Mcp/Prompts/GitTemplateSetupPrompt.php",
+        "file": "internal/handler/mcp/GitTemplateSetupPrompt.go",
         "depends_on": [],
         "used_by": []
       },
       "ConfluenceResearchPrompt": {
-        "file": "app/Mcp/Prompts/ConfluenceResearchPrompt.php",
+        "file": "internal/handler/mcp/ConfluenceResearchPrompt.go",
         "depends_on": ["ExternalServiceManager", "ExternalService"],
         "used_by": []
       }
     },
     "middleware": {
       "AssignRequestId": {
-        "file": "app/Http/Middleware/AssignRequestId.php",
+        "file": "internal/middleware/AssignRequestId.go",
         "depends_on": [],
         "used_by": []
       },
       "AuthenticateInternalEndpoint": {
-        "file": "app/Http/Middleware/AuthenticateInternalEndpoint.php",
+        "file": "internal/middleware/AuthenticateInternalEndpoint.go",
         "depends_on": [],
         "used_by": []
       },
       "CacheResponse": {
-        "file": "app/Http/Middleware/CacheResponse.php",
+        "file": "internal/middleware/CacheResponse.go",
         "depends_on": [],
         "used_by": []
       },
       "DenyHiddenFiles": {
-        "file": "app/Http/Middleware/DenyHiddenFiles.php",
+        "file": "internal/middleware/DenyHiddenFiles.go",
         "depends_on": [],
         "used_by": []
       },
       "EnsureUserIsAdmin": {
-        "file": "app/Http/Middleware/EnsureUserIsAdmin.php",
+        "file": "internal/middleware/EnsureUserIsAdmin.go",
         "depends_on": [],
         "used_by": []
       },
-      "LaravelMcpAuth": {
-        "file": "app/Http/Middleware/LaravelMcpAuth.php",
+      "MCPAuth": {
+        "file": "internal/middleware/mcp_auth.go",
         "depends_on": ["OAuthAccessToken", "User", "PrometheusService", "OAuthService"],
         "used_by": []
       },
-      "PreventLazyLoading": {
-        "file": "app/Http/Middleware/PreventLazyLoading.php",
-        "depends_on": [],
-        "used_by": []
-      },
       "SecurityHeaders": {
-        "file": "app/Http/Middleware/SecurityHeaders.php",
+        "file": "internal/middleware/SecurityHeaders.go",
         "depends_on": [],
         "used_by": []
       }
     },
     "extractors": {
       "PdfExtractor": {
-        "file": "app/Extractors/PdfExtractor.php",
+        "file": "internal/extractor/PdfExtractor.go",
         "depends_on": ["PdfAnchorLinkConverter"],
         "used_by": ["TextExtractionService"]
       },
       "DocxExtractor": {
-        "file": "app/Extractors/DocxExtractor.php",
+        "file": "internal/extractor/DocxExtractor.go",
         "depends_on": [],
         "used_by": ["TextExtractionService"]
       },
       "XlsxExtractor": {
-        "file": "app/Extractors/XlsxExtractor.php",
+        "file": "internal/extractor/XlsxExtractor.go",
         "depends_on": [],
         "used_by": ["TextExtractionService"]
       },
       "HtmlExtractor": {
-        "file": "app/Extractors/HtmlExtractor.php",
+        "file": "internal/extractor/HtmlExtractor.go",
         "depends_on": [],
         "used_by": ["TextExtractionService"]
       },
       "MarkdownExtractor": {
-        "file": "app/Extractors/MarkdownExtractor.php",
+        "file": "internal/extractor/MarkdownExtractor.go",
         "depends_on": [],
         "used_by": ["TextExtractionService"]
       }
     },
     "jobs": {
       "BaseJob": {
-        "file": "app/Jobs/BaseJob.php",
+        "file": "internal/worker/BaseJob.go",
         "depends_on": [],
         "used_by": ["CheckExternalServiceHealthJob", "IndexDocumentInMeilisearchJob", "ProcessDocumentUploadJob", "ReindexAllDocumentsJob", "SyncGitTemplateJob"]
       },
       "ProcessDocumentUploadJob": {
-        "file": "app/Jobs/ProcessDocumentUploadJob.php",
+        "file": "internal/worker/ProcessDocumentUploadJob.go",
         "depends_on": ["ExtractDocumentContentAction", "UpdateDocumentStatusAction", "Document"],
         "used_by": ["DocumentService"]
       },
       "IndexDocumentInMeilisearchJob": {
-        "file": "app/Jobs/IndexDocumentInMeilisearchJob.php",
+        "file": "internal/worker/IndexDocumentInMeilisearchJob.go",
         "depends_on": ["IndexDocumentInMeilisearchAction", "Document"],
         "used_by": []
       },
       "ReindexAllDocumentsJob": {
-        "file": "app/Jobs/ReindexAllDocumentsJob.php",
+        "file": "internal/worker/ReindexAllDocumentsJob.go",
         "depends_on": ["Document"],
         "used_by": []
       },
       "CheckExternalServiceHealthJob": {
-        "file": "app/Jobs/CheckExternalServiceHealthJob.php",
+        "file": "internal/worker/CheckExternalServiceHealthJob.go",
         "depends_on": ["ExternalService", "ExternalServiceHealthChecker"],
         "used_by": []
       },
       "SyncGitTemplateJob": {
-        "file": "app/Jobs/SyncGitTemplateJob.php",
+        "file": "internal/worker/SyncGitTemplateJob.go",
         "depends_on": ["SyncGitTemplateAction", "GitTemplate"],
         "used_by": ["RegisterGitTemplateAction"]
       }
@@ -1387,9 +1382,9 @@
         "phase": 5,
         "name": "HTTP Handlers",
         "components": [
-          "14 REST API controllers",
+          "14 REST API handlers",
           "8 middleware handlers",
-          "26 request validation structs (FormRequests)"
+          "26 input validation in handlers"
         ],
         "rationale": "Depends on services + actions. Includes authentication, authorization, request validation."
       },
@@ -1476,14 +1471,14 @@
   },
   "circular_dependency_check": {
     "result": "PASS",
-    "notes": "No circular dependencies detected. Dependency flow is strictly: Models <- DTOs <- Actions <- Services <- Controllers/MCP Tools/Jobs. The only cross-action dependency is ReindexMissingDocumentsAction -> IndexDocumentInMeilisearchAction and CleanupSoftDeletedDocumentsAction -> PermanentlyDeleteDocumentAction, both within the same domain (Documents/SearchIndex) and both unidirectional."
+    "notes": "No circular dependencies detected. Dependency flow is strictly: Domain types <- Services <- Handlers/MCP Tools/Workers. The only cross-service dependency is ReindexMissingDocumentsAction -> IndexDocumentInMeilisearchAction and CleanupSoftDeletedDocumentsAction -> PermanentlyDeleteDocumentAction, both within the same domain (Documents/SearchIndex) and both unidirectional."
   },
   "statistics": {
     "total_models": 15,
     "total_dtos": 75,
     "total_actions": 56,
     "total_services": 18,
-    "total_controllers": 14,
+    "total_handlers": 14,
     "total_mcp_tools": 18,
     "total_mcp_prompts": 7,
     "total_middleware": 8,

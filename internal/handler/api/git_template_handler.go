@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -21,19 +22,30 @@ import (
 	"github.com/google/uuid"
 
 	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/repository"
 	"git.999.haus/chris/DocuMCP-go/internal/security"
 )
 
+// gitTemplateRepo defines the methods used by GitTemplateHandler -- defined where consumed.
+type gitTemplateRepo interface {
+	List(ctx context.Context, category string, limit int) ([]model.GitTemplate, error)
+	Search(ctx context.Context, query, category string, limit int) ([]model.GitTemplate, error)
+	FindByUUID(ctx context.Context, uuid string) (*model.GitTemplate, error)
+	Create(ctx context.Context, tmpl *model.GitTemplate) error
+	Update(ctx context.Context, tmpl *model.GitTemplate) error
+	SoftDelete(ctx context.Context, id int64) error
+	FilesForTemplate(ctx context.Context, templateID int64) ([]model.GitTemplateFile, error)
+	FindFileByPath(ctx context.Context, templateID int64, path string) (*model.GitTemplateFile, error)
+}
+
 // GitTemplateHandler handles REST API endpoints for git templates.
 type GitTemplateHandler struct {
-	repo   *repository.GitTemplateRepository
+	repo   gitTemplateRepo
 	logger *slog.Logger
 }
 
 // NewGitTemplateHandler creates a new GitTemplateHandler.
 func NewGitTemplateHandler(
-	repo *repository.GitTemplateRepository,
+	repo gitTemplateRepo,
 	logger *slog.Logger,
 ) *GitTemplateHandler {
 	return &GitTemplateHandler{

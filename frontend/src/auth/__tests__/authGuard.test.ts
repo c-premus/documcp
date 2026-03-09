@@ -91,7 +91,7 @@ describe('authGuard', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve(mockUser),
+        json: () => Promise.resolve({ data: mockUser }),
       }),
     )
 

@@ -1,17 +1,69 @@
 package mcphandler
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
+	"github.com/meilisearch/meilisearch-go"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"git.999.haus/chris/DocuMCP-go/internal/client/confluence"
 	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
+	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
 	"git.999.haus/chris/DocuMCP-go/internal/search"
 	"git.999.haus/chris/DocuMCP-go/internal/service"
 )
+
+// --- Interfaces defined where consumed ---
+
+// documentServicer abstracts the document service methods used by MCP tool handlers.
+type documentServicer interface {
+	FindByUUID(ctx context.Context, uuid string) (*model.Document, error)
+	TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
+	Create(ctx context.Context, params service.CreateDocumentParams) (*model.Document, error)
+	Update(ctx context.Context, uuid string, params service.UpdateDocumentParams) (*model.Document, error)
+	Delete(ctx context.Context, uuid string) error
+}
+
+// confluenceSpaceLister abstracts the confluence space repository methods.
+type confluenceSpaceLister interface {
+	List(ctx context.Context, spaceType, query string, limit int) ([]model.ConfluenceSpace, error)
+}
+
+// zimArchiveLister abstracts the ZIM archive repository methods.
+type zimArchiveLister interface {
+	List(ctx context.Context, category, language, query string, limit int) ([]model.ZimArchive, error)
+}
+
+// gitTemplateStore abstracts the git template repository methods.
+type gitTemplateStore interface {
+	List(ctx context.Context, category string, limit int) ([]model.GitTemplate, error)
+	Search(ctx context.Context, query, category string, limit int) ([]model.GitTemplate, error)
+	FindByUUID(ctx context.Context, uuid string) (*model.GitTemplate, error)
+	FilesForTemplate(ctx context.Context, templateID int64) ([]model.GitTemplateFile, error)
+	FindFileByPath(ctx context.Context, templateID int64, path string) (*model.GitTemplateFile, error)
+}
+
+// confluenceSearcher abstracts the Confluence client methods.
+type confluenceSearcher interface {
+	SearchPages(ctx context.Context, params confluence.SearchPagesParams) (confluence.SearchResult, error)
+	ReadPage(ctx context.Context, pageID string) (*confluence.Page, error)
+	ReadPageByTitle(ctx context.Context, spaceKey, title string) (*confluence.Page, error)
+}
+
+// kiwixSearcher abstracts the Kiwix client methods.
+type kiwixSearcher interface {
+	Search(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error)
+	ReadArticle(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error)
+}
+
+// contentSearcher abstracts the search.Searcher methods.
+type contentSearcher interface {
+	Search(ctx context.Context, params search.SearchParams) (*meilisearch.SearchResponse, error)
+	FederatedSearch(ctx context.Context, params search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error)
+}
 
 // serverInstructions is the MCP server instructions describing all available
 // tools and prompts. It is sent to clients during initialization.
@@ -55,19 +107,19 @@ type Handler struct {
 	httpHandler http.Handler
 	logger      *slog.Logger
 
-	// Dependencies for tools
-	documentService     *service.DocumentService
+	// Dependencies for tools (interface-typed for testability)
+	documentService     documentServicer
 	documentRepo        *repository.DocumentRepository
 	externalServiceRepo *repository.ExternalServiceRepository
-	zimArchiveRepo      *repository.ZimArchiveRepository
-	confluenceSpaceRepo *repository.ConfluenceSpaceRepository
-	gitTemplateRepo     *repository.GitTemplateRepository
+	zimArchiveRepo      zimArchiveLister
+	confluenceSpaceRepo confluenceSpaceLister
+	gitTemplateRepo     gitTemplateStore
 	searchQueryRepo     *repository.SearchQueryRepository
 
 	// External service clients (nil means service not configured)
-	kiwixClient      *kiwix.Client
-	confluenceClient *confluence.Client
-	searcher         *search.Searcher
+	kiwixClient      kiwixSearcher
+	confluenceClient confluenceSearcher
+	searcher         contentSearcher
 }
 
 // Config holds all optional dependencies for the MCP handler.
@@ -78,20 +130,20 @@ type Config struct {
 	Logger        *slog.Logger
 
 	// Always required
-	DocumentService *service.DocumentService
+	DocumentService documentServicer
 	DocumentRepo    *repository.DocumentRepository
 	SearchQueryRepo *repository.SearchQueryRepository
 
 	// Conditionally registered
 	ExternalServiceRepo *repository.ExternalServiceRepository
-	ZimArchiveRepo      *repository.ZimArchiveRepository
-	ConfluenceSpaceRepo *repository.ConfluenceSpaceRepository
-	GitTemplateRepo     *repository.GitTemplateRepository
+	ZimArchiveRepo      zimArchiveLister
+	ConfluenceSpaceRepo confluenceSpaceLister
+	GitTemplateRepo     gitTemplateStore
 
 	// External service clients (nil means service not configured)
-	KiwixClient      *kiwix.Client
-	ConfluenceClient *confluence.Client
-	Searcher         *search.Searcher
+	KiwixClient      kiwixSearcher
+	ConfluenceClient confluenceSearcher
+	Searcher         contentSearcher
 
 	// Feature flags
 	ZimEnabled          bool

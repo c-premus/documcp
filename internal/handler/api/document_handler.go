@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -18,22 +19,45 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
+	"git.999.haus/chris/DocuMCP-go/internal/extractor"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
 	"git.999.haus/chris/DocuMCP-go/internal/service"
 )
 
+// documentPipeline defines the pipeline methods used by DocumentHandler.
+type documentPipeline interface {
+	FindByUUID(ctx context.Context, uuid string) (*model.Document, error)
+	Upload(ctx context.Context, params service.UploadDocumentParams) (*model.Document, error)
+	Update(ctx context.Context, docUUID string, params service.UpdateDocumentParams) (*model.Document, error)
+	Delete(ctx context.Context, docUUID string) error
+	StoragePath() string
+	ExtractorRegistry() *extractor.Registry
+}
+
+// documentRepo defines the repository methods used by DocumentHandler.
+type documentRepo interface {
+	List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error)
+	FindByUUID(ctx context.Context, uuid string) (*model.Document, error)
+	FindByUUIDIncludingDeleted(ctx context.Context, uuid string) (*model.Document, error)
+	TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
+	Restore(ctx context.Context, id int64) error
+	PurgeSingle(ctx context.Context, id int64) (string, error)
+	PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
+	ListDeleted(ctx context.Context, limit, offset int) ([]model.Document, int, error)
+}
+
 // DocumentHandler handles REST API endpoints for documents.
 type DocumentHandler struct {
-	pipeline *service.DocumentPipeline
-	repo     *repository.DocumentRepository
+	pipeline documentPipeline
+	repo     documentRepo
 	logger   *slog.Logger
 }
 
 // NewDocumentHandler creates a new DocumentHandler.
 func NewDocumentHandler(
-	pipeline *service.DocumentPipeline,
-	repo *repository.DocumentRepository,
+	pipeline documentPipeline,
+	repo documentRepo,
 	logger *slog.Logger,
 ) *DocumentHandler {
 	return &DocumentHandler{
@@ -94,10 +118,12 @@ func (h *DocumentHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]any{
-		"data":   docs,
-		"total":  result.Total,
-		"limit":  params.Limit,
-		"offset": params.Offset,
+		"data": docs,
+		"meta": map[string]any{
+			"total":  result.Total,
+			"limit":  params.Limit,
+			"offset": params.Offset,
+		},
 	})
 }
 
@@ -628,8 +654,10 @@ func (h *DocumentHandler) ListDeleted(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]any{
-		"data":  responses,
-		"total": total,
+		"data": responses,
+		"meta": map[string]any{
+			"total": total,
+		},
 	})
 }
 

@@ -23,7 +23,7 @@ function stubFetchStats(stats: DashboardStats) {
     'fetch',
     vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve(stats),
+      json: () => Promise.resolve({ data: stats }),
     }),
   )
 }

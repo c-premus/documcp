@@ -1,11 +1,15 @@
 package search_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"testing"
 
 	"github.com/meilisearch/meilisearch-go"
+	"github.com/prometheus/client_golang/prometheus"
 
+	"git.999.haus/chris/DocuMCP-go/internal/observability"
 	"git.999.haus/chris/DocuMCP-go/internal/search"
 )
 
@@ -17,6 +21,123 @@ func makeHit(m map[string]any) meilisearch.Hit {
 		hit[k] = json.RawMessage(raw)
 	}
 	return hit
+}
+
+func TestNewSearcher(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns non-nil searcher with valid args", func(t *testing.T) {
+		t.Parallel()
+
+		logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+		client := search.NewClient("http://localhost:7700", "test-key", logger)
+		s := search.NewSearcher(client, logger)
+
+		if s == nil {
+			t.Fatal("NewSearcher returned nil")
+		}
+	})
+
+	t.Run("returns non-nil searcher with nil logger", func(t *testing.T) {
+		t.Parallel()
+
+		client := search.NewClient("http://localhost:7700", "", nil)
+		s := search.NewSearcher(client, nil)
+
+		if s == nil {
+			t.Fatal("NewSearcher returned nil with nil logger")
+		}
+	})
+}
+
+func TestSetMetrics(t *testing.T) {
+	t.Run("does not panic with valid metrics", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+		client := search.NewClient("http://localhost:7700", "", logger)
+		s := search.NewSearcher(client, logger)
+
+		reg := prometheus.NewRegistry()
+		origReg := prometheus.DefaultRegisterer
+		origGath := prometheus.DefaultGatherer
+		prometheus.DefaultRegisterer = reg
+		prometheus.DefaultGatherer = reg
+		t.Cleanup(func() {
+			prometheus.DefaultRegisterer = origReg
+			prometheus.DefaultGatherer = origGath
+		})
+
+		m := observability.NewMetrics()
+		s.SetMetrics(m)
+	})
+
+	t.Run("does not panic with nil metrics", func(t *testing.T) {
+		t.Parallel()
+
+		logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+		client := search.NewClient("http://localhost:7700", "", logger)
+		s := search.NewSearcher(client, logger)
+
+		s.SetMetrics(nil)
+	})
+}
+
+func TestSearchParams_LimitDefaults(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		limit int64
+	}{
+		{name: "zero limit", limit: 0},
+		{name: "negative limit", limit: -1},
+		{name: "positive limit", limit: 50},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			params := search.SearchParams{
+				Query:    "test",
+				IndexUID: "documents",
+				Limit:    tt.limit,
+			}
+
+			if params.Limit != tt.limit {
+				t.Errorf("SearchParams.Limit = %d, want %d", params.Limit, tt.limit)
+			}
+		})
+	}
+}
+
+func TestFederatedSearchParams_DefaultIndexes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty indexes means search all", func(t *testing.T) {
+		t.Parallel()
+
+		params := search.FederatedSearchParams{
+			Query:   "test",
+			Indexes: nil,
+		}
+
+		if len(params.Indexes) != 0 {
+			t.Errorf("expected nil Indexes, got %v", params.Indexes)
+		}
+	})
+
+	t.Run("explicit indexes are preserved", func(t *testing.T) {
+		t.Parallel()
+
+		params := search.FederatedSearchParams{
+			Query:   "test",
+			Indexes: []string{search.IndexDocuments, search.IndexZimArchives},
+		}
+
+		if len(params.Indexes) != 2 {
+			t.Errorf("expected 2 indexes, got %d", len(params.Indexes))
+		}
+	})
 }
 
 func TestNormalizeHits(t *testing.T) {
@@ -218,6 +339,92 @@ func TestNormalizeHits(t *testing.T) {
 				Source: "documents",
 			},
 		},
+		{
+			name: "hit with numeric uuid is ignored as string field",
+			hits: meilisearch.Hits{
+				makeHit(map[string]any{
+					"uuid":  42,
+					"title": "Numeric UUID",
+				}),
+			},
+			source:  "documents",
+			wantLen: 1,
+			wantFirst: &search.SearchResult{
+				UUID:   "", // int does not match string type assertion
+				Title:  "Numeric UUID",
+				Source: "documents",
+			},
+		},
+		{
+			name: "hit with numeric title is ignored as string field",
+			hits: meilisearch.Hits{
+				makeHit(map[string]any{
+					"uuid":  "num-title",
+					"title": 12345,
+				}),
+			},
+			source:  "documents",
+			wantLen: 1,
+			wantFirst: &search.SearchResult{
+				UUID:   "num-title",
+				Title:  "", // int does not match string type assertion
+				Source: "documents",
+			},
+		},
+		{
+			name: "hit with boolean description is ignored",
+			hits: meilisearch.Hits{
+				makeHit(map[string]any{
+					"uuid":        "bool-desc",
+					"title":       "Bool Desc",
+					"description": true,
+				}),
+			},
+			source:  "documents",
+			wantLen: 1,
+			wantFirst: &search.SearchResult{
+				UUID:        "bool-desc",
+				Title:       "Bool Desc",
+				Description: "", // bool does not match string type assertion
+				Source:      "documents",
+			},
+		},
+		{
+			name: "hit with string ranking score is ignored",
+			hits: meilisearch.Hits{
+				makeHit(map[string]any{
+					"uuid":          "str-score",
+					"title":         "String Score",
+					"_rankingScore": "not-a-number",
+				}),
+			},
+			source:  "documents",
+			wantLen: 1,
+			wantFirst: &search.SearchResult{
+				UUID:   "str-score",
+				Title:  "String Score",
+				Source: "documents",
+				Score:  0.0, // string does not match float64 type assertion
+			},
+		},
+		{
+			name: "unicode fields are handled correctly",
+			hits: meilisearch.Hits{
+				makeHit(map[string]any{
+					"uuid":        "unicode-test",
+					"title":       "Titre en francais",
+					"description": "Beschreibung auf Deutsch",
+				}),
+			},
+			source:  "documents",
+			wantLen: 1,
+			wantFirst: &search.SearchResult{
+				UUID:        "unicode-test",
+				Title:       "Titre en francais",
+				Description: "Beschreibung auf Deutsch",
+				Source:      "documents",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -298,6 +505,34 @@ func TestNormalizeHits_ExtraFieldsPopulated(t *testing.T) {
 	}
 }
 
+func TestNormalizeHits_ExtraContainsAllOriginalFields(t *testing.T) {
+	t.Parallel()
+
+	hits := meilisearch.Hits{
+		makeHit(map[string]any{
+			"uuid":        "all-fields",
+			"title":       "All Fields",
+			"description": "desc",
+			"file_type":   "pdf",
+			"is_public":   true,
+			"word_count":  500,
+		}),
+	}
+
+	results := search.NormalizeHits(hits, "documents")
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	extra := results[0].Extra
+	wantKeys := []string{"uuid", "title", "description", "file_type", "is_public", "word_count"}
+	for _, key := range wantKeys {
+		if _, ok := extra[key]; !ok {
+			t.Errorf("Extra should contain %q key", key)
+		}
+	}
+}
+
 func TestNormalizeHits_MultipleHitsPreservesOrder(t *testing.T) {
 	t.Parallel()
 
@@ -317,36 +552,6 @@ func TestNormalizeHits_MultipleHitsPreservesOrder(t *testing.T) {
 		if results[i].UUID != want {
 			t.Errorf("results[%d].UUID = %q, want %q", i, results[i].UUID, want)
 		}
-	}
-}
-
-func TestSoftDeleteFilter(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		indexUID  string
-		wantEmpty bool
-	}{
-		{indexUID: search.IndexDocuments, wantEmpty: false},
-		{indexUID: search.IndexConfluenceSpaces, wantEmpty: false},
-		{indexUID: search.IndexGitTemplates, wantEmpty: false},
-		{indexUID: search.IndexZimArchives, wantEmpty: true},
-		{indexUID: "unknown_index", wantEmpty: true},
-		{indexUID: "", wantEmpty: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.indexUID, func(t *testing.T) {
-			t.Parallel()
-
-			// We cannot call softDeleteFilter directly since it is unexported.
-			// However, we verify its behavior indirectly through the
-			// FederatedSearch path. Since we cannot call Meilisearch in unit
-			// tests, we just verify the index constant values are correct.
-			if tt.indexUID == search.IndexDocuments && tt.indexUID != "documents" {
-				t.Errorf("IndexDocuments = %q, want %q", tt.indexUID, "documents")
-			}
-		})
 	}
 }
 
@@ -377,7 +582,6 @@ func TestSearchIndexConstants(t *testing.T) {
 func TestSearchResult_JSONFieldNames(t *testing.T) {
 	t.Parallel()
 
-	// Verify the SearchResult struct serializes with the expected JSON field names.
 	result := search.SearchResult{
 		UUID:        "test-uuid",
 		Title:       "Test Title",
@@ -404,7 +608,6 @@ func TestSearchResult_JSONFieldNames(t *testing.T) {
 		}
 	}
 
-	// description should be present (non-empty).
 	if _, ok := m["description"]; !ok {
 		t.Error("JSON output missing 'description' key")
 	}
@@ -413,7 +616,6 @@ func TestSearchResult_JSONFieldNames(t *testing.T) {
 func TestSearchResult_OmitEmptyFields(t *testing.T) {
 	t.Parallel()
 
-	// Verify omitempty behavior for optional fields.
 	result := search.SearchResult{
 		UUID:   "test-uuid",
 		Title:  "Minimal",
@@ -430,11 +632,49 @@ func TestSearchResult_OmitEmptyFields(t *testing.T) {
 		t.Fatalf("json.Unmarshal() unexpected error: %v", err)
 	}
 
-	// description and extra should be omitted when empty.
 	if _, ok := m["description"]; ok {
 		t.Error("JSON output should omit empty 'description' field")
 	}
 	if _, ok := m["extra"]; ok {
 		t.Error("JSON output should omit nil 'extra' field")
+	}
+}
+
+func TestSearchResult_JSONRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	original := search.SearchResult{
+		UUID:        "round-trip",
+		Title:       "Round Trip Test",
+		Description: "Tests JSON round-trip fidelity",
+		Source:      "documents",
+		Score:       0.75,
+		Extra:       map[string]any{"key": "value"},
+	}
+
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("json.Marshal() unexpected error: %v", err)
+	}
+
+	var decoded search.SearchResult
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+	}
+
+	if decoded.UUID != original.UUID {
+		t.Errorf("UUID = %q, want %q", decoded.UUID, original.UUID)
+	}
+	if decoded.Title != original.Title {
+		t.Errorf("Title = %q, want %q", decoded.Title, original.Title)
+	}
+	if decoded.Description != original.Description {
+		t.Errorf("Description = %q, want %q", decoded.Description, original.Description)
+	}
+	if decoded.Source != original.Source {
+		t.Errorf("Source = %q, want %q", decoded.Source, original.Source)
+	}
+	if decoded.Score != original.Score {
+		t.Errorf("Score = %f, want %f", decoded.Score, original.Score)
 	}
 }

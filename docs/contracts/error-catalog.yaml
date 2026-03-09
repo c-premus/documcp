@@ -2,25 +2,16 @@
 # All error responses organized by category
 # Generated from source code analysis
 #
-# Source files analyzed:
-#   - bootstrap/app.php (exception rendering)
-#   - app/Http/Responses/ApiResponse.php (success/error envelope)
-#   - app/Http/Controllers/Auth/OAuthAuthorizationServerController.php
-#   - app/Actions/OAuth/ExchangeAuthorizationCodeAction.php
-#   - app/Actions/OAuth/ExchangeDeviceCodeAction.php (includes DeviceCodeException)
-#   - app/Actions/OAuth/RefreshAccessTokenAction.php
-#   - app/Actions/OAuth/RevokeTokenAction.php
-#   - app/Mcp/Tools/*.php (18 tools)
-#   - app/Http/Requests/OAuth/*.php (7 FormRequest classes)
-#   - app/Http/Requests/StoreDocumentRequest.php
-#   - app/Http/Requests/UpdateDocumentRequest.php
-#   - app/Http/Middleware/AuthenticateInternalEndpoint.php
-#   - app/Http/Middleware/EnsureUserIsAdmin.php
-#   - app/Http/Middleware/LaravelMcpAuth.php
+# Source packages analyzed:
+#   - internal/handler/api (error rendering, response envelope)
+#   - internal/handler/oauth (OAuth authorization server handlers)
+#   - internal/service/oauth (token exchange, device code, refresh, revoke)
+#   - internal/handler/mcp (18 MCP tool handlers)
+#   - internal/middleware (auth, admin, MCP auth, internal token)
 
 metadata:
   generated_from: "Source code analysis"
-  generated_date: "2026-02-24"
+  generated_date: "2026-03-08"
   categories:
     - api
     - oauth
@@ -31,48 +22,41 @@ metadata:
 # =============================================================================
 # API Errors
 # =============================================================================
-# Rendered by bootstrap/app.php for routes matching /api/* or /documcp.
-# Format: {message, status, errors?, meta: {request_id}}
-# In debug mode, additional fields are added: exception, file, line, trace.
+# Rendered by error handling middleware for routes matching /api/* or /documcp.
+# Format: {error, message}
+# In debug mode, additional fields may be added.
 
 api_errors:
   response_shape:
     message: "string"
     status: "integer"
-    errors: "object|null  # Only present for ValidationException (422)"
-    meta:
-      request_id: "string|null"
-    # Debug-only fields (when APP_DEBUG=true):
-    # exception: "string  # FQCN of exception class"
-    # file: "string  # File where exception occurred"
-    # line: "integer  # Line number"
-    # trace: "array  # First 5 stack frames"
+    errors: "object|null  # Only present for validation errors (422)"
 
   errors:
     - status: 400
-      message_template: "{dynamic from HttpException message, or 'Bad Request' if empty}"
-      exception_class: "Symfony\\Component\\HttpKernel\\Exception\\HttpException"
-      trigger: "abort(400, ...) or throw new HttpException(400, ...)"
+      message_template: "{dynamic from error message, or 'Bad Request' if empty}"
+      error_type: "bad request error"
+      trigger: "Handler returns 400 with error message"
 
     - status: 401
       message: "Unauthenticated"
-      exception_class: "Illuminate\\Auth\\AuthenticationException"
+      error_type: "auth middleware rejection"
       trigger: "Unauthenticated request to auth-required endpoint"
 
     - status: 403
       message: "Forbidden"
-      exception_class: "Illuminate\\Auth\\Access\\AuthorizationException"
+      error_type: "authorization check failure"
       trigger: "User lacks permission for the requested action"
 
     - status: 404
       message: "Resource not found"
-      exception_class: "Illuminate\\Database\\Eloquent\\ModelNotFoundException"
-      trigger: "Model not found via findOrFail(), firstOrFail(), or route model binding"
+      error_type: "record not found"
+      trigger: "Database lookup returns no rows for the requested resource"
 
     - status: 422
       message: "Validation failed"
-      exception_class: "Illuminate\\Validation\\ValidationException"
-      trigger: "FormRequest or manual validation failure"
+      error_type: "input validation error"
+      trigger: "Request validation failure in handler"
       response_shape_override:
         message: "Validation failed"
         status: 422
@@ -83,22 +67,22 @@ api_errors:
           request_id: "string|null"
 
     - status: 429
-      message_template: "{dynamic from ThrottleRequestsException message}"
-      exception_class: "Illuminate\\Http\\Exceptions\\ThrottleRequestsException"
+      message_template: "{dynamic from rate limiter message}"
+      error_type: "rate limit exceeded"
       trigger: "Rate limit exceeded (non-OAuth routes)"
       note: "OAuth routes have a separate handler (see oauth_errors.too_many_requests)"
 
     - status: 500
       message: "Internal server error"
-      exception_class: "Throwable"
-      trigger: "Any unhandled exception not matching the above types"
-      note: "Internal details never exposed in production (only when APP_DEBUG=true)"
+      error_type: "unhandled error"
+      trigger: "Any unhandled error not matching the above types"
+      note: "Internal details never exposed in production"
 
 # =============================================================================
 # ApiResponse Helper Errors
 # =============================================================================
-# Used by controllers calling ApiResponse::error() directly.
-# Distinct from the bootstrap exception handler format.
+# Used by handlers returning structured error responses directly.
+# Distinct from the error middleware format.
 
 api_response_helper:
   success_shape:
@@ -116,15 +100,15 @@ api_response_helper:
       timestamp: "string  # ISO 8601"
 
   note: >
-    ApiResponse::error() is used by some controllers (e.g., document API).
-    The bootstrap/app.php exception handler uses a different shape.
+    Structured error responses are used by some handlers (e.g., document API).
+    The error handling middleware uses a different shape.
     Both formats may appear in the application depending on the code path.
 
 # =============================================================================
 # OAuth Errors (RFC 6749 / RFC 8628 / RFC 7009 / RFC 7591 format)
 # =============================================================================
 # Format: {error: "<error_code>", error_description: "<human readable>"}
-# OAuth FormRequest validation failures also use this format.
+# OAuth input validation failures also use this format.
 
 oauth_errors:
   response_shape:
@@ -132,31 +116,28 @@ oauth_errors:
     error_description: "string  # Human-readable error description"
 
   errors:
-    # --- invalid_request (from controller + FormRequest validation) ---
+    # --- invalid_request (from handler + input validation) ---
     - error_code: "invalid_request"
       status: 400
       rfc_reference: "RFC 6749 Section 4.1.2.1"
       trigger: "Missing or invalid request parameters"
       messages:
-        # From OAuthAuthorizationServerController::authorize()
+        # From authorize handler
         - "PKCE code_challenge required for public clients"
         - "PKCE code_challenge_method required for public clients"
         - "Public clients must use S256 code_challenge_method"
         - "Invalid redirect_uri"
-        # From TokenRequest::failedValidation()
-        - "{first validation error from TokenRequest}"
-        # From AuthorizeRequest::failedValidation()
-        - "{first validation error from AuthorizeRequest}"
-        # From RevokeRequest::failedValidation()
-        - "{first validation error from RevokeRequest}"
-        # From DeviceAuthorizationRequest::failedValidation()
-        - "{first validation error from DeviceAuthorizationRequest}"
-      source_files:
-        - "app/Http/Controllers/Auth/OAuthAuthorizationServerController.php"
-        - "app/Http/Requests/OAuth/TokenRequest.php"
-        - "app/Http/Requests/OAuth/AuthorizeRequest.php"
-        - "app/Http/Requests/OAuth/RevokeRequest.php"
-        - "app/Http/Requests/OAuth/DeviceAuthorizationRequest.php"
+        # From token handler validation
+        - "{first validation error from token request}"
+        # From authorize handler validation
+        - "{first validation error from authorize request}"
+        # From revoke handler validation
+        - "{first validation error from revoke request}"
+        # From device authorization handler validation
+        - "{first validation error from device authorization request}"
+      source_packages:
+        - "internal/handler/oauth"
+        - "internal/service/oauth"
 
     # --- invalid_client_metadata (RFC 7591 registration validation) ---
     - error_code: "invalid_client_metadata"
@@ -164,9 +145,9 @@ oauth_errors:
       rfc_reference: "RFC 7591 Section 3.2.2"
       trigger: "Invalid parameters in client registration request"
       messages:
-        - "{first validation error from ClientRegistrationRequest}"
-      source_files:
-        - "app/Http/Requests/OAuth/ClientRegistrationRequest.php"
+        - "{first validation error from client registration input}"
+      source_packages:
+        - "internal/handler/oauth"
 
     # --- invalid_client ---
     - error_code: "invalid_client"
@@ -174,12 +155,12 @@ oauth_errors:
       rfc_reference: "RFC 6749 Section 5.2"
       trigger: "Client not found, inactive, or invalid credentials"
       messages:
-        # From OAuthAuthorizationServerController::authorize() catch block
+        # From authorize handler
         - "Client not found or inactive"
-        # From OAuthAuthorizationServerController::deviceAuthorization() catch block
-        - "{dynamic from InvalidArgumentException message}"
-      source_files:
-        - "app/Http/Controllers/Auth/OAuthAuthorizationServerController.php"
+        # From device authorization handler
+        - "{dynamic from invalid argument error message}"
+      source_packages:
+        - "internal/handler/oauth"
 
     # --- invalid_grant ---
     - error_code: "invalid_grant"
@@ -187,23 +168,22 @@ oauth_errors:
       rfc_reference: "RFC 6749 Section 5.2"
       trigger: "Authorization code, device code, or credentials invalid"
       messages:
-        # From ExchangeAuthorizationCodeAction (thrown as generic Exception, caught by token() catch-all -> server_error)
-        # Note: These exceptions bubble up to the token() method's generic catch block
+        # From authorization code exchange (returned as error, caught by token handler -> server_error)
+        # Note: These errors bubble up to the token handler's generic error handling
         # which converts them to server_error. They are listed here for completeness.
         #
-        # From ExchangeDeviceCodeAction via DeviceCodeException:
+        # From device code exchange service:
         - "Invalid client"
         - "Invalid client credentials"
         - "Invalid device code"
         - "Device code has already been used"
         - "Device code not in valid state for exchange"
-      source_files:
-        - "app/Actions/OAuth/ExchangeDeviceCodeAction.php"
+      source_packages:
+        - "internal/service/oauth"
       note: >
-        ExchangeAuthorizationCodeAction and RefreshAccessTokenAction throw generic
-        Exception instances. These are caught by the token() method's outer catch
-        block and returned as server_error (not invalid_grant). Only the device code
-        flow uses DeviceCodeException with proper error codes.
+        Authorization code exchange and refresh token services return errors
+        that are caught by the token handler and returned as server_error
+        (not invalid_grant). Only the device code flow returns typed error codes.
 
     # --- unsupported_grant_type ---
     - error_code: "unsupported_grant_type"
@@ -212,8 +192,8 @@ oauth_errors:
       trigger: "Grant type not one of: authorization_code, refresh_token, urn:ietf:params:oauth:grant-type:device_code"
       messages:
         - "Grant type {grant_type} is not supported"
-      source_files:
-        - "app/Http/Controllers/Auth/OAuthAuthorizationServerController.php"
+      source_packages:
+        - "internal/handler/oauth"
 
     # --- authorization_pending (RFC 8628 device flow) ---
     - error_code: "authorization_pending"
@@ -222,8 +202,8 @@ oauth_errors:
       trigger: "Device code polling while user has not yet authorized"
       messages:
         - "The authorization request is still pending"
-      source_files:
-        - "app/Actions/OAuth/ExchangeDeviceCodeAction.php"
+      source_packages:
+        - "internal/service/oauth"
 
     # --- slow_down (RFC 8628 device flow) ---
     - error_code: "slow_down"
@@ -232,8 +212,8 @@ oauth_errors:
       trigger: "Device polling faster than the specified interval"
       messages:
         - "Polling too fast. Increase interval to {interval} seconds"
-      source_files:
-        - "app/Actions/OAuth/ExchangeDeviceCodeAction.php"
+      source_packages:
+        - "internal/service/oauth"
 
     # --- access_denied (RFC 8628 device flow) ---
     - error_code: "access_denied"
@@ -242,8 +222,8 @@ oauth_errors:
       trigger: "User denied the device authorization request"
       messages:
         - "The user denied the authorization request"
-      source_files:
-        - "app/Actions/OAuth/ExchangeDeviceCodeAction.php"
+      source_packages:
+        - "internal/service/oauth"
 
     # --- expired_token (RFC 8628 device flow) ---
     - error_code: "expired_token"
@@ -252,8 +232,8 @@ oauth_errors:
       trigger: "Device code has expired (default: 900 seconds)"
       messages:
         - "The device code has expired"
-      source_files:
-        - "app/Actions/OAuth/ExchangeDeviceCodeAction.php"
+      source_packages:
+        - "internal/service/oauth"
 
     # --- too_many_requests (rate limiting) ---
     - error_code: "too_many_requests"
@@ -264,11 +244,11 @@ oauth_errors:
         - "Too many requests. Please try again later."
       headers:
         Retry-After: "integer  # Seconds until rate limit resets (default: 60)"
-      source_files:
-        - "bootstrap/app.php"
+      source_packages:
+        - "internal/middleware"
       note: >
         Only applies to routes matching oauth/*. Non-OAuth routes use
-        the default Laravel ThrottleRequestsException handling.
+        the default rate limiting middleware.
 
     # --- server_error ---
     - error_code: "server_error"
@@ -276,19 +256,19 @@ oauth_errors:
       rfc_reference: "RFC 6749 Section 4.1.2.1"
       trigger: "Internal error during OAuth operations"
       messages:
-        # From register() catch block
+        # From register handler
         - "An internal error occurred while registering the client"
-        # From token() catch block
+        # From token handler
         - "An internal error occurred while processing the token request"
-        # From revoke() catch block
+        # From revoke handler
         - "An internal error occurred while processing the revocation request"
-        # From deviceAuthorization() catch block
+        # From device authorization handler
         - "An internal error occurred while processing the device authorization request"
-      source_files:
-        - "app/Http/Controllers/Auth/OAuthAuthorizationServerController.php"
+      source_packages:
+        - "internal/handler/oauth"
       note: >
-        Internal error details are never exposed to clients. All exceptions
-        from ExchangeAuthorizationCodeAction and RefreshAccessTokenAction
+        Internal error details are never exposed to clients. All errors
+        from authorization code exchange and refresh token services
         (e.g., "Invalid client credentials", "Authorization code is expired
         or revoked", "Redirect URI mismatch", "Code verifier required for
         PKCE", "Invalid PKCE code verifier", "Refresh token not found",
@@ -300,14 +280,14 @@ oauth_errors:
   # generic catch block and converted to server_error. Listed for reference.
   internal_exceptions:
     exchange_authorization_code:
-      source_file: "app/Actions/OAuth/ExchangeAuthorizationCodeAction.php"
-      exceptions:
+      source_package: "internal/service/oauth"
+      errors:
         - message: "Invalid client credentials"
           trigger: "Client secret verification failed for confidential client"
         - message: "Invalid authorization code"
           trigger: "Auth code not found or belongs to different client"
         - message: "Authorization code is expired or revoked"
-          trigger: "Auth code isValid() returns false"
+          trigger: "Auth code is expired or revoked"
         - message: "Redirect URI mismatch"
           trigger: "redirect_uri does not match the one in auth code"
         - message: "Unexpected code_verifier - authorization request did not include code_challenge"
@@ -318,22 +298,22 @@ oauth_errors:
           trigger: "PKCE verification failed (S256 hash mismatch)"
 
     refresh_access_token:
-      source_file: "app/Actions/OAuth/RefreshAccessTokenAction.php"
-      exceptions:
+      source_package: "internal/service/oauth"
+      errors:
         - message: "Invalid client credentials"
           trigger: "Client secret verification failed for confidential client"
         - message: "Refresh token not found"
           trigger: "Refresh token lookup returned null"
         - message: "Refresh token is expired or revoked"
-          trigger: "Refresh token isValid() returns false"
+          trigger: "Refresh token is expired or revoked"
         - message: "Associated access token not found"
           trigger: "Refresh token's access token relationship is null"
         - message: "Refresh token does not belong to this client"
           trigger: "Access token's client_id doesn't match requesting client"
 
     revoke_token:
-      source_file: "app/Actions/OAuth/RevokeTokenAction.php"
-      exceptions:
+      source_package: "internal/service/oauth"
+      errors:
         - message: "Invalid client credentials"
           trigger: "Client secret verification failed for confidential client"
       note: >
@@ -343,11 +323,11 @@ oauth_errors:
 
   # --- OAuth client registration authorization failures ---
   registration_authorization:
-    source_file: "app/Http/Requests/OAuth/ClientRegistrationRequest.php"
+    source_package: "internal/handler/oauth"
     responses:
       - status: 404
         trigger: "Client registration feature is disabled"
-        note: "abort(404) - registration endpoint appears to not exist"
+        note: "Returns 404 - registration endpoint appears to not exist"
       - status: 401
         message: "Authentication required for client registration"
         trigger: "User not authenticated and require_authentication is true"
@@ -358,232 +338,231 @@ oauth_errors:
 # =============================================================================
 # MCP Errors (MCP protocol format)
 # =============================================================================
-# All MCP tool errors use Response::error("generic message").
-# Per MEMORY.md: NEVER expose $e->getMessage() to clients.
-# All catch blocks follow: Tracing::recordException($e) + report($e) + Log::error() + Response::error()
+# All MCP tool errors return generic error messages.
+# Internal error details are never exposed to clients.
+# All error paths follow: record span error + log error + return MCP error response
 
 mcp_errors:
-  response_type: "Response::error()"
+  response_type: "MCP error response"
   security_note: >
-    All MCP tools return generic error messages. Internal exception details
-    are logged server-side but never exposed to clients. This follows the
-    security policy in MEMORY.md.
+    All MCP tools return generic error messages. Internal error details
+    are logged server-side but never exposed to clients.
 
   tools:
     # --- Search (1) ---
     - tool: "unified_search"
-      source_file: "app/Mcp/Tools/UnifiedSearchTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Search failed. Please try again later."
           trigger: "Any Throwable during search execution"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     # --- Document (5) ---
     - tool: "search_documents"
-      source_file: "app/Mcp/Tools/SearchDocumentsTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Search operation failed. Please try again later."
           trigger: "Any Throwable during Meilisearch query"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     - tool: "create_document"
-      source_file: "app/Mcp/Tools/CreateDocumentTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Authentication required to create documents."
           trigger: "No authenticated user or user lacks 'create' permission on Document"
-          catch_type: "pre-try authorization check"
+          catch_type: "authorization check"
         - message: "Failed to create temporary file"
-          trigger: "tmpfile() returns false"
-          catch_type: "pre-try check"
+          trigger: "Temporary file creation fails"
+          catch_type: "early return"
         - message: "Failed to create document. Please check the input and try again."
           trigger: "Any Throwable during document creation"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     - tool: "read_document"
-      source_file: "app/Mcp/Tools/ReadDocumentTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Document not found."
-          trigger: "DocumentService::get() returns null"
-          catch_type: "pre-try check"
+          trigger: "Document service returns nil for the given UUID"
+          catch_type: "early return"
         - message: "Access denied. Document is private or not found."
-          trigger: "DocumentPolicy denies 'view' permission"
-          catch_type: "pre-try authorization check"
+          trigger: "Authorization check denies 'view' permission"
+          catch_type: "authorization check"
         - message: "Failed to read document. Please verify the UUID and try again."
           trigger: "Any Throwable during document retrieval"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     - tool: "update_document"
-      source_file: "app/Mcp/Tools/UpdateDocumentTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Authentication required to update documents."
           trigger: "No authenticated user"
-          catch_type: "pre-try check"
+          catch_type: "early return"
         - message: "Document not found."
-          trigger: "DocumentService::get() returns null"
-          catch_type: "pre-try check"
+          trigger: "Document service returns nil for the given UUID"
+          catch_type: "early return"
         - message: "You do not have permission to update this document."
-          trigger: "DocumentPolicy denies 'update' permission (fallback if policy has no message)"
-          catch_type: "pre-try authorization check"
-          note: "May also show the policy's custom denial message if one is set"
+          trigger: "Authorization check denies 'update' permission"
+          catch_type: "authorization check"
+          note: "May also show a custom denial message if one is configured"
         - message: "Failed to update document. Please try again later."
           trigger: "Any Throwable during update"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     - tool: "delete_document"
-      source_file: "app/Mcp/Tools/DeleteDocumentTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Authentication required to delete documents."
           trigger: "No authenticated user"
-          catch_type: "pre-try check"
+          catch_type: "early return"
         - message: "Document not found."
-          trigger: "DocumentService::get() returns null"
-          catch_type: "pre-try check"
+          trigger: "Document service returns nil for the given UUID"
+          catch_type: "early return"
         - message: "You do not have permission to delete this document."
-          trigger: "DocumentPolicy denies 'delete' permission (fallback if policy has no message)"
-          catch_type: "pre-try authorization check"
-          note: "May also show the policy's custom denial message if one is set"
+          trigger: "Authorization check denies 'delete' permission"
+          catch_type: "authorization check"
+          note: "May also show a custom denial message if one is configured"
         - message: "Failed to delete document. Please try again later."
           trigger: "Any Throwable during deletion"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     # --- ZIM (3) ---
     - tool: "list_zim_archives"
-      source_file: "app/Mcp/Tools/ListZimArchivesTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Failed to list archives. Please try again later."
           trigger: "Any Throwable during archive listing"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     - tool: "search_zim"
-      source_file: "app/Mcp/Tools/SearchZimTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Search failed. Please try again later."
           trigger: "Any Throwable during ZIM search"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     - tool: "read_zim_article"
-      source_file: "app/Mcp/Tools/ReadZimArticleTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Article not found or unavailable."
           trigger: "RuntimeException (article not found in ZIM archive)"
-          catch_type: "\\RuntimeException"
+          catch_type: "runtime error"
         - message: "Failed to read article. Please try again later."
           trigger: "Any other Throwable"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     # --- Confluence (3) ---
     - tool: "list_confluence_spaces"
-      source_file: "app/Mcp/Tools/ListConfluenceSpacesTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Failed to list spaces. Please try again later."
           trigger: "Any Throwable during space listing"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     - tool: "search_confluence"
-      source_file: "app/Mcp/Tools/SearchConfluenceTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Either \"cql\" or \"query\" parameter is required"
           trigger: "Neither cql nor query parameter provided"
-          catch_type: "pre-try validation check"
+          catch_type: "validation check"
         - message: "Search failed. Please try again later."
           trigger: "Any Throwable during Confluence search"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     - tool: "read_confluence_page"
-      source_file: "app/Mcp/Tools/ReadConfluencePageTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Either \"page_id\" or both \"space_key\" and \"title\" must be provided"
           trigger: "Missing required page identification parameters"
-          catch_type: "pre-try validation check"
+          catch_type: "validation check"
         - message: "Invalid page request. Provide page_id or space_key with title."
-          trigger: "InvalidArgumentException from ReadConfluencePageAction"
-          catch_type: "\\InvalidArgumentException"
+          trigger: "Invalid argument error from Confluence page reader"
+          catch_type: "invalid argument error"
         - message: "Failed to read page. Please try again later."
           trigger: "Any other Throwable"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     # --- Git Template (6) ---
     - tool: "list_git_templates"
-      source_file: "app/Mcp/Tools/ListGitTemplatesTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Failed to list templates. Please try again later."
           trigger: "Any Throwable during template listing"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     - tool: "search_git_templates"
-      source_file: "app/Mcp/Tools/SearchGitTemplatesTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Search failed. Please try again later."
           trigger: "Any Throwable during Meilisearch query"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     - tool: "get_template_structure"
-      source_file: "app/Mcp/Tools/GetTemplateStructureTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Template not found."
           trigger: "GitTemplate not found by UUID"
-          catch_type: "pre-try check"
+          catch_type: "early return"
         - message: "Permission denied."
-          trigger: "GitTemplatePolicy denies 'view' permission (fallback if no custom message)"
-          catch_type: "pre-try authorization check"
-          note: "May also show the policy's custom denial message if one is set"
+          trigger: "Authorization check denies 'view' permission"
+          catch_type: "authorization check"
+          note: "May also show a custom denial message if one is configured"
         - message: "Failed to get template structure. Please try again later."
           trigger: "Any Throwable during structure generation"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     - tool: "get_template_file"
-      source_file: "app/Mcp/Tools/GetTemplateFileTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Template not found."
           trigger: "GitTemplate not found by UUID"
-          catch_type: "pre-try check"
+          catch_type: "early return"
         - message: "Permission denied."
-          trigger: "GitTemplatePolicy denies 'view' permission (fallback if no custom message)"
-          catch_type: "pre-try authorization check"
-          note: "May also show the policy's custom denial message if one is set"
+          trigger: "Authorization check denies 'view' permission"
+          catch_type: "authorization check"
+          note: "May also show a custom denial message if one is configured"
         - message: "File not found: {path}"
           trigger: "GetTemplateFileAction returns null for the requested path"
-          catch_type: "pre-try check"
+          catch_type: "early return"
         - message: "Failed to get file. Please verify the path and try again."
           trigger: "Any Throwable during file retrieval"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     - tool: "get_deployment_guide"
-      source_file: "app/Mcp/Tools/GetDeploymentGuideTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Template not found."
           trigger: "GitTemplate not found by UUID"
-          catch_type: "pre-try check"
+          catch_type: "early return"
         - message: "Permission denied."
-          trigger: "GitTemplatePolicy denies 'view' permission (fallback if no custom message)"
-          catch_type: "pre-try authorization check"
-          note: "May also show the policy's custom denial message if one is set"
+          trigger: "Authorization check denies 'view' permission"
+          catch_type: "authorization check"
+          note: "May also show a custom denial message if one is configured"
         - message: "Failed to generate deployment guide. Please try again later."
           trigger: "Any Throwable during guide generation"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
     - tool: "download_template"
-      source_file: "app/Mcp/Tools/DownloadTemplateTool.php"
+      source_package: "internal/handler/mcp"
       errors:
         - message: "Authentication required to download templates."
-          trigger: "No authenticated user (user not instanceof User)"
-          catch_type: "pre-try check"
+          trigger: "No authenticated user in request context"
+          catch_type: "early return"
         - message: "Template not found."
           trigger: "GitTemplate not found by UUID, or 'view' permission denied"
-          catch_type: "pre-try check"
+          catch_type: "early return"
           note: "Authorization denial also returns 'Template not found.' for security (prevents enumeration)"
         - message: "Failed to generate archive. Please try again later."
           trigger: "Any Throwable during archive generation"
-          catch_type: "\\Throwable"
+          catch_type: "error"
 
 # =============================================================================
 # Middleware Errors
 # =============================================================================
 
 middleware_errors:
-  - middleware: "AuthenticateInternalEndpoint"
+  - middleware: "InternalAuth"
     alias: "internal"
-    source_file: "app/Http/Middleware/AuthenticateInternalEndpoint.php"
+    source_package: "internal/middleware"
     protects: "/metrics, /api/health/deep"
     errors:
       - status: 401
@@ -600,9 +579,9 @@ middleware_errors:
       When INTERNAL_API_TOKEN is not configured (null or empty), access is
       unrestricted for backward compatibility in development environments.
 
-  - middleware: "EnsureUserIsAdmin"
+  - middleware: "RequireAdmin"
     alias: "admin"
-    source_file: "app/Http/Middleware/EnsureUserIsAdmin.php"
+    source_package: "internal/middleware"
     protects: "/admin/*, /pulse, /horizon"
     errors:
       - status: 403
@@ -615,11 +594,11 @@ middleware_errors:
       - status: 403
         format: "html"
         condition: "Browser request"
-        trigger: "abort(403, 'Access denied. Admin privileges required.')"
+        trigger: "Returns 403 with 'Access denied. Admin privileges required.'"
 
-  - middleware: "LaravelMcpAuth"
-    alias: "laravel.mcp.auth"
-    source_file: "app/Http/Middleware/LaravelMcpAuth.php"
+  - middleware: "MCPAuth"
+    alias: "mcp.auth"
+    source_package: "internal/middleware"
     protects: "/documcp (MCP endpoint)"
     errors:
       - status: 401
@@ -639,9 +618,9 @@ middleware_errors:
 # Validation Errors (422)
 # =============================================================================
 # API endpoints (routes under /api/*) return validation errors via the
-# bootstrap/app.php exception handler.
-# OAuth endpoints use custom failedValidation() that returns RFC 6749 format.
-# MCP tools use inline $request->validate() which returns MCP-formatted errors.
+# error handling middleware.
+# OAuth endpoints use custom validation that returns RFC 6749 format.
+# MCP tools use inline validation which returns MCP-formatted errors.
 
 validation_errors:
   api_format:
@@ -660,16 +639,16 @@ validation_errors:
       error: "invalid_request|invalid_client_metadata"
       error_description: "First validation error message"
     note: >
-      OAuth FormRequests override failedValidation() to return RFC 6749 format
+      OAuth handlers return validation errors in RFC 6749 format
       with status 400 (not 422). The error code depends on the endpoint:
-      TokenRequest, AuthorizeRequest, RevokeRequest, DeviceAuthorizationRequest
-      use "invalid_request". ClientRegistrationRequest uses "invalid_client_metadata".
+      token, authorize, revoke, and device authorization handlers
+      use "invalid_request". Client registration uses "invalid_client_metadata".
 
   endpoints:
     # --- Document API ---
     - endpoint: "POST /api/documents"
-      request_class: "StoreDocumentRequest"
-      source_file: "app/Http/Requests/StoreDocumentRequest.php"
+      validation: "input validation in handler"
+      source_package: "internal/handler/api"
       fields:
         file:
           rules: "required|file|max:51200|extensions:pdf,doc,docx,xls,xlsx,html,md,markdown|mimetypes:..."
@@ -704,8 +683,8 @@ validation_errors:
             - "The tags.0 field must not be greater than 100 characters."
 
     - endpoint: "PATCH /api/documents/{document}"
-      request_class: "UpdateDocumentRequest"
-      source_file: "app/Http/Requests/UpdateDocumentRequest.php"
+      validation: "input validation in handler"
+      source_package: "internal/handler/api"
       fields:
         title:
           rules: "sometimes|string|max:255"
@@ -732,8 +711,8 @@ validation_errors:
 
     # --- OAuth Token ---
     - endpoint: "POST /oauth/token"
-      request_class: "TokenRequest"
-      source_file: "app/Http/Requests/OAuth/TokenRequest.php"
+      validation: "input validation in handler"
+      source_package: "internal/handler/oauth"
       validation_error_format: "oauth"
       fields:
         grant_type:
@@ -774,8 +753,8 @@ validation_errors:
 
     # --- OAuth Client Registration ---
     - endpoint: "POST /oauth/register"
-      request_class: "ClientRegistrationRequest"
-      source_file: "app/Http/Requests/OAuth/ClientRegistrationRequest.php"
+      validation: "input validation in handler"
+      source_package: "internal/handler/oauth"
       validation_error_format: "oauth"
       validation_error_code: "invalid_client_metadata"
       fields:
@@ -832,8 +811,8 @@ validation_errors:
 
     # --- OAuth Authorization ---
     - endpoint: "GET /oauth/authorize"
-      request_class: "AuthorizeRequest"
-      source_file: "app/Http/Requests/OAuth/AuthorizeRequest.php"
+      validation: "input validation in handler"
+      source_package: "internal/handler/oauth"
       validation_error_format: "oauth"
       fields:
         response_type:
@@ -868,8 +847,8 @@ validation_errors:
 
     # --- OAuth Token Revocation ---
     - endpoint: "POST /oauth/revoke"
-      request_class: "RevokeRequest"
-      source_file: "app/Http/Requests/OAuth/RevokeRequest.php"
+      validation: "input validation in handler"
+      source_package: "internal/handler/oauth"
       validation_error_format: "oauth"
       fields:
         token:
@@ -890,8 +869,8 @@ validation_errors:
 
     # --- OAuth Device Authorization ---
     - endpoint: "POST /oauth/device/authorize"
-      request_class: "DeviceAuthorizationRequest"
-      source_file: "app/Http/Requests/OAuth/DeviceAuthorizationRequest.php"
+      validation: "input validation in handler"
+      source_package: "internal/handler/oauth"
       validation_error_format: "oauth"
       fields:
         client_id:
@@ -906,16 +885,16 @@ validation_errors:
 # Authorization Flow Errors (non-API, HTML responses)
 # =============================================================================
 # These errors occur during the OAuth authorization flow and are returned as
-# HTTP abort() responses or rendered as HTML views, not JSON.
+# HTTP error responses or rendered as HTML views, not JSON.
 
 authorization_flow_errors:
   authorize_approve:
-    source_file: "app/Http/Controllers/Auth/OAuthAuthorizationServerController.php"
-    method: "authorizeApprove"
+    source_package: "internal/handler/oauth"
+    method: "AuthorizeApprove"
     errors:
       - status: 401
         trigger: "User not authenticated"
-        response: "abort(401)"
+        response: "401 Unauthorized"
       - status: 400
         message: "No pending OAuth request. Please restart the authorization flow."
         trigger: "No oauth_pending_request in session"
@@ -939,32 +918,32 @@ authorization_flow_errors:
         trigger: "Exception during authorization code generation"
 
   device_verification:
-    source_file: "app/Http/Controllers/Auth/OAuthAuthorizationServerController.php"
-    method: "deviceVerificationSubmit"
+    source_package: "internal/handler/oauth"
+    method: "DeviceVerificationSubmit"
     format: "HTML view (oauth.device)"
     errors:
       - message: "Invalid or expired user code. Please check the code and try again."
         trigger: "Device code not found by user_code"
       - message: "This code has expired. Please request a new code from your device."
-        trigger: "Device code isExpired() returns true"
+        trigger: "Device code has expired"
       - message: "This code has already been used. Please request a new code from your device."
         trigger: "Device code is not in 'pending' status"
 
   device_approve:
-    source_file: "app/Http/Controllers/Auth/OAuthAuthorizationServerController.php"
-    method: "deviceApprove"
+    source_package: "internal/handler/oauth"
+    method: "DeviceApprove"
     format: "HTML view (oauth.device-error)"
     errors:
       - status: 401
         trigger: "User not authenticated"
-        response: "abort(401)"
+        response: "401 Unauthorized"
       - message: "No pending device authorization. Please restart the authorization flow."
         trigger: "No device_code_pending in session"
       - message: "User code mismatch. Please restart the authorization flow."
         trigger: "Session user_code doesn't match submitted user_code"
       - message: "Authorization request expired. Please restart the authorization flow."
         trigger: "Pending request older than 10 minutes (600 seconds)"
-      - message: "{dynamic from InvalidArgumentException}"
-        trigger: "AuthorizeDeviceCodeAction throws InvalidArgumentException"
+      - message: "{dynamic from error message}"
+        trigger: "Device code authorization service returns invalid argument error"
       - message: "An error occurred while processing your authorization."
         trigger: "Any other exception during device approval"

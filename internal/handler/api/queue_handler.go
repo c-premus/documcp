@@ -32,12 +32,14 @@ func (h *QueueHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonResponse(w, http.StatusOK, map[string]int{
-		"available": counts["available"],
-		"running":   counts["running"],
-		"retryable": counts["retryable"],
-		"discarded": counts["discarded"],
-		"cancelled": counts["cancelled"],
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"data": map[string]int{
+			"available": counts["available"],
+			"running":   counts["running"],
+			"retryable": counts["retryable"],
+			"discarded": counts["discarded"],
+			"cancelled": counts["cancelled"],
+		},
 	})
 }
 
@@ -88,7 +90,10 @@ func (h *QueueHandler) ListFailed(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	jsonResponse(w, http.StatusOK, map[string]any{"jobs": jobs, "count": len(jobs)})
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"data": jobs,
+		"meta": map[string]any{"count": len(jobs)},
+	})
 }
 
 // RetryFailed handles POST /api/admin/queue/failed/{id}/retry — retries a specific job.
@@ -106,7 +111,9 @@ func (h *QueueHandler) RetryFailed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonResponse(w, http.StatusOK, map[string]any{"id": job.ID, "state": job.State})
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"data": map[string]any{"id": job.ID, "state": job.State},
+	})
 }
 
 // DeleteFailed handles DELETE /api/admin/queue/failed/{id} — cancels a failed job.
@@ -124,5 +131,7 @@ func (h *QueueHandler) DeleteFailed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonResponse(w, http.StatusOK, map[string]any{"id": job.ID, "state": job.State})
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"data": map[string]any{"id": job.ID, "state": job.State},
+	})
 }

@@ -29,7 +29,7 @@ describe('auth store', () => {
         'fetch',
         vi.fn().mockResolvedValue({
           ok: true,
-          json: () => Promise.resolve(mockUser),
+          json: () => Promise.resolve({ data: mockUser }),
         }),
       )
 
@@ -47,7 +47,7 @@ describe('auth store', () => {
         'fetch',
         vi.fn().mockResolvedValue({
           ok: true,
-          json: () => Promise.resolve(mockUser),
+          json: () => Promise.resolve({ data: mockUser }),
         }),
       )
 

@@ -24,11 +24,12 @@ import (
 	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
 	"git.999.haus/chris/DocuMCP-go/internal/extractor"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"git.999.haus/chris/DocuMCP-go/internal/repository"
 	"git.999.haus/chris/DocuMCP-go/internal/service"
 )
 
 // ---------------------------------------------------------------------------
-// Mock repository implementing service.DocumentRepo
+// Mock repository implementing service.DocumentRepo (used by DocumentService)
 // ---------------------------------------------------------------------------
 
 type mockDocumentRepo struct {
@@ -99,6 +100,126 @@ func (m *mockDocumentRepo) CreateVersion(ctx context.Context, version *model.Doc
 }
 
 // ---------------------------------------------------------------------------
+// Mock pipeline implementing documentPipeline interface
+// ---------------------------------------------------------------------------
+
+type mockPipeline struct {
+	findByUUIDFn       func(ctx context.Context, uuid string) (*model.Document, error)
+	uploadFn           func(ctx context.Context, params service.UploadDocumentParams) (*model.Document, error)
+	updateFn           func(ctx context.Context, docUUID string, params service.UpdateDocumentParams) (*model.Document, error)
+	deleteFn           func(ctx context.Context, docUUID string) error
+	storagePathVal     string
+	extractorRegistryV *extractor.Registry
+}
+
+func (m *mockPipeline) FindByUUID(ctx context.Context, uuid string) (*model.Document, error) {
+	if m.findByUUIDFn != nil {
+		return m.findByUUIDFn(ctx, uuid)
+	}
+	return nil, nil
+}
+
+func (m *mockPipeline) Upload(ctx context.Context, params service.UploadDocumentParams) (*model.Document, error) {
+	if m.uploadFn != nil {
+		return m.uploadFn(ctx, params)
+	}
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockPipeline) Update(ctx context.Context, docUUID string, params service.UpdateDocumentParams) (*model.Document, error) {
+	if m.updateFn != nil {
+		return m.updateFn(ctx, docUUID, params)
+	}
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockPipeline) Delete(ctx context.Context, docUUID string) error {
+	if m.deleteFn != nil {
+		return m.deleteFn(ctx, docUUID)
+	}
+	return nil
+}
+
+func (m *mockPipeline) StoragePath() string {
+	return m.storagePathVal
+}
+
+func (m *mockPipeline) ExtractorRegistry() *extractor.Registry {
+	return m.extractorRegistryV
+}
+
+// ---------------------------------------------------------------------------
+// Mock handler-level repo implementing documentRepo interface
+// ---------------------------------------------------------------------------
+
+type mockHandlerRepo struct {
+	listFn                       func(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error)
+	findByUUIDFn                 func(ctx context.Context, uuid string) (*model.Document, error)
+	findByUUIDIncludingDeletedFn func(ctx context.Context, uuid string) (*model.Document, error)
+	tagsForDocumentFn            func(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
+	restoreFn                    func(ctx context.Context, id int64) error
+	purgeSingleFn                func(ctx context.Context, id int64) (string, error)
+	purgeSoftDeletedFn           func(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
+	listDeletedFn                func(ctx context.Context, limit, offset int) ([]model.Document, int, error)
+}
+
+func (m *mockHandlerRepo) List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+	if m.listFn != nil {
+		return m.listFn(ctx, params)
+	}
+	return &repository.DocumentListResult{}, nil
+}
+
+func (m *mockHandlerRepo) FindByUUID(ctx context.Context, uuid string) (*model.Document, error) {
+	if m.findByUUIDFn != nil {
+		return m.findByUUIDFn(ctx, uuid)
+	}
+	return nil, sql.ErrNoRows
+}
+
+func (m *mockHandlerRepo) FindByUUIDIncludingDeleted(ctx context.Context, uuid string) (*model.Document, error) {
+	if m.findByUUIDIncludingDeletedFn != nil {
+		return m.findByUUIDIncludingDeletedFn(ctx, uuid)
+	}
+	return nil, sql.ErrNoRows
+}
+
+func (m *mockHandlerRepo) TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error) {
+	if m.tagsForDocumentFn != nil {
+		return m.tagsForDocumentFn(ctx, documentID)
+	}
+	return nil, nil
+}
+
+func (m *mockHandlerRepo) Restore(ctx context.Context, id int64) error {
+	if m.restoreFn != nil {
+		return m.restoreFn(ctx, id)
+	}
+	return nil
+}
+
+func (m *mockHandlerRepo) PurgeSingle(ctx context.Context, id int64) (string, error) {
+	if m.purgeSingleFn != nil {
+		return m.purgeSingleFn(ctx, id)
+	}
+	return "", nil
+}
+
+func (m *mockHandlerRepo) PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error) {
+	if m.purgeSoftDeletedFn != nil {
+		return m.purgeSoftDeletedFn(ctx, olderThan)
+	}
+	return nil, nil
+}
+
+func (m *mockHandlerRepo) ListDeleted(ctx context.Context, limit, offset int) ([]model.Document, int, error) {
+	if m.listDeletedFn != nil {
+		return m.listDeletedFn(ctx, limit, offset)
+	}
+	return nil, 0, nil
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -132,17 +253,26 @@ func newTestDocument(uuid string) *model.Document {
 	}
 }
 
-// newDocumentHandlerForTest creates a DocumentHandler backed by a mock repo.
-// The handler's repo field (concrete *repository.DocumentRepository) is nil,
-// so only methods routed through the pipeline's DocumentService are safe to
-// call. Tests that need List or TagsForDocument at the handler level must
-// exercise other code paths.
+// newDocumentHandlerForTest creates a DocumentHandler backed by a mock service-level
+// repo. The pipeline is a real *service.DocumentPipeline backed by the mock.
+// The handler repo is a mockHandlerRepo with TagsForDocument wired through.
 func newDocumentHandlerForTest(mockRepo *mockDocumentRepo) *DocumentHandler {
 	docService := service.NewDocumentService(mockRepo, testLogger())
 	pipeline := service.NewDocumentPipeline(docService, nil, nil, nil, "")
 	return &DocumentHandler{
 		pipeline: pipeline,
-		repo:     nil, // concrete repo requires DB; not used in non-List paths
+		repo: &mockHandlerRepo{
+			tagsForDocumentFn: mockRepo.tagsForDocumentFn,
+		},
+		logger: testLogger(),
+	}
+}
+
+// newTestHandler creates a DocumentHandler using mock pipeline and mock repo directly.
+func newTestHandler(p *mockPipeline, r *mockHandlerRepo) *DocumentHandler {
+	return &DocumentHandler{
+		pipeline: p,
+		repo:     r,
 		logger:   testLogger(),
 	}
 }
@@ -777,46 +907,16 @@ func (m *mockExtractor) Supports(mimeType string) bool {
 
 // newDocumentHandlerWithExtractor creates a DocumentHandler with a pipeline
 // that has a working ExtractorRegistry backed by the given mock extractor.
-// The repo field is nil, which limits tests to code paths that do not call
-// h.repo methods directly.
 func newDocumentHandlerWithExtractor(mockRepo *mockDocumentRepo, ext extractor.Extractor) *DocumentHandler {
 	docService := service.NewDocumentService(mockRepo, testLogger())
 	registry := extractor.NewRegistry(ext)
 	pipeline := service.NewDocumentPipeline(docService, registry, nil, nil, "")
 	return &DocumentHandler{
 		pipeline: pipeline,
-		repo:     nil,
+		repo:     &mockHandlerRepo{},
 		logger:   testLogger(),
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Download handler tests
-//
-// The Download handler uses h.repo.FindByUUID() which calls into the concrete
-// *repository.DocumentRepository (not an interface). To unit test this, we
-// create a minimal *repository.DocumentRepository. Since FindByUUID requires
-// a database connection, we test only the access-control and file-serving
-// logic by constructing the handler with a repo that wraps a real DB.
-//
-// Because a live database is not available in unit tests, the Download handler
-// is primarily covered by the following integration test patterns:
-//   - 404 when UUID not found
-//   - 403 when document is private and user is not the owner
-//   - 200 with correct headers for public documents
-//   - 200 for private documents when authenticated as the owner
-//
-// The tests below cover the file-serving layer by setting up temp files and
-// directly constructing the handler state. We test all paths after FindByUUID
-// by manually constructing the handler.
-// ---------------------------------------------------------------------------
-
-// testDownloadHandler creates a DocumentHandler where the repo field is nil
-// but the pipeline has a StoragePath set to the given temp directory. This
-// is NOT usable for the FindByUUID call but IS usable for testing helper
-// logic and the Analyze endpoint.
-//
-// For Download tests, see the integration test notes above.
 
 // ---------------------------------------------------------------------------
 // Analyze handler tests
@@ -1036,89 +1136,154 @@ func TestDocumentHandler_Analyze(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // Download handler tests
-//
-// The Download handler uses h.repo (concrete *repository.DocumentRepository)
-// directly for FindByUUID, which requires a database connection. We test the
-// access-control and file-serving logic by constructing the handler with a
-// concrete repo and temporary files on disk.
-//
-// Since we cannot mock the concrete repo, we test the file-serving portion
-// by building a handler where repo is set to a real DocumentRepository. For
-// FindByUUID, we use a minimal approach: we set repo to a real instance
-// backed by a nil DB, then intercept at the handler level by testing the
-// post-FindByUUID code paths through a separate helper. However, the most
-// practical path is constructing the full Download flow by testing from
-// after the repo call using the access check / file serve logic directly.
-//
-// NOTE: Full Download integration tests with a database should be placed in
-// an _integration_test.go file. The tests below exercise the scenarios where
-// FindByUUID is NOT called, or where we can test the downstream logic.
 // ---------------------------------------------------------------------------
 
 func TestDocumentHandler_Download(t *testing.T) {
 	t.Parallel()
 
-	// We test Download by creating a handler where h.repo is a real
-	// *repository.DocumentRepository backed by a nil DB. The call to
-	// h.repo.FindByUUID will fail with a nil pointer dereference if
-	// it reaches the DB layer. To test access control and file serving,
-	// we need to test the full handler with an actual DB (integration test).
-	//
-	// However, we CAN test the file serving logic by building a chi
-	// router-level test that exercises the full path. The approach here:
-	// we test the chi URL param extraction and verify that without a DB,
-	// the handler returns an error (covering the error path).
-
-	t.Run("returns 404 when repo FindByUUID returns no rows", func(t *testing.T) {
+	t.Run("returns 404 when document not found", func(t *testing.T) {
 		t.Parallel()
 
-		// Create handler with a real repo that has a nil DB. FindByUUID
-		// will return an error because db is nil (wrapped sql.ErrNoRows
-		// won't match, but repo wraps the error). We set up the handler
-		// to use the pipeline's DocumentService for all operations.
-
-		mock := &mockDocumentRepo{
+		repo := &mockHandlerRepo{
 			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
 				return nil, sql.ErrNoRows
 			},
 		}
+		h := newTestHandler(&mockPipeline{}, repo)
 
-		// For Download, h.repo must be non-nil. We construct a real
-		// repository.DocumentRepository. However, since h.repo.FindByUUID
-		// calls the concrete repo, not the mock, we cannot intercept it.
-		// Instead, we document this limitation and test the behavior via
-		// the pipeline path.
-		//
-		// The Download handler is tested in integration tests.
-		// Here, we verify the helper functions that Download depends on.
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/nonexistent/download", nil)
+		req = chiContext(req, map[string]string{"uuid": "nonexistent"})
+		rr := httptest.NewRecorder()
 
-		// Verify the test is correctly demonstrating the limitation:
-		// newDocumentHandlerForTest sets repo to nil.
-		h := newDocumentHandlerForTest(mock)
-		_ = h // cannot call h.Download without h.repo set
+		h.Download(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "document not found", body["message"])
 	})
-}
 
-// TestDocumentHandler_Download_FileServing tests the file-serving portion
-// of the Download handler by constructing a handler with a real repo and
-// temporary files. This requires a non-nil repo, so we test via a chi
-// router that exercises the full flow.
-//
-// To avoid the DB dependency, we test the access check and file serving
-// logic independently below.
+	t.Run("returns 500 when repo returns non-ErrNoRows error", func(t *testing.T) {
+		t.Parallel()
 
-func TestDownload_AccessCheckAndFileServing(t *testing.T) {
-	t.Parallel()
+		repo := &mockHandlerRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return nil, fmt.Errorf("connection refused")
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
 
-	// Since h.repo is concrete and we cannot mock FindByUUID, we test
-	// the post-FindByUUID logic by manually constructing the handler state
-	// and calling the handler's internal logic. Since the handler is a
-	// single method that calls FindByUUID first, we instead test the
-	// file-serving scenario end-to-end using temp files.
-	//
-	// These tests create a temporary directory, write test files, and
-	// construct a handler where the pipeline's StoragePath points to
-	// that directory.
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/abc/download", nil)
+		req = chiContext(req, map[string]string{"uuid": "abc"})
+		rr := httptest.NewRecorder()
+
+		h.Download(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "failed to find document", body["message"])
+	})
+
+	t.Run("returns 403 for private document without authenticated user", func(t *testing.T) {
+		t.Parallel()
+
+		doc := newTestDocument("priv-uuid")
+		doc.IsPublic = false
+		doc.UserID = sql.NullInt64{Int64: 42, Valid: true}
+
+		repo := &mockHandlerRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/priv-uuid/download", nil)
+		req = chiContext(req, map[string]string{"uuid": "priv-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Download(rr, req)
+
+		assert.Equal(t, http.StatusForbidden, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "access denied", body["message"])
+	})
+
+	t.Run("returns 403 for private document when non-owner is authenticated", func(t *testing.T) {
+		t.Parallel()
+
+		doc := newTestDocument("priv-uuid-2")
+		doc.IsPublic = false
+		doc.UserID = sql.NullInt64{Int64: 42, Valid: true}
+
+		repo := &mockHandlerRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		user := &model.User{ID: 99, Name: "Stranger"}
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/priv-uuid-2/download", nil)
+		req = chiContext(req, map[string]string{"uuid": "priv-uuid-2"})
+		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		h.Download(rr, req)
+
+		assert.Equal(t, http.StatusForbidden, rr.Code)
+	})
+
+	t.Run("returns 404 when document has no associated file", func(t *testing.T) {
+		t.Parallel()
+
+		doc := newTestDocument("no-file-uuid")
+		doc.IsPublic = true
+		doc.FilePath = ""
+
+		repo := &mockHandlerRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/no-file-uuid/download", nil)
+		req = chiContext(req, map[string]string{"uuid": "no-file-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Download(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "document has no associated file", body["message"])
+	})
+
+	t.Run("returns 404 when file does not exist on disk", func(t *testing.T) {
+		t.Parallel()
+
+		tmpDir := t.TempDir()
+		doc := newTestDocument("missing-file-uuid")
+		doc.IsPublic = true
+		doc.FilePath = "markdown/nonexistent.md"
+
+		repo := &mockHandlerRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/missing-file-uuid/download", nil)
+		req = chiContext(req, map[string]string{"uuid": "missing-file-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Download(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "file not found", body["message"])
+	})
 
 	t.Run("serves public document file with correct headers", func(t *testing.T) {
 		t.Parallel()
@@ -1128,8 +1293,7 @@ func TestDownload_AccessCheckAndFileServing(t *testing.T) {
 		require.NoError(t, os.MkdirAll(subDir, 0o755))
 
 		fileContent := "# Hello World\n\nThis is test content."
-		filePath := filepath.Join(subDir, "test.md")
-		require.NoError(t, os.WriteFile(filePath, []byte(fileContent), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(subDir, "test.md"), []byte(fileContent), 0o644))
 
 		doc := newTestDocument("dl-uuid-1")
 		doc.IsPublic = true
@@ -1137,96 +1301,116 @@ func TestDownload_AccessCheckAndFileServing(t *testing.T) {
 		doc.MIMEType = "text/markdown"
 		doc.Title = "Test Document"
 
-		mock := &mockDocumentRepo{
-			findByUUIDFn: func(_ context.Context, uuid string) (*model.Document, error) {
-				if uuid == "dl-uuid-1" {
-					return doc, nil
-				}
-				return nil, sql.ErrNoRows
+		repo := &mockHandlerRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
 			},
 		}
+		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
 
-		// Build a handler where the repo field is set to a real
-		// DocumentRepository. Since FindByUUID will call the concrete
-		// repo (nil DB), we cannot use this for Download. Instead,
-		// we verify access-check logic via a custom test.
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/dl-uuid-1/download", nil)
+		req = chiContext(req, map[string]string{"uuid": "dl-uuid-1"})
+		rr := httptest.NewRecorder()
 
-		docService := service.NewDocumentService(mock, testLogger())
-		pipeline := service.NewDocumentPipeline(docService, nil, nil, nil, tmpDir)
-		h := &DocumentHandler{
-			pipeline: pipeline,
-			repo:     nil, // Cannot use concrete repo without DB
-			logger:   testLogger(),
+		h.Download(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "text/markdown", rr.Header().Get("Content-Type"))
+		assert.Contains(t, rr.Header().Get("Content-Disposition"), "Test Document.md")
+		assert.Equal(t, fileContent, rr.Body.String())
+	})
+
+	t.Run("owner can download private document", func(t *testing.T) {
+		t.Parallel()
+
+		tmpDir := t.TempDir()
+		subDir := filepath.Join(tmpDir, "markdown")
+		require.NoError(t, os.MkdirAll(subDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(subDir, "private.md"), []byte("secret"), 0o644))
+
+		doc := newTestDocument("owner-dl-uuid")
+		doc.IsPublic = false
+		doc.UserID = sql.NullInt64{Int64: 42, Valid: true}
+		doc.FilePath = "markdown/private.md"
+
+		repo := &mockHandlerRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
 		}
+		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
 
-		// We test the file-serving logic by verifying StoragePath is set.
-		assert.Equal(t, tmpDir, h.pipeline.StoragePath())
-
-		// Verify the file exists at the expected path.
-		fullPath := filepath.Join(h.pipeline.StoragePath(), doc.FilePath)
-		_, err := os.Stat(fullPath)
-		assert.NoError(t, err, "test file should exist at the expected path")
-	})
-
-	t.Run("access denied for private document without authenticated user", func(t *testing.T) {
-		t.Parallel()
-
-		// Test the access control check in isolation.
-		// The Download handler checks:
-		//   if !doc.IsPublic {
-		//       user, ok := authmiddleware.UserFromContext(r.Context())
-		//       if !ok || !doc.UserID.Valid || user.ID != doc.UserID.Int64 {
-		//           errorResponse(w, http.StatusForbidden, "access denied")
-
-		doc := newTestDocument("private-uuid")
-		doc.IsPublic = false
-		doc.UserID = sql.NullInt64{Int64: 42, Valid: true}
-
-		// No user in context => access denied
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/private-uuid/download", nil)
-		user, ok := authmiddleware.UserFromContext(req.Context())
-		assert.False(t, ok, "no user should be in context")
-		assert.Nil(t, user)
-
-		// Verify the condition that would trigger 403
-		assert.False(t, doc.IsPublic)
-	})
-
-	t.Run("owner can access private document", func(t *testing.T) {
-		t.Parallel()
-
-		doc := newTestDocument("owner-uuid")
-		doc.IsPublic = false
-		doc.UserID = sql.NullInt64{Int64: 42, Valid: true}
-
-		// Inject user with matching ID into context
 		user := &model.User{ID: 42, Name: "Owner"}
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/owner-uuid/download", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/owner-dl-uuid/download", nil)
+		req = chiContext(req, map[string]string{"uuid": "owner-dl-uuid"})
 		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
 		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
 
-		foundUser, ok := authmiddleware.UserFromContext(req.Context())
-		assert.True(t, ok)
-		assert.Equal(t, int64(42), foundUser.ID)
-		assert.Equal(t, doc.UserID.Int64, foundUser.ID, "owner ID should match document user ID")
+		h.Download(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "secret", rr.Body.String())
 	})
 
-	t.Run("non-owner cannot access private document", func(t *testing.T) {
+	t.Run("uses UUID as filename when title is empty", func(t *testing.T) {
 		t.Parallel()
 
-		doc := newTestDocument("nonowner-uuid")
-		doc.IsPublic = false
-		doc.UserID = sql.NullInt64{Int64: 42, Valid: true}
+		tmpDir := t.TempDir()
+		subDir := filepath.Join(tmpDir, "markdown")
+		require.NoError(t, os.MkdirAll(subDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(subDir, "test.md"), []byte("content"), 0o644))
 
-		// Inject user with different ID into context
-		user := &model.User{ID: 99, Name: "Stranger"}
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/nonowner-uuid/download", nil)
-		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
-		req = req.WithContext(ctx)
+		doc := newTestDocument("notitle-uuid")
+		doc.IsPublic = true
+		doc.Title = ""
+		doc.FilePath = "markdown/test.md"
 
-		foundUser, ok := authmiddleware.UserFromContext(req.Context())
-		assert.True(t, ok)
-		assert.NotEqual(t, doc.UserID.Int64, foundUser.ID, "non-owner ID should not match")
+		repo := &mockHandlerRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/notitle-uuid/download", nil)
+		req = chiContext(req, map[string]string{"uuid": "notitle-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Download(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Header().Get("Content-Disposition"), "notitle-uuid.md")
+	})
+
+	t.Run("defaults to application/octet-stream when MIME type is empty", func(t *testing.T) {
+		t.Parallel()
+
+		tmpDir := t.TempDir()
+		subDir := filepath.Join(tmpDir, "markdown")
+		require.NoError(t, os.MkdirAll(subDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(subDir, "test.md"), []byte("data"), 0o644))
+
+		doc := newTestDocument("notype-uuid")
+		doc.IsPublic = true
+		doc.MIMEType = ""
+		doc.FilePath = "markdown/test.md"
+
+		repo := &mockHandlerRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/notype-uuid/download", nil)
+		req = chiContext(req, map[string]string{"uuid": "notype-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Download(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "application/octet-stream", rr.Header().Get("Content-Type"))
 	})
 }
 
@@ -1439,4 +1623,789 @@ func TestSanitizeFilename(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// NewDocumentHandler constructor test
+// ---------------------------------------------------------------------------
+
+func TestNewDocumentHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns non-nil handler with all fields set", func(t *testing.T) {
+		t.Parallel()
+
+		p := &mockPipeline{}
+		r := &mockHandlerRepo{}
+		l := testLogger()
+
+		h := NewDocumentHandler(p, r, l)
+
+		assert.NotNil(t, h)
+		assert.Equal(t, p, h.pipeline)
+		assert.Equal(t, r, h.repo)
+		assert.Equal(t, l, h.logger)
+	})
+}
+
+// ---------------------------------------------------------------------------
+// List handler tests
+// ---------------------------------------------------------------------------
+
+func TestDocumentHandler_List(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns empty list when no documents exist", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockHandlerRepo{
+			listFn: func(_ context.Context, _ repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				return &repository.DocumentListResult{
+					Documents: []model.Document{},
+					Total:     0,
+				}, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/documents", nil)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		data, ok := body["data"].([]any)
+		require.True(t, ok)
+		assert.Empty(t, data)
+		meta := body["meta"].(map[string]any)
+		assert.Equal(t, float64(0), meta["total"])
+	})
+
+	t.Run("returns documents with tags and pagination metadata", func(t *testing.T) {
+		t.Parallel()
+
+		doc1 := *newTestDocument("list-uuid-1")
+		doc1.ID = 10
+		doc2 := *newTestDocument("list-uuid-2")
+		doc2.ID = 20
+		doc2.Title = "Second Doc"
+
+		repo := &mockHandlerRepo{
+			listFn: func(_ context.Context, _ repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				return &repository.DocumentListResult{
+					Documents: []model.Document{doc1, doc2},
+					Total:     42,
+				}, nil
+			},
+			tagsForDocumentFn: func(_ context.Context, docID int64) ([]model.DocumentTag, error) {
+				if docID == 10 {
+					return []model.DocumentTag{{Tag: "go"}}, nil
+				}
+				return nil, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/documents?limit=10&offset=5", nil)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		meta := body["meta"].(map[string]any)
+		assert.Equal(t, float64(42), meta["total"])
+		assert.Equal(t, float64(10), meta["limit"])
+		assert.Equal(t, float64(5), meta["offset"])
+
+		data, ok := body["data"].([]any)
+		require.True(t, ok)
+		assert.Len(t, data, 2)
+
+		first := data[0].(map[string]any)
+		assert.Equal(t, "list-uuid-1", first["uuid"])
+		tags := first["tags"].([]any)
+		assert.Len(t, tags, 1)
+		assert.Equal(t, "go", tags[0])
+	})
+
+	t.Run("passes filter parameters to repo", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedParams repository.DocumentListParams
+		repo := &mockHandlerRepo{
+			listFn: func(_ context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				capturedParams = params
+				return &repository.DocumentListResult{}, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/documents?file_type=pdf&status=indexed&q=test&sort=title&order=asc", nil)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "pdf", capturedParams.FileType)
+		assert.Equal(t, "indexed", capturedParams.Status)
+		assert.Equal(t, "test", capturedParams.Query)
+		assert.Equal(t, "title", capturedParams.OrderBy)
+		assert.Equal(t, "asc", capturedParams.OrderDir)
+	})
+
+	t.Run("returns 500 when repo returns error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockHandlerRepo{
+			listFn: func(_ context.Context, _ repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				return nil, fmt.Errorf("database down")
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/documents", nil)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "failed to list documents", body["message"])
+	})
+
+	t.Run("continues when TagsForDocument fails for a document", func(t *testing.T) {
+		t.Parallel()
+
+		doc := *newTestDocument("tags-fail-uuid")
+		repo := &mockHandlerRepo{
+			listFn: func(_ context.Context, _ repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				return &repository.DocumentListResult{
+					Documents: []model.Document{doc},
+					Total:     1,
+				}, nil
+			},
+			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
+				return nil, fmt.Errorf("tags error")
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/documents", nil)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		data := body["data"].([]any)
+		assert.Len(t, data, 1)
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Restore handler tests
+// ---------------------------------------------------------------------------
+
+func TestDocumentHandler_Restore(t *testing.T) {
+	t.Parallel()
+
+	t.Run("restores a soft-deleted document successfully", func(t *testing.T) {
+		t.Parallel()
+
+		deletedDoc := newTestDocument("restore-uuid")
+		deletedDoc.DeletedAt = sql.NullTime{Time: time.Now(), Valid: true}
+
+		restoredDoc := newTestDocument("restore-uuid")
+		restoredDoc.DeletedAt = sql.NullTime{Valid: false}
+
+		repo := &mockHandlerRepo{
+			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return deletedDoc, nil
+			},
+			restoreFn: func(_ context.Context, _ int64) error {
+				return nil
+			},
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return restoredDoc, nil
+			},
+			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
+				return []model.DocumentTag{{Tag: "restored"}}, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/restore-uuid/restore", nil)
+		req = chiContext(req, map[string]string{"uuid": "restore-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Restore(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "Document restored successfully.", body["message"])
+		data := body["data"].(map[string]any)
+		assert.Equal(t, "restore-uuid", data["uuid"])
+	})
+
+	t.Run("returns 404 when document not found", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockHandlerRepo{
+			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return nil, sql.ErrNoRows
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/missing/restore", nil)
+		req = chiContext(req, map[string]string{"uuid": "missing"})
+		rr := httptest.NewRecorder()
+
+		h.Restore(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "document not found", body["message"])
+	})
+
+	t.Run("returns 500 when FindByUUIDIncludingDeleted fails with non-ErrNoRows", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockHandlerRepo{
+			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return nil, fmt.Errorf("database error")
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/err/restore", nil)
+		req = chiContext(req, map[string]string{"uuid": "err"})
+		rr := httptest.NewRecorder()
+
+		h.Restore(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "failed to find document", body["message"])
+	})
+
+	t.Run("returns 400 when document is not deleted", func(t *testing.T) {
+		t.Parallel()
+
+		doc := newTestDocument("not-deleted-uuid")
+		doc.DeletedAt = sql.NullTime{Valid: false}
+
+		repo := &mockHandlerRepo{
+			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/not-deleted-uuid/restore", nil)
+		req = chiContext(req, map[string]string{"uuid": "not-deleted-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Restore(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "document is not deleted", body["message"])
+	})
+
+	t.Run("returns 500 when Restore repo call fails", func(t *testing.T) {
+		t.Parallel()
+
+		doc := newTestDocument("restore-fail-uuid")
+		doc.DeletedAt = sql.NullTime{Time: time.Now(), Valid: true}
+
+		repo := &mockHandlerRepo{
+			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+			restoreFn: func(_ context.Context, _ int64) error {
+				return fmt.Errorf("restore failed")
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/restore-fail-uuid/restore", nil)
+		req = chiContext(req, map[string]string{"uuid": "restore-fail-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Restore(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "failed to restore document", body["message"])
+	})
+
+	t.Run("returns 500 when re-fetch after restore fails", func(t *testing.T) {
+		t.Parallel()
+
+		doc := newTestDocument("refetch-fail-uuid")
+		doc.DeletedAt = sql.NullTime{Time: time.Now(), Valid: true}
+
+		repo := &mockHandlerRepo{
+			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+			restoreFn: func(_ context.Context, _ int64) error {
+				return nil
+			},
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return nil, fmt.Errorf("re-fetch failed")
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/refetch-fail-uuid/restore", nil)
+		req = chiContext(req, map[string]string{"uuid": "refetch-fail-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Restore(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "document restored but failed to fetch updated record", body["message"])
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Purge handler tests
+// ---------------------------------------------------------------------------
+
+func TestDocumentHandler_Purge(t *testing.T) {
+	t.Parallel()
+
+	t.Run("purges document successfully without file", func(t *testing.T) {
+		t.Parallel()
+
+		doc := newTestDocument("purge-uuid")
+
+		repo := &mockHandlerRepo{
+			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+			purgeSingleFn: func(_ context.Context, _ int64) (string, error) {
+				return "", nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/purge-uuid/purge", nil)
+		req = chiContext(req, map[string]string{"uuid": "purge-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Purge(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "Document permanently deleted.", body["message"])
+	})
+
+	t.Run("purges document and removes file from disk", func(t *testing.T) {
+		t.Parallel()
+
+		tmpDir := t.TempDir()
+		subDir := filepath.Join(tmpDir, "markdown")
+		require.NoError(t, os.MkdirAll(subDir, 0o755))
+		filePath := filepath.Join(subDir, "to-delete.md")
+		require.NoError(t, os.WriteFile(filePath, []byte("delete me"), 0o644))
+
+		doc := newTestDocument("purge-file-uuid")
+
+		repo := &mockHandlerRepo{
+			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+			purgeSingleFn: func(_ context.Context, _ int64) (string, error) {
+				return "markdown/to-delete.md", nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/purge-file-uuid/purge", nil)
+		req = chiContext(req, map[string]string{"uuid": "purge-file-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Purge(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		_, err := os.Stat(filePath)
+		assert.True(t, os.IsNotExist(err), "file should be deleted from disk")
+	})
+
+	t.Run("returns 404 when document not found", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockHandlerRepo{
+			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return nil, sql.ErrNoRows
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/missing/purge", nil)
+		req = chiContext(req, map[string]string{"uuid": "missing"})
+		rr := httptest.NewRecorder()
+
+		h.Purge(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+	})
+
+	t.Run("returns 500 when FindByUUIDIncludingDeleted errors", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockHandlerRepo{
+			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return nil, fmt.Errorf("db error")
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/err/purge", nil)
+		req = chiContext(req, map[string]string{"uuid": "err"})
+		rr := httptest.NewRecorder()
+
+		h.Purge(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+	})
+
+	t.Run("returns 500 when PurgeSingle fails", func(t *testing.T) {
+		t.Parallel()
+
+		doc := newTestDocument("purge-err-uuid")
+		repo := &mockHandlerRepo{
+			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+			purgeSingleFn: func(_ context.Context, _ int64) (string, error) {
+				return "", fmt.Errorf("purge failed")
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/purge-err-uuid/purge", nil)
+		req = chiContext(req, map[string]string{"uuid": "purge-err-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Purge(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "failed to purge document", body["message"])
+	})
+}
+
+// ---------------------------------------------------------------------------
+// BulkPurge handler tests
+// ---------------------------------------------------------------------------
+
+func TestDocumentHandler_BulkPurge(t *testing.T) {
+	t.Parallel()
+
+	t.Run("purges documents with default 30 days threshold", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedDuration time.Duration
+		repo := &mockHandlerRepo{
+			purgeSoftDeletedFn: func(_ context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error) {
+				capturedDuration = olderThan
+				return []repository.DocumentFilePath{
+					{ID: 1, UUID: "a", FilePath: ""},
+					{ID: 2, UUID: "b", FilePath: ""},
+				}, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge", nil)
+		rr := httptest.NewRecorder()
+
+		h.BulkPurge(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "Purged 2 documents.", body["message"])
+		assert.Equal(t, float64(2), body["count"])
+		assert.Equal(t, 30*24*time.Hour, capturedDuration)
+	})
+
+	t.Run("uses custom older_than_days parameter", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedDuration time.Duration
+		repo := &mockHandlerRepo{
+			purgeSoftDeletedFn: func(_ context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error) {
+				capturedDuration = olderThan
+				return nil, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge?older_than_days=7", nil)
+		rr := httptest.NewRecorder()
+
+		h.BulkPurge(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, 7*24*time.Hour, capturedDuration)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "Purged 0 documents.", body["message"])
+	})
+
+	t.Run("returns 400 for negative older_than_days", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(&mockPipeline{}, &mockHandlerRepo{})
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge?older_than_days=-1", nil)
+		rr := httptest.NewRecorder()
+
+		h.BulkPurge(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "older_than_days must be a non-negative integer", body["message"])
+	})
+
+	t.Run("returns 400 for non-integer older_than_days", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(&mockPipeline{}, &mockHandlerRepo{})
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge?older_than_days=abc", nil)
+		rr := httptest.NewRecorder()
+
+		h.BulkPurge(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("returns 500 when PurgeSoftDeleted fails", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockHandlerRepo{
+			purgeSoftDeletedFn: func(_ context.Context, _ time.Duration) ([]repository.DocumentFilePath, error) {
+				return nil, fmt.Errorf("purge error")
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge", nil)
+		rr := httptest.NewRecorder()
+
+		h.BulkPurge(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "failed to purge documents", body["message"])
+	})
+
+	t.Run("removes files from disk during bulk purge", func(t *testing.T) {
+		t.Parallel()
+
+		tmpDir := t.TempDir()
+		subDir := filepath.Join(tmpDir, "pdf")
+		require.NoError(t, os.MkdirAll(subDir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(subDir, "a.pdf"), []byte("aaa"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(subDir, "b.pdf"), []byte("bbb"), 0o644))
+
+		repo := &mockHandlerRepo{
+			purgeSoftDeletedFn: func(_ context.Context, _ time.Duration) ([]repository.DocumentFilePath, error) {
+				return []repository.DocumentFilePath{
+					{ID: 1, UUID: "a", FilePath: "pdf/a.pdf"},
+					{ID: 2, UUID: "b", FilePath: "pdf/b.pdf"},
+				}, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge", nil)
+		rr := httptest.NewRecorder()
+
+		h.BulkPurge(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		_, err := os.Stat(filepath.Join(subDir, "a.pdf"))
+		assert.True(t, os.IsNotExist(err))
+		_, err = os.Stat(filepath.Join(subDir, "b.pdf"))
+		assert.True(t, os.IsNotExist(err))
+	})
+
+	t.Run("accepts zero days threshold", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedDuration time.Duration
+		repo := &mockHandlerRepo{
+			purgeSoftDeletedFn: func(_ context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error) {
+				capturedDuration = olderThan
+				return nil, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge?older_than_days=0", nil)
+		rr := httptest.NewRecorder()
+
+		h.BulkPurge(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, time.Duration(0), capturedDuration)
+	})
+}
+
+// ---------------------------------------------------------------------------
+// ListDeleted handler tests
+// ---------------------------------------------------------------------------
+
+func TestDocumentHandler_ListDeleted(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns deleted documents with pagination", func(t *testing.T) {
+		t.Parallel()
+
+		doc := *newTestDocument("deleted-uuid")
+		doc.DeletedAt = sql.NullTime{Time: time.Now(), Valid: true}
+
+		repo := &mockHandlerRepo{
+			listDeletedFn: func(_ context.Context, _ int, _ int) ([]model.Document, int, error) {
+				return []model.Document{doc}, 1, nil
+			},
+			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
+				return []model.DocumentTag{{Tag: "trash"}}, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash?limit=10&offset=0", nil)
+		rr := httptest.NewRecorder()
+
+		h.ListDeleted(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		meta := body["meta"].(map[string]any)
+		assert.Equal(t, float64(1), meta["total"])
+		data := body["data"].([]any)
+		assert.Len(t, data, 1)
+		first := data[0].(map[string]any)
+		assert.Equal(t, "deleted-uuid", first["uuid"])
+	})
+
+	t.Run("returns empty list when no deleted documents", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockHandlerRepo{
+			listDeletedFn: func(_ context.Context, _ int, _ int) ([]model.Document, int, error) {
+				return []model.Document{}, 0, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash", nil)
+		rr := httptest.NewRecorder()
+
+		h.ListDeleted(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		meta2 := body["meta"].(map[string]any)
+		assert.Equal(t, float64(0), meta2["total"])
+		data := body["data"].([]any)
+		assert.Empty(t, data)
+	})
+
+	t.Run("returns 500 when ListDeleted repo fails", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockHandlerRepo{
+			listDeletedFn: func(_ context.Context, _ int, _ int) ([]model.Document, int, error) {
+				return nil, 0, fmt.Errorf("db error")
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash", nil)
+		rr := httptest.NewRecorder()
+
+		h.ListDeleted(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "failed to list deleted documents", body["message"])
+	})
+
+	t.Run("continues when tags fail for a deleted document", func(t *testing.T) {
+		t.Parallel()
+
+		doc := *newTestDocument("tags-fail-del")
+		repo := &mockHandlerRepo{
+			listDeletedFn: func(_ context.Context, _ int, _ int) ([]model.Document, int, error) {
+				return []model.Document{doc}, 1, nil
+			},
+			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
+				return nil, fmt.Errorf("tags unavailable")
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash", nil)
+		rr := httptest.NewRecorder()
+
+		h.ListDeleted(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		data := body["data"].([]any)
+		assert.Len(t, data, 1)
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Show handler — success with tags
+// ---------------------------------------------------------------------------
+
+func TestDocumentHandler_Show_Success(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns document with tags", func(t *testing.T) {
+		t.Parallel()
+
+		doc := newTestDocument("show-uuid")
+		p := &mockPipeline{
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.Document, error) {
+				if uuid == "show-uuid" {
+					return doc, nil
+				}
+				return nil, nil
+			},
+		}
+		repo := &mockHandlerRepo{
+			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
+				return []model.DocumentTag{{Tag: "api"}, {Tag: "test"}}, nil
+			},
+		}
+		h := newTestHandler(p, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/show-uuid", nil)
+		req = chiContext(req, map[string]string{"uuid": "show-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Show(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		data := body["data"].(map[string]any)
+		assert.Equal(t, "show-uuid", data["uuid"])
+		tags := data["tags"].([]any)
+		assert.Len(t, tags, 2)
+		assert.Equal(t, "api", tags[0])
+		assert.Equal(t, "test", tags[1])
+	})
 }

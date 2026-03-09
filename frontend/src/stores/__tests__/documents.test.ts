@@ -59,7 +59,7 @@ describe('documents store', () => {
   describe('fetchDocuments', () => {
     it('calls correct URL and sets documents and total', async () => {
       const docs = [mockDocument(), mockDocument({ uuid: 'doc-2', title: 'Second' })]
-      stubFetch({ data: docs, total: 2, limit: 10, offset: 0 })
+      stubFetch({ data: docs, meta: { total: 2, limit: 10, offset: 0 } })
 
       const store = useDocumentsStore()
       await store.fetchDocuments({ limit: 10, offset: 0 })
@@ -71,7 +71,7 @@ describe('documents store', () => {
     })
 
     it('builds query string from params', async () => {
-      stubFetch({ data: [], total: 0, limit: 25, offset: 0 })
+      stubFetch({ data: [], meta: { total: 0, limit: 25, offset: 0 } })
 
       const store = useDocumentsStore()
       await store.fetchDocuments({ limit: 25, q: 'search term', status: 'indexed' })
@@ -83,7 +83,7 @@ describe('documents store', () => {
     })
 
     it('calls URL without query when no params', async () => {
-      stubFetch({ data: [], total: 0, limit: 10, offset: 0 })
+      stubFetch({ data: [], meta: { total: 0, limit: 10, offset: 0 } })
 
       const store = useDocumentsStore()
       await store.fetchDocuments()
@@ -109,7 +109,7 @@ describe('documents store', () => {
 
       resolvePromise!({
         ok: true,
-        json: () => Promise.resolve({ data: [], total: 0, limit: 10, offset: 0 }),
+        json: () => Promise.resolve({ data: [], meta: { total: 0, limit: 10, offset: 0 } }),
       })
       await promise
 
@@ -307,7 +307,7 @@ describe('documents store', () => {
       const store = useDocumentsStore()
       store.$patch({ error: 'previous error' })
 
-      stubFetch({ data: [], total: 0, limit: 10, offset: 0 })
+      stubFetch({ data: [], meta: { total: 0, limit: 10, offset: 0 } })
       await store.fetchDocuments()
 
       expect(store.error).toBeNull()

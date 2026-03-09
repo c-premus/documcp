@@ -49,9 +49,11 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]any{
-		"id":       user.ID,
-		"email":    user.Email,
-		"name":     user.Name,
-		"is_admin": user.IsAdmin,
+		"data": map[string]any{
+			"id":       user.ID,
+			"email":    user.Email,
+			"name":     user.Name,
+			"is_admin": user.IsAdmin,
+		},
 	})
 }

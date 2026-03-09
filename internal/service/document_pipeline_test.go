@@ -8,8 +8,54 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
+
+	"git.999.haus/chris/DocuMCP-go/internal/extractor"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 )
+
+// ---------------------------------------------------------------------------
+// Pipeline test mocks
+// ---------------------------------------------------------------------------
+
+// mockExtractor implements extractor.Extractor for testing.
+type mockExtractor struct {
+	extractFn  func(ctx context.Context, filePath string) (*extractor.ExtractedContent, error)
+	supportsFn func(mimeType string) bool
+}
+
+func (m *mockExtractor) Extract(ctx context.Context, filePath string) (*extractor.ExtractedContent, error) {
+	if m.extractFn != nil {
+		return m.extractFn(ctx, filePath)
+	}
+	return &extractor.ExtractedContent{}, nil
+}
+
+func (m *mockExtractor) Supports(mimeType string) bool {
+	if m.supportsFn != nil {
+		return m.supportsFn(mimeType)
+	}
+	return false
+}
+
+// Compile-time check: mockExtractor implements extractor.Extractor.
+var _ extractor.Extractor = (*mockExtractor)(nil)
+
+// mockJobInserter implements JobInserter for testing.
+type mockJobInserter struct {
+	insertFn func(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
+}
+
+func (m *mockJobInserter) Insert(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error) {
+	if m.insertFn != nil {
+		return m.insertFn(ctx, args, opts)
+	}
+	return &rivertype.JobInsertResult{}, nil
+}
+
+// Compile-time check: mockJobInserter implements JobInserter.
+var _ JobInserter = (*mockJobInserter)(nil)
 
 // ---------------------------------------------------------------------------
 // TestDocumentPipeline_Upload
@@ -578,7 +624,221 @@ func TestDocumentPipeline_ProcessDocument(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TestDocumentPipeline_IndexDocument_NilIndexer
+// TestDocumentPipeline_ProcessDocument_FullPaths
+// ---------------------------------------------------------------------------
+
+func TestDocumentPipeline_ProcessDocument_NoExtractor(t *testing.T) {
+	t.Parallel()
+
+	storagePath := t.TempDir()
+	repo := &mockDocumentRepo{
+		findByIDFn: func(_ context.Context, _ int64) (*model.Document, error) {
+			return &model.Document{
+				ID:       1,
+				UUID:     "proc-test",
+				FilePath: "docs/test.pdf",
+				MIMEType: "application/pdf",
+				Status:   "uploaded",
+			}, nil
+		},
+		updateFn: func(_ context.Context, doc *model.Document) error {
+			return nil
+		},
+	}
+
+	// Empty registry — no extractor for any MIME type.
+	registry := extractor.NewRegistry()
+	svc := NewDocumentService(repo, discardLogger())
+	pipeline := NewDocumentPipeline(svc, registry, nil, nil, storagePath)
+
+	err := pipeline.ProcessDocument(context.Background(), 1)
+	if err == nil {
+		t.Fatal("expected error for missing extractor")
+	}
+	if !strings.Contains(err.Error(), "no extractor for") {
+		t.Errorf("error %q should contain 'no extractor for'", err.Error())
+	}
+}
+
+func TestDocumentPipeline_ProcessDocument_ExtractorError(t *testing.T) {
+	t.Parallel()
+
+	storagePath := t.TempDir()
+	repo := &mockDocumentRepo{
+		findByIDFn: func(_ context.Context, _ int64) (*model.Document, error) {
+			return &model.Document{
+				ID:       2,
+				UUID:     "ext-err",
+				FilePath: "docs/test.md",
+				MIMEType: "text/markdown",
+				Status:   "uploaded",
+			}, nil
+		},
+		updateFn: func(_ context.Context, doc *model.Document) error {
+			return nil
+		},
+	}
+
+	ext := &mockExtractor{
+		supportsFn: func(mime string) bool { return mime == "text/markdown" },
+		extractFn: func(_ context.Context, _ string) (*extractor.ExtractedContent, error) {
+			return nil, errors.New("extraction boom")
+		},
+	}
+	registry := extractor.NewRegistry(ext)
+
+	svc := NewDocumentService(repo, discardLogger())
+	pipeline := NewDocumentPipeline(svc, registry, nil, nil, storagePath)
+
+	err := pipeline.ProcessDocument(context.Background(), 2)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "extraction failed") {
+		t.Errorf("error %q should contain 'extraction failed'", err.Error())
+	}
+}
+
+func TestDocumentPipeline_ProcessDocument_Success(t *testing.T) {
+	t.Parallel()
+
+	storagePath := t.TempDir()
+	var updatedDoc *model.Document
+	repo := &mockDocumentRepo{
+		findByIDFn: func(_ context.Context, _ int64) (*model.Document, error) {
+			return &model.Document{
+				ID:       3,
+				UUID:     "proc-ok",
+				FilePath: "docs/test.md",
+				MIMEType: "text/markdown",
+				Status:   "uploaded",
+			}, nil
+		},
+		updateFn: func(_ context.Context, doc *model.Document) error {
+			updatedDoc = doc
+			return nil
+		},
+	}
+
+	ext := &mockExtractor{
+		supportsFn: func(mime string) bool { return mime == "text/markdown" },
+		extractFn: func(_ context.Context, _ string) (*extractor.ExtractedContent, error) {
+			return &extractor.ExtractedContent{
+				Content:   "extracted content here",
+				WordCount: 3,
+			}, nil
+		},
+	}
+	registry := extractor.NewRegistry(ext)
+
+	svc := NewDocumentService(repo, discardLogger())
+	pipeline := NewDocumentPipeline(svc, registry, nil, nil, storagePath)
+
+	err := pipeline.ProcessDocument(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if updatedDoc == nil {
+		t.Fatal("expected document to be updated")
+	}
+	if updatedDoc.Status != "extracted" {
+		t.Errorf("Status = %q, want %q", updatedDoc.Status, "extracted")
+	}
+	if !updatedDoc.Content.Valid || updatedDoc.Content.String != "extracted content here" {
+		t.Errorf("Content = %q, want %q", updatedDoc.Content.String, "extracted content here")
+	}
+	if updatedDoc.WordCount.Int64 != 3 {
+		t.Errorf("WordCount = %d, want 3", updatedDoc.WordCount.Int64)
+	}
+	if !updatedDoc.ContentHash.Valid || updatedDoc.ContentHash.String == "" {
+		t.Error("expected ContentHash to be set")
+	}
+	if !updatedDoc.ProcessedAt.Valid {
+		t.Error("expected ProcessedAt to be set")
+	}
+}
+
+func TestDocumentPipeline_ProcessDocument_UpdateError(t *testing.T) {
+	t.Parallel()
+
+	storagePath := t.TempDir()
+	repo := &mockDocumentRepo{
+		findByIDFn: func(_ context.Context, _ int64) (*model.Document, error) {
+			return &model.Document{
+				ID:       4,
+				UUID:     "upd-err",
+				FilePath: "docs/test.md",
+				MIMEType: "text/markdown",
+				Status:   "uploaded",
+			}, nil
+		},
+		updateFn: func(_ context.Context, _ *model.Document) error {
+			return errors.New("db write failed")
+		},
+	}
+
+	ext := &mockExtractor{
+		supportsFn: func(mime string) bool { return mime == "text/markdown" },
+		extractFn: func(_ context.Context, _ string) (*extractor.ExtractedContent, error) {
+			return &extractor.ExtractedContent{Content: "ok", WordCount: 1}, nil
+		},
+	}
+	registry := extractor.NewRegistry(ext)
+
+	svc := NewDocumentService(repo, discardLogger())
+	pipeline := NewDocumentPipeline(svc, registry, nil, nil, storagePath)
+
+	err := pipeline.ProcessDocument(context.Background(), 4)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "updating document 4 after extraction") {
+		t.Errorf("error %q should contain 'updating document 4 after extraction'", err.Error())
+	}
+}
+
+func TestDocumentPipeline_ProcessDocument_MarkFailedUpdateError(t *testing.T) {
+	t.Parallel()
+
+	storagePath := t.TempDir()
+	repo := &mockDocumentRepo{
+		findByIDFn: func(_ context.Context, _ int64) (*model.Document, error) {
+			return &model.Document{
+				ID:       5,
+				UUID:     "mark-fail",
+				FilePath: "docs/test.md",
+				MIMEType: "text/markdown",
+				Status:   "uploaded",
+			}, nil
+		},
+		updateFn: func(_ context.Context, _ *model.Document) error {
+			return errors.New("cannot update")
+		},
+	}
+
+	ext := &mockExtractor{
+		supportsFn: func(mime string) bool { return mime == "text/markdown" },
+		extractFn: func(_ context.Context, _ string) (*extractor.ExtractedContent, error) {
+			return nil, errors.New("extraction boom")
+		},
+	}
+	registry := extractor.NewRegistry(ext)
+
+	svc := NewDocumentService(repo, discardLogger())
+	pipeline := NewDocumentPipeline(svc, registry, nil, nil, storagePath)
+
+	err := pipeline.ProcessDocument(context.Background(), 5)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "marking document 5 as failed") {
+		t.Errorf("error %q should contain 'marking document 5 as failed'", err.Error())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestDocumentPipeline_IndexDocument
 // ---------------------------------------------------------------------------
 
 func TestDocumentPipeline_IndexDocument_NilIndexer(t *testing.T) {
@@ -599,6 +859,152 @@ func TestDocumentPipeline_IndexDocument_NilIndexer(t *testing.T) {
 	err := pipeline.IndexDocument(context.Background(), doc)
 	if err != nil {
 		t.Fatalf("expected nil error when indexer is nil, got: %v", err)
+	}
+}
+
+// NOTE: IndexDocument with non-nil indexer requires integration tests
+// (search.Indexer depends on Meilisearch client).
+
+// ---------------------------------------------------------------------------
+// TestDocumentPipeline_IndexDocumentByID
+// ---------------------------------------------------------------------------
+
+func TestDocumentPipeline_IndexDocumentByID_FindError(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockDocumentRepo{
+		findByIDFn: func(_ context.Context, _ int64) (*model.Document, error) {
+			return nil, errors.New("not found")
+		},
+	}
+	svc := NewDocumentService(repo, discardLogger())
+	pipeline := NewDocumentPipeline(svc, nil, nil, nil, t.TempDir())
+
+	err := pipeline.IndexDocumentByID(context.Background(), 999)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "finding document 999 for indexing") {
+		t.Errorf("error = %q, want containing 'finding document 999 for indexing'", err.Error())
+	}
+}
+
+func TestDocumentPipeline_IndexDocumentByID_NilIndexer(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockDocumentRepo{
+		findByIDFn: func(_ context.Context, _ int64) (*model.Document, error) {
+			return &model.Document{ID: 1, UUID: "idx-by-id"}, nil
+		},
+	}
+	svc := NewDocumentService(repo, discardLogger())
+	pipeline := NewDocumentPipeline(svc, nil, nil, nil, t.TempDir())
+
+	err := pipeline.IndexDocumentByID(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("expected nil (indexer nil), got: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestDocumentPipeline_DispatchExtraction
+// ---------------------------------------------------------------------------
+
+func TestDocumentPipeline_DispatchExtraction_NilInserter(t *testing.T) {
+	t.Parallel()
+
+	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+	pipeline := NewDocumentPipeline(svc, nil, nil, nil, t.TempDir())
+
+	// Should not panic with nil inserter.
+	pipeline.dispatchExtraction(context.Background(), 1, "test-uuid")
+}
+
+func TestDocumentPipeline_DispatchExtraction_Success(t *testing.T) {
+	t.Parallel()
+
+	inserted := false
+	inserter := &mockJobInserter{
+		insertFn: func(_ context.Context, args river.JobArgs, _ *river.InsertOpts) (*rivertype.JobInsertResult, error) {
+			inserted = true
+			return &rivertype.JobInsertResult{}, nil
+		},
+	}
+
+	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+	pipeline := NewDocumentPipeline(svc, nil, nil, inserter, t.TempDir())
+
+	pipeline.dispatchExtraction(context.Background(), 42, "doc-uuid")
+
+	if !inserted {
+		t.Error("expected inserter.Insert to be called")
+	}
+}
+
+func TestDocumentPipeline_DispatchExtraction_Error(t *testing.T) {
+	t.Parallel()
+
+	inserter := &mockJobInserter{
+		insertFn: func(_ context.Context, _ river.JobArgs, _ *river.InsertOpts) (*rivertype.JobInsertResult, error) {
+			return nil, errors.New("insert failed")
+		},
+	}
+
+	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+	pipeline := NewDocumentPipeline(svc, nil, nil, inserter, t.TempDir())
+
+	// Should log error but not panic.
+	pipeline.dispatchExtraction(context.Background(), 42, "doc-uuid")
+}
+
+// ---------------------------------------------------------------------------
+// TestDocumentPipeline_DispatchIndexing
+// ---------------------------------------------------------------------------
+
+func TestDocumentPipeline_DispatchIndexing_NilInserter(t *testing.T) {
+	t.Parallel()
+
+	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+	pipeline := NewDocumentPipeline(svc, nil, nil, nil, t.TempDir())
+
+	pipeline.dispatchIndexing(context.Background(), &model.Document{ID: 1, UUID: "test"})
+}
+
+// ---------------------------------------------------------------------------
+// TestDocumentPipeline_StoragePath_ExtractorRegistry
+// ---------------------------------------------------------------------------
+
+func TestDocumentPipeline_StoragePath(t *testing.T) {
+	t.Parallel()
+
+	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+	pipeline := NewDocumentPipeline(svc, nil, nil, nil, "/data/uploads")
+
+	if pipeline.StoragePath() != "/data/uploads" {
+		t.Errorf("StoragePath() = %q, want %q", pipeline.StoragePath(), "/data/uploads")
+	}
+}
+
+func TestDocumentPipeline_ExtractorRegistry(t *testing.T) {
+	t.Parallel()
+
+	registry := extractor.NewRegistry()
+	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+	pipeline := NewDocumentPipeline(svc, registry, nil, nil, t.TempDir())
+
+	if pipeline.ExtractorRegistry() != registry {
+		t.Error("expected ExtractorRegistry to return the injected registry")
+	}
+}
+
+func TestDocumentPipeline_ExtractorRegistry_Nil(t *testing.T) {
+	t.Parallel()
+
+	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+	pipeline := NewDocumentPipeline(svc, nil, nil, nil, t.TempDir())
+
+	if pipeline.ExtractorRegistry() != nil {
+		t.Error("expected nil registry")
 	}
 }
 

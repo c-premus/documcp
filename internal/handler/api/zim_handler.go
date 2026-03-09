@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -13,20 +14,31 @@ import (
 
 	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/repository"
 )
+
+// zimArchiveRepo defines the methods used by ZimHandler -- defined where consumed.
+type zimArchiveRepo interface {
+	List(ctx context.Context, category, language, query string, limit int) ([]model.ZimArchive, error)
+	FindByName(ctx context.Context, name string) (*model.ZimArchive, error)
+}
+
+// kiwixSearcher defines the methods used by ZimHandler from the kiwix client -- defined where consumed.
+type kiwixSearcher interface {
+	Search(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error)
+	ReadArticle(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error)
+}
 
 // ZimHandler handles REST API endpoints for ZIM archives.
 type ZimHandler struct {
-	repo        *repository.ZimArchiveRepository
-	kiwixClient *kiwix.Client // can be nil if not configured
+	repo        zimArchiveRepo
+	kiwixClient kiwixSearcher // can be nil if not configured
 	logger      *slog.Logger
 }
 
 // NewZimHandler creates a new ZimHandler.
 func NewZimHandler(
-	repo *repository.ZimArchiveRepository,
-	kiwixClient *kiwix.Client,
+	repo zimArchiveRepo,
+	kiwixClient kiwixSearcher,
 	logger *slog.Logger,
 ) *ZimHandler {
 	return &ZimHandler{

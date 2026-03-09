@@ -45,9 +45,11 @@ interface TrashParams {
 
 interface ListResponse {
   readonly data: Document[]
-  readonly total: number
-  readonly limit: number
-  readonly offset: number
+  readonly meta: {
+    readonly total: number
+    readonly limit: number
+    readonly offset: number
+  }
 }
 
 interface SingleResponse {
@@ -115,7 +117,7 @@ export const useDocumentsStore = defineStore('documents', () => {
       })
       const response = await api<ListResponse>(`/api/documents${query}`)
       documents.value = response.data
-      total.value = response.total
+      total.value = response.meta.total
       return response
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch documents'

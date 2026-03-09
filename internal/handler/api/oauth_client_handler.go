@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -15,18 +16,24 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/repository"
 )
+
+// oauthClientRepo defines the methods used by OAuthClientHandler.
+type oauthClientRepo interface {
+	ListClients(ctx context.Context, query string, limit, offset int) ([]model.OAuthClient, int, error)
+	CreateClient(ctx context.Context, client *model.OAuthClient) error
+	DeactivateClient(ctx context.Context, id int64) error
+}
 
 // OAuthClientHandler handles REST API endpoints for OAuth client administration.
 type OAuthClientHandler struct {
-	repo   *repository.OAuthRepository
+	repo   oauthClientRepo
 	logger *slog.Logger
 }
 
 // NewOAuthClientHandler creates a new OAuthClientHandler.
 func NewOAuthClientHandler(
-	repo *repository.OAuthRepository,
+	repo oauthClientRepo,
 	logger *slog.Logger,
 ) *OAuthClientHandler {
 	return &OAuthClientHandler{

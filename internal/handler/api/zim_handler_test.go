@@ -1,8 +1,11 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -10,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 )
 
@@ -378,6 +382,36 @@ func TestToZimArchiveResponse(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Mock implementations
+// ---------------------------------------------------------------------------
+
+type mockZimArchiveRepo struct {
+	ListFn       func(ctx context.Context, category, language, query string, limit int) ([]model.ZimArchive, error)
+	FindByNameFn func(ctx context.Context, name string) (*model.ZimArchive, error)
+}
+
+func (m *mockZimArchiveRepo) List(ctx context.Context, category, language, query string, limit int) ([]model.ZimArchive, error) {
+	return m.ListFn(ctx, category, language, query, limit)
+}
+
+func (m *mockZimArchiveRepo) FindByName(ctx context.Context, name string) (*model.ZimArchive, error) {
+	return m.FindByNameFn(ctx, name)
+}
+
+type mockKiwixSearcher struct {
+	SearchFn      func(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error)
+	ReadArticleFn func(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error)
+}
+
+func (m *mockKiwixSearcher) Search(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error) {
+	return m.SearchFn(ctx, archiveName, query, searchType, limit)
+}
+
+func (m *mockKiwixSearcher) ReadArticle(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error) {
+	return m.ReadArticleFn(ctx, archiveName, articlePath)
+}
+
+// ---------------------------------------------------------------------------
 // ZimHandler early-return path tests (nil kiwixClient)
 // ---------------------------------------------------------------------------
 
@@ -385,6 +419,14 @@ func newTestZimHandler() *ZimHandler {
 	return &ZimHandler{
 		repo:        nil,
 		kiwixClient: nil,
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+}
+
+func newZimHandlerWithMocks(repo *mockZimArchiveRepo, kc kiwixSearcher) *ZimHandler {
+	return &ZimHandler{
+		repo:        repo,
+		kiwixClient: kc,
 		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 }
@@ -466,12 +508,25 @@ func TestZimHandler_ReadArticle_EmptyPath(t *testing.T) {
 	t.Run("returns 400 when article path is empty", func(t *testing.T) {
 		t.Parallel()
 
-		// Use a handler with a non-nil kiwixClient field would require
-		// construction, but we can test by providing a non-nil handler
-		// that has kiwixClient set. Since we cannot easily construct one,
-		// we can skip past the nil check by using a handler that has a
-		// placeholder. But since kiwixClient is a concrete *kiwix.Client,
-		// we cannot fake it without unsafe. This test is omitted.
+		kc := &mockKiwixSearcher{}
+		h := newZimHandlerWithMocks(nil, kc)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/test/articles/", nil)
+		req = chiContext(req, map[string]string{"archive": "test", "*": ""})
+		rr := httptest.NewRecorder()
+
+		h.ReadArticle(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "article path is required" {
+			t.Errorf("message = %v, want 'article path is required'", msg)
+		}
 	})
 }
 
@@ -490,4 +545,263 @@ func TestNewZimHandler(t *testing.T) {
 	if h.kiwixClient != nil {
 		t.Error("kiwixClient should be nil")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// ZimHandler.List tests
+// ---------------------------------------------------------------------------
+
+func TestZimHandler_List(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns archives with default per_page", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockZimArchiveRepo{
+			ListFn: func(_ context.Context, category, language, query string, limit int) ([]model.ZimArchive, error) {
+				if category != "" {
+					t.Errorf("category = %q, want empty", category)
+				}
+				if limit != 50 {
+					t.Errorf("limit = %d, want 50", limit)
+				}
+				return []model.ZimArchive{
+					{UUID: "z1", Name: "wikipedia_en", Title: "Wikipedia", Language: "eng"},
+					{UUID: "z2", Name: "wiktionary_en", Title: "Wiktionary", Language: "eng"},
+				}, nil
+			},
+		}
+		h := newZimHandlerWithMocks(repo, nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives", nil)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].([]any)
+		if len(data) != 2 {
+			t.Errorf("data length = %d, want 2", len(data))
+		}
+
+		meta := body["meta"].(map[string]any)
+		if total := meta["total"].(float64); total != 2 {
+			t.Errorf("meta.total = %v, want 2", total)
+		}
+	})
+
+	t.Run("passes category language and query filters", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockZimArchiveRepo{
+			ListFn: func(_ context.Context, category, language, query string, limit int) ([]model.ZimArchive, error) {
+				if category != "wikipedia" {
+					t.Errorf("category = %q, want wikipedia", category)
+				}
+				if language != "eng" {
+					t.Errorf("language = %q, want eng", language)
+				}
+				if query != "science" {
+					t.Errorf("query = %q, want science", query)
+				}
+				if limit != 5 {
+					t.Errorf("limit = %d, want 5", limit)
+				}
+				return []model.ZimArchive{}, nil
+			},
+		}
+		h := newZimHandlerWithMocks(repo, nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives?category=wikipedia&language=eng&query=science&per_page=5", nil)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+	})
+
+	t.Run("returns 500 when repo returns error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockZimArchiveRepo{
+			ListFn: func(_ context.Context, _, _, _ string, _ int) ([]model.ZimArchive, error) {
+				return nil, errors.New("db failure")
+			},
+		}
+		h := newZimHandlerWithMocks(repo, nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives", nil)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "failed to list ZIM archives" {
+			t.Errorf("message = %v, want 'failed to list ZIM archives'", msg)
+		}
+	})
+
+	t.Run("returns empty array when no archives exist", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockZimArchiveRepo{
+			ListFn: func(_ context.Context, _, _, _ string, _ int) ([]model.ZimArchive, error) {
+				return []model.ZimArchive{}, nil
+			},
+		}
+		h := newZimHandlerWithMocks(repo, nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives", nil)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].([]any)
+		if len(data) != 0 {
+			t.Errorf("data length = %d, want 0", len(data))
+		}
+	})
+
+	t.Run("negative per_page defaults to 50", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockZimArchiveRepo{
+			ListFn: func(_ context.Context, _, _, _ string, limit int) ([]model.ZimArchive, error) {
+				if limit != 50 {
+					t.Errorf("limit = %d, want 50 (default)", limit)
+				}
+				return []model.ZimArchive{}, nil
+			},
+		}
+		h := newZimHandlerWithMocks(repo, nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives?per_page=-10", nil)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// ZimHandler.Show tests
+// ---------------------------------------------------------------------------
+
+func TestZimHandler_Show(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns archive when found", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockZimArchiveRepo{
+			FindByNameFn: func(_ context.Context, name string) (*model.ZimArchive, error) {
+				if name != "wikipedia_en" {
+					t.Errorf("name = %q, want wikipedia_en", name)
+				}
+				return &model.ZimArchive{
+					UUID:         "zim-1",
+					Name:         "wikipedia_en",
+					Title:        "Wikipedia (English)",
+					Language:     "eng",
+					ArticleCount: 6_000_000,
+					FileSize:     90 * 1024 * 1024 * 1024,
+				}, nil
+			},
+		}
+		h := newZimHandlerWithMocks(repo, nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/wikipedia_en", nil)
+		req = chiContext(req, map[string]string{"archive": "wikipedia_en"})
+		rr := httptest.NewRecorder()
+
+		h.Show(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].(map[string]any)
+		if data["uuid"] != "zim-1" {
+			t.Errorf("uuid = %v, want zim-1", data["uuid"])
+		}
+		if data["name"] != "wikipedia_en" {
+			t.Errorf("name = %v, want wikipedia_en", data["name"])
+		}
+		if data["title"] != "Wikipedia (English)" {
+			t.Errorf("title = %v, want Wikipedia (English)", data["title"])
+		}
+	})
+
+	t.Run("returns 404 when archive not found", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockZimArchiveRepo{
+			FindByNameFn: func(_ context.Context, _ string) (*model.ZimArchive, error) {
+				return nil, fmt.Errorf("not found: %w", sql.ErrNoRows)
+			},
+		}
+		h := newZimHandlerWithMocks(repo, nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/nonexistent", nil)
+		req = chiContext(req, map[string]string{"archive": "nonexistent"})
+		rr := httptest.NewRecorder()
+
+		h.Show(rr, req)
+
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusNotFound)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "ZIM archive not found" {
+			t.Errorf("message = %v, want 'ZIM archive not found'", msg)
+		}
+	})
+
+	t.Run("returns 500 on unexpected error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockZimArchiveRepo{
+			FindByNameFn: func(_ context.Context, _ string) (*model.ZimArchive, error) {
+				return nil, errors.New("connection timeout")
+			},
+		}
+		h := newZimHandlerWithMocks(repo, nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/test", nil)
+		req = chiContext(req, map[string]string{"archive": "test"})
+		rr := httptest.NewRecorder()
+
+		h.Show(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
 }

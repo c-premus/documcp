@@ -11,7 +11,7 @@ info:
 
     ## Authentication
 
-    Most API endpoints require a Sanctum bearer token obtained through the OAuth 2.1 flow.
+    Most API endpoints require a Bearer token obtained through the OAuth 2.1 flow.
     Public endpoints (health check, document search) do not require authentication.
 
     OAuth 2.1 supports:
@@ -34,13 +34,11 @@ info:
 
     ## Response Envelopes
 
-    **Success:** `{ data, meta: { message, timestamp } }`
+    **Success:** `{ data, meta? }`
 
-    **Error:** `{ error: { message, code, details? }, meta: { timestamp } }`
+    **Error:** `{ error: "<StatusText>", message: "<details>" }`
 
-    **Paginated:** `{ data[], meta: { current_page, per_page, total, last_page, from, to }, _links: { first, last, prev, next } }`
-
-    **API exception (non-OAuth):** `{ message, status, errors?, meta: { request_id } }`
+    **Paginated:** `{ data[], meta: { total, limit, offset } }`
 
     **OAuth error:** `{ error, error_description }` (RFC 6749)
   version: "1.0.0"
@@ -341,12 +339,7 @@ paths:
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/UnifiedSearchResponse"
+                $ref: "#/components/schemas/UnifiedSearchResponse"
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "422":
@@ -2310,33 +2303,18 @@ components:
           description: Response payload
         meta:
           type: object
-          properties:
-            message:
-              type: string
-            timestamp:
-              type: string
-              format: date-time
+          description: Optional metadata (contents vary by endpoint)
 
     ApiErrorEnvelope:
       type: object
+      required: [error, message]
       properties:
         error:
-          type: object
-          required: [message, code]
-          properties:
-            message:
-              type: string
-            code:
-              type: integer
-            details:
-              type: object
-              additionalProperties: true
-        meta:
-          type: object
-          properties:
-            timestamp:
-              type: string
-              format: date-time
+          type: string
+          description: HTTP status text (e.g. "Bad Request", "Not Found")
+        message:
+          type: string
+          description: Human-readable error detail
 
     PaginatedEnvelope:
       type: object
@@ -2346,34 +2324,14 @@ components:
           items: {}
         meta:
           type: object
+          required: [total, limit, offset]
           properties:
-            current_page:
-              type: integer
-            per_page:
-              type: integer
             total:
               type: integer
-            last_page:
+            limit:
               type: integer
-            from:
-              type: [integer, "null"]
-            to:
-              type: [integer, "null"]
-        _links:
-          type: object
-          properties:
-            first:
-              type: [string, "null"]
-              format: uri
-            last:
-              type: [string, "null"]
-              format: uri
-            prev:
-              type: [string, "null"]
-              format: uri
-            next:
-              type: [string, "null"]
-              format: uri
+            offset:
+              type: integer
 
     ApiExceptionResponse:
       type: object
@@ -2877,21 +2835,23 @@ components:
     UnifiedSearchResponse:
       type: object
       properties:
-        query:
-          type: string
-        results:
+        data:
           type: array
           items:
             $ref: "#/components/schemas/UnifiedSearchResult"
-        total:
-          type: integer
-        sources_searched:
-          type: array
-          items:
-            type: string
-            enum: [document, git_template, zim_archive, confluence_space]
-        processing_time_ms:
-          type: number
+        meta:
+          type: object
+          properties:
+            query:
+              type: string
+            total:
+              type: integer
+            processing_time_ms:
+              type: number
+            limit:
+              type: integer
+            offset:
+              type: integer
 
     UnifiedSearchResult:
       type: object
@@ -2913,27 +2873,26 @@ components:
 
     SearchResponse:
       type: object
-      description: Meilisearch-powered search results wrapped in ApiResponse
-      allOf:
-        - $ref: "#/components/schemas/ApiSuccessEnvelope"
-        - type: object
+      description: Meilisearch-powered search results
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            description: Normalized search hit
+        meta:
+          type: object
           properties:
-            data:
-              type: object
-              properties:
-                hits:
-                  type: array
-                  items:
-                    type: object
-                    description: Document search hit with optional `_formatted` highlights
-                total_hits:
-                  type: integer
-                facet_distribution:
-                  type: object
-                  additionalProperties:
-                    type: object
-                    additionalProperties:
-                      type: integer
+            query:
+              type: string
+            total:
+              type: integer
+            processing_time_ms:
+              type: number
+            limit:
+              type: integer
+            offset:
+              type: integer
 
     HateoasLink:
       type: object
@@ -3239,7 +3198,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: Sanctum bearer token obtained via OAuth 2.1 flow
+      description: Bearer token obtained via OAuth 2.1 flow
 
     cookieAuth:
       type: apiKey

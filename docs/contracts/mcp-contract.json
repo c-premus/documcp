@@ -1,9 +1,9 @@
 {
   "metadata": {
-    "generated_from": "Laravel MCP SDK source files",
-    "generated_at": "2026-02-24",
+    "generated_from": "Go MCP SDK handler implementation",
+    "generated_at": "2026-03-08",
     "protocol_version": "2024-11-05",
-    "sdk": "laravel/mcp",
+    "sdk": "github.com/mark3labs/mcp-go",
     "source_files": {
       "server": "app/Mcp/Servers/DocumentationServer.php",
       "constants": "app/Mcp/McpConstants.php",

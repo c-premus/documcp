@@ -89,12 +89,14 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	results := search.NormalizeHits(resp.Hits, "document")
 
 	jsonResponse(w, http.StatusOK, map[string]any{
-		"data":               results,
-		"query":              query,
-		"total":              resp.EstimatedTotalHits,
-		"processing_time_ms": resp.ProcessingTimeMs,
-		"limit":              limit,
-		"offset":             offset,
+		"data": results,
+		"meta": map[string]any{
+			"query":              query,
+			"total":              resp.EstimatedTotalHits,
+			"processing_time_ms": resp.ProcessingTimeMs,
+			"limit":              limit,
+			"offset":             offset,
+		},
 	})
 }
 
@@ -148,12 +150,14 @@ func (h *SearchHandler) FederatedSearch(w http.ResponseWriter, r *http.Request) 
 	results := search.NormalizeHits(resp.Hits, "federated")
 
 	jsonResponse(w, http.StatusOK, map[string]any{
-		"data":               results,
-		"query":              query,
-		"total":              resp.EstimatedTotalHits,
-		"processing_time_ms": resp.ProcessingTimeMs,
-		"limit":              limit,
-		"offset":             offset,
+		"data": results,
+		"meta": map[string]any{
+			"query":              query,
+			"total":              resp.EstimatedTotalHits,
+			"processing_time_ms": resp.ProcessingTimeMs,
+			"limit":              limit,
+			"offset":             offset,
+		},
 	})
 }
 
@@ -174,7 +178,7 @@ func (h *SearchHandler) Popular(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonResponse(w, http.StatusOK, queries)
+	jsonResponse(w, http.StatusOK, map[string]any{"data": queries})
 }
 
 // autocompleteResult is the JSON representation of a title suggestion.
@@ -216,7 +220,7 @@ func (h *SearchHandler) Autocomplete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	jsonResponse(w, http.StatusOK, results)
+	jsonResponse(w, http.StatusOK, map[string]any{"data": results})
 }
 
 // highlightPrefix wraps the matched prefix portion of title in <em> tags.

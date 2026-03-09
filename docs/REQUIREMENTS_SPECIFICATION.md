@@ -335,7 +335,7 @@ All prompts MUST return multi-message format: an assistant message (tool referen
 | Format | MIME Types | Extractor |
 |--------|-----------|-----------|
 | PDF | `application/pdf` | pdftohtml/pdftotext (poppler-utils) |
-| DOCX | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | Library-based (PhpWord or equivalent) |
+| DOCX | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | Go DOCX library (excelize) |
 | XLSX | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | Library-based, exports as CSV per sheet |
 | HTML | `text/html`, `application/xhtml+xml` | HTML-to-Markdown converter |
 | Markdown | `text/markdown`, `text/plain`, `text/x-markdown` | Pass-through (no conversion) |
@@ -547,7 +547,7 @@ All prompts MUST return multi-message format: an assistant message (tool referen
 
 ### 8.1 Authentication
 
-**REQ-API-001**: API endpoints MUST support Bearer token authentication (Sanctum/API tokens).
+**REQ-API-001**: API endpoints MUST support Bearer token authentication (Bearer tokens (OAuth 2.1)).
 
 **REQ-API-002**: Public endpoints: `GET /api/health`, `GET /api/search`, `GET /api/search/popular`.
 
