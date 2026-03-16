@@ -633,3 +633,33 @@ func TestOAuthRepository_PurgeExpiredTokens(t *testing.T) {
 		assert.Equal(t, "purge-recent-expired-at", found.Token)
 	})
 }
+
+// ---------------------------------------------------------------------------
+// DeleteUser
+// ---------------------------------------------------------------------------
+
+func TestOAuthRepository_DeleteUser(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewOAuthRepository(testDB, discardLogger())
+
+	user := testutil.NewUser(
+		testutil.WithUserID(0),
+		testutil.WithUserName("Deletable User"),
+		testutil.WithUserEmail("deletable@example.com"),
+	)
+	require.NoError(t, repo.CreateUser(ctx, user))
+	require.NotZero(t, user.ID)
+
+	// Confirm the user exists.
+	found, err := repo.FindUserByID(ctx, user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Deletable User", found.Name)
+
+	// Delete the user.
+	require.NoError(t, repo.DeleteUser(ctx, user.ID))
+
+	// Confirm the user is gone.
+	_, err = repo.FindUserByID(ctx, user.ID)
+	assert.Error(t, err)
+}

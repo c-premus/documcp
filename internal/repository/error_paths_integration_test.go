@@ -119,7 +119,7 @@ func TestErrorPaths_CancelledContext(t *testing.T) {
 	})
 
 	t.Run("GitTemplateRepository", func(t *testing.T) {
-		repo := NewGitTemplateRepository(testDB, logger)
+		repo := NewGitTemplateRepository(testDB, logger, nil)
 
 		tmpl := &model.GitTemplate{UUID: testUUID("err-tmpl-001"), Name: "Err", Slug: "err", RepositoryURL: "https://x.com", Branch: "main", Status: "pending"}
 		assert.Error(t, repo.Create(ctx, tmpl))
