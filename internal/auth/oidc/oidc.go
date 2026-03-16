@@ -38,6 +38,7 @@ type Handler struct {
 	store        sessions.Store
 	repo         UserRepo
 	logger       *slog.Logger
+	adminGroups  []string
 }
 
 // Config holds the dependencies for creating a new OIDC Handler.
@@ -82,6 +83,7 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 		store:        cfg.SessionStore,
 		repo:         cfg.Repo,
 		logger:       cfg.Logger,
+		adminGroups:  cfg.OIDCCfg.AdminGroups,
 	}, nil
 }
 
@@ -151,9 +153,10 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 
 	// Extract claims
 	var claims struct {
-		Sub   string `json:"sub"`
-		Email string `json:"email"`
-		Name  string `json:"name"`
+		Sub    string   `json:"sub"`
+		Email  string   `json:"email"`
+		Name   string   `json:"name"`
+		Groups []string `json:"groups"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		h.logger.Error("parsing ID token claims", "error", err)
@@ -167,7 +170,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Find or create user
-	user, err := h.findOrCreateUser(r.Context(), claims.Sub, claims.Email, claims.Name)
+	user, err := h.findOrCreateUser(r.Context(), claims.Sub, claims.Email, claims.Name, claims.Groups)
 	if err != nil {
 		h.logger.Error("finding or creating user", "error", err)
 		http.Error(w, "Authentication failed", http.StatusInternalServerError)
@@ -209,12 +212,21 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 // findOrCreateUser finds a user by OIDC sub or email, or creates a new one.
-func (h *Handler) findOrCreateUser(ctx context.Context, sub, email, name string) (*model.User, error) {
+// When adminGroups is configured, IsAdmin is synced from OIDC group membership on every login.
+func (h *Handler) findOrCreateUser(ctx context.Context, sub, email, name string, groups []string) (*model.User, error) {
 	// Try by OIDC sub first
 	user, err := h.repo.FindUserByOIDCSub(ctx, sub)
 	if err == nil {
-		// Update profile if changed
-		if user.Name != name || user.Email != email {
+		needsUpdate := user.Name != name || user.Email != email
+		if isAdmin, shouldSync := h.resolveAdmin(groups); shouldSync && user.IsAdmin != isAdmin {
+			h.logger.Info("synced admin status from OIDC groups",
+				"user_id", user.ID, "email", user.Email,
+				"is_admin", isAdmin, "groups", groups,
+			)
+			user.IsAdmin = isAdmin
+			needsUpdate = true
+		}
+		if needsUpdate {
 			user.Name = name
 			user.Email = email
 			_ = h.repo.UpdateUser(ctx, user)
@@ -234,6 +246,9 @@ func (h *Handler) findOrCreateUser(ctx context.Context, sub, email, name string)
 		if name != "" {
 			user.Name = name
 		}
+		if isAdmin, shouldSync := h.resolveAdmin(groups); shouldSync {
+			user.IsAdmin = isAdmin
+		}
 		if err := h.repo.UpdateUser(ctx, user); err != nil {
 			return nil, fmt.Errorf("linking OIDC identity: %w", err)
 		}
@@ -244,13 +259,17 @@ func (h *Handler) findOrCreateUser(ctx context.Context, sub, email, name string)
 	}
 
 	// Create new user
+	isAdmin := false
+	if admin, shouldSync := h.resolveAdmin(groups); shouldSync {
+		isAdmin = admin
+	}
 	user = &model.User{
 		Name:            name,
 		Email:           email,
 		OIDCSub:         sql.NullString{String: sub, Valid: true},
 		OIDCProvider:    sql.NullString{String: h.provider.Endpoint().AuthURL, Valid: true},
 		EmailVerifiedAt: sql.NullTime{Time: time.Now(), Valid: true},
-		IsAdmin:         false,
+		IsAdmin:         isAdmin,
 	}
 	if err := h.repo.CreateUser(ctx, user); err != nil {
 		return nil, fmt.Errorf("creating user: %w", err)
@@ -259,9 +278,27 @@ func (h *Handler) findOrCreateUser(ctx context.Context, sub, email, name string)
 	h.logger.Info("created new user from OIDC login",
 		"email", email,
 		"user_id", user.ID,
+		"is_admin", isAdmin,
 	)
 
 	return user, nil
+}
+
+// resolveAdmin determines if a user should be admin based on their OIDC groups.
+// Returns (isAdmin, shouldSync). shouldSync is false when adminGroups is not
+// configured, meaning IsAdmin should not be touched (manual assignment preserved).
+func (h *Handler) resolveAdmin(groups []string) (isAdmin bool, shouldSync bool) {
+	if len(h.adminGroups) == 0 {
+		return false, false
+	}
+	for _, g := range groups {
+		for _, ag := range h.adminGroups {
+			if g == ag {
+				return true, true
+			}
+		}
+	}
+	return false, true
 }
 
 // isSafeRedirect validates that a redirect path is a same-origin relative path

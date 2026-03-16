@@ -90,6 +90,7 @@ type OIDCConfig struct {
 	ClientSecret string   `mapstructure:"oidc_client_secret"`
 	RedirectURL  string   `mapstructure:"oidc_redirect_uri"`
 	Scopes       []string `mapstructure:"oidc_scopes"`
+	AdminGroups  []string `mapstructure:"oidc_admin_groups"`
 }
 
 // OAuthConfig holds OAuth 2.1 authorization server settings.
@@ -168,6 +169,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oidc_client_secret", "")
 	v.SetDefault("oidc_redirect_uri", "")
 	v.SetDefault("oidc_scopes", []string{"openid", "profile", "email"})
+	v.SetDefault("oidc_admin_groups", []string{})
 
 	// OAuth
 	v.SetDefault("oauth_authorization_code_lifetime", 10*time.Minute)
@@ -290,6 +292,7 @@ func Load() (*Config, error) {
 		ClientSecret: v.GetString("oidc_client_secret"),
 		RedirectURL:  v.GetString("oidc_redirect_uri"),
 		Scopes:       v.GetStringSlice("oidc_scopes"),
+		AdminGroups:  v.GetStringSlice("oidc_admin_groups"),
 	}
 
 	cfg.OAuth = OAuthConfig{

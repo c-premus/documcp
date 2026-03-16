@@ -32,6 +32,8 @@ func UserFromContext(ctx context.Context) (*model.User, bool) {
 
 // BearerToken validates an OAuth 2.1 bearer token from the Authorization header.
 // On success, it sets the access token and user in the request context.
+// When no Authorization header is present, it is bearer-only and rejects the request.
+// Use BearerOrSession to allow session cookie fallback for SPA admin routes.
 func BearerToken(oauthService *oauth.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -68,6 +70,62 @@ func BearerToken(oauthService *oauth.Service) func(http.Handler) http.Handler {
 				}
 			}
 
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// BearerOrSession tries bearer token auth first, then falls back to session
+// cookie auth. This allows the same API routes to serve both MCP/API clients
+// (bearer token) and the admin SPA (session cookie).
+func BearerOrSession(oauthService *oauth.Service, store sessions.Store) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// If Authorization header is present, use bearer token auth.
+			if authHeader := r.Header.Get("Authorization"); authHeader != "" {
+				bearerToken := strings.TrimPrefix(authHeader, "Bearer ")
+				if bearerToken == authHeader {
+					w.Header().Set("WWW-Authenticate", `Bearer`)
+					jsonError(w, http.StatusUnauthorized, "Bearer token required")
+					return
+				}
+
+				token, err := oauthService.ValidateAccessToken(r.Context(), bearerToken)
+				if err != nil {
+					w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+					jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
+					return
+				}
+
+				ctx := context.WithValue(r.Context(), AccessTokenContextKey, token)
+				if token.UserID.Valid {
+					user, err := oauthService.FindUserByID(r.Context(), token.UserID.Int64)
+					if err != nil {
+						slog.Warn("loading user for bearer token", "user_id", token.UserID.Int64, "error", err)
+					} else {
+						ctx = context.WithValue(ctx, UserContextKey, user)
+					}
+				}
+
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
+			// No Authorization header — try session cookie.
+			session, _ := store.Get(r, "documcp_session")
+			userID, ok := session.Values["user_id"].(int64)
+			if !ok || userID == 0 {
+				jsonError(w, http.StatusUnauthorized, "Authentication required")
+				return
+			}
+
+			user, err := oauthService.FindUserByID(r.Context(), userID)
+			if err != nil {
+				jsonError(w, http.StatusUnauthorized, "Authentication required")
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), UserContextKey, user)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -120,13 +178,20 @@ func RequireAdmin(next http.Handler) http.Handler {
 
 // RequireScope returns middleware that checks the authenticated token has the required scope.
 // Scopes are space-delimited per RFC 6749. Tokens with no scope or empty scope are rejected.
-// Must be used after BearerToken middleware.
+// Session-authenticated users (no access token) are allowed through, as scope enforcement
+// only applies to OAuth token-based access.
+// Must be used after BearerToken or BearerOrSession middleware.
 func RequireScope(scope string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token, ok := r.Context().Value(AccessTokenContextKey).(*model.OAuthAccessToken)
 			if !ok || token == nil {
-				jsonError(w, http.StatusUnauthorized, "Bearer token required")
+				// No access token — check if this is a session-authenticated user.
+				if _, hasUser := UserFromContext(r.Context()); hasUser {
+					next.ServeHTTP(w, r)
+					return
+				}
+				jsonError(w, http.StatusUnauthorized, "Authentication required")
 				return
 			}
 

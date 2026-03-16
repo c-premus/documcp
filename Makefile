@@ -38,9 +38,9 @@ fmt:
 tidy:
 	go mod tidy
 
-# Run the server
+# Run the server (loads .env if present)
 run:
-	go run ./cmd/server
+	@if [ -f .env ]; then set -a; . ./.env; set +a; fi; go run ./cmd/server
 
 # Clean build artifacts
 clean:

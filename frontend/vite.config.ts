@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: { '@': resolve(__dirname, 'src') },
   },
+  base: '/admin/',
   build: {
     outDir: '../web/frontend/dist',
     emptyOutDir: true,
