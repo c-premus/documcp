@@ -340,7 +340,8 @@ func (r *DocumentRepository) PurgeSingle(ctx context.Context, id int64) (string,
 }
 
 // ListDeleted returns soft-deleted documents with pagination.
-func (r *DocumentRepository) ListDeleted(ctx context.Context, limit, offset int) ([]model.Document, int, error) {
+// When userID is non-nil, results are scoped to documents owned by that user.
+func (r *DocumentRepository) ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -348,17 +349,31 @@ func (r *DocumentRepository) ListDeleted(ctx context.Context, limit, offset int)
 		offset = 0
 	}
 
+	where := "deleted_at IS NOT NULL"
+	var args []any
+	argIdx := 1
+
+	if userID != nil {
+		where += fmt.Sprintf(" AND user_id = $%d", argIdx)
+		args = append(args, *userID)
+		argIdx++
+	}
+
 	var total int
-	err := r.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM documents WHERE deleted_at IS NOT NULL`).Scan(&total)
+	countQuery := "SELECT COUNT(*) FROM documents WHERE " + where
+	err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("counting deleted documents: %w", err)
 	}
 
+	selectQuery := fmt.Sprintf(
+		"SELECT * FROM documents WHERE %s ORDER BY deleted_at DESC LIMIT $%d OFFSET $%d",
+		where, argIdx, argIdx+1,
+	)
+	args = append(args, limit, offset)
+
 	var docs []model.Document
-	err = r.db.SelectContext(ctx, &docs,
-		`SELECT * FROM documents WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT $1 OFFSET $2`,
-		limit, offset)
+	err = r.db.SelectContext(ctx, &docs, selectQuery, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("listing deleted documents: %w", err)
 	}

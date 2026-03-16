@@ -1338,7 +1338,7 @@ func TestDocumentRepository_ListDeleted(t *testing.T) {
 	}
 
 	t.Run("returns only soft-deleted", func(t *testing.T) {
-		docs, total, err := repo.ListDeleted(ctx, 10, 0)
+		docs, total, err := repo.ListDeleted(ctx, 10, 0, nil)
 		if err != nil {
 			t.Fatalf("ListDeleted() error: %v", err)
 		}
@@ -1351,7 +1351,7 @@ func TestDocumentRepository_ListDeleted(t *testing.T) {
 	})
 
 	t.Run("pagination", func(t *testing.T) {
-		docs, total, err := repo.ListDeleted(ctx, 1, 0)
+		docs, total, err := repo.ListDeleted(ctx, 1, 0, nil)
 		if err != nil {
 			t.Fatalf("ListDeleted(1,0) error: %v", err)
 		}
@@ -1362,7 +1362,7 @@ func TestDocumentRepository_ListDeleted(t *testing.T) {
 			t.Errorf("ListDeleted(1,0) total = %d, want 2", total)
 		}
 
-		docs2, _, err := repo.ListDeleted(ctx, 1, 1)
+		docs2, _, err := repo.ListDeleted(ctx, 1, 1, nil)
 		if err != nil {
 			t.Fatalf("ListDeleted(1,1) error: %v", err)
 		}
@@ -1391,7 +1391,7 @@ func TestDocumentRepository_ListDeleted(t *testing.T) {
 			}
 		}
 
-		docs, total, err := repo.ListDeleted(ctx, 10, 0)
+		docs, total, err := repo.ListDeleted(ctx, 10, 0, nil)
 		if err != nil {
 			t.Fatalf("ListDeleted() error: %v", err)
 		}

@@ -160,7 +160,7 @@ type mockHandlerRepo struct {
 	restoreFn                    func(ctx context.Context, id int64) error
 	purgeSingleFn                func(ctx context.Context, id int64) (string, error)
 	purgeSoftDeletedFn           func(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
-	listDeletedFn                func(ctx context.Context, limit, offset int) ([]model.Document, int, error)
+	listDeletedFn                func(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
 }
 
 func (m *mockHandlerRepo) List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
@@ -212,9 +212,9 @@ func (m *mockHandlerRepo) PurgeSoftDeleted(ctx context.Context, olderThan time.D
 	return nil, nil
 }
 
-func (m *mockHandlerRepo) ListDeleted(ctx context.Context, limit, offset int) ([]model.Document, int, error) {
+func (m *mockHandlerRepo) ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error) {
 	if m.listDeletedFn != nil {
-		return m.listDeletedFn(ctx, limit, offset)
+		return m.listDeletedFn(ctx, limit, offset, userID)
 	}
 	return nil, 0, nil
 }
@@ -2274,7 +2274,7 @@ func TestDocumentHandler_ListDeleted(t *testing.T) {
 		doc.DeletedAt = sql.NullTime{Time: time.Now(), Valid: true}
 
 		repo := &mockHandlerRepo{
-			listDeletedFn: func(_ context.Context, _ int, _ int) ([]model.Document, int, error) {
+			listDeletedFn: func(_ context.Context, _ int, _ int, _ *int64) ([]model.Document, int, error) {
 				return []model.Document{doc}, 1, nil
 			},
 			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
@@ -2302,7 +2302,7 @@ func TestDocumentHandler_ListDeleted(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockHandlerRepo{
-			listDeletedFn: func(_ context.Context, _ int, _ int) ([]model.Document, int, error) {
+			listDeletedFn: func(_ context.Context, _ int, _ int, _ *int64) ([]model.Document, int, error) {
 				return []model.Document{}, 0, nil
 			},
 		}
@@ -2325,7 +2325,7 @@ func TestDocumentHandler_ListDeleted(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockHandlerRepo{
-			listDeletedFn: func(_ context.Context, _ int, _ int) ([]model.Document, int, error) {
+			listDeletedFn: func(_ context.Context, _ int, _ int, _ *int64) ([]model.Document, int, error) {
 				return nil, 0, fmt.Errorf("db error")
 			},
 		}
@@ -2346,7 +2346,7 @@ func TestDocumentHandler_ListDeleted(t *testing.T) {
 
 		doc := *newTestDocument("tags-fail-del")
 		repo := &mockHandlerRepo{
-			listDeletedFn: func(_ context.Context, _ int, _ int) ([]model.Document, int, error) {
+			listDeletedFn: func(_ context.Context, _ int, _ int, _ *int64) ([]model.Document, int, error) {
 				return []model.Document{doc}, 1, nil
 			},
 			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
@@ -2407,5 +2407,269 @@ func TestDocumentHandler_Show_Success(t *testing.T) {
 		assert.Len(t, tags, 2)
 		assert.Equal(t, "api", tags[0])
 		assert.Equal(t, "test", tags[1])
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Ownership scoping tests
+// ---------------------------------------------------------------------------
+
+func TestDocumentHandler_List_OwnershipScoping(t *testing.T) {
+	t.Parallel()
+
+	t.Run("non-admin user sets OwnerOrPublic", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedParams repository.DocumentListParams
+		repo := &mockHandlerRepo{
+			listFn: func(_ context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				capturedParams = params
+				return &repository.DocumentListResult{Documents: nil, Total: 0}, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		user := &model.User{ID: 42, IsAdmin: false}
+		req := httptest.NewRequest(http.MethodGet, "/api/documents", nil)
+		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		require.NotNil(t, capturedParams.OwnerOrPublic, "OwnerOrPublic should be set for non-admin")
+		assert.Equal(t, int64(42), *capturedParams.OwnerOrPublic)
+	})
+
+	t.Run("admin user does not set OwnerOrPublic", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedParams repository.DocumentListParams
+		repo := &mockHandlerRepo{
+			listFn: func(_ context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				capturedParams = params
+				return &repository.DocumentListResult{Documents: nil, Total: 0}, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		user := &model.User{ID: 1, IsAdmin: true}
+		req := httptest.NewRequest(http.MethodGet, "/api/documents", nil)
+		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Nil(t, capturedParams.OwnerOrPublic, "OwnerOrPublic should be nil for admin")
+	})
+}
+
+func TestDocumentHandler_Show_OwnershipScoping(t *testing.T) {
+	t.Parallel()
+
+	t.Run("non-admin can see own document", func(t *testing.T) {
+		t.Parallel()
+
+		doc := newTestDocument("own-doc")
+		doc.IsPublic = false
+		doc.UserID = sql.NullInt64{Int64: 42, Valid: true}
+
+		p := &mockPipeline{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+		}
+		repo := &mockHandlerRepo{}
+		h := newTestHandler(p, repo)
+
+		user := &model.User{ID: 42, IsAdmin: false}
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/own-doc", nil)
+		req = chiContext(req, map[string]string{"uuid": "own-doc"})
+		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		h.Show(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+	})
+
+	t.Run("non-admin can see public document", func(t *testing.T) {
+		t.Parallel()
+
+		doc := newTestDocument("public-doc")
+		doc.IsPublic = true
+		doc.UserID = sql.NullInt64{Int64: 99, Valid: true}
+
+		p := &mockPipeline{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+		}
+		repo := &mockHandlerRepo{}
+		h := newTestHandler(p, repo)
+
+		user := &model.User{ID: 42, IsAdmin: false}
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/public-doc", nil)
+		req = chiContext(req, map[string]string{"uuid": "public-doc"})
+		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		h.Show(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+	})
+
+	t.Run("non-admin gets 404 for other user private document", func(t *testing.T) {
+		t.Parallel()
+
+		doc := newTestDocument("other-doc")
+		doc.IsPublic = false
+		doc.UserID = sql.NullInt64{Int64: 99, Valid: true}
+
+		p := &mockPipeline{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+		}
+		repo := &mockHandlerRepo{}
+		h := newTestHandler(p, repo)
+
+		user := &model.User{ID: 42, IsAdmin: false}
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/other-doc", nil)
+		req = chiContext(req, map[string]string{"uuid": "other-doc"})
+		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		h.Show(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "document not found", body["message"])
+	})
+
+	t.Run("non-admin gets 404 for unowned private document", func(t *testing.T) {
+		t.Parallel()
+
+		doc := newTestDocument("unowned-doc")
+		doc.IsPublic = false
+		doc.UserID = sql.NullInt64{Valid: false} // no owner
+
+		p := &mockPipeline{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+		}
+		repo := &mockHandlerRepo{}
+		h := newTestHandler(p, repo)
+
+		user := &model.User{ID: 42, IsAdmin: false}
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/unowned-doc", nil)
+		req = chiContext(req, map[string]string{"uuid": "unowned-doc"})
+		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		h.Show(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+	})
+}
+
+func TestDocumentHandler_Upload_SetsUserID(t *testing.T) {
+	t.Parallel()
+
+	t.Run("sets UserID from authenticated user", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedParams service.UploadDocumentParams
+		p := &mockPipeline{
+			uploadFn: func(_ context.Context, params service.UploadDocumentParams) (*model.Document, error) {
+				capturedParams = params
+				return newTestDocument("uploaded"), nil
+			},
+		}
+		repo := &mockHandlerRepo{}
+		h := newTestHandler(p, repo)
+
+		var buf bytes.Buffer
+		writer := multipart.NewWriter(&buf)
+		part, _ := writer.CreateFormFile("file", "test.md")
+		_, _ = part.Write([]byte("# Hello"))
+		_ = writer.Close()
+
+		user := &model.User{ID: 77, IsAdmin: false}
+		req := httptest.NewRequest(http.MethodPost, "/api/documents", &buf)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		h.Upload(rr, req)
+
+		assert.Equal(t, http.StatusCreated, rr.Code)
+		require.NotNil(t, capturedParams.UserID, "UserID should be set from context")
+		assert.Equal(t, int64(77), *capturedParams.UserID)
+	})
+}
+
+func TestDocumentHandler_ListDeleted_OwnershipScoping(t *testing.T) {
+	t.Parallel()
+
+	t.Run("non-admin passes userID to repo", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedUserID *int64
+		repo := &mockHandlerRepo{
+			listDeletedFn: func(_ context.Context, _, _ int, userID *int64) ([]model.Document, int, error) {
+				capturedUserID = userID
+				return nil, 0, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		user := &model.User{ID: 42, IsAdmin: false}
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash", nil)
+		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		h.ListDeleted(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		require.NotNil(t, capturedUserID, "userID should be set for non-admin")
+		assert.Equal(t, int64(42), *capturedUserID)
+	})
+
+	t.Run("admin passes nil userID to repo", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedUserID *int64
+		called := false
+		repo := &mockHandlerRepo{
+			listDeletedFn: func(_ context.Context, _, _ int, userID *int64) ([]model.Document, int, error) {
+				capturedUserID = userID
+				called = true
+				return nil, 0, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		user := &model.User{ID: 1, IsAdmin: true}
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash", nil)
+		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		h.ListDeleted(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.True(t, called, "listDeletedFn should have been called")
+		assert.Nil(t, capturedUserID, "userID should be nil for admin")
 	})
 }
