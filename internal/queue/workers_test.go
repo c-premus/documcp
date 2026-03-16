@@ -10,6 +10,8 @@ import (
 	"github.com/riverqueue/river/rivertype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"git.999.haus/chris/DocuMCP-go/internal/model"
 )
 
 // --- Mock implementations ---
@@ -207,21 +209,109 @@ func TestDocumentIndexWorker_NextRetry(t *testing.T) {
 	}
 }
 
+// --- Mock DocumentLister ---
+
+type mockDocumentLister struct {
+	docs map[string][]model.Document
+	err  error
+}
+
+func (m *mockDocumentLister) FindByStatus(_ context.Context, status string, _ int) ([]model.Document, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.docs[status], nil
+}
+
 // --- ReindexAllWorker tests ---
 
 func TestReindexAllWorker_Work(t *testing.T) {
 	t.Parallel()
 
-	mock := &mockDocumentIndexer{}
-	worker := &ReindexAllWorker{Indexer: mock}
-
-	job := &river.Job[ReindexAllArgs]{
-		JobRow: &rivertype.JobRow{ID: 3},
-		Args:   ReindexAllArgs{},
+	makeJob := func() *river.Job[ReindexAllArgs] {
+		return &river.Job[ReindexAllArgs]{
+			JobRow: &rivertype.JobRow{ID: 3},
+			Args:   ReindexAllArgs{},
+		}
 	}
 
-	err := worker.Work(context.Background(), job)
-	require.NoError(t, err, "ReindexAllWorker.Work should return nil (placeholder)")
+	t.Run("not_configured_missing_lister", func(t *testing.T) {
+		t.Parallel()
+		worker := &ReindexAllWorker{Indexer: &mockDocumentIndexer{}}
+		err := worker.Work(context.Background(), makeJob())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not configured")
+	})
+
+	t.Run("not_configured_missing_indexer", func(t *testing.T) {
+		t.Parallel()
+		worker := &ReindexAllWorker{Lister: &mockDocumentLister{}}
+		err := worker.Work(context.Background(), makeJob())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not configured")
+	})
+
+	t.Run("success_no_documents", func(t *testing.T) {
+		t.Parallel()
+		worker := &ReindexAllWorker{
+			Indexer: &mockDocumentIndexer{},
+			Lister:  &mockDocumentLister{docs: map[string][]model.Document{}},
+		}
+		err := worker.Work(context.Background(), makeJob())
+		require.NoError(t, err)
+	})
+
+	t.Run("success_indexes_all_documents", func(t *testing.T) {
+		t.Parallel()
+		indexer := &mockDocumentIndexer{}
+		lister := &mockDocumentLister{
+			docs: map[string][]model.Document{
+				"indexed": {{ID: 1}, {ID: 2}},
+				"processed": {{ID: 3}},
+			},
+		}
+		worker := &ReindexAllWorker{Indexer: indexer, Lister: lister}
+		err := worker.Work(context.Background(), makeJob())
+		require.NoError(t, err)
+	})
+
+	t.Run("partial_failure_returns_error", func(t *testing.T) {
+		t.Parallel()
+		indexer := &mockDocumentIndexer{err: errors.New("search down")}
+		lister := &mockDocumentLister{
+			docs: map[string][]model.Document{
+				"indexed": {{ID: 1}},
+			},
+		}
+		worker := &ReindexAllWorker{Indexer: indexer, Lister: lister}
+		err := worker.Work(context.Background(), makeJob())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "1 failures")
+	})
+
+	t.Run("cancelled_context", func(t *testing.T) {
+		t.Parallel()
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		lister := &mockDocumentLister{
+			docs: map[string][]model.Document{
+				"indexed": {{ID: 1}},
+			},
+		}
+		worker := &ReindexAllWorker{Indexer: &mockDocumentIndexer{}, Lister: lister}
+		err := worker.Work(ctx, makeJob())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cancelled")
+	})
+
+	t.Run("lister_error_continues", func(t *testing.T) {
+		t.Parallel()
+		lister := &mockDocumentLister{err: errors.New("db error")}
+		worker := &ReindexAllWorker{Indexer: &mockDocumentIndexer{}, Lister: lister}
+		// All statuses fail to list, but worker completes with 0 docs.
+		err := worker.Work(context.Background(), makeJob())
+		require.NoError(t, err)
+	})
 }
 
 // --- nextRetryFromBackoffs tests ---

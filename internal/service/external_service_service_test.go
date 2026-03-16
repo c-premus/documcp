@@ -111,12 +111,13 @@ func TestExternalServiceService_FindByUUID(t *testing.T) {
 			wantSvc: true,
 		},
 		{
-			name: "service not found returns nil nil",
+			name: "service not found returns ErrNotFound",
 			repoFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
 				return nil, sql.ErrNoRows
 			},
 			wantSvc: false,
-			wantErr: false,
+			wantErr: true,
+			errSubstr: "not found",
 		},
 		{
 			name: "repository error is wrapped",

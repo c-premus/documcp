@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 
@@ -131,7 +132,7 @@ func (r *ExternalServiceRepository) Create(ctx context.Context, svc *model.Exter
 
 // Update updates an existing external service by its ID.
 func (r *ExternalServiceRepository) Update(ctx context.Context, svc *model.ExternalService) error {
-	_, err := r.db.ExecContext(ctx,
+	result, err := r.db.ExecContext(ctx,
 		`UPDATE external_services SET
 			name = $1, slug = $2, base_url = $3, api_key = $4, config = $5,
 			priority = $6, is_enabled = $7, updated_at = NOW()
@@ -142,15 +143,23 @@ func (r *ExternalServiceRepository) Update(ctx context.Context, svc *model.Exter
 	if err != nil {
 		return fmt.Errorf("updating external service %d: %w", svc.ID, err)
 	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
 	return nil
 }
 
 // Delete removes an external service by its ID.
 func (r *ExternalServiceRepository) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx,
+	result, err := r.db.ExecContext(ctx,
 		`DELETE FROM external_services WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("deleting external service %d: %w", id, err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
 	}
 	return nil
 }

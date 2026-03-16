@@ -72,12 +72,12 @@ func (s *ExternalServiceService) List(ctx context.Context, serviceType, status s
 }
 
 // FindByUUID retrieves an external service by its UUID.
-// Returns (nil, nil) when the service does not exist.
+// Returns ErrNotFound when the service does not exist.
 func (s *ExternalServiceService) FindByUUID(ctx context.Context, svcUUID string) (*model.ExternalService, error) {
 	svc, err := s.repo.FindByUUID(ctx, svcUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("finding external service by uuid: %w", err)
 	}
@@ -126,9 +126,6 @@ func (s *ExternalServiceService) Update(ctx context.Context, svcUUID string, par
 	if err != nil {
 		return nil, fmt.Errorf("finding external service for update: %w", err)
 	}
-	if svc == nil {
-		return nil, fmt.Errorf("external service %s: %w", svcUUID, ErrNotFound)
-	}
 
 	if params.Name != "" {
 		svc.Name = params.Name
@@ -171,9 +168,6 @@ func (s *ExternalServiceService) Delete(ctx context.Context, svcUUID string) err
 	if err != nil {
 		return fmt.Errorf("finding external service for deletion: %w", err)
 	}
-	if svc == nil {
-		return fmt.Errorf("external service %s: %w", svcUUID, ErrNotFound)
-	}
 
 	if svc.IsEnvManaged {
 		return fmt.Errorf("external service %s: %w", svcUUID, ErrEnvManaged)
@@ -192,9 +186,6 @@ func (s *ExternalServiceService) CheckHealth(ctx context.Context, svcUUID string
 	svc, err := s.FindByUUID(ctx, svcUUID)
 	if err != nil {
 		return nil, fmt.Errorf("finding external service for health check: %w", err)
-	}
-	if svc == nil {
-		return nil, fmt.Errorf("external service %s: %w", svcUUID, ErrNotFound)
 	}
 
 	start := time.Now()

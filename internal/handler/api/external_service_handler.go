@@ -101,12 +101,12 @@ func (h *ExternalServiceHandler) Show(w http.ResponseWriter, r *http.Request) {
 
 	svc, err := h.svc.FindByUUID(r.Context(), svcUUID)
 	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			errorResponse(w, http.StatusNotFound, "external service not found")
+			return
+		}
 		h.logger.Error("finding external service", "uuid", svcUUID, "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to find external service")
-		return
-	}
-	if svc == nil {
-		errorResponse(w, http.StatusNotFound, "external service not found")
 		return
 	}
 
@@ -237,12 +237,12 @@ func (h *ExternalServiceHandler) HealthCheck(w http.ResponseWriter, r *http.Requ
 
 	svc, err := h.svc.FindByUUID(r.Context(), svcUUID)
 	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			errorResponse(w, http.StatusNotFound, "external service not found")
+			return
+		}
 		h.logger.Error("finding external service for health check", "uuid", svcUUID, "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to find external service")
-		return
-	}
-	if svc == nil {
-		errorResponse(w, http.StatusNotFound, "external service not found")
 		return
 	}
 

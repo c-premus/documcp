@@ -6,6 +6,86 @@ import (
 	"strings"
 )
 
+// Precompiled regexes for storageToMarkdown and helper functions.
+var (
+	// Heading regexes indexed by level (1-6). Index 0 is unused.
+	reHeadingOpen [7]*regexp.Regexp
+
+	// Inline/block element regexes.
+	reBr      = regexp.MustCompile(`<br\s*/?>`)
+	reHr      = regexp.MustCompile(`<hr\s*/?>`)
+	rePOpen   = regexp.MustCompile(`<p[^>]*>`)
+	rePreOpen = regexp.MustCompile(`<pre[^>]*>`)
+	reHTMLTag = regexp.MustCompile(`<[^>]+>`)
+
+	// Tag open regexes keyed by tag name (with \b to prevent partial matches).
+	reTagOpen = map[string]*regexp.Regexp{
+		"strong":     regexp.MustCompile(`<strong[^>]*>`),
+		"b":          regexp.MustCompile(`<b\b[^>]*>`),
+		"em":         regexp.MustCompile(`<em[^>]*>`),
+		"i":          regexp.MustCompile(`<i\b[^>]*>`),
+		"code":       regexp.MustCompile(`<code[^>]*>`),
+		"blockquote": regexp.MustCompile(`<blockquote[^>]*>`),
+	}
+
+	// convertCodeMacros regexes.
+	reCodeMacro = regexp.MustCompile(
+		`(?s)<ac:structured-macro\s[^>]*ac:name="code"[^>]*>` +
+			`(.*?)` +
+			`</ac:structured-macro>`,
+	)
+	reCodeLang = regexp.MustCompile(
+		`<ac:parameter\s+ac:name="language"[^>]*>([^<]+)</ac:parameter>`,
+	)
+	reCDATA = regexp.MustCompile(`(?s)<!\[CDATA\[(.*?)\]\]>`)
+	rePTB   = regexp.MustCompile(
+		`(?s)<ac:plain-text-body[^>]*>(.*?)</ac:plain-text-body>`,
+	)
+
+	// convertPanelMacros regexes (keyed by panel name).
+	rePanelMacro = map[string]*regexp.Regexp{
+		"info":    regexp.MustCompile(`(?s)<ac:structured-macro\s[^>]*ac:name="info"[^>]*>(.*?)</ac:structured-macro>`),
+		"note":    regexp.MustCompile(`(?s)<ac:structured-macro\s[^>]*ac:name="note"[^>]*>(.*?)</ac:structured-macro>`),
+		"warning": regexp.MustCompile(`(?s)<ac:structured-macro\s[^>]*ac:name="warning"[^>]*>(.*?)</ac:structured-macro>`),
+		"tip":     regexp.MustCompile(`(?s)<ac:structured-macro\s[^>]*ac:name="tip"[^>]*>(.*?)</ac:structured-macro>`),
+	}
+	reRichTextBody = regexp.MustCompile(
+		`(?s)<ac:rich-text-body[^>]*>(.*?)</ac:rich-text-body>`,
+	)
+
+	// stripACMacros regex.
+	reACMacro = regexp.MustCompile(`</?ac:[^>]+>`)
+
+	// convertLinks regexes.
+	reLinkTag = regexp.MustCompile(`(?s)<a\s[^>]*href="([^"]*)"[^>]*>(.*?)</a>`)
+
+	// convertImages regexes.
+	reImgTag = regexp.MustCompile(`<img\s[^>]*src="([^"]*)"[^>]*/?>`)
+	reAltAttr = regexp.MustCompile(`alt="([^"]*)"`)
+
+	// convertTables regexes.
+	reTable = regexp.MustCompile(`(?s)<table[^>]*>(.*?)</table>`)
+	reRow   = regexp.MustCompile(`(?s)<tr[^>]*>(.*?)</tr>`)
+	reCell  = regexp.MustCompile(`(?s)<(?:th|td)[^>]*>(.*?)</(?:th|td)>`)
+
+	// convertLists regexes.
+	reOL = regexp.MustCompile(`(?s)<ol[^>]*>(.*?)</ol>`)
+	reUL = regexp.MustCompile(`(?s)<ul[^>]*>(.*?)</ul>`)
+
+	// convertListItems regexes.
+	reLI = regexp.MustCompile(`(?s)<li[^>]*>(.*?)</li>`)
+
+	// cleanWhitespace regex.
+	reMultiNL = regexp.MustCompile(`\n{3,}`)
+)
+
+func init() {
+	for i := 1; i <= 6; i++ {
+		tag := strconv.Itoa(i)
+		reHeadingOpen[i] = regexp.MustCompile(`<h` + tag + `\b[^>]*>`)
+	}
+}
+
 // storageToMarkdown converts Confluence storage format XHTML to Markdown.
 // It handles the common element set used in Confluence pages. Unknown tags
 // and Confluence macros are stripped, preserving their text content where
@@ -37,9 +117,8 @@ func storageToMarkdown(html string) string {
 	// Headings.
 	for i := 6; i >= 1; i-- {
 		prefix := strings.Repeat("#", i)
-		tag := string(rune('0' + i))
-		openRe := regexp.MustCompile(`<h` + tag + `[^>]*>`)
-		s = openRe.ReplaceAllString(s, "\n\n"+prefix+" ")
+		tag := strconv.Itoa(i)
+		s = reHeadingOpen[i].ReplaceAllString(s, "\n\n"+prefix+" ")
 		s = strings.ReplaceAll(s, "</h"+tag+">", "\n\n")
 	}
 
@@ -61,12 +140,10 @@ func storageToMarkdown(html string) string {
 	s = convertImages(s)
 
 	// Line breaks.
-	brRe := regexp.MustCompile(`<br\s*/?>`)
-	s = brRe.ReplaceAllString(s, "\n")
+	s = reBr.ReplaceAllString(s, "\n")
 
 	// Horizontal rules.
-	hrRe := regexp.MustCompile(`<hr\s*/?>`)
-	s = hrRe.ReplaceAllString(s, "\n\n---\n\n")
+	s = reHr.ReplaceAllString(s, "\n\n---\n\n")
 
 	// Tables.
 	s = convertTables(s)
@@ -75,21 +152,18 @@ func storageToMarkdown(html string) string {
 	s = convertLists(s)
 
 	// Paragraphs.
-	pOpenRe := regexp.MustCompile(`<p[^>]*>`)
-	s = pOpenRe.ReplaceAllString(s, "\n\n")
+	s = rePOpen.ReplaceAllString(s, "\n\n")
 	s = strings.ReplaceAll(s, "</p>", "\n\n")
 
 	// Blockquotes.
 	s = replaceTag(s, "blockquote", "\n\n> ", "\n\n")
 
 	// Preformatted text.
-	preOpenRe := regexp.MustCompile(`<pre[^>]*>`)
-	s = preOpenRe.ReplaceAllString(s, "\n\n```\n")
+	s = rePreOpen.ReplaceAllString(s, "\n\n```\n")
 	s = strings.ReplaceAll(s, "</pre>", "\n```\n\n")
 
 	// Strip any remaining HTML tags.
-	tagRe := regexp.MustCompile(`<[^>]+>`)
-	s = tagRe.ReplaceAllString(s, "")
+	s = reHTMLTag.ReplaceAllString(s, "")
 
 	// Decode common HTML entities.
 	s = decodeEntities(s)
@@ -103,32 +177,20 @@ func storageToMarkdown(html string) string {
 // convertCodeMacros extracts code blocks from Confluence ac:structured-macro
 // elements with ac:name="code".
 func convertCodeMacros(s string) string {
-	codeRe := regexp.MustCompile(
-		`(?s)<ac:structured-macro\s[^>]*ac:name="code"[^>]*>` +
-			`(.*?)` +
-			`</ac:structured-macro>`,
-	)
-	return codeRe.ReplaceAllStringFunc(s, func(match string) string {
+	return reCodeMacro.ReplaceAllStringFunc(s, func(match string) string {
 		// Try to extract the language from ac:parameter ac:name="language".
-		langRe := regexp.MustCompile(
-			`<ac:parameter\s+ac:name="language"[^>]*>([^<]+)</ac:parameter>`,
-		)
 		lang := ""
-		if m := langRe.FindStringSubmatch(match); len(m) > 1 {
+		if m := reCodeLang.FindStringSubmatch(match); len(m) > 1 {
 			lang = strings.TrimSpace(m[1])
 		}
 
 		// Extract body from CDATA.
-		bodyRe := regexp.MustCompile(`(?s)<!\[CDATA\[(.*?)\]\]>`)
 		body := ""
-		if m := bodyRe.FindStringSubmatch(match); len(m) > 1 {
+		if m := reCDATA.FindStringSubmatch(match); len(m) > 1 {
 			body = m[1]
 		} else {
 			// Fallback: extract from plain-text-body tags.
-			ptbRe := regexp.MustCompile(
-				`(?s)<ac:plain-text-body[^>]*>(.*?)</ac:plain-text-body>`,
-			)
-			if m := ptbRe.FindStringSubmatch(match); len(m) > 1 {
+			if m := rePTB.FindStringSubmatch(match); len(m) > 1 {
 				body = m[1]
 			}
 		}
@@ -150,24 +212,16 @@ func convertPanelMacros(s string) string {
 	}
 
 	for _, p := range panels {
-		re := regexp.MustCompile(
-			`(?s)<ac:structured-macro\s[^>]*ac:name="` + p.name + `"[^>]*>` +
-				`(.*?)` +
-				`</ac:structured-macro>`,
-		)
+		re := rePanelMacro[p.name]
 		prefix := p.prefix
 		s = re.ReplaceAllStringFunc(s, func(match string) string {
 			// Extract body from ac:rich-text-body.
-			bodyRe := regexp.MustCompile(
-				`(?s)<ac:rich-text-body[^>]*>(.*?)</ac:rich-text-body>`,
-			)
 			body := ""
-			if m := bodyRe.FindStringSubmatch(match); len(m) > 1 {
+			if m := reRichTextBody.FindStringSubmatch(match); len(m) > 1 {
 				body = strings.TrimSpace(m[1])
 			}
 			// Strip inner HTML tags for a clean blockquote.
-			tagRe := regexp.MustCompile(`<[^>]+>`)
-			body = tagRe.ReplaceAllString(body, "")
+			body = reHTMLTag.ReplaceAllString(body, "")
 			body = strings.TrimSpace(body)
 			return "\n\n> **" + prefix + ":** " + body + "\n\n"
 		})
@@ -179,31 +233,32 @@ func convertPanelMacros(s string) string {
 // stripACMacros removes any remaining ac: namespaced elements, preserving
 // text content inside them.
 func stripACMacros(s string) string {
-	acRe := regexp.MustCompile(`</?ac:[^>]+>`)
-	return acRe.ReplaceAllString(s, "")
+	return reACMacro.ReplaceAllString(s, "")
 }
 
 // replaceTag replaces simple open/close HTML tags with prefix/suffix strings.
 func replaceTag(s, tag, prefix, suffix string) string {
-	openRe := regexp.MustCompile(`<` + tag + `[^>]*>`)
-	s = openRe.ReplaceAllString(s, prefix)
+	if re, ok := reTagOpen[tag]; ok {
+		s = re.ReplaceAllString(s, prefix)
+	} else {
+		re := regexp.MustCompile(`<` + tag + `\b[^>]*>`)
+		s = re.ReplaceAllString(s, prefix)
+	}
 	s = strings.ReplaceAll(s, "</"+tag+">", suffix)
 	return s
 }
 
 // convertLinks converts <a href="...">text</a> to [text](url).
 func convertLinks(s string) string {
-	linkRe := regexp.MustCompile(`(?s)<a\s[^>]*href="([^"]*)"[^>]*>(.*?)</a>`)
-	return linkRe.ReplaceAllStringFunc(s, func(match string) string {
-		m := linkRe.FindStringSubmatch(match)
+	return reLinkTag.ReplaceAllStringFunc(s, func(match string) string {
+		m := reLinkTag.FindStringSubmatch(match)
 		if len(m) < 3 {
 			return match
 		}
 		href := m[1]
 		text := strings.TrimSpace(m[2])
 		// Strip any nested tags from link text.
-		tagRe := regexp.MustCompile(`<[^>]+>`)
-		text = tagRe.ReplaceAllString(text, "")
+		text = reHTMLTag.ReplaceAllString(text, "")
 		if text == "" {
 			text = href
 		}
@@ -213,16 +268,14 @@ func convertLinks(s string) string {
 
 // convertImages converts <img> tags to ![alt](src).
 func convertImages(s string) string {
-	imgRe := regexp.MustCompile(`<img\s[^>]*src="([^"]*)"[^>]*/?>`)
-	return imgRe.ReplaceAllStringFunc(s, func(match string) string {
-		srcM := imgRe.FindStringSubmatch(match)
+	return reImgTag.ReplaceAllStringFunc(s, func(match string) string {
+		srcM := reImgTag.FindStringSubmatch(match)
 		if len(srcM) < 2 {
 			return ""
 		}
 		src := srcM[1]
 		alt := ""
-		altRe := regexp.MustCompile(`alt="([^"]*)"`)
-		if m := altRe.FindStringSubmatch(match); len(m) > 1 {
+		if m := reAltAttr.FindStringSubmatch(match); len(m) > 1 {
 			alt = m[1]
 		}
 		return "![" + alt + "](" + src + ")"
@@ -231,15 +284,12 @@ func convertImages(s string) string {
 
 // convertTables converts HTML tables to Markdown tables.
 func convertTables(s string) string {
-	tableRe := regexp.MustCompile(`(?s)<table[^>]*>(.*?)</table>`)
-	return tableRe.ReplaceAllStringFunc(s, func(match string) string {
+	return reTable.ReplaceAllStringFunc(s, func(match string) string {
 		var b strings.Builder
 
 		// Extract rows.
-		rowRe := regexp.MustCompile(`(?s)<tr[^>]*>(.*?)</tr>`)
-		rows := rowRe.FindAllStringSubmatch(match, -1)
+		rows := reRow.FindAllStringSubmatch(match, -1)
 
-		tagRe := regexp.MustCompile(`<[^>]+>`)
 		isFirstRow := true
 
 		for _, row := range rows {
@@ -249,8 +299,7 @@ func convertTables(s string) string {
 			content := row[1]
 
 			// Extract cells (th or td).
-			cellRe := regexp.MustCompile(`(?s)<(?:th|td)[^>]*>(.*?)</(?:th|td)>`)
-			cells := cellRe.FindAllStringSubmatch(content, -1)
+			cells := reCell.FindAllStringSubmatch(content, -1)
 
 			cellTexts := make([]string, 0, len(cells))
 			for _, cell := range cells {
@@ -258,7 +307,7 @@ func convertTables(s string) string {
 					cellTexts = append(cellTexts, "")
 					continue
 				}
-				text := tagRe.ReplaceAllString(cell[1], "")
+				text := reHTMLTag.ReplaceAllString(cell[1], "")
 				text = strings.TrimSpace(text)
 				cellTexts = append(cellTexts, text)
 			}
@@ -285,9 +334,8 @@ func convertTables(s string) string {
 // convertLists converts <ul>, <ol>, and <li> elements to Markdown lists.
 func convertLists(s string) string {
 	// Process ordered lists.
-	olRe := regexp.MustCompile(`(?s)<ol[^>]*>(.*?)</ol>`)
-	s = olRe.ReplaceAllStringFunc(s, func(match string) string {
-		m := olRe.FindStringSubmatch(match)
+	s = reOL.ReplaceAllStringFunc(s, func(match string) string {
+		m := reOL.FindStringSubmatch(match)
 		if len(m) < 2 {
 			return match
 		}
@@ -295,9 +343,8 @@ func convertLists(s string) string {
 	})
 
 	// Process unordered lists.
-	ulRe := regexp.MustCompile(`(?s)<ul[^>]*>(.*?)</ul>`)
-	s = ulRe.ReplaceAllStringFunc(s, func(match string) string {
-		m := ulRe.FindStringSubmatch(match)
+	s = reUL.ReplaceAllStringFunc(s, func(match string) string {
+		m := reUL.FindStringSubmatch(match)
 		if len(m) < 2 {
 			return match
 		}
@@ -309,16 +356,14 @@ func convertLists(s string) string {
 
 // convertListItems extracts <li> elements and formats them as Markdown list items.
 func convertListItems(s string, ordered bool) string {
-	liRe := regexp.MustCompile(`(?s)<li[^>]*>(.*?)</li>`)
-	items := liRe.FindAllStringSubmatch(s, -1)
-	tagRe := regexp.MustCompile(`<[^>]+>`)
+	items := reLI.FindAllStringSubmatch(s, -1)
 
 	var b strings.Builder
 	for idx, item := range items {
 		if len(item) < 2 {
 			continue
 		}
-		text := tagRe.ReplaceAllString(item[1], "")
+		text := reHTMLTag.ReplaceAllString(item[1], "")
 		text = strings.TrimSpace(text)
 		if ordered {
 			b.WriteString(strconv.Itoa(idx+1) + ". " + text)
@@ -354,8 +399,7 @@ func decodeEntities(s string) string {
 // cleanWhitespace collapses excessive blank lines and trims trailing spaces.
 func cleanWhitespace(s string) string {
 	// Collapse 3+ newlines into 2.
-	multiNL := regexp.MustCompile(`\n{3,}`)
-	s = multiNL.ReplaceAllString(s, "\n\n")
+	s = reMultiNL.ReplaceAllString(s, "\n\n")
 
 	// Remove trailing whitespace on each line.
 	lines := strings.Split(s, "\n")

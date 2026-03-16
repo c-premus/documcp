@@ -212,9 +212,6 @@ func (h *Handler) handleReadDocument(
 	if err != nil {
 		return nil, readDocumentResponse{}, fmt.Errorf("finding document: %w", err)
 	}
-	if doc == nil {
-		return nil, readDocumentResponse{}, fmt.Errorf("document %s not found", input.UUID)
-	}
 
 	tags, err := h.documentService.TagsForDocument(ctx, doc.ID)
 	if err != nil {

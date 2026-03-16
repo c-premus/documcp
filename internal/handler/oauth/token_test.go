@@ -133,9 +133,9 @@ func TestHandler_Token(t *testing.T) {
 		h.Token(rr, req)
 
 		// The service call will fail because the code is invalid, but the dispatch happened
-		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
-		assert.Equal(t, "server_error", result["error"])
+		assert.Equal(t, "invalid_grant", result["error"])
 	})
 
 	t.Run("dispatches to refresh_token grant type", func(t *testing.T) {
@@ -247,9 +247,9 @@ func TestHandler_Token_AuthorizationCode(t *testing.T) {
 
 		h.Token(rr, req)
 
-		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
-		assert.Equal(t, "server_error", result["error"])
+		assert.Equal(t, "invalid_grant", result["error"])
 	})
 }
 
@@ -273,7 +273,7 @@ func TestHandler_Token_RefreshToken(t *testing.T) {
 		assert.Contains(t, result["error_description"], "refresh token")
 	})
 
-	t.Run("returns server_error when service fails", func(t *testing.T) {
+	t.Run("returns invalid_grant when service fails", func(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
@@ -289,9 +289,9 @@ func TestHandler_Token_RefreshToken(t *testing.T) {
 
 		h.Token(rr, req)
 
-		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
-		assert.Equal(t, "server_error", result["error"])
+		assert.Equal(t, "invalid_grant", result["error"])
 	})
 
 	t.Run("passes form-urlencoded refresh_token fields to service", func(t *testing.T) {
@@ -311,7 +311,7 @@ func TestHandler_Token_RefreshToken(t *testing.T) {
 		h.Token(rr, req)
 
 		// Service was called (and returned error), proving form fields were parsed
-		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 }
 

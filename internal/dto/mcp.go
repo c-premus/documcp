@@ -80,7 +80,6 @@ type ListConfluenceSpacesInput struct {
 
 // SearchConfluenceInput holds parameters for searching Confluence content.
 type SearchConfluenceInput struct {
-	CQL   string `json:"cql,omitempty" jsonschema:"CQL query (takes precedence over simple query)"`
 	Query string `json:"query,omitempty" jsonschema:"Simple full-text search query"`
 	Space string `json:"space,omitempty" jsonschema:"Filter to specific space by key"`
 	Limit int    `json:"limit,omitempty" jsonschema:"Max results (default 25, max 50)"`

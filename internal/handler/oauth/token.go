@@ -87,7 +87,7 @@ func (h *Handler) tokenAuthorizationCode(w http.ResponseWriter, r *http.Request,
 	})
 	if err != nil {
 		h.logger.Error("exchanging authorization code", "error", err)
-		oauthError(w, http.StatusInternalServerError, "server_error", "An internal error occurred while processing the token request")
+		oauthError(w, http.StatusBadRequest, "invalid_grant", "The authorization code is invalid, expired, or has already been used")
 		return
 	}
 
@@ -108,7 +108,7 @@ func (h *Handler) tokenRefreshToken(w http.ResponseWriter, r *http.Request, clie
 	})
 	if err != nil {
 		h.logger.Error("refreshing access token", "error", err)
-		oauthError(w, http.StatusInternalServerError, "server_error", "An internal error occurred while processing the token request")
+		oauthError(w, http.StatusBadRequest, "invalid_grant", "The refresh token is invalid, expired, or has been revoked")
 		return
 	}
 

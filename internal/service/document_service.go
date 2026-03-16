@@ -59,16 +59,15 @@ func NewDocumentService(repo DocumentRepo, logger *slog.Logger) *DocumentService
 }
 
 // FindByUUID retrieves a document by its UUID, including its tags.
-// Returns (nil, nil) when the document does not exist.
+// Returns ErrNotFound when the document does not exist.
 func (s *DocumentService) FindByUUID(ctx context.Context, docUUID string) (*model.Document, error) {
 	doc, err := s.repo.FindByUUID(ctx, docUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("finding document by uuid: %w", err)
 	}
-
 	return doc, nil
 }
 
@@ -124,9 +123,6 @@ func (s *DocumentService) Update(ctx context.Context, docUUID string, params Upd
 	if err != nil {
 		return nil, fmt.Errorf("finding document for update: %w", err)
 	}
-	if doc == nil {
-		return nil, fmt.Errorf("document %s: %w", docUUID, ErrNotFound)
-	}
 
 	if params.Title != "" {
 		doc.Title = params.Title
@@ -161,9 +157,6 @@ func (s *DocumentService) Delete(ctx context.Context, docUUID string) error {
 	doc, err := s.FindByUUID(ctx, docUUID)
 	if err != nil {
 		return fmt.Errorf("finding document for deletion: %w", err)
-	}
-	if doc == nil {
-		return fmt.Errorf("document %s: %w", docUUID, ErrNotFound)
 	}
 
 	if err := s.repo.SoftDelete(ctx, doc.ID); err != nil {

@@ -133,12 +133,12 @@ func (h *DocumentHandler) Show(w http.ResponseWriter, r *http.Request) {
 
 	doc, err := h.pipeline.FindByUUID(r.Context(), docUUID)
 	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			errorResponse(w, http.StatusNotFound, "document not found")
+			return
+		}
 		h.logger.Error("finding document", "uuid", docUUID, "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to find document")
-		return
-	}
-	if doc == nil {
-		errorResponse(w, http.StatusNotFound, "document not found")
 		return
 	}
 
@@ -332,6 +332,13 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 
 	fullPath := filepath.Join(h.pipeline.StoragePath(), doc.FilePath)
 
+	absStorage, _ := filepath.Abs(h.pipeline.StoragePath())
+	absPath, _ := filepath.Abs(fullPath)
+	if !strings.HasPrefix(absPath, absStorage+string(os.PathSeparator)) {
+		errorResponse(w, http.StatusForbidden, "access denied")
+		return
+	}
+
 	f, err := os.Open(fullPath)
 	if err != nil {
 		h.logger.Error("opening document file", "path", fullPath, "error", err)
@@ -454,8 +461,9 @@ func firstParagraph(content string) string {
 	for _, p := range paragraphs {
 		trimmed := strings.TrimSpace(p)
 		if trimmed != "" {
-			if len(trimmed) > 500 {
-				return trimmed[:500]
+			runes := []rune(trimmed)
+			if len(runes) > 500 {
+				return string(runes[:500])
 			}
 			return trimmed
 		}
@@ -463,28 +471,29 @@ func firstParagraph(content string) string {
 	return ""
 }
 
+// stopWords is the set of common English words excluded from keyword extraction.
+var stopWords = map[string]struct{}{
+	"the": {}, "a": {}, "an": {}, "and": {}, "or": {}, "but": {},
+	"in": {}, "on": {}, "at": {}, "to": {}, "for": {}, "of": {},
+	"with": {}, "by": {}, "from": {}, "is": {}, "it": {}, "that": {},
+	"this": {}, "was": {}, "are": {}, "be": {}, "has": {}, "have": {},
+	"had": {}, "not": {}, "no": {}, "do": {}, "does": {}, "did": {},
+	"will": {}, "would": {}, "could": {}, "should": {}, "may": {},
+	"might": {}, "can": {}, "shall": {}, "as": {}, "if": {}, "then": {},
+	"than": {}, "so": {}, "up": {}, "out": {}, "about": {}, "into": {},
+	"over": {}, "after": {}, "before": {}, "between": {}, "under": {},
+	"again": {}, "there": {}, "here": {}, "when": {}, "where": {},
+	"why": {}, "how": {}, "all": {}, "each": {}, "every": {}, "both": {},
+	"few": {}, "more": {}, "most": {}, "other": {}, "some": {}, "such": {},
+	"only": {}, "own": {}, "same": {}, "also": {}, "just": {}, "because": {},
+	"its": {}, "i": {}, "me": {}, "my": {}, "we": {}, "our": {}, "you": {},
+	"your": {}, "he": {}, "him": {}, "his": {}, "she": {}, "her": {},
+	"they": {}, "them": {}, "their": {}, "what": {}, "which": {}, "who": {},
+	"whom": {}, "been": {}, "being": {}, "were": {},
+}
+
 // extractKeywords returns the top 5 most frequent non-stop words from content.
 func extractKeywords(content string) []string {
-	stopWords := map[string]struct{}{
-		"the": {}, "a": {}, "an": {}, "and": {}, "or": {}, "but": {},
-		"in": {}, "on": {}, "at": {}, "to": {}, "for": {}, "of": {},
-		"with": {}, "by": {}, "from": {}, "is": {}, "it": {}, "that": {},
-		"this": {}, "was": {}, "are": {}, "be": {}, "has": {}, "have": {},
-		"had": {}, "not": {}, "no": {}, "do": {}, "does": {}, "did": {},
-		"will": {}, "would": {}, "could": {}, "should": {}, "may": {},
-		"might": {}, "can": {}, "shall": {}, "as": {}, "if": {}, "then": {},
-		"than": {}, "so": {}, "up": {}, "out": {}, "about": {}, "into": {},
-		"over": {}, "after": {}, "before": {}, "between": {}, "under": {},
-		"again": {}, "there": {}, "here": {}, "when": {}, "where": {},
-		"why": {}, "how": {}, "all": {}, "each": {}, "every": {}, "both": {},
-		"few": {}, "more": {}, "most": {}, "other": {}, "some": {}, "such": {},
-		"only": {}, "own": {}, "same": {}, "also": {}, "just": {}, "because": {},
-		"its": {}, "i": {}, "me": {}, "my": {}, "we": {}, "our": {}, "you": {},
-		"your": {}, "he": {}, "him": {}, "his": {}, "she": {}, "her": {},
-		"they": {}, "them": {}, "their": {}, "what": {}, "which": {}, "who": {},
-		"whom": {}, "been": {}, "being": {}, "were": {},
-	}
-
 	freq := make(map[string]int)
 	for _, word := range strings.Fields(content) {
 		w := strings.ToLower(strings.Trim(word, ".,;:!?\"'()[]{}"))

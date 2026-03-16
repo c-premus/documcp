@@ -118,6 +118,41 @@ func RequireAdmin(next http.Handler) http.Handler {
 	})
 }
 
+// RequireScope returns middleware that checks the authenticated token has the required scope.
+// Scopes are space-delimited per RFC 6749. If the token has no scope set (empty string),
+// access is allowed for backward compatibility.
+// Must be used after BearerToken middleware.
+func RequireScope(scope string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token, ok := r.Context().Value(AccessTokenContextKey).(*model.OAuthAccessToken)
+			if !ok || token == nil {
+				jsonError(w, http.StatusUnauthorized, "Bearer token required")
+				return
+			}
+
+			// If token has no scope set, allow access (backward compatible).
+			tokenScope := token.Scope.String
+			if !token.Scope.Valid || tokenScope == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Check if the required scope is present (space-delimited).
+			scopes := strings.Split(tokenScope, " ")
+			for _, s := range scopes {
+				if s == scope {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+
+			w.Header().Set("WWW-Authenticate", `Bearer error="insufficient_scope"`)
+			jsonError(w, http.StatusForbidden, "Insufficient scope")
+		})
+	}
+}
+
 func jsonError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

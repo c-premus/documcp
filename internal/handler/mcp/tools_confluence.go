@@ -27,7 +27,6 @@ type confluenceSpaceItem struct {
 
 type searchConfluenceResponse struct {
 	Success bool   `json:"success"`
-	CQL     string `json:"cql,omitempty"`
 	Results []any  `json:"results"`
 	Count   int    `json:"count"`
 	Message string `json:"message,omitempty"`
@@ -73,16 +72,10 @@ func (h *Handler) registerListConfluenceSpaces() {
 func (h *Handler) registerSearchConfluence() {
 	mcp.AddTool(h.server, &mcp.Tool{
 		Name: "search_confluence",
-		Description: "Search Confluence pages using CQL (Confluence Query Language) or simple text queries.\n\n" +
+		Description: "Search Confluence pages using text queries.\n\n" +
 			"**Search Methods:**\n" +
 			"- `query`: Full-text search across page content\n" +
-			"- `cql`: Advanced search using Confluence Query Language\n\n" +
-			"**CQL Examples:**\n" +
-			"- `text ~ \"search term\"` - Full-text search\n" +
-			"- `space = \"DEV\" AND type = page` - Pages in specific space\n" +
-			"- `title ~ \"API\"` - Title contains text\n" +
-			"- `label = \"documentation\"` - Pages with label\n" +
-			"- `lastModified >= \"2024-01-01\"` - Recently modified\n\n" +
+			"- `space`: Filter results to a specific space by key\n\n" +
 			"Returns page ID, title, space key, URL, excerpt, and labels. Max 50 results.\n\n" +
 			"**Workflow:** Use `id` from results with `read_confluence_page` (as `page_id`) " +
 			"to fetch full page content.",
@@ -167,7 +160,6 @@ func (h *Handler) handleSearchConfluence(ctx context.Context, _ *mcp.CallToolReq
 	}
 
 	result, err := h.confluenceClient.SearchPages(ctx, confluence.SearchPagesParams{
-		CQL:   input.CQL,
 		Query: input.Query,
 		Space: input.Space,
 		Limit: limit,
@@ -190,7 +182,6 @@ func (h *Handler) handleSearchConfluence(ctx context.Context, _ *mcp.CallToolReq
 
 	return nil, searchConfluenceResponse{
 		Success: true,
-		CQL:     result.CQL,
 		Results: items,
 		Count:   len(items),
 	}, nil

@@ -222,6 +222,34 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	}
 }
 
+// validBaseConfig returns a Config with all always-required fields set.
+func validBaseConfig() Config {
+	return Config{
+		Database: DatabaseConfig{
+			Host:     "localhost",
+			Database: "mydb",
+			Username: "admin",
+		},
+		Meilisearch: MeilisearchConfig{
+			Host: "http://localhost:7700",
+		},
+	}
+}
+
+// validProdConfig returns a Config valid for production.
+func validProdConfig() Config {
+	cfg := validBaseConfig()
+	cfg.App = AppConfig{
+		Env:              "production",
+		URL:              "https://documcp.example.com",
+		InternalAPIToken: "secure-token-here",
+		EncryptionKey:    "01234567890123456789012345678901", // 32 bytes
+	}
+	cfg.Database.Password = "secret"
+	cfg.OAuth.SessionSecret = "my-session-secret"
+	return cfg
+}
+
 func TestConfig_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -230,23 +258,20 @@ func TestConfig_Validate(t *testing.T) {
 		errMsg  string
 	}{
 		{
-			name: "valid config",
-			cfg: Config{
-				Database: DatabaseConfig{
-					Host:     "localhost",
-					Database: "mydb",
-					Username: "admin",
-				},
-			},
+			name:    "valid config",
+			cfg:     validBaseConfig(),
+			wantErr: false,
+		},
+		{
+			name:    "valid production config",
+			cfg:     validProdConfig(),
 			wantErr: false,
 		},
 		{
 			name: "missing host",
 			cfg: Config{
-				Database: DatabaseConfig{
-					Database: "mydb",
-					Username: "admin",
-				},
+				Database:    DatabaseConfig{Database: "mydb", Username: "admin"},
+				Meilisearch: MeilisearchConfig{Host: "http://localhost:7700"},
 			},
 			wantErr: true,
 			errMsg:  "database host is required",
@@ -254,10 +279,8 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "missing database",
 			cfg: Config{
-				Database: DatabaseConfig{
-					Host:     "localhost",
-					Username: "admin",
-				},
+				Database:    DatabaseConfig{Host: "localhost", Username: "admin"},
+				Meilisearch: MeilisearchConfig{Host: "http://localhost:7700"},
 			},
 			wantErr: true,
 			errMsg:  "database name is required",
@@ -265,19 +288,184 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "missing username",
 			cfg: Config{
-				Database: DatabaseConfig{
-					Host:     "localhost",
-					Database: "mydb",
-				},
+				Database:    DatabaseConfig{Host: "localhost", Database: "mydb"},
+				Meilisearch: MeilisearchConfig{Host: "http://localhost:7700"},
 			},
 			wantErr: true,
 			errMsg:  "database username is required",
+		},
+		{
+			name: "missing meilisearch host",
+			cfg: Config{
+				Database: DatabaseConfig{Host: "localhost", Database: "mydb", Username: "admin"},
+			},
+			wantErr: true,
+			errMsg:  "meilisearch host is required",
 		},
 		{
 			name:    "all missing",
 			cfg:     Config{},
 			wantErr: true,
 			errMsg:  "database host is required",
+		},
+		// APP_ENV validation
+		{
+			name: "invalid app env",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.App.Env = "invalid"
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "APP_ENV must be one of",
+		},
+		{
+			name: "valid app env development",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.App.Env = "development"
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "valid app env staging",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.App.Env = "staging"
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "valid app env testing",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.App.Env = "testing"
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "empty app env is valid",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.App.Env = ""
+				return c
+			}(),
+			wantErr: false,
+		},
+		// ENCRYPTION_KEY length validation
+		{
+			name: "encryption key wrong length",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.App.EncryptionKey = "too-short"
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "ENCRYPTION_KEY must be exactly 32 bytes",
+		},
+		{
+			name: "encryption key correct length",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.App.EncryptionKey = "01234567890123456789012345678901"
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "empty encryption key is valid in non-prod",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.App.EncryptionKey = ""
+				return c
+			}(),
+			wantErr: false,
+		},
+		// OTEL validation
+		{
+			name: "otel enabled without endpoint",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.OTEL.Enabled = true
+				c.OTEL.Endpoint = ""
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "OTEL_EXPORTER_OTLP_ENDPOINT is required when OTEL_ENABLED=true",
+		},
+		{
+			name: "otel enabled with endpoint",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.OTEL.Enabled = true
+				c.OTEL.Endpoint = "http://localhost:4318"
+				return c
+			}(),
+			wantErr: false,
+		},
+		// Production-only requirements
+		{
+			name: "production missing session secret",
+			cfg: func() Config {
+				c := validProdConfig()
+				c.OAuth.SessionSecret = ""
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "OAUTH_SESSION_SECRET is required in production",
+		},
+		{
+			name: "production missing db password",
+			cfg: func() Config {
+				c := validProdConfig()
+				c.Database.Password = ""
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "DB_PASSWORD is required in production",
+		},
+		{
+			name: "production missing encryption key",
+			cfg: func() Config {
+				c := validProdConfig()
+				c.App.EncryptionKey = ""
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "ENCRYPTION_KEY is required in production",
+		},
+		{
+			name: "production default app url",
+			cfg: func() Config {
+				c := validProdConfig()
+				c.App.URL = "http://localhost"
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "APP_URL must be set to the actual URL in production",
+		},
+		{
+			name: "production missing internal api token",
+			cfg: func() Config {
+				c := validProdConfig()
+				c.App.InternalAPIToken = ""
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "INTERNAL_API_TOKEN is required in production",
+		},
+		// Non-production does not require production fields
+		{
+			name: "development allows missing password",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.App.Env = "development"
+				return c
+			}(),
+			wantErr: false,
 		},
 	}
 
@@ -379,6 +567,9 @@ func TestConfig_Validate_MultipleErrors(t *testing.T) {
 	if !strings.Contains(msg, "database username is required") {
 		t.Errorf("error should mention missing username: %s", msg)
 	}
+	if !strings.Contains(msg, "meilisearch host is required") {
+		t.Errorf("error should mention missing meilisearch host: %s", msg)
+	}
 }
 
 func TestConfig_Validate_ErrorMessageFormat(t *testing.T) {
@@ -415,32 +606,33 @@ func TestConfig_Validate_SingleFieldMissing(t *testing.T) {
 		{
 			name: "only host missing",
 			cfg: Config{
-				Database: DatabaseConfig{
-					Database: "mydb",
-					Username: "admin",
-				},
+				Database:    DatabaseConfig{Database: "mydb", Username: "admin"},
+				Meilisearch: MeilisearchConfig{Host: "http://localhost:7700"},
 			},
 			errMsg: "database host is required",
 		},
 		{
 			name: "only database missing",
 			cfg: Config{
-				Database: DatabaseConfig{
-					Host:     "localhost",
-					Username: "admin",
-				},
+				Database:    DatabaseConfig{Host: "localhost", Username: "admin"},
+				Meilisearch: MeilisearchConfig{Host: "http://localhost:7700"},
 			},
 			errMsg: "database name is required",
 		},
 		{
 			name: "only username missing",
 			cfg: Config{
-				Database: DatabaseConfig{
-					Host:     "localhost",
-					Database: "mydb",
-				},
+				Database:    DatabaseConfig{Host: "localhost", Database: "mydb"},
+				Meilisearch: MeilisearchConfig{Host: "http://localhost:7700"},
 			},
 			errMsg: "database username is required",
+		},
+		{
+			name: "only meilisearch missing",
+			cfg: Config{
+				Database: DatabaseConfig{Host: "localhost", Database: "mydb", Username: "admin"},
+			},
+			errMsg: "meilisearch host is required",
 		},
 	}
 
@@ -499,10 +691,49 @@ func TestConfig_Validate_ValidWithMinimumFields(t *testing.T) {
 			Database: "d",
 			Username: "u",
 		},
+		Meilisearch: MeilisearchConfig{
+			Host: "http://localhost:7700",
+		},
 	}
 
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate() unexpected error: %v", err)
+	}
+}
+
+func TestConfig_Validate_ProductionMultipleErrors(t *testing.T) {
+	cfg := Config{
+		App: AppConfig{
+			Env: "production",
+			URL: "http://localhost",
+		},
+		Database: DatabaseConfig{
+			Host:     "localhost",
+			Database: "mydb",
+			Username: "admin",
+		},
+		Meilisearch: MeilisearchConfig{
+			Host: "http://localhost:7700",
+		},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	msg := err.Error()
+	expected := []string{
+		"OAUTH_SESSION_SECRET is required in production",
+		"DB_PASSWORD is required in production",
+		"ENCRYPTION_KEY is required in production",
+		"APP_URL must be set to the actual URL in production",
+		"INTERNAL_API_TOKEN is required in production",
+	}
+	for _, e := range expected {
+		if !strings.Contains(msg, e) {
+			t.Errorf("error should contain %q, got: %s", e, msg)
+		}
 	}
 }
 

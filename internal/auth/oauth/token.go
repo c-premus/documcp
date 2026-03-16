@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -18,12 +19,17 @@ import (
 // When set (via SetTokenHMACKey), token hashes are keyed, preventing offline
 // brute-force attacks if the database is compromised.
 // When nil, falls back to plain SHA-256 (still safe for high-entropy tokens).
-var tokenHMACKey []byte //nolint:gochecknoglobals
+var (
+	tokenHMACKey []byte    //nolint:gochecknoglobals
+	hmacKeyOnce  sync.Once //nolint:gochecknoglobals
+)
 
 // SetTokenHMACKey configures the HMAC key used for token hashing.
 // Must be called once at startup before any token operations.
 func SetTokenHMACKey(key []byte) {
-	tokenHMACKey = key
+	hmacKeyOnce.Do(func() {
+		tokenHMACKey = key
+	})
 }
 
 // TokenPair holds a plaintext token and its database-storable hash.
