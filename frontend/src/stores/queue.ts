@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { apiFetch } from '@/api/helpers'
 
 export interface QueueStats {
   readonly available: number
@@ -26,14 +27,6 @@ export interface FailedJob {
   readonly errors?: AttemptError[]
 }
 
-async function api<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options)
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText }))
-    throw new Error(body.message || res.statusText)
-  }
-  return res.json() as Promise<T>
-}
 
 export const useQueueStore = defineStore('queue', () => {
   const stats = ref<QueueStats | null>(null)
@@ -44,7 +37,7 @@ export const useQueueStore = defineStore('queue', () => {
   async function fetchStats(): Promise<QueueStats> {
     loading.value = true
     try {
-      const response = await api<{data: QueueStats}>('/api/admin/queue/stats')
+      const response = await apiFetch<{data: QueueStats}>('/api/admin/queue/stats')
       stats.value = response.data
       return response.data
     } finally {
@@ -56,7 +49,7 @@ export const useQueueStore = defineStore('queue', () => {
     loading.value = true
     try {
       const qs = limit ? `?limit=${limit}` : ''
-      const data = await api<{data: FailedJob[], meta: {count: number}}>(`/api/admin/queue/failed${qs}`)
+      const data = await apiFetch<{data: FailedJob[], meta: {count: number}}>(`/api/admin/queue/failed${qs}`)
       failedJobs.value = data.data
       failedCount.value = data.meta.count
       return data
@@ -66,13 +59,13 @@ export const useQueueStore = defineStore('queue', () => {
   }
 
   async function retryJob(id: number): Promise<void> {
-    await api<{ id: number; state: string }>(`/api/admin/queue/failed/${id}/retry`, {
+    await apiFetch<{ id: number; state: string }>(`/api/admin/queue/failed/${id}/retry`, {
       method: 'POST',
     })
   }
 
   async function deleteJob(id: number): Promise<void> {
-    await api<{ id: number; state: string }>(`/api/admin/queue/failed/${id}`, {
+    await apiFetch<{ id: number; state: string }>(`/api/admin/queue/failed/${id}`, {
       method: 'DELETE',
     })
   }

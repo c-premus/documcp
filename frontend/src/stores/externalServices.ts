@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { apiFetch, buildQuery } from '@/api/helpers'
 
 export interface ExternalService {
   readonly uuid: string
@@ -65,25 +66,6 @@ interface UpdateServicePayload {
   readonly is_enabled?: boolean
 }
 
-async function api<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options)
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText }))
-    throw new Error(body.message || res.statusText)
-  }
-  return res.json() as Promise<T>
-}
-
-function buildQuery(params: Record<string, string | number | undefined>): string {
-  const search = new URLSearchParams()
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '') {
-      search.set(key, String(value))
-    }
-  }
-  const qs = search.toString()
-  return qs ? `?${qs}` : ''
-}
 
 export const useExternalServicesStore = defineStore('externalServices', () => {
   const services = ref<ExternalService[]>([])
@@ -101,7 +83,7 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
         type: params?.type,
         status: params?.status,
       })
-      const response = await api<ListResponse>(`/api/external-services${query}`)
+      const response = await apiFetch<ListResponse>(`/api/external-services${query}`)
       services.value = response.data
       total.value = response.meta.total
       return response
@@ -117,7 +99,7 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<SingleResponse>('/api/external-services', {
+      const response = await apiFetch<SingleResponse>('/api/external-services', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -135,7 +117,7 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<SingleResponse>(`/api/external-services/${uuid}`, {
+      const response = await apiFetch<SingleResponse>(`/api/external-services/${uuid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -157,7 +139,7 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<MessageResponse>(`/api/external-services/${uuid}`, {
+      const response = await apiFetch<MessageResponse>(`/api/external-services/${uuid}`, {
         method: 'DELETE',
       })
       services.value = services.value.filter((s) => s.uuid !== uuid)
@@ -172,7 +154,7 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
 
   async function checkHealth(uuid: string): Promise<MessageResponse> {
     try {
-      const response = await api<MessageResponse>(`/api/external-services/${uuid}/health-check`, {
+      const response = await apiFetch<MessageResponse>(`/api/external-services/${uuid}/health-check`, {
         method: 'POST',
       })
       return response
@@ -188,7 +170,7 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<MessageResponse>('/api/admin/external-services/reorder', {
+      const response = await apiFetch<MessageResponse>('/api/admin/external-services/reorder', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ service_ids: serviceIds }),

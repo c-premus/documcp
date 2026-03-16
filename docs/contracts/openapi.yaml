@@ -24,13 +24,13 @@ info:
     | Limiter           | Limit                          | Applies To                        |
     |-------------------|--------------------------------|-----------------------------------|
     | `search`          | 120/min per user or IP         | Search and autocomplete endpoints |
-    | `api`             | 60/min per user or IP          | General API read operations       |
+    | `api-read`        | 60/min per user or IP          | General API read operations       |
     | `api-write`       | 30/min per user or IP          | Document/template write operations|
     | `oauth-token`     | 30/min + 100/hour per IP       | Token endpoint                    |
     | `oauth-register`  | 10/hour + 50/day per IP        | Client registration               |
     | `oauth-authorize` | 30/min per IP                  | Authorization endpoint            |
     | `oauth-device`    | 30/min per IP                  | Device authorization endpoint     |
-    | `oauth-device-verify` | 5/min + 30/hour per IP     | Device verification page          |
+    | `admin`           | 60/min per user or IP          | Admin panel operations            |
 
     ## Response Envelopes
 
@@ -151,6 +151,8 @@ paths:
       description: |
         Full-text search with facets, filters, and highlighting via Meilisearch.
         Public endpoint (no authentication required). Rate limit: `search` (120/min).
+
+        **Required scope:** `search:read`
       parameters:
         - name: q
           in: query
@@ -209,6 +211,8 @@ paths:
       summary: Popular searches
       description: |
         Returns the most popular search queries. Public endpoint. Rate limit: `search` (120/min).
+
+        **Required scope:** `search:read`
       responses:
         "200":
           description: Popular search queries
@@ -239,6 +243,8 @@ paths:
       description: |
         Returns document title suggestions for autocomplete. Requires authentication.
         Rate limit: `search` (120/min).
+
+        **Required scope:** `search:read`
       security:
         - bearerAuth: []
       parameters:
@@ -296,6 +302,8 @@ paths:
         Search across all content types (documents, git templates, ZIM archives,
         Confluence spaces) in a single request. Requires authentication.
         Rate limit: `search` (120/min).
+
+        **Required scope:** `search:read`
       security:
         - bearerAuth: []
       parameters:
@@ -357,7 +365,9 @@ paths:
       summary: List documents
       description: |
         Retrieve a paginated list of documents. Requires authentication.
-        Rate limit: `api` (60/min).
+        Rate limit: `api-read` (60/min).
+
+        **Required scope:** `documents:read`
       security:
         - bearerAuth: []
       parameters:
@@ -410,6 +420,8 @@ paths:
       description: |
         Upload and process a new document. Supports PDF, DOCX, XLSX, HTML, and Markdown.
         Maximum file size: 50 MB. Requires authentication. Rate limit: `api-write` (30/min).
+
+        **Required scope:** `documents:write` + admin role
       security:
         - bearerAuth: []
       requestBody:
@@ -479,7 +491,9 @@ paths:
       summary: Show document
       description: |
         Retrieve a specific document by UUID. Requires authentication.
-        Rate limit: `api` (60/min).
+        Rate limit: `api-read` (60/min).
+
+        **Required scope:** `documents:read`
       security:
         - bearerAuth: []
       responses:
@@ -510,6 +524,8 @@ paths:
       description: |
         Update document metadata. Requires authentication and ownership or admin role.
         Rate limit: `api-write` (30/min).
+
+        **Required scope:** `documents:write` + admin role
       security:
         - bearerAuth: []
       requestBody:
@@ -565,6 +581,8 @@ paths:
       description: |
         Soft-delete a document. Requires authentication and ownership or admin role.
         Rate limit: `api-write` (30/min).
+
+        **Required scope:** `documents:write` + admin role
       security:
         - bearerAuth: []
       responses:
@@ -600,6 +618,8 @@ paths:
       description: |
         Download the original document file. Requires authentication.
         Rate limit: 10 downloads per minute.
+
+        **Required scope:** `documents:read`
       security:
         - bearerAuth: []
       responses:
@@ -628,6 +648,8 @@ paths:
         Upload a file for analysis and receive metadata suggestions including title,
         description, tags, language, word count, and estimated reading time.
         Requires authentication. Rate limit: 10 analyses per minute.
+
+        **Required scope:** `documents:write` + admin role
       security:
         - bearerAuth: []
       requestBody:
@@ -685,6 +707,8 @@ paths:
       description: |
         Retrieve a paginated list of available ZIM archives.
         Requires authentication. Rate limit: `search` (120/min).
+
+        **Required scope:** `zim:read`
       security:
         - bearerAuth: []
       parameters:
@@ -754,6 +778,8 @@ paths:
       description: |
         Retrieve details of a specific ZIM archive by name.
         Requires authentication. Rate limit: `search` (120/min).
+
+        **Required scope:** `zim:read`
       security:
         - bearerAuth: []
       responses:
@@ -792,6 +818,8 @@ paths:
       description: |
         Full-text search within a ZIM archive's articles.
         Requires authentication. Rate limit: `search` (120/min).
+
+        **Required scope:** `zim:read`
       security:
         - bearerAuth: []
       parameters:
@@ -851,6 +879,8 @@ paths:
       description: |
         Title autocomplete/suggestions for a ZIM archive.
         Requires authentication. Rate limit: `search` (120/min).
+
+        **Required scope:** `zim:read`
       security:
         - bearerAuth: []
       parameters:
@@ -917,6 +947,8 @@ paths:
       description: |
         Retrieve the full content of a specific article from a ZIM archive.
         Requires authentication. Rate limit: `search` (120/min).
+
+        **Required scope:** `zim:read`
       security:
         - bearerAuth: []
       responses:
@@ -949,6 +981,8 @@ paths:
       description: |
         Retrieve a paginated list of available Confluence spaces.
         Requires authentication. Rate limit: `search` (120/min).
+
+        **Required scope:** `confluence:read`
       security:
         - bearerAuth: []
       parameters:
@@ -1010,6 +1044,8 @@ paths:
       description: |
         Retrieve details of a specific Confluence space by key.
         Requires authentication. Rate limit: `search` (120/min).
+
+        **Required scope:** `confluence:read`
       security:
         - bearerAuth: []
       responses:
@@ -1040,6 +1076,8 @@ paths:
         Search for pages using CQL (Confluence Query Language) or simple text queries.
         At least one of `cql` or `query` is required.
         Requires authentication. Rate limit: `search` (120/min).
+
+        **Required scope:** `confluence:read`
       security:
         - bearerAuth: []
       parameters:
@@ -1113,6 +1151,8 @@ paths:
       description: |
         Retrieve the full content of a specific Confluence page.
         Requires authentication. Rate limit: `search` (120/min).
+
+        **Required scope:** `confluence:read`
       security:
         - bearerAuth: []
       responses:
@@ -1144,7 +1184,9 @@ paths:
       summary: List Git templates
       description: |
         Retrieve a list of available Git templates.
-        Requires authentication. Rate limit: `api` (60/min).
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `templates:read`
       security:
         - bearerAuth: []
       parameters:
@@ -1189,6 +1231,8 @@ paths:
         Register a Git repository as a template source. A sync job is dispatched
         automatically. Requires authentication and admin role.
         Rate limit: `api-write` (30/min).
+
+        **Required scope:** `templates:write` + admin role
       security:
         - bearerAuth: []
       requestBody:
@@ -1266,7 +1310,9 @@ paths:
       summary: Search Git templates
       description: |
         Full-text search across template README files and metadata.
-        Requires authentication. Rate limit: `api` (60/min).
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `templates:read`
       security:
         - bearerAuth: []
       parameters:
@@ -1338,7 +1384,9 @@ paths:
       summary: Show Git template
       description: |
         Retrieve a specific Git template by UUID.
-        Requires authentication. Rate limit: `api` (60/min).
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `templates:read`
       security:
         - bearerAuth: []
       responses:
@@ -1370,6 +1418,8 @@ paths:
         Update Git template metadata.
         Requires authentication and ownership or admin role.
         Rate limit: `api-write` (30/min).
+
+        **Required scope:** `templates:write` + admin role
       security:
         - bearerAuth: []
       requestBody:
@@ -1442,6 +1492,8 @@ paths:
         Soft-delete a Git template and remove cloned repository files.
         Requires authentication and ownership or admin role.
         Rate limit: `api-write` (30/min).
+
+        **Required scope:** `templates:write` + admin role
       security:
         - bearerAuth: []
       responses:
@@ -1478,6 +1530,8 @@ paths:
       description: |
         Re-sync the template from its Git repository to fetch latest changes.
         Requires authentication. Rate limit: `api-write` (30/min).
+
+        **Required scope:** `templates:write` + admin role
       security:
         - bearerAuth: []
       responses:
@@ -1524,7 +1578,9 @@ paths:
       summary: Get template structure
       description: |
         Retrieve the file tree structure of a Git template.
-        Requires authentication. Rate limit: `api` (60/min).
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `templates:read`
       security:
         - bearerAuth: []
       responses:
@@ -1572,7 +1628,9 @@ paths:
       summary: Get template file
       description: |
         Retrieve a specific file from a Git template.
-        Requires authentication. Rate limit: `api` (60/min).
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `templates:read`
       security:
         - bearerAuth: []
       responses:
@@ -1619,7 +1677,9 @@ paths:
       summary: Get deployment guide
       description: |
         Generate a deployment guide for a Git template with optional variable substitution.
-        Requires authentication. Rate limit: `api` (60/min).
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `templates:read`
       security:
         - bearerAuth: []
       parameters:
@@ -1672,6 +1732,8 @@ paths:
         Download a complete template as a zip or tar.gz archive with optional variable
         substitution. Returns the archive as base64-encoded content.
         Requires authentication. Rate limit: `api-write` (30/min).
+
+        **Required scope:** `templates:write` + admin role
       security:
         - bearerAuth: []
       requestBody:
@@ -2432,15 +2494,6 @@ components:
         updated_at:
           type: [string, "null"]
           format: date-time
-        _links:
-          type: object
-          properties:
-            self:
-              $ref: "#/components/schemas/HateoasLink"
-            update:
-              $ref: "#/components/schemas/HateoasLink"
-            delete:
-              $ref: "#/components/schemas/HateoasLink"
 
     User:
       type: object
@@ -2493,15 +2546,6 @@ components:
         last_synced_at:
           type: [string, "null"]
           format: date-time
-        _links:
-          type: object
-          properties:
-            self:
-              $ref: "#/components/schemas/HateoasLink"
-            search:
-              $ref: "#/components/schemas/HateoasLink"
-            suggest:
-              $ref: "#/components/schemas/HateoasLink"
 
     ZimArticle:
       type: object
@@ -2516,13 +2560,6 @@ components:
           type: string
         mime_type:
           type: string
-        _links:
-          type: object
-          properties:
-            archive:
-              $ref: "#/components/schemas/HateoasLink"
-            search:
-              $ref: "#/components/schemas/HateoasLink"
 
     ZimArticleSearchResult:
       type: object
@@ -2537,11 +2574,6 @@ components:
           type: [string, "null"]
         score:
           type: [number, "null"]
-        _links:
-          type: object
-          properties:
-            read:
-              $ref: "#/components/schemas/HateoasLink"
 
     ConfluenceSpace:
       type: object
@@ -2570,13 +2602,6 @@ components:
         last_synced_at:
           type: [string, "null"]
           format: date-time
-        _links:
-          type: object
-          properties:
-            self:
-              $ref: "#/components/schemas/HateoasLink"
-            search:
-              $ref: "#/components/schemas/HateoasLink"
 
     ConfluencePage:
       type: object
@@ -2608,13 +2633,6 @@ components:
             type: object
         content:
           type: [string, "null"]
-        _links:
-          type: object
-          properties:
-            self:
-              $ref: "#/components/schemas/HateoasLink"
-            space:
-              $ref: "#/components/schemas/HateoasLink"
 
     ConfluenceSearchResponse:
       type: object
@@ -2639,11 +2657,6 @@ components:
                 type: array
                 items:
                   type: string
-              _links:
-                type: object
-                properties:
-                  self:
-                    $ref: "#/components/schemas/HateoasLink"
         meta:
           type: object
           properties:
@@ -2657,13 +2670,6 @@ components:
               type: boolean
             cql:
               type: [string, "null"]
-        _links:
-          type: object
-          properties:
-            self:
-              $ref: "#/components/schemas/HateoasLink"
-            next:
-              $ref: "#/components/schemas/HateoasLink"
 
     GitTemplate:
       type: object
@@ -2715,15 +2721,6 @@ components:
         updated_at:
           type: [string, "null"]
           format: date-time
-        _links:
-          type: object
-          properties:
-            self:
-              $ref: "#/components/schemas/HateoasLink"
-            structure:
-              $ref: "#/components/schemas/HateoasLink"
-            sync:
-              $ref: "#/components/schemas/HateoasLink"
 
     GitTemplateFile:
       type: object
@@ -2893,16 +2890,6 @@ components:
               type: integer
             offset:
               type: integer
-
-    HateoasLink:
-      type: object
-      properties:
-        href:
-          type: string
-          format: uri
-        method:
-          type: string
-          enum: [GET, POST, PUT, DELETE]
 
     # --- Health ---
     HealthBasicResponse:
@@ -3215,11 +3202,23 @@ components:
 
     oauth2:
       type: oauth2
-      description: OAuth 2.1 with mandatory PKCE (S256) for public clients
+      description: |
+        OAuth 2.1 with PKCE (S256 required for public clients).
+        Supports authorization_code, refresh_token, and device_code grants.
       flows:
         authorizationCode:
           authorizationUrl: /oauth/authorize
           tokenUrl: /oauth/token
           refreshUrl: /oauth/token
           scopes:
-            "mcp:access": Access MCP tools and documents
+            mcp:access: Access the MCP endpoint
+            documents:read: Read documents and search
+            documents:write: "Create, update, and delete documents"
+            search:read: Search across all indexes
+            zim:read: Read ZIM archives and articles
+            confluence:read: Read Confluence spaces and pages
+            templates:read: Read Git templates and files
+            templates:write: "Create, update, and delete Git templates"
+            services:read: Read external service configuration
+            services:write: Manage external services
+            admin: Full administrative access

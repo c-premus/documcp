@@ -32,13 +32,14 @@ type UserRepo interface {
 
 // Handler provides HTTP handlers for OIDC login/callback/logout.
 type Handler struct {
-	provider     *gooidc.Provider
+	provider     *gooidc.Provider // nil in manual-endpoint mode
 	oauth2Config oauth2.Config
 	verifier     *gooidc.IDTokenVerifier
 	store        sessions.Store
 	repo         UserRepo
 	logger       *slog.Logger
 	adminGroups  []string
+	providerURL  string // stored for OIDCProvider field in user records
 }
 
 // Config holds the dependencies for creating a new OIDC Handler.
@@ -50,15 +51,12 @@ type Config struct {
 }
 
 // New creates a new OIDC Handler. It discovers the provider configuration
-// from the well-known endpoint. Returns nil if OIDC is not configured.
+// from the well-known endpoint, or uses manually configured endpoints when
+// OIDC_AUTHORIZATION_URL and OIDC_TOKEN_URL are set (REQ-AUTH-003).
+// Returns nil if OIDC is not configured.
 func New(ctx context.Context, cfg Config) (*Handler, error) {
 	if cfg.OIDCCfg.ProviderURL == "" || cfg.OIDCCfg.ClientID == "" {
 		return nil, nil
-	}
-
-	provider, err := gooidc.NewProvider(ctx, cfg.OIDCCfg.ProviderURL)
-	if err != nil {
-		return nil, fmt.Errorf("discovering OIDC provider: %w", err)
 	}
 
 	scopes := cfg.OIDCCfg.Scopes
@@ -66,15 +64,45 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 		scopes = []string{gooidc.ScopeOpenID, "profile", "email"}
 	}
 
+	var (
+		provider *gooidc.Provider
+		verifier *gooidc.IDTokenVerifier
+		endpoint oauth2.Endpoint
+	)
+
+	if cfg.OIDCCfg.ManualEndpoints() {
+		// Manual endpoint configuration — skip auto-discovery.
+		endpoint = oauth2.Endpoint{
+			AuthURL:  cfg.OIDCCfg.AuthorizationURL,
+			TokenURL: cfg.OIDCCfg.TokenURL,
+		}
+
+		// JWKS URL is required for token verification in manual mode.
+		if cfg.OIDCCfg.JWKSURL == "" {
+			return nil, fmt.Errorf("OIDC_JWKS_URL is required when using manual OIDC endpoints")
+		}
+		keySet := gooidc.NewRemoteKeySet(ctx, cfg.OIDCCfg.JWKSURL)
+		verifier = gooidc.NewVerifier(cfg.OIDCCfg.ProviderURL, keySet, &gooidc.Config{
+			ClientID: cfg.OIDCCfg.ClientID,
+		})
+	} else {
+		// Auto-discovery from well-known endpoint.
+		var err error
+		provider, err = gooidc.NewProvider(ctx, cfg.OIDCCfg.ProviderURL)
+		if err != nil {
+			return nil, fmt.Errorf("discovering OIDC provider: %w", err)
+		}
+		endpoint = provider.Endpoint()
+		verifier = provider.Verifier(&gooidc.Config{ClientID: cfg.OIDCCfg.ClientID})
+	}
+
 	oauth2Config := oauth2.Config{
 		ClientID:     cfg.OIDCCfg.ClientID,
 		ClientSecret: cfg.OIDCCfg.ClientSecret,
 		RedirectURL:  cfg.OIDCCfg.RedirectURL,
-		Endpoint:     provider.Endpoint(),
+		Endpoint:     endpoint,
 		Scopes:       scopes,
 	}
-
-	verifier := provider.Verifier(&gooidc.Config{ClientID: cfg.OIDCCfg.ClientID})
 
 	return &Handler{
 		provider:     provider,
@@ -84,6 +112,7 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 		repo:         cfg.Repo,
 		logger:       cfg.Logger,
 		adminGroups:  cfg.OIDCCfg.AdminGroups,
+		providerURL:  cfg.OIDCCfg.ProviderURL,
 	}, nil
 }
 
@@ -242,7 +271,7 @@ func (h *Handler) findOrCreateUser(ctx context.Context, sub, email, name string,
 	if err == nil {
 		// Link OIDC identity
 		user.OIDCSub = sql.NullString{String: sub, Valid: true}
-		user.OIDCProvider = sql.NullString{String: h.provider.Endpoint().AuthURL, Valid: true}
+		user.OIDCProvider = sql.NullString{String: h.providerURL, Valid: true}
 		if name != "" {
 			user.Name = name
 		}
@@ -267,7 +296,7 @@ func (h *Handler) findOrCreateUser(ctx context.Context, sub, email, name string,
 		Name:            name,
 		Email:           email,
 		OIDCSub:         sql.NullString{String: sub, Valid: true},
-		OIDCProvider:    sql.NullString{String: h.provider.Endpoint().AuthURL, Valid: true},
+		OIDCProvider:    sql.NullString{String: h.providerURL, Valid: true},
 		EmailVerifiedAt: sql.NullTime{Time: time.Now(), Valid: true},
 		IsAdmin:         isAdmin,
 	}

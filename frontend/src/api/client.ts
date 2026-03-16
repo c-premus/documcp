@@ -9,6 +9,13 @@ client.interceptors.response.use((response) => {
     window.location.href =
       '/auth/login?redirect=' + encodeURIComponent(window.location.pathname)
   }
+  if (response.status === 403) {
+    window.dispatchEvent(
+      new CustomEvent('api:forbidden', {
+        detail: { url: response.url },
+      }),
+    )
+  }
   return response
 })
 

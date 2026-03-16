@@ -84,13 +84,24 @@ type MeilisearchConfig struct {
 }
 
 // OIDCConfig holds OpenID Connect provider settings.
+// When AuthorizationURL and TokenURL are set, auto-discovery is skipped and
+// endpoints are configured manually (REQ-AUTH-003).
 type OIDCConfig struct {
-	ProviderURL  string   `mapstructure:"oidc_provider_url"`
-	ClientID     string   `mapstructure:"oidc_client_id"`
-	ClientSecret string   `mapstructure:"oidc_client_secret"`
-	RedirectURL  string   `mapstructure:"oidc_redirect_uri"`
-	Scopes       []string `mapstructure:"oidc_scopes"`
-	AdminGroups  []string `mapstructure:"oidc_admin_groups"`
+	ProviderURL      string   `mapstructure:"oidc_provider_url"`
+	ClientID         string   `mapstructure:"oidc_client_id"`
+	ClientSecret     string   `mapstructure:"oidc_client_secret"`
+	RedirectURL      string   `mapstructure:"oidc_redirect_uri"`
+	Scopes           []string `mapstructure:"oidc_scopes"`
+	AdminGroups      []string `mapstructure:"oidc_admin_groups"`
+	AuthorizationURL string   `mapstructure:"oidc_authorization_url"`
+	TokenURL         string   `mapstructure:"oidc_token_url"`
+	UserinfoURL      string   `mapstructure:"oidc_userinfo_url"`
+	JWKSURL          string   `mapstructure:"oidc_jwks_url"`
+}
+
+// ManualEndpoints returns true when manual OIDC endpoint configuration is active.
+func (c OIDCConfig) ManualEndpoints() bool {
+	return c.AuthorizationURL != "" && c.TokenURL != ""
 }
 
 // OAuthConfig holds OAuth 2.1 authorization server settings.
@@ -170,6 +181,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oidc_redirect_uri", "")
 	v.SetDefault("oidc_scopes", []string{"openid", "profile", "email"})
 	v.SetDefault("oidc_admin_groups", []string{})
+	v.SetDefault("oidc_authorization_url", "")
+	v.SetDefault("oidc_token_url", "")
+	v.SetDefault("oidc_userinfo_url", "")
+	v.SetDefault("oidc_jwks_url", "")
 
 	// OAuth
 	v.SetDefault("oauth_authorization_code_lifetime", 10*time.Minute)
@@ -287,12 +302,16 @@ func Load() (*Config, error) {
 	}
 
 	cfg.OIDC = OIDCConfig{
-		ProviderURL:  v.GetString("oidc_provider_url"),
-		ClientID:     v.GetString("oidc_client_id"),
-		ClientSecret: v.GetString("oidc_client_secret"),
-		RedirectURL:  v.GetString("oidc_redirect_uri"),
-		Scopes:       v.GetStringSlice("oidc_scopes"),
-		AdminGroups:  v.GetStringSlice("oidc_admin_groups"),
+		ProviderURL:      v.GetString("oidc_provider_url"),
+		ClientID:         v.GetString("oidc_client_id"),
+		ClientSecret:     v.GetString("oidc_client_secret"),
+		RedirectURL:      v.GetString("oidc_redirect_uri"),
+		Scopes:           v.GetStringSlice("oidc_scopes"),
+		AdminGroups:      v.GetStringSlice("oidc_admin_groups"),
+		AuthorizationURL: v.GetString("oidc_authorization_url"),
+		TokenURL:         v.GetString("oidc_token_url"),
+		UserinfoURL:      v.GetString("oidc_userinfo_url"),
+		JWKSURL:          v.GetString("oidc_jwks_url"),
 	}
 
 	cfg.OAuth = OAuthConfig{

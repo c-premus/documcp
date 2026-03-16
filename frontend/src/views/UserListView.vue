@@ -6,6 +6,7 @@ import { PencilSquareIcon, TrashIcon } from '@heroicons/vue/24/outline'
 import { Switch } from '@headlessui/vue'
 import type { ColumnDef } from '@tanstack/vue-table'
 
+import { apiFetch } from '@/api/helpers'
 import DataTable from '../components/shared/DataTable.vue'
 import Pagination from '../components/shared/Pagination.vue'
 import SearchInput from '../components/shared/SearchInput.vue'
@@ -35,15 +36,6 @@ interface SingleResponse {
 
 interface DeleteResponse {
   readonly message: string
-}
-
-async function api<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options)
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText }))
-    throw new Error(body.message || res.statusText)
-  }
-  return res.json() as Promise<T>
 }
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -79,7 +71,7 @@ async function fetchUsers(): Promise<void> {
       limit: perPage.value,
       offset,
     })
-    const response = await api<ListResponse>(`/api/admin/users${query}`)
+    const response = await apiFetch<ListResponse>(`/api/admin/users${query}`)
     users.value = response.data
     total.value = response.meta.total
   } catch {
@@ -100,7 +92,7 @@ watch([page, perPage], () => {
 
 async function handleToggleAdmin(user: User): Promise<void> {
   try {
-    const response = await api<SingleResponse>(
+    const response = await apiFetch<SingleResponse>(
       `/api/admin/users/${user.id}/toggle-admin`,
       { method: 'POST' },
     )
@@ -146,7 +138,7 @@ async function handleDeleteConfirm(): Promise<void> {
   }
   const name = deleteTarget.value.name
   try {
-    await api<DeleteResponse>(`/api/admin/users/${deleteTarget.value.id}`, {
+    await apiFetch<DeleteResponse>(`/api/admin/users/${deleteTarget.value.id}`, {
       method: 'DELETE',
     })
     toast.success(`User "${name}" deleted`)

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { apiFetch } from '@/api/helpers'
 
 export interface ConfluenceSpace {
   readonly key: string
@@ -13,14 +14,6 @@ interface ListResponse {
   readonly meta: { readonly total: number }
 }
 
-async function api<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options)
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText }))
-    throw new Error(body.message || res.statusText)
-  }
-  return res.json() as Promise<T>
-}
 
 export const useConfluenceSpacesStore = defineStore('confluenceSpaces', () => {
   const spaces = ref<ConfluenceSpace[]>([])
@@ -32,7 +25,7 @@ export const useConfluenceSpacesStore = defineStore('confluenceSpaces', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<ListResponse>('/api/confluence/spaces')
+      const response = await apiFetch<ListResponse>('/api/confluence/spaces')
       spaces.value = response.data
       total.value = response.meta.total
       return response
