@@ -459,12 +459,31 @@ func (h *DocumentHandler) Analyze(w http.ResponseWriter, r *http.Request) {
 	wordCount := len(strings.Fields(content))
 	readingTime := max(wordCount/200, 1)
 
-	title := strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename))
+	// Derive title: extractor metadata > first H1 > filename.
+	title := metadataString(result.Metadata, "title", "Title")
+	if title == "" {
+		title = firstHeading(content)
+	}
+	if title == "" {
+		title = strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename))
+	}
+
+	// Derive description: extractor metadata > first non-heading paragraph.
+	description := metadataString(result.Metadata, "description")
+	if description == "" {
+		description = firstParagraph(content)
+	}
+
+	// Derive tags: headings first, fall back to keyword frequency.
+	tags := extractHeadingTags(content)
+	if len(tags) < 3 {
+		tags = extractKeywords(content)
+	}
 
 	resp := analyzeResponse{
 		Title:       title,
-		Description: firstParagraph(content),
-		Tags:        extractKeywords(content),
+		Description: description,
+		Tags:        tags,
 		WordCount:   wordCount,
 		ReadingTime: readingTime,
 		Language:    detectLanguage(content),
@@ -475,18 +494,78 @@ func (h *DocumentHandler) Analyze(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// firstParagraph returns the first non-empty paragraph of content, capped at 500 characters.
+// metadataString returns the first non-empty string value found under the given
+// keys in the extractor metadata map. Keys are tried in order (e.g. "title",
+// "Title") to handle format-specific casing differences.
+func metadataString(metadata map[string]any, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := metadata[k]; ok {
+			if s, ok := v.(string); ok && s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+// firstHeading returns the text of the first ATX heading (# Title) in content.
+func firstHeading(content string) string {
+	for line := range strings.SplitSeq(content, "\n") {
+		if after, found := strings.CutPrefix(line, "# "); found {
+			t := strings.TrimSpace(after)
+			if t != "" {
+				return t
+			}
+		}
+	}
+	return ""
+}
+
+// extractHeadingTags extracts unique tag suggestions from ## and ### headings.
+// Returns at most 5 tags, lowercased and trimmed.
+func extractHeadingTags(content string) []string {
+	seen := make(map[string]bool)
+	var tags []string
+	for line := range strings.SplitSeq(content, "\n") {
+		var heading string
+		if after, ok := strings.CutPrefix(line, "### "); ok {
+			heading = after
+		} else if after, ok := strings.CutPrefix(line, "## "); ok {
+			heading = after
+		}
+		if heading == "" {
+			continue
+		}
+		tag := strings.ToLower(strings.TrimSpace(heading))
+		// Skip very short or markdown-artifact headings.
+		if len(tag) < 3 || strings.HasPrefix(tag, "#") {
+			continue
+		}
+		if !seen[tag] {
+			seen[tag] = true
+			tags = append(tags, tag)
+			if len(tags) >= 5 {
+				break
+			}
+		}
+	}
+	return tags
+}
+
+// firstParagraph returns the first non-empty, non-heading paragraph of content,
+// capped at 500 characters.
 func firstParagraph(content string) string {
 	paragraphs := strings.Split(content, "\n\n")
 	for _, p := range paragraphs {
 		trimmed := strings.TrimSpace(p)
-		if trimmed != "" {
-			runes := []rune(trimmed)
-			if len(runes) > 500 {
-				return string(runes[:500])
-			}
-			return trimmed
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
 		}
+		runes := []rune(trimmed)
+		if len(runes) > 500 {
+			return string(runes[:500])
+		}
+		return trimmed
 	}
 	return ""
 }

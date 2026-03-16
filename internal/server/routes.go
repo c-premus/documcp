@@ -93,6 +93,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	}
 
 	// Application middleware
+	r.Use(BlockSensitiveFiles)
 	r.Use(SecurityHeaders)
 	r.Use(MaxBodySize(1 * 1024 * 1024)) // 1 MB default body limit (excludes multipart)
 	r.Use(RequestLogger(s.logger))
@@ -154,22 +155,24 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			r.Get("/authorize", deps.OAuthHandler.Authorize)
 			r.Post("/authorize/approve", deps.OAuthHandler.AuthorizeApprove)
 
-			// Rate-limited token endpoint (brute force prevention)
+			// Rate-limited token endpoint (30/min + 100/hr per IP)
 			r.Group(func(r chi.Router) {
-				r.Use(httprate.LimitByIP(100, time.Minute))
+				r.Use(httprate.LimitByIP(30, time.Minute))
+				r.Use(httprate.LimitByIP(100, time.Hour))
 				r.Post("/token", deps.OAuthHandler.Token)
 				r.Post("/revoke", deps.OAuthHandler.Revoke)
 			})
 
-			// Rate-limited registration endpoint
+			// Rate-limited registration endpoint (10/hr + 50/day per IP)
 			r.Group(func(r chi.Router) {
-				r.Use(httprate.LimitByIP(10, time.Minute))
+				r.Use(httprate.LimitByIP(10, time.Hour))
+				r.Use(httprate.LimitByIP(50, 24*time.Hour))
 				r.Post("/register", deps.OAuthHandler.Register)
 			})
 
-			// Rate-limited device code endpoint
+			// Rate-limited device code endpoint (30/min per IP)
 			r.Group(func(r chi.Router) {
-				r.Use(httprate.LimitByIP(20, time.Minute))
+				r.Use(httprate.LimitByIP(30, time.Minute))
 				r.Post("/device/code", deps.OAuthHandler.DeviceAuthorization)
 			})
 
@@ -199,7 +202,6 @@ func (s *Server) RegisterRoutes(deps Deps) {
 
 	// REST API (always authenticated)
 	r.Route("/api", func(r chi.Router) {
-		r.Use(httprate.LimitByIP(300, time.Minute))
 		switch {
 		case deps.OAuthService != nil:
 			r.Use(authmiddleware.BearerOrSession(deps.OAuthService, deps.SessionStore))
@@ -217,8 +219,9 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		// Document endpoints
 		if deps.DocumentHandler != nil {
 			r.Route("/documents", func(r chi.Router) {
-				// Read-only: requires documents:read scope
+				// Read-only: 60/min, requires documents:read scope
 				r.Group(func(r chi.Router) {
+					r.Use(httprate.LimitByIP(60, time.Minute))
 					if deps.OAuthService != nil {
 						r.Use(authmiddleware.RequireScope(authscope.DocumentsRead))
 					}
@@ -228,8 +231,9 @@ func (s *Server) RegisterRoutes(deps Deps) {
 					r.Get("/{uuid}/download", deps.DocumentHandler.Download)
 				})
 
-				// Mutating: requires documents:write scope + admin
+				// Mutating: 30/min, requires documents:write scope + admin
 				r.Group(func(r chi.Router) {
+					r.Use(httprate.LimitByIP(30, time.Minute))
 					if deps.OAuthService != nil {
 						r.Use(authmiddleware.RequireScope(authscope.DocumentsWrite))
 					}
@@ -245,9 +249,10 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			s.logger.Info("document API endpoints registered")
 		}
 
-		// Search endpoints
+		// Search endpoints (120/min per IP)
 		if deps.SearchHandler != nil {
 			r.Group(func(r chi.Router) {
+				r.Use(httprate.LimitByIP(120, time.Minute))
 				if deps.OAuthService != nil {
 					r.Use(authmiddleware.RequireScope(authscope.SearchRead))
 				}
@@ -259,9 +264,10 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			s.logger.Info("search API endpoints registered")
 		}
 
-		// ZIM archive endpoints
+		// ZIM archive endpoints (60/min per IP)
 		if deps.ZimHandler != nil {
 			r.Route("/zim/archives", func(r chi.Router) {
+				r.Use(httprate.LimitByIP(60, time.Minute))
 				if deps.OAuthService != nil {
 					r.Use(authmiddleware.RequireScope(authscope.ZIMRead))
 				}
@@ -274,9 +280,10 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			s.logger.Info("ZIM API endpoints registered")
 		}
 
-		// Confluence endpoints
+		// Confluence endpoints (60/min per IP)
 		if deps.ConfluenceHandler != nil {
 			r.Route("/confluence", func(r chi.Router) {
+				r.Use(httprate.LimitByIP(60, time.Minute))
 				if deps.OAuthService != nil {
 					r.Use(authmiddleware.RequireScope(authscope.ConfluenceRead))
 				}
@@ -291,8 +298,9 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		// Git template endpoints
 		if deps.GitTemplateHandler != nil {
 			r.Route("/git-templates", func(r chi.Router) {
-				// Read-only: requires templates:read scope
+				// Read-only: 60/min, requires templates:read scope
 				r.Group(func(r chi.Router) {
+					r.Use(httprate.LimitByIP(60, time.Minute))
 					if deps.OAuthService != nil {
 						r.Use(authmiddleware.RequireScope(authscope.TemplatesRead))
 					}
@@ -304,8 +312,9 @@ func (s *Server) RegisterRoutes(deps Deps) {
 					r.Get("/{uuid}/deployment-guide", deps.GitTemplateHandler.DeploymentGuide)
 				})
 
-				// Mutating: requires templates:write scope + admin
+				// Mutating: 30/min, requires templates:write scope + admin
 				r.Group(func(r chi.Router) {
+					r.Use(httprate.LimitByIP(30, time.Minute))
 					if deps.OAuthService != nil {
 						r.Use(authmiddleware.RequireScope(authscope.TemplatesWrite))
 					}
@@ -323,8 +332,9 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		// External service endpoints
 		if deps.ExternalServiceHandler != nil {
 			r.Route("/external-services", func(r chi.Router) {
-				// Read-only: requires services:read scope
+				// Read-only: 60/min, requires services:read scope
 				r.Group(func(r chi.Router) {
+					r.Use(httprate.LimitByIP(60, time.Minute))
 					if deps.OAuthService != nil {
 						r.Use(authmiddleware.RequireScope(authscope.ServicesRead))
 					}
@@ -332,8 +342,9 @@ func (s *Server) RegisterRoutes(deps Deps) {
 					r.Get("/{uuid}", deps.ExternalServiceHandler.Show)
 				})
 
-				// Mutating: requires services:write scope + admin
+				// Mutating: 30/min, requires services:write scope + admin
 				r.Group(func(r chi.Router) {
+					r.Use(httprate.LimitByIP(30, time.Minute))
 					if deps.OAuthService != nil {
 						r.Use(authmiddleware.RequireScope(authscope.ServicesWrite))
 					}
@@ -347,8 +358,9 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			s.logger.Info("External service API endpoints registered")
 		}
 
-		// Admin API endpoints (requires admin scope + role)
+		// Admin API endpoints (60/min, requires admin scope + role)
 		r.Route("/admin", func(r chi.Router) {
+			r.Use(httprate.LimitByIP(60, time.Minute))
 			if deps.OAuthService != nil {
 				r.Use(authmiddleware.RequireScope(authscope.Admin))
 			}

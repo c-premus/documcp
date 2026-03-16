@@ -18,7 +18,7 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-XSS-Protection", "0")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
 		w.Header().Set("Cache-Control", "no-store")
 
 		// HSTS: instruct browsers to only use HTTPS. Only set when the
@@ -26,6 +26,42 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		// X-Forwarded-Proto) to avoid breaking plain-HTTP dev setups.
 		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
 			w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// blockedFiles is the set of root-level filenames that must return 404.
+var blockedFiles = map[string]bool{
+	"composer.json": true, "composer.lock": true,
+	"package.json": true, "package-lock.json": true,
+	"yarn.lock": true, ".htaccess": true, "web.config": true,
+	"Makefile": true, "go.mod": true, "go.sum": true,
+	"Dockerfile": true, "docker-compose.yml": true,
+	".env": true, ".env.example": true,
+}
+
+// BlockSensitiveFiles returns 404 for dotfiles (except /.well-known) and
+// known sensitive files (package manager locks, server config) per REQ-SEC-003.
+func BlockSensitiveFiles(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+
+		// Check the first path segment for dotfiles.
+		first := strings.TrimPrefix(p, "/")
+		if idx := strings.IndexByte(first, '/'); idx != -1 {
+			first = first[:idx]
+		}
+		if strings.HasPrefix(first, ".") && first != ".well-known" {
+			http.NotFound(w, r)
+			return
+		}
+
+		// Block known sensitive files at the root level (e.g. /composer.json).
+		if blockedFiles[first] {
+			http.NotFound(w, r)
+			return
 		}
 
 		next.ServeHTTP(w, r)

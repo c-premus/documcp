@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { apiFetch, buildQuery } from '@/api/helpers'
 
 export interface Document {
   readonly uuid: string
@@ -75,25 +76,6 @@ interface TrashResponse {
   readonly total: number
 }
 
-async function api<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options)
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText }))
-    throw new Error(body.message || res.statusText)
-  }
-  return res.json() as Promise<T>
-}
-
-function buildQuery(params: Record<string, string | number | undefined>): string {
-  const search = new URLSearchParams()
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '') {
-      search.set(key, String(value))
-    }
-  }
-  const qs = search.toString()
-  return qs ? `?${qs}` : ''
-}
 
 export const useDocumentsStore = defineStore('documents', () => {
   const documents = ref<Document[]>([])
@@ -115,7 +97,7 @@ export const useDocumentsStore = defineStore('documents', () => {
         sort: params?.sort,
         order: params?.order,
       })
-      const response = await api<ListResponse>(`/api/documents${query}`)
+      const response = await apiFetch<ListResponse>(`/api/documents${query}`)
       documents.value = response.data
       total.value = response.meta.total
       return response
@@ -131,7 +113,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<SingleResponse>(`/api/documents/${uuid}`)
+      const response = await apiFetch<SingleResponse>(`/api/documents/${uuid}`)
       currentDocument.value = response.data
       return response.data
     } catch (e) {
@@ -146,7 +128,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<SingleResponse>('/api/documents', {
+      const response = await apiFetch<SingleResponse>('/api/documents', {
         method: 'POST',
         body: formData,
       })
@@ -163,7 +145,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<AnalyzeResponse>('/api/documents/analyze', {
+      const response = await apiFetch<AnalyzeResponse>('/api/documents/analyze', {
         method: 'POST',
         body: formData,
       })
@@ -180,7 +162,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<DeleteResponse>(`/api/documents/${uuid}`, {
+      const response = await apiFetch<DeleteResponse>(`/api/documents/${uuid}`, {
         method: 'DELETE',
       })
       documents.value = documents.value.filter((d) => d.uuid !== uuid)
@@ -200,7 +182,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<SingleResponse>(`/api/documents/${uuid}/restore`, {
+      const response = await apiFetch<SingleResponse>(`/api/documents/${uuid}/restore`, {
         method: 'POST',
       })
       return response.data
@@ -216,7 +198,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<DeleteResponse>(`/api/documents/${uuid}/purge`, {
+      const response = await apiFetch<DeleteResponse>(`/api/documents/${uuid}/purge`, {
         method: 'DELETE',
       })
       documents.value = documents.value.filter((d) => d.uuid !== uuid)
@@ -237,7 +219,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     error.value = null
     try {
       const query = buildQuery({ older_than_days: olderThanDays })
-      const response = await api<BulkPurgeResponse>(`/api/admin/documents/purge${query}`, {
+      const response = await apiFetch<BulkPurgeResponse>(`/api/admin/documents/purge${query}`, {
         method: 'DELETE',
       })
       return response
@@ -257,7 +239,7 @@ export const useDocumentsStore = defineStore('documents', () => {
         limit: params?.limit,
         offset: params?.offset,
       })
-      const response = await api<TrashResponse>(`/api/documents/trash${query}`)
+      const response = await apiFetch<TrashResponse>(`/api/documents/trash${query}`)
       documents.value = response.data
       total.value = response.total
       return response

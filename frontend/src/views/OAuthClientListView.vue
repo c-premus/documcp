@@ -5,6 +5,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { NoSymbolIcon } from '@heroicons/vue/24/outline'
 import type { ColumnDef } from '@tanstack/vue-table'
 
+import { apiFetch } from '@/api/helpers'
 import DataTable from '../components/shared/DataTable.vue'
 import Pagination from '../components/shared/Pagination.vue'
 import SearchInput from '../components/shared/SearchInput.vue'
@@ -27,15 +28,6 @@ interface ListResponse {
 
 interface RevokeResponse {
   readonly message: string
-}
-
-async function api<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options)
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText }))
-    throw new Error(body.message || res.statusText)
-  }
-  return res.json() as Promise<T>
 }
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -74,7 +66,7 @@ async function fetchClients(): Promise<void> {
       limit: perPage.value,
       offset,
     })
-    const response = await api<ListResponse>(`/api/admin/oauth-clients${query}`)
+    const response = await apiFetch<ListResponse>(`/api/admin/oauth-clients${query}`)
     clients.value = response.data
     total.value = response.meta.total
   } catch {
@@ -122,7 +114,7 @@ async function handleRevokeConfirm(): Promise<void> {
   const clientName = revokeTarget.value.client_name
   const clientDbId = revokeTarget.value.id
   try {
-    await api<RevokeResponse>(`/api/admin/oauth-clients/${clientDbId}/revoke`, {
+    await apiFetch<RevokeResponse>(`/api/admin/oauth-clients/${clientDbId}/revoke`, {
       method: 'POST',
     })
     toast.success(`Client "${clientName}" revoked`)

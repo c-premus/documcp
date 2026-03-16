@@ -688,8 +688,8 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceC
 	if dc.LastPolledAt.Valid {
 		elapsed := time.Since(dc.LastPolledAt.Time)
 		if elapsed < time.Duration(dc.Interval)*time.Second {
-			// Increase interval by 5 seconds
-			newInterval := dc.Interval + 5
+			// Increase interval by 5 seconds, capped at 300s per RFC 8628.
+			newInterval := min(dc.Interval+5, 300)
 			_ = s.repo.UpdateDeviceCodeLastPolled(ctx, dc.ID, newInterval)
 			return nil, &DeviceCodeError{
 				Code:        "slow_down",

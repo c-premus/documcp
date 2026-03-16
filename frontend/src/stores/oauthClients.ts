@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { apiFetch, buildQuery } from '@/api/helpers'
 
 export interface OAuthClient {
   readonly id: number
@@ -54,25 +55,6 @@ interface RevokeResponse {
   readonly message: string
 }
 
-async function api<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options)
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText }))
-    throw new Error(body.message || res.statusText)
-  }
-  return res.json() as Promise<T>
-}
-
-function buildQuery(params: Record<string, string | number | undefined>): string {
-  const search = new URLSearchParams()
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '') {
-      search.set(key, String(value))
-    }
-  }
-  const qs = search.toString()
-  return qs ? `?${qs}` : ''
-}
 
 export const useOAuthClientsStore = defineStore('oauthClients', () => {
   const clients = ref<OAuthClient[]>([])
@@ -89,7 +71,7 @@ export const useOAuthClientsStore = defineStore('oauthClients', () => {
         offset: params?.offset,
         q: params?.q,
       })
-      const response = await api<ListResponse>(`/api/admin/oauth-clients${query}`)
+      const response = await apiFetch<ListResponse>(`/api/admin/oauth-clients${query}`)
       clients.value = response.data
       total.value = response.meta.total
       return response
@@ -105,7 +87,7 @@ export const useOAuthClientsStore = defineStore('oauthClients', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<CreateResponse>('/api/admin/oauth-clients', {
+      const response = await apiFetch<CreateResponse>('/api/admin/oauth-clients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
@@ -123,7 +105,7 @@ export const useOAuthClientsStore = defineStore('oauthClients', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<RevokeResponse>(`/api/admin/oauth-clients/${id}/revoke`, {
+      const response = await apiFetch<RevokeResponse>(`/api/admin/oauth-clients/${id}/revoke`, {
         method: 'POST',
       })
       const index = clients.value.findIndex((c) => c.id === id)

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { apiFetch, buildQuery } from '@/api/helpers'
 
 export interface GitTemplate {
   readonly uuid: string
@@ -89,25 +90,6 @@ interface CreateTemplateParams {
   readonly is_public?: boolean
 }
 
-async function api<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options)
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText }))
-    throw new Error(body.message || res.statusText)
-  }
-  return res.json() as Promise<T>
-}
-
-function buildQuery(params: Record<string, string | number | undefined>): string {
-  const search = new URLSearchParams()
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '') {
-      search.set(key, String(value))
-    }
-  }
-  const qs = search.toString()
-  return qs ? `?${qs}` : ''
-}
 
 export function buildTree(files: GitTemplateFile[]): TreeItem[] {
   const root: TreeItem[] = []
@@ -186,7 +168,7 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
     error.value = null
     try {
       const query = buildQuery({ category })
-      const response = await api<ListResponse>(`/api/git-templates${query}`)
+      const response = await apiFetch<ListResponse>(`/api/git-templates${query}`)
       templates.value = response.data
       total.value = response.meta.total
       return response
@@ -202,7 +184,7 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<SingleResponse>('/api/git-templates', {
+      const response = await apiFetch<SingleResponse>('/api/git-templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
@@ -220,7 +202,7 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<MessageResponse>(`/api/git-templates/${uuid}`, {
+      const response = await apiFetch<MessageResponse>(`/api/git-templates/${uuid}`, {
         method: 'DELETE',
       })
       templates.value = templates.value.filter((t) => t.uuid !== uuid)
@@ -235,7 +217,7 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
 
   async function syncTemplate(uuid: string): Promise<MessageResponse> {
     try {
-      const response = await api<MessageResponse>(`/api/git-templates/${uuid}/sync`, {
+      const response = await apiFetch<MessageResponse>(`/api/git-templates/${uuid}/sync`, {
         method: 'POST',
       })
       return response
@@ -249,7 +231,7 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await api<StructureResponse>(`/api/git-templates/${uuid}/structure`)
+      const response = await apiFetch<StructureResponse>(`/api/git-templates/${uuid}/structure`)
       return response.data
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch template structure'
@@ -261,7 +243,7 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
 
   async function readFile(uuid: string, path: string): Promise<FileContentResponse['data']> {
     try {
-      const response = await api<FileContentResponse>(
+      const response = await apiFetch<FileContentResponse>(
         `/api/git-templates/${uuid}/files/${encodeURIComponent(path)}`,
       )
       return response.data
@@ -272,7 +254,7 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
   }
 
   async function validateUrl(url: string): Promise<ValidateUrlResponse> {
-    const response = await api<ValidateUrlResponse>('/api/admin/git-templates/validate-url', {
+    const response = await apiFetch<ValidateUrlResponse>('/api/admin/git-templates/validate-url', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),

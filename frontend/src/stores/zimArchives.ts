@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { apiFetch, buildQuery } from '@/api/helpers'
 
 export interface ZimArchive {
   readonly uuid: string
@@ -60,25 +61,6 @@ interface ArticleResponse {
   readonly data: ZimArticle
 }
 
-async function api<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options)
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText }))
-    throw new Error(body.message || res.statusText)
-  }
-  return res.json() as Promise<T>
-}
-
-function buildQuery(params: Record<string, string | number | undefined>): string {
-  const search = new URLSearchParams()
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '') {
-      search.set(key, String(value))
-    }
-  }
-  const qs = search.toString()
-  return qs ? `?${qs}` : ''
-}
 
 export const useZimArchivesStore = defineStore('zimArchives', () => {
   const archives = ref<ZimArchive[]>([])
@@ -100,7 +82,7 @@ export const useZimArchivesStore = defineStore('zimArchives', () => {
         language: params?.language,
         per_page: params?.per_page,
       })
-      const response = await api<ListResponse>(`/api/zim/archives${query}`)
+      const response = await apiFetch<ListResponse>(`/api/zim/archives${query}`)
       archives.value = response.data
       total.value = response.meta.total
       return response
@@ -117,7 +99,7 @@ export const useZimArchivesStore = defineStore('zimArchives', () => {
     error.value = null
     try {
       const query = buildQuery({ q, limit })
-      const response = await api<SearchResponse>(`/api/zim/archives/${encodeURIComponent(archive)}/search${query}`)
+      const response = await apiFetch<SearchResponse>(`/api/zim/archives/${encodeURIComponent(archive)}/search${query}`)
       searchResults.value = response.data
       return response.data
     } catch (e) {
@@ -132,7 +114,7 @@ export const useZimArchivesStore = defineStore('zimArchives', () => {
     articleLoading.value = true
     error.value = null
     try {
-      const response = await api<ArticleResponse>(
+      const response = await apiFetch<ArticleResponse>(
         `/api/zim/archives/${encodeURIComponent(archive)}/articles/${encodeURIComponent(path)}`,
       )
       currentArticle.value = response.data
