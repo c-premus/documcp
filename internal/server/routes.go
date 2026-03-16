@@ -122,6 +122,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		r.Route("/documcp", func(r chi.Router) {
 			if deps.OAuthService != nil {
 				r.Use(authmiddleware.BearerToken(deps.OAuthService))
+				r.Use(authmiddleware.RequireScope("mcp:access"))
 			}
 			r.Handle("/*", deps.MCPHandler)
 			r.Handle("/", deps.MCPHandler)
@@ -355,6 +356,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 				r.Route("/oauth-clients", func(r chi.Router) {
 					r.Get("/", deps.OAuthClientHandler.List)
 					r.Post("/", deps.OAuthClientHandler.Create)
+					r.Get("/{id}", deps.OAuthClientHandler.Show)
 					r.Post("/{id}/revoke", deps.OAuthClientHandler.Revoke)
 				})
 			}

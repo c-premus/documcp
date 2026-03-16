@@ -22,6 +22,7 @@ import (
 type oauthClientRepo interface {
 	ListClients(ctx context.Context, query string, limit, offset int) ([]model.OAuthClient, int, error)
 	CreateClient(ctx context.Context, client *model.OAuthClient) error
+	FindClientByID(ctx context.Context, id int64) (*model.OAuthClient, error)
 	DeactivateClient(ctx context.Context, id int64) error
 }
 
@@ -196,12 +197,24 @@ func (h *OAuthClientHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Show handles GET /api/admin/oauth-clients/{clientId} -- get a single OAuth client.
+// Show handles GET /api/admin/oauth-clients/{id} -- get a single OAuth client.
 func (h *OAuthClientHandler) Show(w http.ResponseWriter, r *http.Request) {
-	clientID := chi.URLParam(r, "clientId")
-	_ = clientID
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		errorResponse(w, http.StatusBadRequest, "invalid client id")
+		return
+	}
 
-	errorResponse(w, http.StatusNotImplemented, "OAuth client detail endpoint not yet implemented")
+	client, err := h.repo.FindClientByID(r.Context(), id)
+	if err != nil {
+		h.logger.Error("finding oauth client", "id", id, "error", err)
+		errorResponse(w, http.StatusNotFound, "oauth client not found")
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"data": toOAuthClientResponse(client),
+	})
 }
 
 // toOAuthClientResponse converts an OAuthClient model to its JSON response DTO.
