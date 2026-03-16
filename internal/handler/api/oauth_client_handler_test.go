@@ -21,6 +21,7 @@ import (
 type mockOAuthClientRepo struct {
 	listClientsFn      func(ctx context.Context, query string, limit, offset int) ([]model.OAuthClient, int, error)
 	createClientFn     func(ctx context.Context, client *model.OAuthClient) error
+	findClientByIDFn   func(ctx context.Context, id int64) (*model.OAuthClient, error)
 	deactivateClientFn func(ctx context.Context, id int64) error
 }
 
@@ -36,6 +37,13 @@ func (m *mockOAuthClientRepo) CreateClient(ctx context.Context, client *model.OA
 		return m.createClientFn(ctx, client)
 	}
 	return nil
+}
+
+func (m *mockOAuthClientRepo) FindClientByID(ctx context.Context, id int64) (*model.OAuthClient, error) {
+	if m.findClientByIDFn != nil {
+		return m.findClientByIDFn(ctx, id)
+	}
+	return nil, fmt.Errorf("not found")
 }
 
 func (m *mockOAuthClientRepo) DeactivateClient(ctx context.Context, id int64) error {
@@ -277,6 +285,101 @@ func TestOAuthClientHandler_Revoke_Error(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Tests: toOAuthClientResponse
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Tests: Show
+// ---------------------------------------------------------------------------
+
+func TestOAuthClientHandler_Show_Success(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockOAuthClientRepo{
+		findClientByIDFn: func(_ context.Context, id int64) (*model.OAuthClient, error) {
+			if id == 1 {
+				return &model.OAuthClient{
+					ID:                      1,
+					ClientID:                "client-1",
+					ClientName:              "Test Client",
+					RedirectURIs:            `["https://example.com/callback"]`,
+					GrantTypes:              `["authorization_code"]`,
+					ResponseTypes:           `["code"]`,
+					TokenEndpointAuthMethod: "client_secret_post",
+					IsActive:                true,
+				}, nil
+			}
+			return nil, fmt.Errorf("not found")
+		},
+	}
+
+	h := NewOAuthClientHandler(repo, discardLogger())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "1")
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients/1", nil)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rec := httptest.NewRecorder()
+
+	h.Show(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+
+	data, ok := resp["data"].(map[string]any)
+	if !ok {
+		t.Fatal("expected data object in response")
+	}
+	if data["client_id"] != "client-1" {
+		t.Errorf("client_id = %v, want client-1", data["client_id"])
+	}
+}
+
+func TestOAuthClientHandler_Show_InvalidID(t *testing.T) {
+	t.Parallel()
+
+	h := NewOAuthClientHandler(&mockOAuthClientRepo{}, discardLogger())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "abc")
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients/abc", nil)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rec := httptest.NewRecorder()
+
+	h.Show(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestOAuthClientHandler_Show_NotFound(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockOAuthClientRepo{
+		findClientByIDFn: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
+			return nil, fmt.Errorf("not found")
+		},
+	}
+
+	h := NewOAuthClientHandler(repo, discardLogger())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "999")
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients/999", nil)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rec := httptest.NewRecorder()
+
+	h.Show(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
 
 func TestToOAuthClientResponse(t *testing.T) {
 	t.Parallel()

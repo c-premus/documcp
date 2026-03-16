@@ -737,6 +737,115 @@ func TestRequireAdmin(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// RequireScope middleware tests
+// ---------------------------------------------------------------------------
+
+func TestRequireScope(t *testing.T) {
+	t.Parallel()
+
+	t.Run("allows token with matching scope", func(t *testing.T) {
+		t.Parallel()
+
+		token := &model.OAuthAccessToken{
+			ID:    1,
+			Scope: sql.NullString{String: "mcp:access mcp:read", Valid: true},
+		}
+		ctx := context.WithValue(context.Background(), AccessTokenContextKey, token)
+
+		req := httptest.NewRequest(http.MethodGet, "/documcp", nil)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		handler := RequireScope("mcp:access")(okHandler())
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+	})
+
+	t.Run("rejects token with missing scope", func(t *testing.T) {
+		t.Parallel()
+
+		token := &model.OAuthAccessToken{
+			ID:    2,
+			Scope: sql.NullString{String: "mcp:read", Valid: true},
+		}
+		ctx := context.WithValue(context.Background(), AccessTokenContextKey, token)
+
+		req := httptest.NewRequest(http.MethodGet, "/documcp", nil)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		handler := RequireScope("mcp:access")(okHandler())
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusForbidden)
+		}
+		if wwwAuth := rr.Header().Get("WWW-Authenticate"); !strings.Contains(wwwAuth, "insufficient_scope") {
+			t.Errorf("WWW-Authenticate = %q, want it to contain insufficient_scope", wwwAuth)
+		}
+	})
+
+	t.Run("allows token with null scope (backward compat)", func(t *testing.T) {
+		t.Parallel()
+
+		token := &model.OAuthAccessToken{
+			ID:    3,
+			Scope: sql.NullString{Valid: false},
+		}
+		ctx := context.WithValue(context.Background(), AccessTokenContextKey, token)
+
+		req := httptest.NewRequest(http.MethodGet, "/documcp", nil)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		handler := RequireScope("mcp:access")(okHandler())
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+	})
+
+	t.Run("allows token with empty scope string", func(t *testing.T) {
+		t.Parallel()
+
+		token := &model.OAuthAccessToken{
+			ID:    4,
+			Scope: sql.NullString{String: "", Valid: true},
+		}
+		ctx := context.WithValue(context.Background(), AccessTokenContextKey, token)
+
+		req := httptest.NewRequest(http.MethodGet, "/documcp", nil)
+		req = req.WithContext(ctx)
+		rr := httptest.NewRecorder()
+
+		handler := RequireScope("mcp:access")(okHandler())
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+	})
+
+	t.Run("rejects request with no token in context", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest(http.MethodGet, "/documcp", nil)
+		rr := httptest.NewRecorder()
+
+		handler := RequireScope("mcp:access")(okHandler())
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // UserFromContext tests
 // ---------------------------------------------------------------------------
 
