@@ -202,7 +202,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		r.Use(httprate.LimitByIP(300, time.Minute))
 		switch {
 		case deps.OAuthService != nil:
-			r.Use(authmiddleware.BearerToken(deps.OAuthService))
+			r.Use(authmiddleware.BearerOrSession(deps.OAuthService, deps.SessionStore))
 		default:
 			// No authentication backend configured — block all API access.
 			r.Use(func(next http.Handler) http.Handler {

@@ -865,7 +865,7 @@ func TestFindOrCreateUser(t *testing.T) {
 		h, server := newTestHandler(t, repo)
 		defer server.Close()
 
-		user, err := h.findOrCreateUser(context.Background(), "sub-1", "new@example.com", "New Name")
+		user, err := h.findOrCreateUser(context.Background(), "sub-1", "new@example.com", "New Name", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -895,7 +895,7 @@ func TestFindOrCreateUser(t *testing.T) {
 		h, server := newTestHandler(t, repo)
 		defer server.Close()
 
-		user, err := h.findOrCreateUser(context.Background(), "new-sub", "user@example.com", "User")
+		user, err := h.findOrCreateUser(context.Background(), "new-sub", "user@example.com", "User", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -919,7 +919,7 @@ func TestFindOrCreateUser(t *testing.T) {
 		h, server := newTestHandler(t, repo)
 		defer server.Close()
 
-		user, err := h.findOrCreateUser(context.Background(), "brand-new-sub", "new@example.com", "New User")
+		user, err := h.findOrCreateUser(context.Background(), "brand-new-sub", "new@example.com", "New User", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -946,7 +946,7 @@ func TestFindOrCreateUser(t *testing.T) {
 		h, server := newTestHandler(t, repo)
 		defer server.Close()
 
-		_, err := h.findOrCreateUser(context.Background(), "sub", "email@example.com", "Name")
+		_, err := h.findOrCreateUser(context.Background(), "sub", "email@example.com", "Name", nil)
 		if err == nil {
 			t.Fatal("expected error on sub lookup failure")
 		}
@@ -961,9 +961,230 @@ func TestFindOrCreateUser(t *testing.T) {
 		h, server := newTestHandler(t, repo)
 		defer server.Close()
 
-		_, err := h.findOrCreateUser(context.Background(), "sub", "email@example.com", "Name")
+		_, err := h.findOrCreateUser(context.Background(), "sub", "email@example.com", "Name", nil)
 		if err == nil {
 			t.Fatal("expected error on email lookup failure")
+		}
+	})
+}
+
+func TestResolveAdmin(t *testing.T) {
+	tests := []struct {
+		name        string
+		adminGroups []string
+		groups      []string
+		wantAdmin   bool
+		wantSync    bool
+	}{
+		{"empty config no groups", nil, nil, false, false},
+		{"empty config user has groups", nil, []string{"admins"}, false, false},
+		{"configured user matches", []string{"admins"}, []string{"users", "admins"}, true, true},
+		{"configured user no match", []string{"admins"}, []string{"users", "editors"}, false, true},
+		{"configured user no groups", []string{"admins"}, nil, false, true},
+		{"configured user empty groups", []string{"admins"}, []string{}, false, true},
+		{"multiple admin groups one match", []string{"admins", "superusers"}, []string{"superusers"}, true, true},
+		{"multiple admin groups no match", []string{"admins", "superusers"}, []string{"viewers"}, false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &Handler{adminGroups: tt.adminGroups}
+			gotAdmin, gotSync := h.resolveAdmin(tt.groups)
+			if gotAdmin != tt.wantAdmin {
+				t.Errorf("resolveAdmin() isAdmin = %v, want %v", gotAdmin, tt.wantAdmin)
+			}
+			if gotSync != tt.wantSync {
+				t.Errorf("resolveAdmin() shouldSync = %v, want %v", gotSync, tt.wantSync)
+			}
+		})
+	}
+}
+
+func TestFindOrCreateUserAdminGroups(t *testing.T) {
+	t.Run("new user gets admin when group matches", func(t *testing.T) {
+		var created *model.User
+		repo := &mockUserRepo{
+			createFn: func(ctx context.Context, user *model.User) error {
+				user.ID = 10
+				created = user
+				return nil
+			},
+		}
+		h, server := newTestHandler(t, repo)
+		defer server.Close()
+		h.adminGroups = []string{"documcp-admins"}
+
+		_, err := h.findOrCreateUser(context.Background(), "sub-new", "admin@example.com", "Admin", []string{"users", "documcp-admins"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if created == nil {
+			t.Fatal("expected CreateUser to be called")
+		}
+		if !created.IsAdmin {
+			t.Error("expected new user to be admin")
+		}
+	})
+
+	t.Run("new user not admin when group does not match", func(t *testing.T) {
+		var created *model.User
+		repo := &mockUserRepo{
+			createFn: func(ctx context.Context, user *model.User) error {
+				user.ID = 11
+				created = user
+				return nil
+			},
+		}
+		h, server := newTestHandler(t, repo)
+		defer server.Close()
+		h.adminGroups = []string{"documcp-admins"}
+
+		_, err := h.findOrCreateUser(context.Background(), "sub-new", "user@example.com", "User", []string{"users"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if created == nil {
+			t.Fatal("expected CreateUser to be called")
+		}
+		if created.IsAdmin {
+			t.Error("expected new user to NOT be admin")
+		}
+	})
+
+	t.Run("new user not admin when feature disabled", func(t *testing.T) {
+		var created *model.User
+		repo := &mockUserRepo{
+			createFn: func(ctx context.Context, user *model.User) error {
+				user.ID = 12
+				created = user
+				return nil
+			},
+		}
+		h, server := newTestHandler(t, repo)
+		defer server.Close()
+		// adminGroups is nil (default from newTestHandler)
+
+		_, err := h.findOrCreateUser(context.Background(), "sub-new", "user@example.com", "User", []string{"documcp-admins"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if created.IsAdmin {
+			t.Error("expected new user to NOT be admin when feature disabled")
+		}
+	})
+
+	t.Run("returning user promoted to admin", func(t *testing.T) {
+		var updated bool
+		existingUser := &model.User{ID: 1, Name: "User", Email: "user@example.com", IsAdmin: false,
+			OIDCSub: sql.NullString{String: "sub-1", Valid: true}}
+		repo := &mockUserRepo{
+			findBySubFn: func(ctx context.Context, sub string) (*model.User, error) {
+				return existingUser, nil
+			},
+			updateFn: func(ctx context.Context, user *model.User) error {
+				updated = true
+				return nil
+			},
+		}
+		h, server := newTestHandler(t, repo)
+		defer server.Close()
+		h.adminGroups = []string{"admins"}
+
+		user, err := h.findOrCreateUser(context.Background(), "sub-1", "user@example.com", "User", []string{"admins"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !user.IsAdmin {
+			t.Error("expected user to be promoted to admin")
+		}
+		if !updated {
+			t.Error("expected UpdateUser to be called")
+		}
+	})
+
+	t.Run("returning user demoted from admin", func(t *testing.T) {
+		var updated bool
+		existingUser := &model.User{ID: 1, Name: "Admin", Email: "admin@example.com", IsAdmin: true,
+			OIDCSub: sql.NullString{String: "sub-1", Valid: true}}
+		repo := &mockUserRepo{
+			findBySubFn: func(ctx context.Context, sub string) (*model.User, error) {
+				return existingUser, nil
+			},
+			updateFn: func(ctx context.Context, user *model.User) error {
+				updated = true
+				return nil
+			},
+		}
+		h, server := newTestHandler(t, repo)
+		defer server.Close()
+		h.adminGroups = []string{"admins"}
+
+		user, err := h.findOrCreateUser(context.Background(), "sub-1", "admin@example.com", "Admin", []string{"users"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if user.IsAdmin {
+			t.Error("expected user to be demoted from admin")
+		}
+		if !updated {
+			t.Error("expected UpdateUser to be called for demotion")
+		}
+	})
+
+	t.Run("feature disabled preserves manual admin", func(t *testing.T) {
+		var updated bool
+		existingUser := &model.User{ID: 1, Name: "Admin", Email: "admin@example.com", IsAdmin: true,
+			OIDCSub: sql.NullString{String: "sub-1", Valid: true}}
+		repo := &mockUserRepo{
+			findBySubFn: func(ctx context.Context, sub string) (*model.User, error) {
+				return existingUser, nil
+			},
+			updateFn: func(ctx context.Context, user *model.User) error {
+				updated = true
+				return nil
+			},
+		}
+		h, server := newTestHandler(t, repo)
+		defer server.Close()
+		// adminGroups is nil (feature disabled)
+
+		user, err := h.findOrCreateUser(context.Background(), "sub-1", "admin@example.com", "Admin", []string{"users"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !user.IsAdmin {
+			t.Error("expected manual admin to be preserved when feature disabled")
+		}
+		if updated {
+			t.Error("expected no update when nothing changed")
+		}
+	})
+
+	t.Run("email-linked user gets admin synced", func(t *testing.T) {
+		var updatedUser *model.User
+		existingUser := &model.User{ID: 2, Email: "user@example.com", IsAdmin: false}
+		repo := &mockUserRepo{
+			findByEmailFn: func(ctx context.Context, email string) (*model.User, error) {
+				return existingUser, nil
+			},
+			updateFn: func(ctx context.Context, user *model.User) error {
+				updatedUser = user
+				return nil
+			},
+		}
+		h, server := newTestHandler(t, repo)
+		defer server.Close()
+		h.adminGroups = []string{"admins"}
+
+		user, err := h.findOrCreateUser(context.Background(), "new-sub", "user@example.com", "User", []string{"admins"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !user.IsAdmin {
+			t.Error("expected email-linked user to get admin from groups")
+		}
+		if updatedUser == nil || !updatedUser.IsAdmin {
+			t.Error("expected UpdateUser with IsAdmin=true")
 		}
 	})
 }
