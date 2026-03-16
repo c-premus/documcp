@@ -138,7 +138,11 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	// --- Token HMAC key ---
-	oauth.SetTokenHMACKey(deriveKey([]byte(sessionSecret), "oauth-token-hmac", 32))
+	hmacKey, err := deriveKey([]byte(sessionSecret), "oauth-token-hmac", 32)
+	if err != nil {
+		return nil, fmt.Errorf("deriving HMAC key: %w", err)
+	}
+	oauth.SetTokenHMACKey(hmacKey)
 
 	// --- Repositories ---
 	documentRepo := repository.NewDocumentRepository(db, logger)
@@ -321,6 +325,8 @@ func New(cfg *config.Config) (*App, error) {
 	indexWorker.Indexer = documentPipeline
 	indexWorker.Metrics = metrics
 	reindexWorker.Indexer = documentPipeline
+	reindexWorker.Lister = documentRepo
+	reindexWorker.Logger = logger
 
 	oauthService := oauth.NewService(oauthRepo, cfg.OAuth, cfg.App.URL, logger)
 	externalServiceSvc := service.NewExternalServiceService(externalServiceRepo, logger)
@@ -435,6 +441,11 @@ func New(cfg *config.Config) (*App, error) {
 		TrustedProxies:    trustedProxies,
 	}, logger)
 
+	csrfKey, err := deriveKey([]byte(sessionSecret), "csrf-token-key", 32)
+	if err != nil {
+		return nil, fmt.Errorf("deriving CSRF key: %w", err)
+	}
+
 	srv.RegisterRoutes(server.Deps{
 		Version:                cfg.DocuMCP.ServerVersion,
 		MCPHandler:             mcpH,
@@ -457,8 +468,9 @@ func New(cfg *config.Config) (*App, error) {
 		QueueHandler:           queueH,
 		Metrics:                metrics,
 		OTELEnabled:            cfg.OTEL.Enabled,
-		CSRFKey:                deriveKey([]byte(sessionSecret), "csrf-token-key", 32),
+		CSRFKey:                csrfKey,
 		IsSecure:               cfg.App.Env == "production",
+		SearchClient:           searchClient,
 		DB:                     db.DB,
 		InternalAPIToken:       cfg.App.InternalAPIToken,
 	})
@@ -587,11 +599,11 @@ func (a *docStatusAdapter) FindByStatus(ctx context.Context, status string) ([]q
 
 // deriveKey uses HKDF-SHA256 to derive a subkey from a master secret.
 // This ensures different keys for different purposes (e.g. CSRF vs sessions).
-func deriveKey(secret []byte, info string, length int) []byte {
+func deriveKey(secret []byte, info string, length int) ([]byte, error) {
 	r := hkdf.New(sha256.New, secret, nil, []byte(info))
 	key := make([]byte, length)
 	if _, err := io.ReadFull(r, key); err != nil {
-		panic("hkdf: " + err.Error())
+		return nil, fmt.Errorf("deriving key for %s: %w", info, err)
 	}
-	return key
+	return key, nil
 }

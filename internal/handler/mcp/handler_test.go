@@ -367,7 +367,7 @@ func TestHandleReadDocument(t *testing.T) {
 	t.Run("returns error when document not found", func(t *testing.T) {
 		docSvc := &mockDocumentService{
 			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return nil, nil
+				return nil, service.ErrNotFound
 			},
 		}
 		h := newHandlerWithMocks(struct {

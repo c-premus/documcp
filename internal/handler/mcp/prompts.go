@@ -97,7 +97,7 @@ func zimResearchPrompt() *mcp.Prompt {
 func confluenceResearchPrompt() *mcp.Prompt {
 	return &mcp.Prompt{
 		Name:        "confluence_research",
-		Description: "Research a topic across Confluence wiki spaces using CQL and page retrieval",
+		Description: "Research a topic across Confluence wiki spaces using text search and page retrieval",
 		Arguments: []*mcp.PromptArgument{
 			{Name: "topic", Description: "The topic to research in Confluence", Required: true},
 			{Name: "space", Description: "Confluence space key to limit the search (e.g., ENG, OPS)"},
@@ -477,20 +477,10 @@ func (h *Handler) handleConfluenceResearch(_ context.Context, req *mcp.GetPrompt
 
 **Available tools:**
 - list_confluence_spaces: List spaces (global or personal) to find relevant wikis
-- search_confluence: Search pages via CQL or simple text query with optional space filtering
+- search_confluence: Search pages via text query with optional space filtering
 - read_confluence_page: Retrieve page content as markdown by page ID or by space key + title
 
 **Research depth:** %s
-
-## CQL quick reference
-
-Confluence Query Language (CQL) enables precise searches:
-
-- `+"`text ~ \"search terms\"`"+` - Full-text search
-- `+"`space = \"ENG\" AND text ~ \"deployment\"`"+` - Space-scoped search
-- `+"`type = \"page\" AND label = \"architecture\"`"+` - Filter by label
-- `+"`ancestor = \"12345\"`"+` - Search within a page hierarchy
-- `+"`lastModified >= \"2024-01-01\"`"+` - Recent content
 
 ## Workflow
 
@@ -502,11 +492,10 @@ list_confluence_spaces()
 `+"```"+`
 
 ### Step 2: Search for content
-Use simple queries or CQL for precise results.
+Use text queries with optional space filtering.
 
 `+"```"+`
 search_confluence(query: "topic keywords", space: "ENG")
-search_confluence(cql: "space = \"ENG\" AND text ~ \"topic\"")
 `+"```"+`
 
 ### Step 3: Read pages
@@ -569,7 +558,7 @@ func (h *Handler) handleCrossSourceResearch(_ context.Context, req *mcp.GetPromp
 
 **Confluence (if enabled):**
 - list_confluence_spaces: List wiki spaces
-- search_confluence: Search pages via CQL or simple query
+- search_confluence: Search pages via text query
 - read_confluence_page: Retrieve page content as markdown
 
 **Git Templates (if enabled):**

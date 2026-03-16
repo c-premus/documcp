@@ -117,12 +117,13 @@ func TestDocumentService_FindByUUID(t *testing.T) {
 			wantDoc: true,
 		},
 		{
-			name: "document not found returns nil nil",
+			name: "document not found returns ErrNotFound",
 			repoFn: func(_ context.Context, _ string) (*model.Document, error) {
 				return nil, sql.ErrNoRows
 			},
 			wantDoc: false,
-			wantErr: false,
+			wantErr: true,
+			errSubstr: "not found",
 		},
 		{
 			name: "repository error is wrapped",

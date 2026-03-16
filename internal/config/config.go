@@ -254,6 +254,7 @@ func Load() (*Config, error) {
 		URL:              v.GetString("app_url"),
 		Timezone:         v.GetString("app_timezone"),
 		InternalAPIToken: v.GetString("internal_api_token"),
+		EncryptionKey:    v.GetString("encryption_key"),
 	}
 
 	cfg.Server = ServerConfig{
@@ -343,6 +344,7 @@ func Load() (*Config, error) {
 func (c *Config) Validate() error {
 	var errs []string
 
+	// --- Always required ---
 	if c.Database.Host == "" {
 		errs = append(errs, "database host is required (DB_HOST)")
 	}
@@ -352,9 +354,44 @@ func (c *Config) Validate() error {
 	if c.Database.Username == "" {
 		errs = append(errs, "database username is required (DB_USERNAME)")
 	}
+	if c.Meilisearch.Host == "" {
+		errs = append(errs, "meilisearch host is required (MEILISEARCH_HOST)")
+	}
 
-	if c.App.Env == "production" && c.OAuth.SessionSecret == "" {
+	// --- Conditional validation ---
+	if c.App.Env != "" && c.App.Env != "development" && c.App.Env != "staging" &&
+		c.App.Env != "production" && c.App.Env != "testing" {
+		errs = append(errs, "APP_ENV must be one of: development, staging, production, testing")
+	}
+
+	if c.App.EncryptionKey != "" && len(c.App.EncryptionKey) != 32 {
+		errs = append(errs, "ENCRYPTION_KEY must be exactly 32 bytes for AES-256-GCM")
+	}
+
+	if c.OTEL.Enabled && c.OTEL.Endpoint == "" {
+		errs = append(errs, "OTEL_EXPORTER_OTLP_ENDPOINT is required when OTEL_ENABLED=true")
+	}
+
+	// --- Production requirements ---
+	isProd := c.App.Env == "production"
+
+	if isProd && c.OAuth.SessionSecret == "" {
 		errs = append(errs, "OAUTH_SESSION_SECRET is required in production")
+	}
+	if isProd && c.Database.Password == "" {
+		errs = append(errs, "DB_PASSWORD is required in production")
+	}
+	if isProd && c.App.EncryptionKey == "" {
+		errs = append(errs, "ENCRYPTION_KEY is required in production (git tokens stored in plaintext without it)")
+	}
+	if isProd && c.App.URL == "http://localhost" {
+		errs = append(errs, "APP_URL must be set to the actual URL in production (currently http://localhost)")
+	}
+	if isProd && c.App.InternalAPIToken == "" {
+		errs = append(errs, "INTERNAL_API_TOKEN is required in production")
+	}
+	if isProd && c.App.Debug {
+		errs = append(errs, "APP_DEBUG should not be enabled in production")
 	}
 
 	if len(errs) > 0 {

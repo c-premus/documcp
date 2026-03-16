@@ -92,6 +92,12 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Global PKCE enforcement when configured
+	if h.oauthCfg.RequirePKCE && codeChallenge == "" {
+		oauthError(w, http.StatusBadRequest, "invalid_request", "PKCE code_challenge required")
+		return
+	}
+
 	// Generate consent nonce
 	nonce := uuid.New().String()
 

@@ -2383,7 +2383,7 @@ func TestDocumentHandler_Show_Success(t *testing.T) {
 				if uuid == "show-uuid" {
 					return doc, nil
 				}
-				return nil, nil
+				return nil, service.ErrNotFound
 			},
 		}
 		repo := &mockHandlerRepo{

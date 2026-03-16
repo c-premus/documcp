@@ -23,6 +23,7 @@ func New(dsn string, maxOpen, maxIdle int, maxLifetime time.Duration) (*sqlx.DB,
 	db.SetMaxOpenConns(maxOpen)
 	db.SetMaxIdleConns(maxIdle)
 	db.SetConnMaxLifetime(maxLifetime)
+	db.SetConnMaxIdleTime(maxLifetime)
 
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("pinging database: %w", err)

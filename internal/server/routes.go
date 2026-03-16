@@ -54,6 +54,9 @@ type Deps struct {
 	AuthHandler *apihandler.AuthHandler // nil if not configured
 	SPAHandler  http.Handler           // nil if not configured
 
+	// Search health
+	SearchClient interface{ Healthy() bool } // for readiness checks (nil disables Meilisearch check)
+
 	// Observability
 	Metrics      *observability.Metrics // nil disables Prometheus metrics
 	OTELEnabled  bool                   // enables tracing middleware
@@ -99,7 +102,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 
 	// Readiness probe (checks dependencies like Postgres)
 	if deps.DB != nil {
-		readiness := handler.NewReadinessHandler(deps.Version, deps.DB)
+		readiness := handler.NewReadinessHandler(deps.Version, deps.DB, deps.SearchClient)
 		r.Method(http.MethodGet, "/health/ready", readiness)
 	}
 

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"time"
@@ -84,7 +85,7 @@ func (r *DocumentRepository) Create(ctx context.Context, doc *model.Document) er
 
 // Update updates an existing document by its ID.
 func (r *DocumentRepository) Update(ctx context.Context, doc *model.Document) error {
-	_, err := r.db.ExecContext(ctx,
+	result, err := r.db.ExecContext(ctx,
 		`UPDATE documents SET
 			title = $1, description = $2, file_type = $3, file_path = $4,
 			file_size = $5, mime_type = $6, url = $7, content = $8,
@@ -101,15 +102,23 @@ func (r *DocumentRepository) Update(ctx context.Context, doc *model.Document) er
 	if err != nil {
 		return fmt.Errorf("updating document %d: %w", doc.ID, err)
 	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
 	return nil
 }
 
 // SoftDelete sets deleted_at on a document.
 func (r *DocumentRepository) SoftDelete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx,
+	result, err := r.db.ExecContext(ctx,
 		`UPDATE documents SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, id)
 	if err != nil {
 		return fmt.Errorf("soft deleting document %d: %w", id, err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -278,10 +287,14 @@ func (r *DocumentRepository) FindByUUIDIncludingDeleted(ctx context.Context, uui
 
 // Restore clears the deleted_at timestamp on a soft-deleted document.
 func (r *DocumentRepository) Restore(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx,
+	result, err := r.db.ExecContext(ctx,
 		`UPDATE documents SET deleted_at = NULL, updated_at = NOW() WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("restoring document %d: %w", id, err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
 	}
 	return nil
 }
