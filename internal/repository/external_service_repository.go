@@ -155,10 +155,10 @@ func (r *ExternalServiceRepository) Delete(ctx context.Context, id int64) error 
 	return nil
 }
 
-// Count returns the total number of non-deleted external services.
+// Count returns the total number of external services.
 func (r *ExternalServiceRepository) Count(ctx context.Context) (int, error) {
 	var count int
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM external_services WHERE deleted_at IS NULL`).Scan(&count)
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM external_services`).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("counting external services: %w", err)
 	}

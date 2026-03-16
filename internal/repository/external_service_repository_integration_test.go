@@ -533,3 +533,130 @@ func TestExternalServiceRepository_UpdateHealthStatus(t *testing.T) {
 		assert.Equal(t, int64(30), found.LastLatencyMS.Int64)
 	})
 }
+
+func TestExternalServiceRepository_Count(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewExternalServiceRepository(testDB, discardLogger())
+
+	t.Run("empty table", func(t *testing.T) {
+		count, err := repo.Count(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 0, count)
+	})
+
+	// Create 3 services.
+	svc1 := &model.ExternalService{
+		UUID:      testUUID("count-001"),
+		Name:      "Count Service One",
+		Slug:      "count-service-one",
+		Type:      "confluence",
+		BaseURL:   "https://c1.example.com",
+		Priority:  1,
+		Status:    "unknown",
+		IsEnabled: true,
+	}
+	svc2 := &model.ExternalService{
+		UUID:      testUUID("count-002"),
+		Name:      "Count Service Two",
+		Slug:      "count-service-two",
+		Type:      "git",
+		BaseURL:   "https://g1.example.com",
+		Priority:  2,
+		Status:    "unknown",
+		IsEnabled: true,
+	}
+	svc3 := &model.ExternalService{
+		UUID:      testUUID("count-003"),
+		Name:      "Count Service Three",
+		Slug:      "count-service-three",
+		Type:      "kiwix",
+		BaseURL:   "https://k1.example.com",
+		Priority:  3,
+		Status:    "unknown",
+		IsEnabled: true,
+	}
+
+	for _, svc := range []*model.ExternalService{svc1, svc2, svc3} {
+		require.NoError(t, repo.Create(ctx, svc))
+	}
+
+	count, err := repo.Count(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 3, count)
+
+	// Delete one and verify count drops.
+	require.NoError(t, repo.Delete(ctx, svc1.ID))
+
+	count, err = repo.Count(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 2, count)
+}
+
+func TestExternalServiceRepository_ReorderPriorities(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewExternalServiceRepository(testDB, discardLogger())
+
+	// Create 3 services with default priority 0.
+	svc1 := &model.ExternalService{
+		UUID:      testUUID("reorder-001"),
+		Name:      "Reorder One",
+		Slug:      "reorder-one",
+		Type:      "confluence",
+		BaseURL:   "https://r1.example.com",
+		Priority:  0,
+		Status:    "unknown",
+		IsEnabled: true,
+	}
+	svc2 := &model.ExternalService{
+		UUID:      testUUID("reorder-002"),
+		Name:      "Reorder Two",
+		Slug:      "reorder-two",
+		Type:      "git",
+		BaseURL:   "https://r2.example.com",
+		Priority:  0,
+		Status:    "unknown",
+		IsEnabled: true,
+	}
+	svc3 := &model.ExternalService{
+		UUID:      testUUID("reorder-003"),
+		Name:      "Reorder Three",
+		Slug:      "reorder-three",
+		Type:      "kiwix",
+		BaseURL:   "https://r3.example.com",
+		Priority:  0,
+		Status:    "unknown",
+		IsEnabled: true,
+	}
+
+	for _, svc := range []*model.ExternalService{svc1, svc2, svc3} {
+		require.NoError(t, repo.Create(ctx, svc))
+	}
+
+	// Reorder: svc3 first, svc1 second, svc2 third.
+	err := repo.ReorderPriorities(ctx, []int64{svc3.ID, svc1.ID, svc2.ID})
+	require.NoError(t, err)
+
+	// Verify priorities via direct SQL.
+	var priority int
+	err = testDB.QueryRowContext(ctx,
+		`SELECT priority FROM external_services WHERE id = $1`, svc3.ID).Scan(&priority)
+	require.NoError(t, err)
+	assert.Equal(t, 0, priority, "svc3 should have priority 0")
+
+	err = testDB.QueryRowContext(ctx,
+		`SELECT priority FROM external_services WHERE id = $1`, svc1.ID).Scan(&priority)
+	require.NoError(t, err)
+	assert.Equal(t, 1, priority, "svc1 should have priority 1")
+
+	err = testDB.QueryRowContext(ctx,
+		`SELECT priority FROM external_services WHERE id = $1`, svc2.ID).Scan(&priority)
+	require.NoError(t, err)
+	assert.Equal(t, 2, priority, "svc2 should have priority 2")
+
+	t.Run("empty slice", func(t *testing.T) {
+		err := repo.ReorderPriorities(ctx, []int64{})
+		require.NoError(t, err)
+	})
+}

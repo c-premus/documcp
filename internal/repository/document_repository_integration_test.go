@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"testing"
+	"time"
 
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/testutil"
@@ -1106,6 +1107,299 @@ func TestDocumentRepository_FindByStatus(t *testing.T) {
 		}
 		if len(docs) != 0 {
 			t.Errorf("len(docs) = %d, want 0", len(docs))
+		}
+	})
+}
+
+func TestDocumentRepository_FindByUUIDIncludingDeleted(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewDocumentRepository(testDB, discardLogger())
+
+	// Create a document and soft-delete it.
+	doc := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("incl-deleted-001")),
+		testutil.WithDocumentTitle("Soft Deleted Doc"),
+	)
+	if err := repo.Create(ctx, doc); err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	if err := repo.SoftDelete(ctx, doc.ID); err != nil {
+		t.Fatalf("SoftDelete() error: %v", err)
+	}
+
+	t.Run("finds soft-deleted document", func(t *testing.T) {
+		found, err := repo.FindByUUIDIncludingDeleted(ctx, testUUID("incl-deleted-001"))
+		if err != nil {
+			t.Fatalf("FindByUUIDIncludingDeleted() error: %v", err)
+		}
+		if !found.DeletedAt.Valid {
+			t.Error("FindByUUIDIncludingDeleted() DeletedAt.Valid = false, want true")
+		}
+	})
+
+	t.Run("finds active document", func(t *testing.T) {
+		activeDoc := testutil.NewDocument(
+			testutil.WithDocumentID(0),
+			testutil.WithDocumentUUID(testUUID("incl-deleted-002")),
+			testutil.WithDocumentTitle("Active Doc"),
+		)
+		if err := repo.Create(ctx, activeDoc); err != nil {
+			t.Fatalf("Create() error: %v", err)
+		}
+
+		found, err := repo.FindByUUIDIncludingDeleted(ctx, testUUID("incl-deleted-002"))
+		if err != nil {
+			t.Fatalf("FindByUUIDIncludingDeleted() error: %v", err)
+		}
+		if found.DeletedAt.Valid {
+			t.Error("FindByUUIDIncludingDeleted() DeletedAt.Valid = true, want false")
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		_, err := repo.FindByUUIDIncludingDeleted(ctx, testUUID("incl-deleted-nonexistent"))
+		if err == nil {
+			t.Fatal("FindByUUIDIncludingDeleted() expected error for nonexistent UUID, got nil")
+		}
+	})
+}
+
+func TestDocumentRepository_Restore(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewDocumentRepository(testDB, discardLogger())
+
+	// Create a document and soft-delete it.
+	doc := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("restore-001")),
+		testutil.WithDocumentTitle("Restorable Doc"),
+	)
+	if err := repo.Create(ctx, doc); err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	if err := repo.SoftDelete(ctx, doc.ID); err != nil {
+		t.Fatalf("SoftDelete() error: %v", err)
+	}
+
+	// Confirm FindByUUID fails while soft-deleted.
+	_, err := repo.FindByUUID(ctx, testUUID("restore-001"))
+	if err == nil {
+		t.Fatal("FindByUUID() expected error for soft-deleted doc, got nil")
+	}
+
+	// Restore the document.
+	if err := repo.Restore(ctx, doc.ID); err != nil {
+		t.Fatalf("Restore() error: %v", err)
+	}
+
+	// FindByUUID should now succeed.
+	found, err := repo.FindByUUID(ctx, testUUID("restore-001"))
+	if err != nil {
+		t.Fatalf("FindByUUID() after Restore error: %v", err)
+	}
+	if found.DeletedAt.Valid {
+		t.Error("DeletedAt.Valid = true after Restore, want false")
+	}
+
+	t.Run("restore already-active doc is no-op", func(t *testing.T) {
+		if err := repo.Restore(ctx, doc.ID); err != nil {
+			t.Fatalf("Restore() on active doc error: %v", err)
+		}
+
+		found, err := repo.FindByUUID(ctx, testUUID("restore-001"))
+		if err != nil {
+			t.Fatalf("FindByUUID() after second Restore error: %v", err)
+		}
+		if found.DeletedAt.Valid {
+			t.Error("DeletedAt.Valid = true after second Restore, want false")
+		}
+	})
+}
+
+func TestDocumentRepository_PurgeSingle(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewDocumentRepository(testDB, discardLogger())
+
+	// Create a document with tags and a version.
+	doc := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("purge-single-001")),
+		testutil.WithDocumentTitle("Purgeable Doc"),
+		testutil.WithDocumentFilePath("/tmp/purge-single.pdf"),
+	)
+	if err := repo.Create(ctx, doc); err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	if err := repo.ReplaceTags(ctx, doc.ID, []string{"tag-a", "tag-b"}); err != nil {
+		t.Fatalf("ReplaceTags() error: %v", err)
+	}
+
+	ver := &model.DocumentVersion{
+		DocumentID: doc.ID,
+		Version:    1,
+		FilePath:   "/tmp/v1/purge-single.pdf",
+		Content:    sql.NullString{String: "version 1", Valid: true},
+	}
+	if err := repo.CreateVersion(ctx, ver); err != nil {
+		t.Fatalf("CreateVersion() error: %v", err)
+	}
+
+	// Soft-delete before purging.
+	if err := repo.SoftDelete(ctx, doc.ID); err != nil {
+		t.Fatalf("SoftDelete() error: %v", err)
+	}
+
+	// Purge the document.
+	filePath, err := repo.PurgeSingle(ctx, doc.ID)
+	if err != nil {
+		t.Fatalf("PurgeSingle() error: %v", err)
+	}
+	if filePath != "/tmp/purge-single.pdf" {
+		t.Errorf("PurgeSingle() filePath = %q, want %q", filePath, "/tmp/purge-single.pdf")
+	}
+
+	// Verify document is gone.
+	var docCount int
+	err = testDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM documents WHERE id = $1`, doc.ID).Scan(&docCount)
+	if err != nil {
+		t.Fatalf("counting purged document: %v", err)
+	}
+	if docCount != 0 {
+		t.Errorf("document count after purge = %d, want 0", docCount)
+	}
+
+	// Verify tags are gone.
+	var tagCount int
+	err = testDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM document_tags WHERE document_id = $1`, doc.ID).Scan(&tagCount)
+	if err != nil {
+		t.Fatalf("counting purged tags: %v", err)
+	}
+	if tagCount != 0 {
+		t.Errorf("tag count after purge = %d, want 0", tagCount)
+	}
+
+	// Verify versions are gone.
+	var versionCount int
+	err = testDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM document_versions WHERE document_id = $1`, doc.ID).Scan(&versionCount)
+	if err != nil {
+		t.Fatalf("counting purged versions: %v", err)
+	}
+	if versionCount != 0 {
+		t.Errorf("version count after purge = %d, want 0", versionCount)
+	}
+}
+
+func TestDocumentRepository_ListDeleted(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewDocumentRepository(testDB, discardLogger())
+
+	// Create 4 docs: 2 active, 2 soft-deleted.
+	active1 := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("list-del-active-001")),
+		testutil.WithDocumentTitle("Active One"),
+	)
+	active2 := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("list-del-active-002")),
+		testutil.WithDocumentTitle("Active Two"),
+	)
+	deleted1 := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("list-del-deleted-001")),
+		testutil.WithDocumentTitle("Deleted One"),
+	)
+	deleted2 := testutil.NewDocument(
+		testutil.WithDocumentID(0),
+		testutil.WithDocumentUUID(testUUID("list-del-deleted-002")),
+		testutil.WithDocumentTitle("Deleted Two"),
+	)
+
+	for _, doc := range []*model.Document{active1, active2, deleted1, deleted2} {
+		if err := repo.Create(ctx, doc); err != nil {
+			t.Fatalf("Create(%s) error: %v", doc.Title, err)
+		}
+	}
+
+	if err := repo.SoftDelete(ctx, deleted1.ID); err != nil {
+		t.Fatalf("SoftDelete(deleted1) error: %v", err)
+	}
+	if err := repo.SoftDelete(ctx, deleted2.ID); err != nil {
+		t.Fatalf("SoftDelete(deleted2) error: %v", err)
+	}
+
+	t.Run("returns only soft-deleted", func(t *testing.T) {
+		docs, total, err := repo.ListDeleted(ctx, 10, 0)
+		if err != nil {
+			t.Fatalf("ListDeleted() error: %v", err)
+		}
+		if len(docs) != 2 {
+			t.Errorf("ListDeleted() len = %d, want 2", len(docs))
+		}
+		if total != 2 {
+			t.Errorf("ListDeleted() total = %d, want 2", total)
+		}
+	})
+
+	t.Run("pagination", func(t *testing.T) {
+		docs, total, err := repo.ListDeleted(ctx, 1, 0)
+		if err != nil {
+			t.Fatalf("ListDeleted(1,0) error: %v", err)
+		}
+		if len(docs) != 1 {
+			t.Errorf("ListDeleted(1,0) len = %d, want 1", len(docs))
+		}
+		if total != 2 {
+			t.Errorf("ListDeleted(1,0) total = %d, want 2", total)
+		}
+
+		docs2, _, err := repo.ListDeleted(ctx, 1, 1)
+		if err != nil {
+			t.Fatalf("ListDeleted(1,1) error: %v", err)
+		}
+		if len(docs2) != 1 {
+			t.Errorf("ListDeleted(1,1) len = %d, want 1", len(docs2))
+		}
+	})
+
+	t.Run("empty when no deleted", func(t *testing.T) {
+		truncateAll(t)
+
+		for _, doc := range []*model.Document{
+			testutil.NewDocument(
+				testutil.WithDocumentID(0),
+				testutil.WithDocumentUUID(testUUID("list-del-none-001")),
+				testutil.WithDocumentTitle("Still Active One"),
+			),
+			testutil.NewDocument(
+				testutil.WithDocumentID(0),
+				testutil.WithDocumentUUID(testUUID("list-del-none-002")),
+				testutil.WithDocumentTitle("Still Active Two"),
+			),
+		} {
+			if err := repo.Create(ctx, doc); err != nil {
+				t.Fatalf("Create(%s) error: %v", doc.Title, err)
+			}
+		}
+
+		docs, total, err := repo.ListDeleted(ctx, 10, 0)
+		if err != nil {
+			t.Fatalf("ListDeleted() error: %v", err)
+		}
+		if len(docs) != 0 {
+			t.Errorf("ListDeleted() len = %d, want 0", len(docs))
+		}
+		if total != 0 {
+			t.Errorf("ListDeleted() total = %d, want 0", total)
 		}
 	})
 }
