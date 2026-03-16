@@ -119,8 +119,7 @@ func RequireAdmin(next http.Handler) http.Handler {
 }
 
 // RequireScope returns middleware that checks the authenticated token has the required scope.
-// Scopes are space-delimited per RFC 6749. If the token has no scope set (empty string),
-// access is allowed for backward compatibility.
+// Scopes are space-delimited per RFC 6749. Tokens with no scope or empty scope are rejected.
 // Must be used after BearerToken middleware.
 func RequireScope(scope string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -131,11 +130,9 @@ func RequireScope(scope string) func(http.Handler) http.Handler {
 				return
 			}
 
-			// If token has no scope set, allow access (backward compatible).
-			tokenScope := token.Scope.String
-			if !token.Scope.Valid || tokenScope == "" {
-				next.ServeHTTP(w, r)
-				return
+			tokenScope := ""
+			if token.Scope.Valid {
+				tokenScope = token.Scope.String
 			}
 
 			// Check if the required scope is present (space-delimited).

@@ -44,7 +44,7 @@ type documentRepo interface {
 	Restore(ctx context.Context, id int64) error
 	PurgeSingle(ctx context.Context, id int64) (string, error)
 	PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
-	ListDeleted(ctx context.Context, limit, offset int) ([]model.Document, int, error)
+	ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
 }
 
 // DocumentHandler handles REST API endpoints for documents.
@@ -100,6 +100,12 @@ func (h *DocumentHandler) List(w http.ResponseWriter, r *http.Request) {
 		OrderDir: r.URL.Query().Get("order"),
 	}
 
+	// Non-admin users can only see their own documents and public documents.
+	user, _ := authmiddleware.UserFromContext(r.Context())
+	if user != nil && !user.IsAdmin {
+		params.OwnerOrPublic = &user.ID
+	}
+
 	result, err := h.repo.List(r.Context(), params)
 	if err != nil {
 		h.logger.Error("listing documents", "error", err)
@@ -140,6 +146,15 @@ func (h *DocumentHandler) Show(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("finding document", "uuid", docUUID, "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to find document")
 		return
+	}
+
+	// Non-admin users can only see their own documents or public documents.
+	user, _ := authmiddleware.UserFromContext(r.Context())
+	if user != nil && !user.IsAdmin {
+		if !doc.IsPublic && (!doc.UserID.Valid || doc.UserID.Int64 != user.ID) {
+			errorResponse(w, http.StatusNotFound, "document not found")
+			return
+		}
 	}
 
 	tags, _ := h.repo.TagsForDocument(r.Context(), doc.ID)
@@ -191,6 +206,11 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		Reader:      file,
 		IsPublic:    isPublic,
 		Tags:        tags,
+	}
+
+	// Set the owner from the authenticated user context.
+	if uploadUser, ok := authmiddleware.UserFromContext(r.Context()); ok {
+		params.UserID = &uploadUser.ID
 	}
 
 	doc, err := h.pipeline.Upload(r.Context(), params)
@@ -645,7 +665,13 @@ func (h *DocumentHandler) ListDeleted(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 
-	docs, total, err := h.repo.ListDeleted(r.Context(), limit, offset)
+	// Non-admin users can only see their own deleted documents.
+	var userID *int64
+	if user, _ := authmiddleware.UserFromContext(r.Context()); user != nil && !user.IsAdmin {
+		userID = &user.ID
+	}
+
+	docs, total, err := h.repo.ListDeleted(r.Context(), limit, offset, userID)
 	if err != nil {
 		h.logger.Error("listing deleted documents", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to list deleted documents")

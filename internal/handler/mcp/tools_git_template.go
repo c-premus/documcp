@@ -402,7 +402,7 @@ func (h *Handler) handleSearchGitTemplates(
 	var filters []string
 	filters = append(filters, "__soft_deleted = false")
 	if input.Category != "" {
-		filters = append(filters, fmt.Sprintf(`category = "%s"`, input.Category))
+		filters = append(filters, fmt.Sprintf(`category = "%s"`, sanitizeFilterValue(input.Category)))
 	}
 
 	resp, err := h.searcher.Search(ctx, search.SearchParams{

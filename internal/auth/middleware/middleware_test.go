@@ -788,7 +788,7 @@ func TestRequireScope(t *testing.T) {
 		}
 	})
 
-	t.Run("allows token with null scope (backward compat)", func(t *testing.T) {
+	t.Run("rejects token with null scope", func(t *testing.T) {
 		t.Parallel()
 
 		token := &model.OAuthAccessToken{
@@ -804,12 +804,15 @@ func TestRequireScope(t *testing.T) {
 		handler := RequireScope("mcp:access")(okHandler())
 		handler.ServeHTTP(rr, req)
 
-		if rr.Code != http.StatusOK {
-			t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusForbidden)
+		}
+		if wwwAuth := rr.Header().Get("WWW-Authenticate"); !strings.Contains(wwwAuth, "insufficient_scope") {
+			t.Errorf("WWW-Authenticate = %q, want it to contain insufficient_scope", wwwAuth)
 		}
 	})
 
-	t.Run("allows token with empty scope string", func(t *testing.T) {
+	t.Run("rejects token with empty scope string", func(t *testing.T) {
 		t.Parallel()
 
 		token := &model.OAuthAccessToken{
@@ -825,8 +828,11 @@ func TestRequireScope(t *testing.T) {
 		handler := RequireScope("mcp:access")(okHandler())
 		handler.ServeHTTP(rr, req)
 
-		if rr.Code != http.StatusOK {
-			t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusForbidden)
+		}
+		if wwwAuth := rr.Header().Get("WWW-Authenticate"); !strings.Contains(wwwAuth, "insufficient_scope") {
+			t.Errorf("WWW-Authenticate = %q, want it to contain insufficient_scope", wwwAuth)
 		}
 	})
 

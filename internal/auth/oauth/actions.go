@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
+	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
 	"git.999.haus/chris/DocuMCP-go/internal/config"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 )
@@ -132,7 +133,10 @@ func (s *Service) RegisterClient(ctx context.Context, params RegisterClientParam
 		params.TokenEndpointAuthMethod = "none"
 	}
 	if params.Scope == "" {
-		params.Scope = "mcp:access"
+		params.Scope = authscope.DefaultScopes()
+	}
+	if invalid := authscope.ValidateAll(params.Scope); len(invalid) > 0 {
+		return nil, fmt.Errorf("invalid scopes: %s", strings.Join(invalid, ", "))
 	}
 
 	clientID := uuid.New().String()
@@ -214,6 +218,31 @@ type GenerateAuthorizationCodeParams struct {
 
 // GenerateAuthorizationCode creates a new authorization code.
 func (s *Service) GenerateAuthorizationCode(ctx context.Context, params GenerateAuthorizationCodeParams) (string, error) {
+	// Validate requested scopes are known
+	if params.Scope != "" {
+		if invalid := authscope.ValidateAll(params.Scope); len(invalid) > 0 {
+			return "", fmt.Errorf("invalid scopes: %s", strings.Join(invalid, ", "))
+		}
+	}
+
+	// Verify requested scope is a subset of the client's allowed scope
+	if params.Scope != "" {
+		client, err := s.repo.FindClientByID(ctx, params.ClientID)
+		if err != nil {
+			return "", fmt.Errorf("looking up client: %w", err)
+		}
+		if client == nil {
+			return "", fmt.Errorf("client not found")
+		}
+		clientScope := ""
+		if client.Scope.Valid {
+			clientScope = client.Scope.String
+		}
+		if clientScope != "" && !authscope.IsSubset(params.Scope, clientScope) {
+			return "", fmt.Errorf("requested scope exceeds client's allowed scope")
+		}
+	}
+
 	token, err := GenerateToken()
 	if err != nil {
 		return "", fmt.Errorf("generating authorization code: %w", err)
@@ -330,6 +359,18 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 	if authCode.Scope.Valid {
 		scope = authCode.Scope.String
 	}
+
+	// Defense-in-depth: validate scope against client's allowed scope
+	if scope != "" {
+		clientScope := ""
+		if client.Scope.Valid {
+			clientScope = client.Scope.String
+		}
+		if clientScope != "" && !authscope.IsSubset(scope, clientScope) {
+			return nil, fmt.Errorf("authorization code scope exceeds client's allowed scope")
+		}
+	}
+
 	return s.issueTokenPair(ctx, client.ID, authCode.UserID, scope)
 }
 
@@ -396,7 +437,7 @@ func (s *Service) RefreshAccessToken(ctx context.Context, params RefreshTokenPar
 	}
 	scope := originalScope
 	if params.Scope != "" {
-		if !isScopeSubset(params.Scope, originalScope) {
+		if !authscope.IsSubset(params.Scope, originalScope) {
 			return nil, fmt.Errorf("requested scope exceeds original grant")
 		}
 		scope = params.Scope
@@ -508,6 +549,21 @@ func (s *Service) GenerateDeviceCode(ctx context.Context, params DeviceAuthoriza
 	}
 	if !slices.Contains(grantTypes, "urn:ietf:params:oauth:grant-type:device_code") {
 		return nil, fmt.Errorf("client does not support device_code grant type")
+	}
+
+	// Validate requested scopes
+	if params.Scope != "" {
+		if invalid := authscope.ValidateAll(params.Scope); len(invalid) > 0 {
+			return nil, fmt.Errorf("invalid scopes: %s", strings.Join(invalid, ", "))
+		}
+		// Verify requested scope is a subset of client's allowed scope
+		clientScope := ""
+		if client.Scope.Valid {
+			clientScope = client.Scope.String
+		}
+		if clientScope != "" && !authscope.IsSubset(params.Scope, clientScope) {
+			return nil, fmt.Errorf("requested scope exceeds client's allowed scope")
+		}
 	}
 
 	// Generate device code token
@@ -708,22 +764,6 @@ func ValidateState(state string) bool {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-// isScopeSubset checks that every scope in requested is also present in original.
-// Scopes are space-delimited strings per RFC 6749.
-func isScopeSubset(requested, original string) bool {
-	originalSet := make(map[string]bool)
-	for _, s := range strings.Split(original, " ") {
-		if s != "" {
-			originalSet[s] = true
-		}
-	}
-	for _, s := range strings.Split(requested, " ") {
-		if s != "" && !originalSet[s] {
-			return false
-		}
-	}
-	return true
-}
 
 // verifyClientAuth checks client secret for confidential clients.
 func (s *Service) verifyClientAuth(client *model.OAuthClient, secret string) error {
@@ -741,6 +781,13 @@ func (s *Service) verifyClientAuth(client *model.OAuthClient, secret string) err
 
 // issueTokenPair creates a new access token and refresh token pair.
 func (s *Service) issueTokenPair(ctx context.Context, clientID int64, userID sql.NullInt64, scope string) (*TokenResult, error) {
+	// Final scope validation gate
+	if scope != "" {
+		if invalid := authscope.ValidateAll(scope); len(invalid) > 0 {
+			return nil, fmt.Errorf("invalid scopes in token: %s", strings.Join(invalid, ", "))
+		}
+	}
+
 	// Generate access token
 	accessTokenPair, err := GenerateToken()
 	if err != nil {

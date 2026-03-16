@@ -10,15 +10,16 @@ import (
 
 // DocumentListParams holds filters and pagination for listing documents.
 type DocumentListParams struct {
-	FileType string
-	Status   string
-	UserID   *int64
-	IsPublic *bool
-	Query    string // simple ILIKE search on title
-	Limit    int
-	Offset   int
-	OrderBy  string // "created_at", "updated_at", "title"
-	OrderDir string // "asc" or "desc"
+	FileType      string
+	Status        string
+	UserID        *int64
+	IsPublic      *bool
+	OwnerOrPublic *int64 // If set, filter: (user_id = $N OR is_public = true)
+	Query         string // simple ILIKE search on title
+	Limit         int
+	Offset        int
+	OrderBy       string // "created_at", "updated_at", "title"
+	OrderDir      string // "asc" or "desc"
 }
 
 // DocumentListResult holds a paginated list of documents.
@@ -43,6 +44,11 @@ func (r *DocumentRepository) List(ctx context.Context, params DocumentListParams
 	if params.Status != "" {
 		conditions = append(conditions, fmt.Sprintf("status = $%d", argIdx))
 		args = append(args, params.Status)
+		argIdx++
+	}
+	if params.OwnerOrPublic != nil {
+		conditions = append(conditions, fmt.Sprintf("(user_id = $%d OR is_public = true)", argIdx))
+		args = append(args, *params.OwnerOrPublic)
 		argIdx++
 	}
 	if params.UserID != nil {

@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
 	"git.999.haus/chris/DocuMCP-go/internal/config"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 )
@@ -303,7 +304,7 @@ func TestRegisterClient(t *testing.T) {
 		assert.Equal(t, []string{"authorization_code"}, result.GrantTypes, "default grant_types")
 		assert.Equal(t, []string{"code"}, result.ResponseTypes, "default response_types")
 		assert.Equal(t, "none", result.TokenEndpointAuthMethod, "default auth method")
-		assert.Equal(t, "mcp:access", result.Scope, "default scope")
+		assert.Equal(t, authscope.DefaultScopes(), result.Scope, "default scope")
 		assert.Empty(t, result.ClientSecret, "public client has no secret")
 		assert.True(t, result.ClientIDIssuedAt > 0)
 
@@ -355,13 +356,13 @@ func TestRegisterClient(t *testing.T) {
 			RedirectURIs:  []string{"https://example.com/cb"},
 			GrantTypes:    []string{"authorization_code", "refresh_token"},
 			ResponseTypes: []string{"code", "token"},
-			Scope:         "read write",
+			Scope:         "documents:read documents:write",
 		})
 
 		require.NoError(t, err)
 		assert.Equal(t, []string{"authorization_code", "refresh_token"}, result.GrantTypes)
 		assert.Equal(t, []string{"code", "token"}, result.ResponseTypes)
-		assert.Equal(t, "read write", result.Scope)
+		assert.Equal(t, "documents:read documents:write", result.Scope)
 	})
 
 	t.Run("database error propagates", func(t *testing.T) {
@@ -435,6 +436,45 @@ func TestRegisterClient(t *testing.T) {
 		require.NotNil(t, capturedClient)
 		assert.Equal(t, "null", capturedClient.RedirectURIs)
 	})
+
+	t.Run("invalid scopes returns error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockOAuthRepo{}
+		svc := testService(repo)
+
+		_, err := svc.RegisterClient(context.Background(), RegisterClientParams{
+			ClientName:   "Bad Scopes App",
+			RedirectURIs: []string{"http://localhost/cb"},
+			Scope:        "mcp:access bogus:scope",
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid scopes")
+		assert.Contains(t, err.Error(), "bogus:scope")
+	})
+
+	t.Run("valid custom scopes succeeds", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockOAuthRepo{
+			CreateClientFunc: func(_ context.Context, client *model.OAuthClient) error {
+				client.ID = 6
+				client.CreatedAt = sql.NullTime{Time: time.Now(), Valid: true}
+				return nil
+			},
+		}
+		svc := testService(repo)
+
+		result, err := svc.RegisterClient(context.Background(), RegisterClientParams{
+			ClientName:   "Valid Scopes App",
+			RedirectURIs: []string{"http://localhost/cb"},
+			Scope:        "mcp:access documents:read documents:write",
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, "mcp:access documents:read documents:write", result.Scope)
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -449,6 +489,12 @@ func TestGenerateAuthorizationCode(t *testing.T) {
 
 		var capturedCode *model.OAuthAuthorizationCode
 		repo := &mockOAuthRepo{
+			FindClientByIDFunc: func(_ context.Context, id int64) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:    id,
+					Scope: sql.NullString{String: authscope.DefaultScopes(), Valid: true},
+				}, nil
+			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
 				capturedCode = code
 				code.ID = 10
@@ -511,6 +557,12 @@ func TestGenerateAuthorizationCode(t *testing.T) {
 
 		var capturedCode *model.OAuthAuthorizationCode
 		repo := &mockOAuthRepo{
+			FindClientByIDFunc: func(_ context.Context, id int64) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:    id,
+					Scope: sql.NullString{String: "documents:read documents:write", Valid: true},
+				}, nil
+			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
 				capturedCode = code
 				code.ID = 12
@@ -523,13 +575,13 @@ func TestGenerateAuthorizationCode(t *testing.T) {
 			ClientID:    1,
 			UserID:      42,
 			RedirectURI: "http://localhost/callback",
-			Scope:       "read write",
+			Scope:       "documents:read documents:write",
 		})
 
 		require.NoError(t, err)
 		require.NotNil(t, capturedCode)
 		assert.True(t, capturedCode.Scope.Valid)
-		assert.Equal(t, "read write", capturedCode.Scope.String)
+		assert.Equal(t, "documents:read documents:write", capturedCode.Scope.String)
 	})
 
 	t.Run("empty scope sets null", func(t *testing.T) {
@@ -603,6 +655,76 @@ func TestGenerateAuthorizationCode(t *testing.T) {
 		expectedExpiry := before.Add(10 * time.Minute)
 		assert.WithinDuration(t, expectedExpiry, capturedCode.ExpiresAt, 2*time.Second)
 		assert.False(t, capturedCode.Revoked)
+	})
+
+	t.Run("invalid scope returns error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockOAuthRepo{}
+		svc := testService(repo)
+
+		_, err := svc.GenerateAuthorizationCode(context.Background(), GenerateAuthorizationCodeParams{
+			ClientID:    1,
+			UserID:      42,
+			RedirectURI: "http://localhost/callback",
+			Scope:       "mcp:access bogus:scope",
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid scopes")
+		assert.Contains(t, err.Error(), "bogus:scope")
+	})
+
+	t.Run("scope exceeding client scope returns error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockOAuthRepo{
+			FindClientByIDFunc: func(_ context.Context, id int64) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:    id,
+					Scope: sql.NullString{String: "documents:read", Valid: true},
+				}, nil
+			},
+		}
+		svc := testService(repo)
+
+		_, err := svc.GenerateAuthorizationCode(context.Background(), GenerateAuthorizationCodeParams{
+			ClientID:    1,
+			UserID:      42,
+			RedirectURI: "http://localhost/callback",
+			Scope:       "documents:read documents:write",
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "requested scope exceeds client's allowed scope")
+	})
+
+	t.Run("valid scope subset of client scope succeeds", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockOAuthRepo{
+			FindClientByIDFunc: func(_ context.Context, id int64) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:    id,
+					Scope: sql.NullString{String: "mcp:access documents:read documents:write", Valid: true},
+				}, nil
+			},
+			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
+				code.ID = 15
+				return nil
+			},
+		}
+		svc := testService(repo)
+
+		plaintext, err := svc.GenerateAuthorizationCode(context.Background(), GenerateAuthorizationCodeParams{
+			ClientID:    1,
+			UserID:      42,
+			RedirectURI: "http://localhost/callback",
+			Scope:       "documents:read",
+		})
+
+		require.NoError(t, err)
+		assert.NotEmpty(t, plaintext)
 	})
 }
 
@@ -1029,6 +1151,38 @@ func TestExchangeAuthorizationCode(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid authorization code")
 	})
+
+	t.Run("auth code scope exceeding client scope returns error", func(t *testing.T) {
+		t.Parallel()
+
+		codePlaintext, codeHash, client, authCode := setupValidExchange(t)
+		// Client only allows documents:read, but auth code has broader scope
+		client.Scope = sql.NullString{String: "documents:read", Valid: true}
+		authCode.Scope = sql.NullString{String: "documents:read documents:write", Valid: true}
+
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return client, nil
+			},
+			FindAuthorizationCodeByCodeFunc: func(_ context.Context, hash string) (*model.OAuthAuthorizationCode, error) {
+				if hash == codeHash {
+					return authCode, nil
+				}
+				return nil, sql.ErrNoRows
+			},
+			RevokeAuthorizationCodeFunc: func(_ context.Context, _ int64) error { return nil },
+		}
+		svc := testService(repo)
+
+		_, err := svc.ExchangeAuthorizationCode(context.Background(), ExchangeAuthorizationCodeParams{
+			Code:        codePlaintext,
+			ClientID:    testClientID,
+			RedirectURI: testRedirectURI,
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "authorization code scope exceeds client's allowed scope")
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -1052,7 +1206,7 @@ func TestRefreshAccessToken(t *testing.T) {
 			Token:    "access-hash",
 			ClientID: testClientDBID,
 			UserID:   sql.NullInt64{Int64: 42, Valid: true},
-			Scope:    sql.NullString{String: "read write", Valid: true},
+			Scope:    sql.NullString{String: "documents:read documents:write", Valid: true},
 		}
 		refreshToken = &model.OAuthRefreshToken{
 			ID:            500,
@@ -1111,7 +1265,7 @@ func TestRefreshAccessToken(t *testing.T) {
 		assert.NotEmpty(t, result.AccessToken)
 		assert.NotEmpty(t, result.RefreshToken)
 		assert.Equal(t, "Bearer", result.TokenType)
-		assert.Equal(t, "read write", result.Scope)
+		assert.Equal(t, "documents:read documents:write", result.Scope)
 		assert.True(t, oldAccessRevoked, "old access token should be revoked")
 		assert.True(t, oldRefreshRevoked, "old refresh token should be revoked")
 	})
@@ -1150,11 +1304,11 @@ func TestRefreshAccessToken(t *testing.T) {
 		result, err := svc.RefreshAccessToken(context.Background(), RefreshTokenParams{
 			RefreshToken: refreshPlaintext,
 			ClientID:     testClientID,
-			Scope:        "read",
+			Scope:        "documents:read",
 		})
 
 		require.NoError(t, err)
-		assert.Equal(t, "read", result.Scope)
+		assert.Equal(t, "documents:read", result.Scope)
 	})
 
 	t.Run("scope widening returns error", func(t *testing.T) {
@@ -1186,7 +1340,7 @@ func TestRefreshAccessToken(t *testing.T) {
 		_, err := svc.RefreshAccessToken(context.Background(), RefreshTokenParams{
 			RefreshToken: refreshPlaintext,
 			ClientID:     testClientID,
-			Scope:        "read write admin",
+			Scope:        "documents:read documents:write admin",
 		})
 
 		require.Error(t, err)
@@ -1331,8 +1485,8 @@ func TestRefreshAccessToken(t *testing.T) {
 		})
 
 		require.NoError(t, err)
-		assert.Equal(t, "read write", result.Scope)
-		assert.Equal(t, "read write", capturedScope)
+		assert.Equal(t, "documents:read documents:write", result.Scope)
+		assert.Equal(t, "documents:read documents:write", capturedScope)
 	})
 }
 
@@ -1791,6 +1945,76 @@ func TestGenerateDeviceCode(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, capturedDC)
 		assert.False(t, capturedDC.Scope.Valid)
+	})
+
+	t.Run("invalid scope returns error", func(t *testing.T) {
+		t.Parallel()
+
+		client := makeDeviceClient(testClientDBID, testClientID)
+
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return client, nil
+			},
+		}
+		svc := testService(repo)
+
+		_, err := svc.GenerateDeviceCode(context.Background(), DeviceAuthorizationParams{
+			ClientID: testClientID,
+			Scope:    "mcp:access bogus:scope",
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid scopes")
+		assert.Contains(t, err.Error(), "bogus:scope")
+	})
+
+	t.Run("scope exceeding client scope returns error", func(t *testing.T) {
+		t.Parallel()
+
+		client := makeDeviceClient(testClientDBID, testClientID)
+		client.Scope = sql.NullString{String: "mcp:access documents:read", Valid: true}
+
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return client, nil
+			},
+		}
+		svc := testService(repo)
+
+		_, err := svc.GenerateDeviceCode(context.Background(), DeviceAuthorizationParams{
+			ClientID: testClientID,
+			Scope:    "mcp:access documents:read documents:write",
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "requested scope exceeds client's allowed scope")
+	})
+
+	t.Run("valid scope subset of client scope succeeds", func(t *testing.T) {
+		t.Parallel()
+
+		client := makeDeviceClient(testClientDBID, testClientID)
+		client.Scope = sql.NullString{String: "mcp:access documents:read documents:write", Valid: true}
+
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return client, nil
+			},
+			CreateDeviceCodeFunc: func(_ context.Context, dc *model.OAuthDeviceCode) error {
+				dc.ID = 602
+				return nil
+			},
+		}
+		svc := testService(repo)
+
+		result, err := svc.GenerateDeviceCode(context.Background(), DeviceAuthorizationParams{
+			ClientID: testClientID,
+			Scope:    "mcp:access documents:read",
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
 	})
 }
 
@@ -2325,8 +2549,8 @@ func TestIsScopeSubset(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := isScopeSubset(tt.requested, tt.original)
-			assert.Equal(t, tt.want, got, "isScopeSubset(%q, %q)", tt.requested, tt.original)
+			got := authscope.IsSubset(tt.requested, tt.original)
+			assert.Equal(t, tt.want, got, "authscope.IsSubset(%q, %q)", tt.requested, tt.original)
 		})
 	}
 }
@@ -2623,5 +2847,23 @@ func TestIssueTokenPair(t *testing.T) {
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "creating refresh token")
+	})
+
+	t.Run("invalid scope returns error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockOAuthRepo{}
+		svc := testService(repo)
+
+		_, err := svc.issueTokenPair(
+			context.Background(),
+			100,
+			sql.NullInt64{Int64: 42, Valid: true},
+			"mcp:access bogus:scope",
+		)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid scopes in token")
+		assert.Contains(t, err.Error(), "bogus:scope")
 	})
 }

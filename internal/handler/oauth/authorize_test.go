@@ -492,6 +492,9 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					IsActive:                true,
 				}, nil
 			},
+			FindClientByIDFunc: func(_ context.Context, id int64) (*model.OAuthClient, error) {
+				return &model.OAuthClient{ID: id}, nil
+			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
 				code.ID = 99
 				return nil
@@ -646,6 +649,9 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					TokenEndpointAuthMethod: "none",
 					IsActive:                true,
 				}, nil
+			},
+			FindClientByIDFunc: func(_ context.Context, id int64) (*model.OAuthClient, error) {
+				return &model.OAuthClient{ID: id}, nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
 				code.ID = 99

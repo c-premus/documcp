@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
 	"git.999.haus/chris/DocuMCP-go/internal/config"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 )
@@ -350,7 +351,7 @@ func TestHandler_Register(t *testing.T) {
 		assert.Contains(t, responseTypes, "code")
 
 		assert.Equal(t, "none", result["token_endpoint_auth_method"])
-		assert.Equal(t, "mcp:access", result["scope"])
+		assert.Equal(t, authscope.DefaultScopes(), result["scope"])
 	})
 
 	t.Run("happy path with confidential client includes client_secret", func(t *testing.T) {
@@ -459,7 +460,7 @@ func TestHandler_Register(t *testing.T) {
 		}
 		h, _ := newHandlerWithRepoAndConfig(repo, cfg)
 
-		body := `{"client_name":"My App","redirect_uris":["https://example.com/cb"],"scope":"mcp:read","software_id":"my-soft-id","software_version":"1.0.0"}`
+		body := `{"client_name":"My App","redirect_uris":["https://example.com/cb"],"scope":"mcp:access documents:read","software_id":"my-soft-id","software_version":"1.0.0"}`
 		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
@@ -468,6 +469,6 @@ func TestHandler_Register(t *testing.T) {
 
 		require.Equal(t, http.StatusCreated, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
-		assert.Equal(t, "mcp:read", result["scope"])
+		assert.Equal(t, "mcp:access documents:read", result["scope"])
 	})
 }

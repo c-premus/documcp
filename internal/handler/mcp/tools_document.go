@@ -9,6 +9,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
 	"git.999.haus/chris/DocuMCP-go/internal/dto"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/search"
@@ -146,15 +147,18 @@ func (h *Handler) handleSearchDocuments(
 	// Build filter string
 	var filters []string
 	filters = append(filters, "__soft_deleted = false")
-	if input.FileType != "" {
-		sanitized := strings.ReplaceAll(input.FileType, `"`, "")
-		filters = append(filters, fmt.Sprintf(`file_type = "%s"`, sanitized))
+	if input.FileType != "" && isValidFileType(input.FileType) {
+		filters = append(filters, fmt.Sprintf(`file_type = "%s"`, sanitizeFilterValue(input.FileType)))
 	}
 	if len(input.Tags) > 0 {
 		for _, tag := range input.Tags {
-			sanitized := strings.ReplaceAll(tag, `"`, "")
-			filters = append(filters, fmt.Sprintf(`tags = "%s"`, sanitized))
+			filters = append(filters, fmt.Sprintf(`tags = "%s"`, sanitizeFilterValue(tag)))
 		}
+	}
+
+	// Non-admin users can only search their own documents and public documents.
+	if user, _ := authmiddleware.UserFromContext(ctx); user != nil && !user.IsAdmin {
+		filters = append(filters, fmt.Sprintf("(user_id = %d OR is_public = true)", user.ID))
 	}
 
 	resp, err := h.searcher.Search(ctx, search.SearchParams{
@@ -213,6 +217,13 @@ func (h *Handler) handleReadDocument(
 		return nil, readDocumentResponse{}, fmt.Errorf("finding document: %w", err)
 	}
 
+	// Non-admin users can only read their own documents or public documents.
+	if user, _ := authmiddleware.UserFromContext(ctx); user != nil && !user.IsAdmin {
+		if !doc.IsPublic && (!doc.UserID.Valid || doc.UserID.Int64 != user.ID) {
+			return nil, readDocumentResponse{}, fmt.Errorf("document not found")
+		}
+	}
+
 	tags, err := h.documentService.TagsForDocument(ctx, doc.ID)
 	if err != nil {
 		return nil, readDocumentResponse{}, fmt.Errorf("loading tags: %w", err)
@@ -236,6 +247,12 @@ func (h *Handler) handleCreateDocument(
 	_ *mcp.CallToolRequest,
 	input dto.CreateDocumentInput,
 ) (*mcp.CallToolResult, createDocumentResponse, error) {
+	// Set the owner from the authenticated user context.
+	var userID *int64
+	if user, _ := authmiddleware.UserFromContext(ctx); user != nil {
+		userID = &user.ID
+	}
+
 	doc, err := h.documentService.Create(ctx, service.CreateDocumentParams{
 		Title:       input.Title,
 		Content:     input.Content,
@@ -243,6 +260,7 @@ func (h *Handler) handleCreateDocument(
 		Description: input.Description,
 		IsPublic:    input.IsPublic,
 		Tags:        input.Tags,
+		UserID:      userID,
 	})
 	if err != nil {
 		return nil, createDocumentResponse{}, fmt.Errorf("creating document: %w", err)

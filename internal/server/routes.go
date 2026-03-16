@@ -15,6 +15,7 @@ import (
 
 	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
+	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oidc"
 	"git.999.haus/chris/DocuMCP-go/internal/handler"
 	apihandler "git.999.haus/chris/DocuMCP-go/internal/handler/api"
@@ -216,14 +217,22 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		// Document endpoints
 		if deps.DocumentHandler != nil {
 			r.Route("/documents", func(r chi.Router) {
-				// Read-only: available to all authenticated users
-				r.Get("/", deps.DocumentHandler.List)
-				r.Get("/trash", deps.DocumentHandler.ListDeleted)
-				r.Get("/{uuid}", deps.DocumentHandler.Show)
-				r.Get("/{uuid}/download", deps.DocumentHandler.Download)
-
-				// Mutating: admin-only
+				// Read-only: requires documents:read scope
 				r.Group(func(r chi.Router) {
+					if deps.OAuthService != nil {
+						r.Use(authmiddleware.RequireScope(authscope.DocumentsRead))
+					}
+					r.Get("/", deps.DocumentHandler.List)
+					r.Get("/trash", deps.DocumentHandler.ListDeleted)
+					r.Get("/{uuid}", deps.DocumentHandler.Show)
+					r.Get("/{uuid}/download", deps.DocumentHandler.Download)
+				})
+
+				// Mutating: requires documents:write scope + admin
+				r.Group(func(r chi.Router) {
+					if deps.OAuthService != nil {
+						r.Use(authmiddleware.RequireScope(authscope.DocumentsWrite))
+					}
 					r.Use(authmiddleware.RequireAdmin)
 					r.Post("/", deps.DocumentHandler.Upload)
 					r.Post("/analyze", deps.DocumentHandler.Analyze)
@@ -238,16 +247,24 @@ func (s *Server) RegisterRoutes(deps Deps) {
 
 		// Search endpoints
 		if deps.SearchHandler != nil {
-			r.Get("/search", deps.SearchHandler.Search)
-			r.Get("/search/unified", deps.SearchHandler.FederatedSearch)
-			r.Get("/search/popular", deps.SearchHandler.Popular)
-			r.Get("/search/autocomplete", deps.SearchHandler.Autocomplete)
+			r.Group(func(r chi.Router) {
+				if deps.OAuthService != nil {
+					r.Use(authmiddleware.RequireScope(authscope.SearchRead))
+				}
+				r.Get("/search", deps.SearchHandler.Search)
+				r.Get("/search/unified", deps.SearchHandler.FederatedSearch)
+				r.Get("/search/popular", deps.SearchHandler.Popular)
+				r.Get("/search/autocomplete", deps.SearchHandler.Autocomplete)
+			})
 			s.logger.Info("search API endpoints registered")
 		}
 
 		// ZIM archive endpoints
 		if deps.ZimHandler != nil {
 			r.Route("/zim/archives", func(r chi.Router) {
+				if deps.OAuthService != nil {
+					r.Use(authmiddleware.RequireScope(authscope.ZIMRead))
+				}
 				r.Get("/", deps.ZimHandler.List)
 				r.Get("/{archive}", deps.ZimHandler.Show)
 				r.Get("/{archive}/search", deps.ZimHandler.Search)
@@ -260,6 +277,9 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		// Confluence endpoints
 		if deps.ConfluenceHandler != nil {
 			r.Route("/confluence", func(r chi.Router) {
+				if deps.OAuthService != nil {
+					r.Use(authmiddleware.RequireScope(authscope.ConfluenceRead))
+				}
 				r.Get("/spaces", deps.ConfluenceHandler.ListSpaces)
 				r.Get("/spaces/{key}", deps.ConfluenceHandler.ShowSpace)
 				r.Get("/pages/search", deps.ConfluenceHandler.SearchPages)
@@ -271,16 +291,24 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		// Git template endpoints
 		if deps.GitTemplateHandler != nil {
 			r.Route("/git-templates", func(r chi.Router) {
-				// Read-only: available to all authenticated users
-				r.Get("/", deps.GitTemplateHandler.List)
-				r.Get("/search", deps.GitTemplateHandler.Search)
-				r.Get("/{uuid}", deps.GitTemplateHandler.Show)
-				r.Get("/{uuid}/structure", deps.GitTemplateHandler.Structure)
-				r.Get("/{uuid}/files/*", deps.GitTemplateHandler.ReadFile)
-				r.Get("/{uuid}/deployment-guide", deps.GitTemplateHandler.DeploymentGuide)
-
-				// Mutating: admin-only
+				// Read-only: requires templates:read scope
 				r.Group(func(r chi.Router) {
+					if deps.OAuthService != nil {
+						r.Use(authmiddleware.RequireScope(authscope.TemplatesRead))
+					}
+					r.Get("/", deps.GitTemplateHandler.List)
+					r.Get("/search", deps.GitTemplateHandler.Search)
+					r.Get("/{uuid}", deps.GitTemplateHandler.Show)
+					r.Get("/{uuid}/structure", deps.GitTemplateHandler.Structure)
+					r.Get("/{uuid}/files/*", deps.GitTemplateHandler.ReadFile)
+					r.Get("/{uuid}/deployment-guide", deps.GitTemplateHandler.DeploymentGuide)
+				})
+
+				// Mutating: requires templates:write scope + admin
+				r.Group(func(r chi.Router) {
+					if deps.OAuthService != nil {
+						r.Use(authmiddleware.RequireScope(authscope.TemplatesWrite))
+					}
 					r.Use(authmiddleware.RequireAdmin)
 					r.Post("/", deps.GitTemplateHandler.Create)
 					r.Put("/{uuid}", deps.GitTemplateHandler.Update)
@@ -295,12 +323,20 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		// External service endpoints
 		if deps.ExternalServiceHandler != nil {
 			r.Route("/external-services", func(r chi.Router) {
-				// Read-only: available to all authenticated users
-				r.Get("/", deps.ExternalServiceHandler.List)
-				r.Get("/{uuid}", deps.ExternalServiceHandler.Show)
-
-				// Mutating: admin-only
+				// Read-only: requires services:read scope
 				r.Group(func(r chi.Router) {
+					if deps.OAuthService != nil {
+						r.Use(authmiddleware.RequireScope(authscope.ServicesRead))
+					}
+					r.Get("/", deps.ExternalServiceHandler.List)
+					r.Get("/{uuid}", deps.ExternalServiceHandler.Show)
+				})
+
+				// Mutating: requires services:write scope + admin
+				r.Group(func(r chi.Router) {
+					if deps.OAuthService != nil {
+						r.Use(authmiddleware.RequireScope(authscope.ServicesWrite))
+					}
 					r.Use(authmiddleware.RequireAdmin)
 					r.Post("/", deps.ExternalServiceHandler.Create)
 					r.Put("/{uuid}", deps.ExternalServiceHandler.Update)
@@ -311,8 +347,11 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			s.logger.Info("External service API endpoints registered")
 		}
 
-		// Admin API endpoints (requires admin role)
+		// Admin API endpoints (requires admin scope + role)
 		r.Route("/admin", func(r chi.Router) {
+			if deps.OAuthService != nil {
+				r.Use(authmiddleware.RequireScope(authscope.Admin))
+			}
 			r.Use(authmiddleware.RequireAdmin)
 
 			// SSE events (admin-only: exposes queue operational data)
