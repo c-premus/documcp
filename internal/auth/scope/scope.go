@@ -7,6 +7,8 @@ import "strings"
 // Scope constants.
 const (
 	MCPAccess      = "mcp:access"
+	MCPRead        = "mcp:read"
+	MCPWrite       = "mcp:write"
 	DocumentsRead  = "documents:read"
 	DocumentsWrite = "documents:write"
 	SearchRead     = "search:read"
@@ -22,6 +24,8 @@ const (
 // All is the set of all valid scopes.
 var All = map[string]bool{
 	MCPAccess:      true,
+	MCPRead:        true,
+	MCPWrite:       true,
 	DocumentsRead:  true,
 	DocumentsWrite: true,
 	SearchRead:     true,

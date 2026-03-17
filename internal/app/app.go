@@ -470,6 +470,7 @@ func New(cfg *config.Config) (*App, error) {
 		OTELEnabled:            cfg.OTEL.Enabled,
 		CSRFKey:                csrfKey,
 		IsSecure:               cfg.App.Env == "production",
+		AppURL:                 cfg.App.URL,
 		SearchClient:           searchClient,
 		DB:                     db.DB,
 		InternalAPIToken:       cfg.App.InternalAPIToken,

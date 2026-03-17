@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -65,6 +66,7 @@ type Deps struct {
 	// Security
 	CSRFKey  []byte // 32-byte key for CSRF token generation (nil disables CSRF)
 	IsSecure bool   // true when running behind TLS (sets Secure cookie flag)
+	AppURL   string // APP_URL — used as CSRF trusted origin (e.g. "http://localhost:8080")
 
 	// Infrastructure
 	DB               *sql.DB // for readiness checks (nil disables /health/ready)
@@ -75,11 +77,12 @@ type Deps struct {
 func (s *Server) RegisterRoutes(deps Deps) {
 	r := s.router
 
-	// Built-in chi middleware
+	// Built-in chi middleware (applied to all routes)
 	r.Use(middleware.RequestID)
 	r.Use(RealIP(s.trustedProxies))
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(SecurityHeaders)
+	r.Use(RequestLogger(s.logger))
 
 	// OpenTelemetry tracing middleware
 	if deps.OTELEnabled {
@@ -92,11 +95,23 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		r.Use(observability.MetricsMiddleware(deps.Metrics))
 	}
 
-	// Application middleware
+	// MCP endpoint — no timeout (SSE streams must stay open indefinitely).
+	if deps.MCPHandler != nil {
+		r.Group(func(r chi.Router) {
+			if deps.OAuthService != nil {
+				r.Use(authmiddleware.BearerToken(deps.OAuthService))
+				r.Use(authmiddleware.RequireScope("mcp:access"))
+			}
+			r.Handle("/documcp/*", deps.MCPHandler)
+			r.Handle("/documcp", deps.MCPHandler)
+		})
+		s.logger.Info("MCP endpoint registered", "path", "/documcp")
+	}
+
+	// Global middleware for all other routes
+	r.Use(middleware.Timeout(60 * time.Second))
 	r.Use(BlockSensitiveFiles)
-	r.Use(SecurityHeaders)
 	r.Use(MaxBodySize(1 * 1024 * 1024)) // 1 MB default body limit (excludes multipart)
-	r.Use(RequestLogger(s.logger))
 
 	// Health check (liveness — cheap, no I/O)
 	health := handler.NewHealthHandler(deps.Version)
@@ -119,19 +134,6 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		s.logger.Info("Prometheus metrics endpoint registered", "path", "/metrics")
 	}
 
-	// MCP endpoint (protected by bearer token when OAuth is configured)
-	if deps.MCPHandler != nil {
-		r.Route("/documcp", func(r chi.Router) {
-			if deps.OAuthService != nil {
-				r.Use(authmiddleware.BearerToken(deps.OAuthService))
-				r.Use(authmiddleware.RequireScope("mcp:access"))
-			}
-			r.Handle("/*", deps.MCPHandler)
-			r.Handle("/", deps.MCPHandler)
-		})
-		s.logger.Info("MCP endpoint registered", "path", "/documcp")
-	}
-
 	// Well-known discovery endpoints
 	if deps.OAuthHandler != nil {
 		r.Get("/.well-known/oauth-authorization-server", deps.OAuthHandler.AuthorizationServerMetadata)
@@ -143,18 +145,31 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	// OAuth endpoints
 	if deps.OAuthHandler != nil {
 		r.Route("/oauth", func(r chi.Router) {
-			// CSRF protection for state-changing OAuth forms (consent, device approval).
-			if len(deps.CSRFKey) > 0 {
-				r.Use(csrf.Protect(
-					deps.CSRFKey,
-					csrf.Secure(deps.IsSecure),
-					csrf.Path("/oauth"),
-					csrf.RequestHeader("X-CSRF-Token"),
-				))
-			}
-			r.Get("/authorize", deps.OAuthHandler.Authorize)
-			r.Post("/authorize/approve", deps.OAuthHandler.AuthorizeApprove)
+			// Browser-rendered form endpoints need CSRF protection.
+			r.Group(func(r chi.Router) {
+				if len(deps.CSRFKey) > 0 {
+					csrfOpts := []csrf.Option{
+						csrf.Secure(deps.IsSecure),
+						csrf.Path("/oauth"),
+						csrf.RequestHeader("X-CSRF-Token"),
+					}
+					if deps.AppURL != "" {
+						// gorilla/csrf v1.7.3 compares TrustedOrigins against
+						// parsedOrigin.Host (host:port), not the full URL.
+						if parsed, err := url.Parse(deps.AppURL); err == nil && parsed.Host != "" {
+							csrfOpts = append(csrfOpts, csrf.TrustedOrigins([]string{parsed.Host}))
+						}
+					}
+					r.Use(csrf.Protect(deps.CSRFKey, csrfOpts...))
+				}
+				r.Get("/authorize", deps.OAuthHandler.Authorize)
+				r.Post("/authorize/approve", deps.OAuthHandler.AuthorizeApprove)
+				r.Get("/device", deps.OAuthHandler.DeviceVerification)
+				r.Post("/device", deps.OAuthHandler.DeviceVerificationSubmit)
+				r.Post("/device/approve", deps.OAuthHandler.DeviceApprove)
+			})
 
+			// Machine-to-machine endpoints — no CSRF (clients don't have browser cookies).
 			// Rate-limited token endpoint (30/min + 100/hr per IP)
 			r.Group(func(r chi.Router) {
 				r.Use(httprate.LimitByIP(30, time.Minute))
@@ -175,10 +190,6 @@ func (s *Server) RegisterRoutes(deps Deps) {
 				r.Use(httprate.LimitByIP(30, time.Minute))
 				r.Post("/device/code", deps.OAuthHandler.DeviceAuthorization)
 			})
-
-			r.Get("/device", deps.OAuthHandler.DeviceVerification)
-			r.Post("/device", deps.OAuthHandler.DeviceVerificationSubmit)
-			r.Post("/device/approve", deps.OAuthHandler.DeviceApprove)
 		})
 		s.logger.Info("OAuth endpoints registered")
 	}
