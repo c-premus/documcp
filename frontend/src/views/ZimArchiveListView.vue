@@ -38,7 +38,7 @@ const columns: ColumnDef<ZimArchive, unknown>[] = [
       const value = getValue<string>()
       return h(
         'span',
-        { class: 'text-indigo-600 font-medium hover:text-indigo-800' },
+        { class: 'text-indigo-600 dark:text-indigo-400 font-medium hover:text-indigo-800 dark:hover:text-indigo-300' },
         value,
       )
     },
@@ -127,7 +127,7 @@ function handleRowClick(row: ZimArchive): void {
   <div>
     <!-- Toolbar -->
     <div class="flex items-center gap-4 mb-4">
-      <h1 class="text-2xl font-bold text-gray-900">ZIM Archives</h1>
+      <h1 class="text-2xl font-bold text-text-primary">ZIM Archives</h1>
 
       <SearchInput
         v-model="search"
@@ -137,7 +137,7 @@ function handleRowClick(row: ZimArchive): void {
 
       <select
         v-model="categoryFilter"
-        class="rounded-md border border-gray-300 bg-white py-1.5 pl-3 pr-8 text-sm text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        class="rounded-md border border-border-input bg-bg-surface py-1.5 pl-3 pr-8 text-sm text-text-secondary focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
       >
         <option v-for="opt in CATEGORY_OPTIONS" :key="opt" :value="opt">
           {{ opt === 'All' ? 'All Categories' : opt }}
@@ -146,7 +146,7 @@ function handleRowClick(row: ZimArchive): void {
 
       <select
         v-model="languageFilter"
-        class="rounded-md border border-gray-300 bg-white py-1.5 pl-3 pr-8 text-sm text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        class="rounded-md border border-border-input bg-bg-surface py-1.5 pl-3 pr-8 text-sm text-text-secondary focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
       >
         <option v-for="opt in LANGUAGE_OPTIONS" :key="opt" :value="opt">
           {{ opt === 'All' ? 'All Languages' : opt.toUpperCase() }}

@@ -161,7 +161,7 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
             'span',
             {
               class:
-                'inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800',
+                'inline-flex items-center rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-xs font-medium text-blue-800 dark:text-blue-300',
             },
             gt.replace(/_/g, ' '),
           ),
@@ -207,7 +207,7 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
       if (!client.is_active) {
         return h(
           'span',
-          { class: 'text-xs text-gray-400' },
+          { class: 'text-xs text-text-disabled' },
           'Revoked',
         )
       }
@@ -215,8 +215,9 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
         'button',
         {
           type: 'button',
-          class: 'text-gray-500 hover:text-red-600',
+          class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
           title: 'Revoke client',
+          'aria-label': 'Revoke client',
           onClick: (event: MouseEvent) => {
             event.stopPropagation()
             revokeTarget.value = client
@@ -233,7 +234,7 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
   <div>
     <!-- Toolbar -->
     <div class="flex items-center gap-4 mb-4">
-      <h1 class="text-2xl font-bold text-gray-900">OAuth Clients</h1>
+      <h1 class="text-2xl font-bold text-text-primary">OAuth Clients</h1>
 
       <SearchInput
         v-model="searchQuery"

@@ -79,22 +79,22 @@ watch(
     <!-- Back link -->
     <RouterLink
       to="/documents"
-      class="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-700"
+      class="inline-flex items-center text-sm font-medium text-text-muted hover:text-text-secondary"
     >
       &larr; Documents
     </RouterLink>
 
     <!-- Loading state -->
     <div v-if="store.loading && !store.currentDocument" class="flex items-center justify-center py-20">
-      <div class="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-indigo-600" />
+      <div class="h-8 w-8 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400" />
     </div>
 
     <!-- Error state -->
-    <div v-else-if="store.error && !store.currentDocument" class="rounded-lg bg-red-50 p-6 text-center">
-      <p class="text-sm text-red-800">{{ store.error }}</p>
+    <div v-else-if="store.error && !store.currentDocument" class="rounded-lg bg-red-50 dark:bg-red-900/20 p-6 text-center">
+      <p class="text-sm text-red-800 dark:text-red-300">{{ store.error }}</p>
       <button
         type="button"
-        class="mt-4 rounded-md bg-red-100 px-3 py-2 text-sm font-medium text-red-800 hover:bg-red-200"
+        class="mt-4 rounded-md bg-red-100 dark:bg-red-900/30 px-3 py-2 text-sm font-medium text-red-800 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50"
         @click="loadDocument(uuid)"
       >
         Retry
@@ -105,27 +105,27 @@ watch(
     <template v-else-if="store.currentDocument">
       <!-- Page title with status -->
       <div class="flex items-center gap-3">
-        <h1 class="text-2xl font-bold text-gray-900">{{ store.currentDocument.title }}</h1>
+        <h1 class="text-2xl font-bold text-text-primary">{{ store.currentDocument.title }}</h1>
         <StatusBadge :status="store.currentDocument.status" />
       </div>
 
       <!-- Two-column layout -->
       <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <!-- Metadata sidebar -->
-        <div class="rounded-lg bg-white p-6 shadow-sm lg:col-span-1">
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500">Details</h2>
+        <div class="rounded-lg bg-bg-surface p-6 shadow-sm lg:col-span-1">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-text-muted">Details</h2>
           <dl class="mt-4 space-y-4">
             <!-- Description -->
             <div v-if="store.currentDocument.description">
-              <dt class="text-sm font-medium text-gray-500">Description</dt>
-              <dd class="mt-1 text-sm text-gray-900">{{ store.currentDocument.description }}</dd>
+              <dt class="text-sm font-medium text-text-muted">Description</dt>
+              <dd class="mt-1 text-sm text-text-primary">{{ store.currentDocument.description }}</dd>
             </div>
 
             <!-- File Type -->
             <div>
-              <dt class="text-sm font-medium text-gray-500">File Type</dt>
+              <dt class="text-sm font-medium text-text-muted">File Type</dt>
               <dd class="mt-1">
-                <span class="inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-medium uppercase text-gray-800">
+                <span class="inline-flex items-center rounded bg-bg-active px-2 py-0.5 text-xs font-medium uppercase text-text-primary">
                   {{ store.currentDocument.file_type }}
                 </span>
               </dd>
@@ -133,7 +133,7 @@ watch(
 
             <!-- Status -->
             <div>
-              <dt class="text-sm font-medium text-gray-500">Status</dt>
+              <dt class="text-sm font-medium text-text-muted">Status</dt>
               <dd class="mt-1">
                 <StatusBadge :status="store.currentDocument.status" />
               </dd>
@@ -141,32 +141,32 @@ watch(
 
             <!-- File Size -->
             <div>
-              <dt class="text-sm font-medium text-gray-500">File Size</dt>
-              <dd class="mt-1 text-sm text-gray-900">{{ formatFileSize(store.currentDocument.file_size) }}</dd>
+              <dt class="text-sm font-medium text-text-muted">File Size</dt>
+              <dd class="mt-1 text-sm text-text-primary">{{ formatFileSize(store.currentDocument.file_size) }}</dd>
             </div>
 
             <!-- Word Count -->
             <div>
-              <dt class="text-sm font-medium text-gray-500">Word Count</dt>
-              <dd class="mt-1 text-sm text-gray-900">{{ store.currentDocument.word_count.toLocaleString() }}</dd>
+              <dt class="text-sm font-medium text-text-muted">Word Count</dt>
+              <dd class="mt-1 text-sm text-text-primary">{{ store.currentDocument.word_count.toLocaleString() }}</dd>
             </div>
 
             <!-- Content Hash -->
             <div>
-              <dt class="text-sm font-medium text-gray-500">Content Hash</dt>
-              <dd class="mt-1 font-mono text-sm text-gray-900" :title="store.currentDocument.content_hash">
+              <dt class="text-sm font-medium text-text-muted">Content Hash</dt>
+              <dd class="mt-1 font-mono text-sm text-text-primary" :title="store.currentDocument.content_hash">
                 {{ truncateHash(store.currentDocument.content_hash) }}
               </dd>
             </div>
 
             <!-- Tags -->
             <div v-if="store.currentDocument.tags?.length">
-              <dt class="text-sm font-medium text-gray-500">Tags</dt>
+              <dt class="text-sm font-medium text-text-muted">Tags</dt>
               <dd class="mt-1 flex flex-wrap gap-1">
                 <span
                   v-for="tag in store.currentDocument.tags"
                   :key="tag"
-                  class="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700"
+                  class="inline-flex items-center rounded-full bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:text-indigo-300"
                 >
                   {{ tag }}
                 </span>
@@ -175,14 +175,14 @@ watch(
 
             <!-- Created at -->
             <div>
-              <dt class="text-sm font-medium text-gray-500">Created</dt>
-              <dd class="mt-1 text-sm text-gray-900">{{ formatDate(store.currentDocument.created_at) }}</dd>
+              <dt class="text-sm font-medium text-text-muted">Created</dt>
+              <dd class="mt-1 text-sm text-text-primary">{{ formatDate(store.currentDocument.created_at) }}</dd>
             </div>
 
             <!-- Updated at -->
             <div>
-              <dt class="text-sm font-medium text-gray-500">Updated</dt>
-              <dd class="mt-1 text-sm text-gray-900">{{ formatDate(store.currentDocument.updated_at) }}</dd>
+              <dt class="text-sm font-medium text-text-muted">Updated</dt>
+              <dd class="mt-1 text-sm text-text-primary">{{ formatDate(store.currentDocument.updated_at) }}</dd>
             </div>
           </dl>
 
@@ -190,14 +190,14 @@ watch(
           <div class="mt-6 space-y-3">
             <a
               :href="`/api/documents/${uuid}/download`"
-              class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             >
               <ArrowDownTrayIcon class="h-4 w-4" aria-hidden="true" />
               Download
             </a>
             <button
               type="button"
-              class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
+              class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm font-semibold text-red-700 dark:text-red-300 shadow-sm hover:bg-red-100 dark:hover:bg-red-900/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
               @click="showDeleteDialog = true"
             >
               <TrashIcon class="h-4 w-4" aria-hidden="true" />
@@ -207,15 +207,15 @@ watch(
         </div>
 
         <!-- Content area -->
-        <div class="rounded-lg bg-white p-6 shadow-sm lg:col-span-2">
-          <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500">Content</h2>
+        <div class="rounded-lg bg-bg-surface p-6 shadow-sm lg:col-span-2">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-text-muted">Content</h2>
           <div class="mt-4">
             <ContentViewer
               v-if="store.currentDocument?.content"
               :content="store.currentDocument.content"
               :file-type="store.currentDocument.file_type"
             />
-            <p v-else class="text-sm text-gray-500">
+            <p v-else class="text-sm text-text-muted">
               Content not available for preview. Download the file to view.
             </p>
           </div>

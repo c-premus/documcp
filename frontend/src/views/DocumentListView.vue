@@ -98,8 +98,9 @@ const columns: ColumnDef<Document, unknown>[] = [
           'button',
           {
             type: 'button',
-            class: 'text-gray-500 hover:text-indigo-600',
+            class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
             title: 'View document',
+            'aria-label': 'View document',
             onClick: (event: MouseEvent) => {
               event.stopPropagation()
               router.push(`/documents/${row.original.uuid}`)
@@ -111,8 +112,9 @@ const columns: ColumnDef<Document, unknown>[] = [
           'button',
           {
             type: 'button',
-            class: 'text-gray-500 hover:text-red-600',
+            class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
             title: 'Delete document',
+            'aria-label': 'Delete document',
             onClick: (event: MouseEvent) => {
               event.stopPropagation()
               deleteTarget.value = row.original
@@ -173,7 +175,7 @@ function handleDeleteCancel(): void {
   <div>
     <!-- Toolbar -->
     <div class="flex items-center gap-4 mb-4">
-      <h1 class="text-2xl font-bold text-gray-900">Documents</h1>
+      <h1 class="text-2xl font-bold text-text-primary">Documents</h1>
 
       <SearchInput
         v-model="search"
@@ -183,7 +185,7 @@ function handleDeleteCancel(): void {
 
       <select
         v-model="fileTypeFilter"
-        class="rounded-md border border-gray-300 bg-white py-1.5 pl-3 pr-8 text-sm text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        class="rounded-md border border-border-input bg-bg-surface py-1.5 pl-3 pr-8 text-sm text-text-secondary focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
       >
         <option v-for="opt in FILE_TYPE_OPTIONS" :key="opt" :value="opt">
           {{ opt === 'All' ? 'All Types' : opt }}
@@ -192,7 +194,7 @@ function handleDeleteCancel(): void {
 
       <select
         v-model="statusFilter"
-        class="rounded-md border border-gray-300 bg-white py-1.5 pl-3 pr-8 text-sm text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        class="rounded-md border border-border-input bg-bg-surface py-1.5 pl-3 pr-8 text-sm text-text-secondary focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
       >
         <option v-for="opt in STATUS_OPTIONS" :key="opt" :value="opt">
           {{ opt === 'All' ? 'All Statuses' : opt }}
@@ -201,7 +203,7 @@ function handleDeleteCancel(): void {
 
       <RouterLink
         to="/documents/trash"
-        class="text-gray-500 hover:text-gray-700"
+        class="text-text-muted hover:text-text-secondary"
         title="Trash"
       >
         <TrashIcon class="h-5 w-5" />

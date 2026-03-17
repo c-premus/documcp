@@ -44,18 +44,20 @@ function handleChildSelect(path: string): void {
   <div>
     <button
       type="button"
-      class="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-sm hover:bg-gray-100 text-left"
+      class="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-sm hover:bg-bg-hover text-left"
       :class="[
-        item.type === 'file' && selectedPath === item.path ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700',
+        item.type === 'file' && selectedPath === item.path ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' : 'text-text-secondary',
       ]"
       :style="{ paddingLeft: `${depth * 16 + 4}px` }"
+      :aria-expanded="item.type === 'directory' ? expanded : undefined"
+      :aria-label="item.type === 'directory' ? (expanded ? `Collapse ${item.name}` : `Expand ${item.name}`) : undefined"
       @click="handleClick"
     >
       <template v-if="item.type === 'directory'">
         <FolderOpenIcon v-if="expanded" class="h-4 w-4 shrink-0 text-amber-500" />
         <FolderIcon v-else class="h-4 w-4 shrink-0 text-amber-500" />
       </template>
-      <DocumentIcon v-else class="h-4 w-4 shrink-0 text-gray-400" />
+      <DocumentIcon v-else class="h-4 w-4 shrink-0 text-text-disabled" />
       <span class="truncate">{{ item.name }}</span>
     </button>
 

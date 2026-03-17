@@ -159,22 +159,22 @@ async function handleMovePriority(service: ExternalService, direction: 'up' | 'd
 function healthStatusStyle(status: string): { bg: string; text: string } {
   switch (status) {
     case 'healthy':
-      return { bg: 'bg-green-100', text: 'text-green-800' }
+      return { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-800 dark:text-green-300' }
     case 'unhealthy':
-      return { bg: 'bg-red-100', text: 'text-red-800' }
+      return { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-800 dark:text-red-300' }
     default:
-      return { bg: 'bg-gray-100', text: 'text-gray-800' }
+      return { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-800 dark:text-gray-300' }
   }
 }
 
 function typeBadgeStyle(type: string): { bg: string; text: string } {
   switch (type) {
     case 'kiwix':
-      return { bg: 'bg-blue-100', text: 'text-blue-800' }
+      return { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-800 dark:text-blue-300' }
     case 'confluence':
-      return { bg: 'bg-purple-100', text: 'text-purple-800' }
+      return { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-800 dark:text-purple-300' }
     default:
-      return { bg: 'bg-gray-100', text: 'text-gray-800' }
+      return { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-800 dark:text-gray-300' }
   }
 }
 
@@ -240,8 +240,9 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
           'button',
           {
             type: 'button',
-            class: 'text-gray-400 hover:text-indigo-600 p-0.5',
+            class: 'text-text-disabled hover:text-indigo-600 dark:hover:text-indigo-400 p-0.5',
             title: 'Move up',
+            'aria-label': 'Move up',
             onClick: (event: MouseEvent) => {
               event.stopPropagation()
               handleMovePriority(service, 'up')
@@ -253,8 +254,9 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
           'button',
           {
             type: 'button',
-            class: 'text-gray-400 hover:text-indigo-600 p-0.5',
+            class: 'text-text-disabled hover:text-indigo-600 dark:hover:text-indigo-400 p-0.5',
             title: 'Move down',
+            'aria-label': 'Move down',
             onClick: (event: MouseEvent) => {
               event.stopPropagation()
               handleMovePriority(service, 'down')
@@ -275,7 +277,7 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
         'modelValue': service.is_enabled,
         'class': [
           'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2',
-          service.is_enabled ? 'bg-indigo-600' : 'bg-gray-200',
+          service.is_enabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600',
         ],
         'onClick': (event: MouseEvent) => {
           event.stopPropagation()
@@ -304,8 +306,9 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
           'button',
           {
             type: 'button',
-            class: 'text-gray-500 hover:text-green-600',
+            class: 'text-text-muted hover:text-green-600 dark:hover:text-green-400',
             title: 'Health check',
+            'aria-label': 'Health check',
             onClick: (event: MouseEvent) => {
               event.stopPropagation()
               handleHealthCheck(service)
@@ -317,8 +320,9 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
           'button',
           {
             type: 'button',
-            class: 'text-gray-500 hover:text-indigo-600',
+            class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
             title: 'Edit service',
+            'aria-label': 'Edit service',
             onClick: (event: MouseEvent) => {
               event.stopPropagation()
               openEditModal(service)
@@ -330,8 +334,9 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
           'button',
           {
             type: 'button',
-            class: 'text-gray-500 hover:text-red-600',
+            class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
             title: 'Delete service',
+            'aria-label': 'Delete service',
             onClick: (event: MouseEvent) => {
               event.stopPropagation()
               deleteTarget.value = service
@@ -349,11 +354,11 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
   <div>
     <!-- Toolbar -->
     <div class="flex items-center gap-4 mb-4">
-      <h1 class="text-2xl font-bold text-gray-900">External Services</h1>
+      <h1 class="text-2xl font-bold text-text-primary">External Services</h1>
 
       <select
         v-model="typeFilter"
-        class="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+        class="rounded-md border-border-input bg-bg-surface text-text-secondary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
       >
         <option value="">All Types</option>
         <option value="kiwix">Kiwix</option>

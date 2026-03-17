@@ -133,32 +133,32 @@ async function handleSubmit(): Promise<void> {
 
 <template>
   <Dialog :open="open" class="relative z-50" @close="emit('close')">
-    <div class="fixed inset-0 bg-gray-500/75 backdrop-blur-sm transition-opacity" aria-hidden="true" />
+    <div class="fixed inset-0 bg-overlay backdrop-blur-sm transition-opacity" aria-hidden="true" />
 
     <div class="fixed inset-0 z-50 overflow-y-auto">
       <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
         <DialogPanel
-          class="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6"
+          class="relative transform overflow-hidden rounded-lg bg-bg-surface px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6"
         >
-          <DialogTitle as="h3" class="text-base font-semibold text-gray-900 mb-4">
+          <DialogTitle as="h3" class="text-base font-semibold text-text-primary mb-4">
             Add Git Template
           </DialogTitle>
 
           <form @submit.prevent="handleSubmit">
             <div class="space-y-4">
               <div>
-                <label for="template-name" class="block text-sm font-medium text-gray-700">Name</label>
+                <label for="template-name" class="block text-sm font-medium text-text-secondary">Name</label>
                 <input
                   id="template-name"
                   v-model="name"
                   type="text"
                   required
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
 
               <div>
-                <label for="template-url" class="block text-sm font-medium text-gray-700">Repository URL</label>
+                <label for="template-url" class="block text-sm font-medium text-text-secondary">Repository URL</label>
                 <div class="relative mt-1">
                   <input
                     id="template-url"
@@ -166,35 +166,35 @@ async function handleSubmit(): Promise<void> {
                     type="url"
                     required
                     placeholder="https://github.com/org/repo.git"
-                    class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm pr-10"
+                    class="block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm pr-10"
                     @blur="handleUrlBlur"
                   />
                   <div class="absolute inset-y-0 right-0 flex items-center pr-3">
-                    <div v-if="urlValidating" class="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600" />
+                    <div v-if="urlValidating" class="h-4 w-4 animate-spin rounded-full border-2 border-border-input border-t-indigo-600 dark:border-t-indigo-400" />
                     <CheckCircleIcon v-else-if="urlValid === true" class="h-5 w-5 text-green-500" />
                     <XCircleIcon v-else-if="urlValid === false" class="h-5 w-5 text-red-500" />
                   </div>
                 </div>
-                <p v-if="urlError" class="mt-1 text-sm text-red-600">{{ urlError }}</p>
+                <p v-if="urlError" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ urlError }}</p>
               </div>
 
               <div>
-                <label for="template-branch" class="block text-sm font-medium text-gray-700">Branch</label>
+                <label for="template-branch" class="block text-sm font-medium text-text-secondary">Branch</label>
                 <input
                   id="template-branch"
                   v-model="branch"
                   type="text"
                   required
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
 
               <div>
-                <label for="template-category" class="block text-sm font-medium text-gray-700">Category</label>
+                <label for="template-category" class="block text-sm font-medium text-text-secondary">Category</label>
                 <select
                   id="template-category"
                   v-model="category"
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 >
                   <option v-for="cat in CATEGORIES" :key="cat.value" :value="cat.value">
                     {{ cat.label }}
@@ -203,22 +203,22 @@ async function handleSubmit(): Promise<void> {
               </div>
 
               <div>
-                <label for="template-description" class="block text-sm font-medium text-gray-700">Description</label>
+                <label for="template-description" class="block text-sm font-medium text-text-secondary">Description</label>
                 <textarea
                   id="template-description"
                   v-model="description"
                   rows="3"
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
             </div>
 
-            <p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p>
+            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
 
             <div class="mt-5 flex justify-end gap-3">
               <button
                 type="button"
-                class="inline-flex justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                class="inline-flex justify-center rounded-md bg-bg-surface px-3 py-2 text-sm font-semibold text-text-primary shadow-sm ring-1 ring-inset ring-border-input hover:bg-bg-hover"
                 @click="emit('close')"
               >
                 Cancel
@@ -226,7 +226,7 @@ async function handleSubmit(): Promise<void> {
               <button
                 type="submit"
                 :disabled="submitting"
-                class="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <template v-if="submitting">Creating...</template>
                 <template v-else>Create</template>

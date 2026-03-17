@@ -181,7 +181,7 @@ const columns: ColumnDef<User, unknown>[] = [
         'modelValue': user.is_admin,
         'class': [
           'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2',
-          user.is_admin ? 'bg-indigo-600' : 'bg-gray-200',
+          user.is_admin ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600',
         ],
         'onClick': (event: MouseEvent) => {
           event.stopPropagation()
@@ -227,8 +227,9 @@ const columns: ColumnDef<User, unknown>[] = [
           'button',
           {
             type: 'button',
-            class: 'text-gray-500 hover:text-indigo-600',
+            class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
             title: 'Edit user',
+            'aria-label': 'Edit user',
             onClick: (event: MouseEvent) => {
               event.stopPropagation()
               openEditModal(row.original)
@@ -240,8 +241,9 @@ const columns: ColumnDef<User, unknown>[] = [
           'button',
           {
             type: 'button',
-            class: 'text-gray-500 hover:text-red-600',
+            class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
             title: 'Delete user',
+            'aria-label': 'Delete user',
             onClick: (event: MouseEvent) => {
               event.stopPropagation()
               deleteTarget.value = row.original
@@ -259,7 +261,7 @@ const columns: ColumnDef<User, unknown>[] = [
   <div>
     <!-- Toolbar -->
     <div class="flex items-center gap-4 mb-4">
-      <h1 class="text-2xl font-bold text-gray-900">Users</h1>
+      <h1 class="text-2xl font-bold text-text-primary">Users</h1>
 
       <SearchInput
         v-model="searchQuery"

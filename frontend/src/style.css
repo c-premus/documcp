@@ -1,3 +1,67 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/forms";
 @plugin "@tailwindcss/typography";
+
+/* Enable class-based dark mode (required for manual toggle) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Semantic color tokens */
+@theme inline {
+  --color-bg-page: var(--page);
+  --color-bg-surface: var(--surface);
+  --color-bg-surface-alt: var(--surface-alt);
+  --color-bg-hover: var(--hover);
+  --color-bg-active: var(--active);
+  --color-text-primary: var(--txt-primary);
+  --color-text-secondary: var(--txt-secondary);
+  --color-text-muted: var(--txt-muted);
+  --color-text-disabled: var(--txt-disabled);
+  --color-border-default: var(--bdr);
+  --color-border-input: var(--bdr-input);
+  --color-overlay: var(--overlay);
+  --color-focus: var(--focus);
+}
+
+:root {
+  --page: #f9fafb;
+  --surface: #ffffff;
+  --surface-alt: #f9fafb;
+  --hover: #f9fafb;
+  --active: #f3f4f6;
+  --txt-primary: #111827;
+  --txt-secondary: #374151;
+  --txt-muted: #6b7280;
+  --txt-disabled: #9ca3af;
+  --bdr: #e5e7eb;
+  --bdr-input: #d1d5db;
+  --overlay: rgb(107 114 128 / 0.75);
+  --focus: #4f46e5;
+}
+
+.dark {
+  --page: #030712;
+  --surface: #111827;
+  --surface-alt: #1f2937;
+  --hover: #374151;
+  --active: #374151;
+  --txt-primary: #f3f4f6;
+  --txt-secondary: #d1d5db;
+  --txt-muted: #9ca3af;
+  --txt-disabled: #6b7280;
+  --bdr: #374151;
+  --bdr-input: #4b5563;
+  --overlay: rgb(17 24 39 / 0.8);
+  --focus: #818cf8;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -118,36 +118,36 @@ async function handleSubmit(): Promise<void> {
 
 <template>
   <Dialog :open="open" class="relative z-50" @close="emit('close')">
-    <div class="fixed inset-0 bg-gray-500/75 backdrop-blur-sm transition-opacity" aria-hidden="true" />
+    <div class="fixed inset-0 bg-overlay backdrop-blur-sm transition-opacity" aria-hidden="true" />
 
     <div class="fixed inset-0 z-50 overflow-y-auto">
       <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
         <DialogPanel
-          class="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6"
+          class="relative transform overflow-hidden rounded-lg bg-bg-surface px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6"
         >
-          <DialogTitle as="h3" class="text-base font-semibold text-gray-900 mb-4">
+          <DialogTitle as="h3" class="text-base font-semibold text-text-primary mb-4">
             {{ dialogTitle }}
           </DialogTitle>
 
           <form @submit.prevent="handleSubmit">
             <div class="space-y-4">
               <div>
-                <label for="service-name" class="block text-sm font-medium text-gray-700">Name</label>
+                <label for="service-name" class="block text-sm font-medium text-text-secondary">Name</label>
                 <input
                   id="service-name"
                   v-model="name"
                   type="text"
                   required
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
 
               <div>
-                <label for="service-type" class="block text-sm font-medium text-gray-700">Type</label>
+                <label for="service-type" class="block text-sm font-medium text-text-secondary">Type</label>
                 <select
                   id="service-type"
                   v-model="serviceType"
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 >
                   <option value="kiwix">Kiwix</option>
                   <option value="confluence">Confluence</option>
@@ -155,52 +155,52 @@ async function handleSubmit(): Promise<void> {
               </div>
 
               <div>
-                <label for="service-base-url" class="block text-sm font-medium text-gray-700">Base URL</label>
+                <label for="service-base-url" class="block text-sm font-medium text-text-secondary">Base URL</label>
                 <input
                   id="service-base-url"
                   v-model="baseUrl"
                   type="url"
                   required
                   placeholder="https://example.com"
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
 
               <div>
-                <label for="service-api-key" class="block text-sm font-medium text-gray-700">
+                <label for="service-api-key" class="block text-sm font-medium text-text-secondary">
                   API Key
-                  <span v-if="isEditMode" class="text-gray-400 font-normal">(leave blank to keep current)</span>
+                  <span v-if="isEditMode" class="text-text-disabled font-normal">(leave blank to keep current)</span>
                 </label>
                 <input
                   id="service-api-key"
                   v-model="apiKey"
                   type="password"
                   :placeholder="isEditMode ? '********' : ''"
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
-                <p v-if="showApiKeyHint" class="mt-1 text-xs text-gray-500">
+                <p v-if="showApiKeyHint" class="mt-1 text-xs text-text-muted">
                   Use email:token format for Confluence API key
                 </p>
               </div>
 
               <div>
-                <label for="service-priority" class="block text-sm font-medium text-gray-700">Priority</label>
+                <label for="service-priority" class="block text-sm font-medium text-text-secondary">Priority</label>
                 <input
                   id="service-priority"
                   v-model.number="priority"
                   type="number"
                   min="0"
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
             </div>
 
-            <p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p>
+            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
 
             <div class="mt-5 flex justify-end gap-3">
               <button
                 type="button"
-                class="inline-flex justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                class="inline-flex justify-center rounded-md bg-bg-surface px-3 py-2 text-sm font-semibold text-text-primary shadow-sm ring-1 ring-inset ring-border-input hover:bg-bg-hover"
                 @click="emit('close')"
               >
                 Cancel
@@ -208,7 +208,7 @@ async function handleSubmit(): Promise<void> {
               <button
                 type="submit"
                 :disabled="submitting"
-                class="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <template v-if="submitting">Saving...</template>
                 <template v-else>{{ submitLabel }}</template>
