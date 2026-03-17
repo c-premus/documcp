@@ -170,14 +170,14 @@ function retry(): void {
 
 <template>
   <Dialog :open="open" class="relative z-50" @close="emit('close')">
-    <div class="fixed inset-0 bg-gray-500/75 backdrop-blur-sm transition-opacity" aria-hidden="true" />
+    <div class="fixed inset-0 bg-overlay backdrop-blur-sm transition-opacity" aria-hidden="true" />
 
     <div class="fixed inset-0 z-50 overflow-y-auto">
       <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
         <DialogPanel
-          class="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6"
+          class="relative transform overflow-hidden rounded-lg bg-bg-surface px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6"
         >
-          <DialogTitle as="h3" class="text-base font-semibold text-gray-900 mb-4">
+          <DialogTitle as="h3" class="text-base font-semibold text-text-primary mb-4">
             Upload Document
           </DialogTitle>
 
@@ -193,35 +193,35 @@ function retry(): void {
 
             <div
               class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors cursor-pointer"
-              :class="dragActive ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 hover:border-gray-400'"
+              :class="dragActive ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-border-input hover:border-text-disabled'"
               @click="openFilePicker"
               @drop.prevent="onDrop"
               @dragover.prevent="onDragOver"
               @dragleave.prevent="onDragLeave"
             >
-              <CloudArrowUpIcon class="h-10 w-10 text-gray-400 mb-3" aria-hidden="true" />
-              <p class="text-sm text-gray-600">
-                <span class="font-semibold text-indigo-600">Click to upload</span> or drag and drop
+              <CloudArrowUpIcon class="h-10 w-10 text-text-disabled mb-3" aria-hidden="true" />
+              <p class="text-sm text-text-muted">
+                <span class="font-semibold text-indigo-600 dark:text-indigo-400">Click to upload</span> or drag and drop
               </p>
-              <p class="mt-1 text-xs text-gray-500">
+              <p class="mt-1 text-xs text-text-muted">
                 PDF, DOCX, XLSX, HTML, MD, TXT up to 50 MB
               </p>
             </div>
 
-            <div v-if="file" class="mt-4 flex items-center gap-3 rounded-md bg-gray-50 p-3">
-              <DocumentIcon class="h-6 w-6 text-gray-400 shrink-0" aria-hidden="true" />
+            <div v-if="file" class="mt-4 flex items-center gap-3 rounded-md bg-bg-surface-alt p-3">
+              <DocumentIcon class="h-6 w-6 text-text-disabled shrink-0" aria-hidden="true" />
               <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium text-gray-900">{{ file.name }}</p>
-                <p class="text-xs text-gray-500">{{ formatFileSize(file.size) }}</p>
+                <p class="truncate text-sm font-medium text-text-primary">{{ file.name }}</p>
+                <p class="text-xs text-text-muted">{{ formatFileSize(file.size) }}</p>
               </div>
             </div>
 
-            <p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p>
+            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
 
             <div class="mt-5 flex justify-end gap-3">
               <button
                 type="button"
-                class="inline-flex justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                class="inline-flex justify-center rounded-md bg-bg-surface px-3 py-2 text-sm font-semibold text-text-primary shadow-sm ring-1 ring-inset ring-border-input hover:bg-bg-hover"
                 @click="emit('close')"
               >
                 Cancel
@@ -229,7 +229,7 @@ function retry(): void {
               <button
                 type="button"
                 :disabled="!file || analyzing"
-                class="inline-flex justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-indigo-600 shadow-sm ring-1 ring-inset ring-indigo-300 hover:bg-indigo-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="inline-flex justify-center rounded-md bg-bg-surface px-3 py-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 shadow-sm ring-1 ring-inset ring-indigo-300 dark:ring-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 @click="analyze"
               >
                 <template v-if="analyzing">Analyzing...</template>
@@ -238,7 +238,7 @@ function retry(): void {
               <button
                 type="button"
                 :disabled="!file"
-                class="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-50 disabled:cursor-not-allowed"
                 @click="goToMetadata"
               >
                 Next
@@ -250,41 +250,41 @@ function retry(): void {
           <div v-if="step === 2">
             <div class="space-y-4">
               <div>
-                <label for="upload-title" class="block text-sm font-medium text-gray-700">Title</label>
+                <label for="upload-title" class="block text-sm font-medium text-text-secondary">Title</label>
                 <input
                   id="upload-title"
                   v-model="title"
                   type="text"
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
 
               <div>
-                <label for="upload-description" class="block text-sm font-medium text-gray-700">Description</label>
+                <label for="upload-description" class="block text-sm font-medium text-text-secondary">Description</label>
                 <textarea
                   id="upload-description"
                   v-model="description"
                   rows="3"
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
 
               <div>
-                <label for="upload-tags" class="block text-sm font-medium text-gray-700">Tags</label>
+                <label for="upload-tags" class="block text-sm font-medium text-text-secondary">Tags</label>
                 <input
                   id="upload-tags"
                   v-model="tags"
                   type="text"
                   placeholder="comma-separated tags"
-                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
 
               <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-gray-700">Public</span>
+                <span class="text-sm font-medium text-text-secondary">Public</span>
                 <Switch
                   v-model="isPublic"
-                  :class="isPublic ? 'bg-indigo-600' : 'bg-gray-200'"
+                  :class="isPublic ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600'"
                   class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2"
                 >
                   <span
@@ -295,19 +295,19 @@ function retry(): void {
               </div>
             </div>
 
-            <p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p>
+            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
 
             <div class="mt-5 flex justify-end gap-3">
               <button
                 type="button"
-                class="inline-flex justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                class="inline-flex justify-center rounded-md bg-bg-surface px-3 py-2 text-sm font-semibold text-text-primary shadow-sm ring-1 ring-inset ring-border-input hover:bg-bg-hover"
                 @click="goBack"
               >
                 Back
               </button>
               <button
                 type="button"
-                class="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                class="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                 @click="upload"
               >
                 Upload
@@ -318,23 +318,23 @@ function retry(): void {
           <!-- Step 3: Uploading -->
           <div v-if="step === 3">
             <div v-if="uploading && !error" class="flex flex-col items-center py-8">
-              <div class="h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-indigo-600" />
-              <p class="mt-4 text-sm text-gray-600">Uploading document...</p>
+              <div class="h-10 w-10 animate-spin rounded-full border-4 border-border-default border-t-indigo-600 dark:border-t-indigo-400" />
+              <p class="mt-4 text-sm text-text-muted">Uploading document...</p>
             </div>
 
             <div v-if="error" class="flex flex-col items-center py-8">
-              <p class="text-sm text-red-600 mb-4">{{ error }}</p>
+              <p role="alert" class="text-sm text-red-600 dark:text-red-400 mb-4">{{ error }}</p>
               <div class="flex gap-3">
                 <button
                   type="button"
-                  class="inline-flex justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                  class="inline-flex justify-center rounded-md bg-bg-surface px-3 py-2 text-sm font-semibold text-text-primary shadow-sm ring-1 ring-inset ring-border-input hover:bg-bg-hover"
                   @click="emit('close')"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  class="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                  class="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                   @click="retry"
                 >
                   Retry

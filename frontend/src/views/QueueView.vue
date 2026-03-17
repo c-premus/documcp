@@ -113,7 +113,7 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
     header: 'Error',
     cell: ({ row }) => {
       const msg = truncateError(row.original)
-      return h('span', { class: 'text-red-600 text-xs', title: msg }, msg)
+      return h('span', { class: 'text-red-600 dark:text-red-400 text-xs', title: msg }, msg)
     },
   },
   {
@@ -133,8 +133,9 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
           'button',
           {
             type: 'button',
-            class: 'text-gray-500 hover:text-indigo-600',
+            class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
             title: 'Retry job',
+            'aria-label': 'Retry job',
             onClick: (event: MouseEvent) => {
               event.stopPropagation()
               handleRetry(row.original)
@@ -146,8 +147,9 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
           'button',
           {
             type: 'button',
-            class: 'text-gray-500 hover:text-red-600',
+            class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
             title: 'Delete job',
+            'aria-label': 'Delete job',
             onClick: (event: MouseEvent) => {
               event.stopPropagation()
               deleteTarget.value = row.original
@@ -163,10 +165,10 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
 
 <template>
   <div>
-    <h1 class="text-2xl font-bold text-gray-900 mb-6">Queue Management</h1>
+    <h1 class="text-2xl font-bold text-text-primary mb-6">Queue Management</h1>
 
     <TabGroup>
-      <TabList class="flex space-x-1 rounded-xl bg-gray-100 p-1 mb-6">
+      <TabList class="flex space-x-1 rounded-xl bg-bg-active p-1 mb-6">
         <Tab
           v-slot="{ selected }"
           as="template"
@@ -175,8 +177,8 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
             :class="[
               'w-full rounded-lg py-2.5 text-sm font-medium leading-5',
               selected
-                ? 'bg-white text-indigo-700 shadow'
-                : 'text-gray-600 hover:bg-white/[0.5] hover:text-gray-800',
+                ? 'bg-bg-surface text-indigo-700 dark:text-indigo-300 shadow'
+                : 'text-text-muted hover:bg-bg-surface/50 hover:text-text-primary',
             ]"
           >
             Stats
@@ -190,8 +192,8 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
             :class="[
               'w-full rounded-lg py-2.5 text-sm font-medium leading-5',
               selected
-                ? 'bg-white text-indigo-700 shadow'
-                : 'text-gray-600 hover:bg-white/[0.5] hover:text-gray-800',
+                ? 'bg-bg-surface text-indigo-700 dark:text-indigo-300 shadow'
+                : 'text-text-muted hover:bg-bg-surface/50 hover:text-text-primary',
             ]"
           >
             Failed Jobs ({{ store.failedCount }})
@@ -203,29 +205,29 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
         <!-- Stats Panel -->
         <TabPanel>
           <div v-if="store.stats" class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-            <div class="rounded-lg bg-white p-4 shadow ring-1 ring-black/5">
-              <dt class="text-sm font-medium text-gray-500">Available</dt>
-              <dd class="mt-1 text-2xl font-semibold text-gray-900">{{ store.stats.available }}</dd>
+            <div class="rounded-lg bg-bg-surface p-4 shadow ring-1 ring-black/5 dark:ring-white/10">
+              <dt class="text-sm font-medium text-text-muted">Available</dt>
+              <dd class="mt-1 text-2xl font-semibold text-text-primary">{{ store.stats.available }}</dd>
             </div>
-            <div class="rounded-lg bg-white p-4 shadow ring-1 ring-black/5">
-              <dt class="text-sm font-medium text-gray-500">Running</dt>
-              <dd class="mt-1 text-2xl font-semibold text-indigo-600">{{ store.stats.running }}</dd>
+            <div class="rounded-lg bg-bg-surface p-4 shadow ring-1 ring-black/5 dark:ring-white/10">
+              <dt class="text-sm font-medium text-text-muted">Running</dt>
+              <dd class="mt-1 text-2xl font-semibold text-indigo-600 dark:text-indigo-400">{{ store.stats.running }}</dd>
             </div>
-            <div class="rounded-lg bg-white p-4 shadow ring-1 ring-black/5">
-              <dt class="text-sm font-medium text-gray-500">Retryable</dt>
-              <dd class="mt-1 text-2xl font-semibold text-yellow-600">{{ store.stats.retryable }}</dd>
+            <div class="rounded-lg bg-bg-surface p-4 shadow ring-1 ring-black/5 dark:ring-white/10">
+              <dt class="text-sm font-medium text-text-muted">Retryable</dt>
+              <dd class="mt-1 text-2xl font-semibold text-yellow-600 dark:text-yellow-400">{{ store.stats.retryable }}</dd>
             </div>
-            <div class="rounded-lg bg-white p-4 shadow ring-1 ring-black/5">
-              <dt class="text-sm font-medium text-gray-500">Discarded</dt>
-              <dd class="mt-1 text-2xl font-semibold text-red-600">{{ store.stats.discarded }}</dd>
+            <div class="rounded-lg bg-bg-surface p-4 shadow ring-1 ring-black/5 dark:ring-white/10">
+              <dt class="text-sm font-medium text-text-muted">Discarded</dt>
+              <dd class="mt-1 text-2xl font-semibold text-red-600 dark:text-red-400">{{ store.stats.discarded }}</dd>
             </div>
-            <div class="rounded-lg bg-white p-4 shadow ring-1 ring-black/5">
-              <dt class="text-sm font-medium text-gray-500">Cancelled</dt>
-              <dd class="mt-1 text-2xl font-semibold text-gray-500">{{ store.stats.cancelled }}</dd>
+            <div class="rounded-lg bg-bg-surface p-4 shadow ring-1 ring-black/5 dark:ring-white/10">
+              <dt class="text-sm font-medium text-text-muted">Cancelled</dt>
+              <dd class="mt-1 text-2xl font-semibold text-text-muted">{{ store.stats.cancelled }}</dd>
             </div>
           </div>
           <div v-else class="flex items-center justify-center py-12">
-            <div class="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-indigo-600" />
+            <div class="h-8 w-8 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400" />
           </div>
         </TabPanel>
 

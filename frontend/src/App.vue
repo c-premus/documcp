@@ -11,6 +11,6 @@ auth.fetchUser()
     <router-view />
   </AppLayout>
   <div v-else-if="auth.loading" class="flex items-center justify-center min-h-screen">
-    <p class="text-gray-500">Loading...</p>
+    <p class="text-text-muted">Loading...</p>
   </div>
 </template>

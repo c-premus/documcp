@@ -28,9 +28,9 @@ fetchSpaces()
 
 function typeBadgeClasses(type: string): string {
   if (type === 'personal') {
-    return 'bg-purple-100 text-purple-800'
+    return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
   }
-  return 'bg-blue-100 text-blue-800'
+  return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
 }
 
 const columns: ColumnDef<ConfluenceSpace, unknown>[] = [
@@ -47,7 +47,7 @@ const columns: ColumnDef<ConfluenceSpace, unknown>[] = [
       const value = getValue<string>()
       return h(
         'span',
-        { class: 'font-mono text-xs text-gray-600' },
+        { class: 'font-mono text-xs text-text-muted' },
         value,
       )
     },
@@ -86,7 +86,7 @@ const columns: ColumnDef<ConfluenceSpace, unknown>[] = [
   <div>
     <!-- Toolbar -->
     <div class="flex items-center gap-4 mb-4">
-      <h1 class="text-2xl font-bold text-gray-900">Confluence Spaces</h1>
+      <h1 class="text-2xl font-bold text-text-primary">Confluence Spaces</h1>
     </div>
 
     <!-- Empty State -->

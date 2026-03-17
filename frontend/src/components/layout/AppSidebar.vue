@@ -54,9 +54,9 @@ function isActive(path: string): boolean {
 </script>
 
 <template>
-  <nav class="hidden lg:flex w-64 fixed inset-y-0 left-0 bg-white border-r border-gray-200 flex-col">
-    <div class="flex items-center h-16 px-6 border-b border-gray-200">
-      <span class="text-lg font-semibold text-gray-900">DocuMCP</span>
+  <nav aria-label="Main navigation" class="hidden lg:flex w-64 fixed inset-y-0 left-0 bg-bg-surface border-r border-border-default flex-col">
+    <div class="flex items-center h-16 px-6 border-b border-border-default">
+      <span class="text-lg font-semibold text-text-primary">DocuMCP</span>
     </div>
 
     <div class="flex-1 overflow-y-auto py-4">
@@ -68,9 +68,10 @@ function isActive(path: string): boolean {
             class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
             :class="
               isActive(item.to)
-                ? 'bg-gray-100 text-gray-900'
-                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                ? 'bg-bg-active text-text-primary'
+                : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
             "
+            :aria-current="isActive(item.to) ? 'page' : undefined"
           >
             <component :is="item.icon" class="h-5 w-5 shrink-0" />
             {{ item.name }}
@@ -79,8 +80,8 @@ function isActive(path: string): boolean {
       </ul>
 
       <!-- Documents -->
-      <div class="my-4 mx-3 border-t border-gray-200" />
-      <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">Documents</p>
+      <div class="my-4 mx-3 border-t border-border-default" />
+      <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">Documents</p>
       <ul class="space-y-1 px-3">
         <li v-for="item in documentNavItems" :key="item.to">
           <router-link
@@ -88,9 +89,10 @@ function isActive(path: string): boolean {
             class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
             :class="
               isActive(item.to)
-                ? 'bg-gray-100 text-gray-900'
-                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                ? 'bg-bg-active text-text-primary'
+                : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
             "
+            :aria-current="isActive(item.to) ? 'page' : undefined"
           >
             <component :is="item.icon" class="h-5 w-5 shrink-0" />
             {{ item.name }}
@@ -99,8 +101,8 @@ function isActive(path: string): boolean {
       </ul>
 
       <!-- Content Sources -->
-      <div class="my-4 mx-3 border-t border-gray-200" />
-      <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">Content Sources</p>
+      <div class="my-4 mx-3 border-t border-border-default" />
+      <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">Content Sources</p>
       <ul class="space-y-1 px-3">
         <li v-for="item in contentNavItems" :key="item.to">
           <router-link
@@ -108,9 +110,10 @@ function isActive(path: string): boolean {
             class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
             :class="
               isActive(item.to)
-                ? 'bg-gray-100 text-gray-900'
-                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                ? 'bg-bg-active text-text-primary'
+                : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
             "
+            :aria-current="isActive(item.to) ? 'page' : undefined"
           >
             <component :is="item.icon" class="h-5 w-5 shrink-0" />
             {{ item.name }}
@@ -120,8 +123,8 @@ function isActive(path: string): boolean {
 
       <!-- Administration -->
       <template v-if="auth.isAdmin">
-        <div class="my-4 mx-3 border-t border-gray-200" />
-        <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">Administration</p>
+        <div class="my-4 mx-3 border-t border-border-default" />
+        <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">Administration</p>
         <ul class="space-y-1 px-3">
           <li v-for="item in adminNavItems" :key="item.to">
             <router-link
@@ -129,9 +132,10 @@ function isActive(path: string): boolean {
               class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
               :class="
                 isActive(item.to)
-                  ? 'bg-gray-100 text-gray-900'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  ? 'bg-bg-active text-text-primary'
+                  : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
               "
+              :aria-current="isActive(item.to) ? 'page' : undefined"
             >
               <component :is="item.icon" class="h-5 w-5 shrink-0" />
               {{ item.name }}

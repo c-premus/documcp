@@ -94,11 +94,11 @@ function truncate(value: string, maxLength: number): string {
 
 function categoryBadgeClasses(category: string): string {
   const styles: Readonly<Record<string, string>> = {
-    claude: 'bg-violet-100 text-violet-800',
-    'memory-bank': 'bg-amber-100 text-amber-800',
-    project: 'bg-emerald-100 text-emerald-800',
+    claude: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300',
+    'memory-bank': 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+    project: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
   }
-  return styles[category] ?? 'bg-gray-100 text-gray-800'
+  return styles[category] ?? 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
 }
 
 const columns: ColumnDef<GitTemplate, unknown>[] = [
@@ -136,7 +136,7 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
       const value = getValue<string>()
       return h(
         'span',
-        { class: 'font-mono text-xs text-gray-600', title: value },
+        { class: 'font-mono text-xs text-text-muted', title: value },
         truncate(value, 40),
       )
     },
@@ -149,7 +149,7 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
       const value = getValue<string>()
       return h(
         'span',
-        { class: 'font-mono text-xs text-gray-600' },
+        { class: 'font-mono text-xs text-text-muted' },
         value,
       )
     },
@@ -184,10 +184,11 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
           {
             type: 'button',
             class: [
-              'text-gray-500 hover:text-indigo-600',
+              'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
               isSyncing ? 'animate-spin' : '',
             ],
             title: 'Sync template',
+            'aria-label': 'Sync template',
             disabled: isSyncing,
             onClick: (event: MouseEvent) => {
               event.stopPropagation()
@@ -200,8 +201,9 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
           'button',
           {
             type: 'button',
-            class: 'text-gray-500 hover:text-red-600',
+            class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
             title: 'Delete template',
+            'aria-label': 'Delete template',
             onClick: (event: MouseEvent) => {
               event.stopPropagation()
               deleteTarget.value = template
@@ -219,7 +221,7 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
   <div>
     <!-- Toolbar -->
     <div class="flex items-center gap-4 mb-4">
-      <h1 class="text-2xl font-bold text-gray-900">Git Templates</h1>
+      <h1 class="text-2xl font-bold text-text-primary">Git Templates</h1>
 
       <div class="flex-1" />
 

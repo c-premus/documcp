@@ -44,13 +44,13 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 
 const cards: readonly StatCard[] = [
-  { label: 'Documents', key: 'documents', icon: DocumentTextIcon, color: 'text-indigo-600', route: '/documents' },
-  { label: 'Users', key: 'users', icon: UsersIcon, color: 'text-blue-600', route: '/users' },
-  { label: 'OAuth Clients', key: 'oauth_clients', icon: KeyIcon, color: 'text-purple-600', route: '/oauth-clients' },
-  { label: 'External Services', key: 'external_services', icon: ServerIcon, color: 'text-teal-600', route: '/external-services' },
-  { label: 'ZIM Archives', key: 'zim_archives', icon: BookOpenIcon, color: 'text-amber-600', route: '/zim-archives' },
-  { label: 'Confluence Spaces', key: 'confluence_spaces', icon: CloudIcon, color: 'text-cyan-600', route: '/confluence-spaces' },
-  { label: 'Git Templates', key: 'git_templates', icon: CodeBracketIcon, color: 'text-emerald-600', route: '/git-templates' },
+  { label: 'Documents', key: 'documents', icon: DocumentTextIcon, color: 'text-indigo-600 dark:text-indigo-400', route: '/documents' },
+  { label: 'Users', key: 'users', icon: UsersIcon, color: 'text-blue-600 dark:text-blue-400', route: '/users' },
+  { label: 'OAuth Clients', key: 'oauth_clients', icon: KeyIcon, color: 'text-purple-600 dark:text-purple-400', route: '/oauth-clients' },
+  { label: 'External Services', key: 'external_services', icon: ServerIcon, color: 'text-teal-600 dark:text-teal-400', route: '/external-services' },
+  { label: 'ZIM Archives', key: 'zim_archives', icon: BookOpenIcon, color: 'text-amber-600 dark:text-amber-400', route: '/zim-archives' },
+  { label: 'Confluence Spaces', key: 'confluence_spaces', icon: CloudIcon, color: 'text-cyan-600 dark:text-cyan-400', route: '/confluence-spaces' },
+  { label: 'Git Templates', key: 'git_templates', icon: CodeBracketIcon, color: 'text-emerald-600 dark:text-emerald-400', route: '/git-templates' },
 ] as const
 
 async function fetchStats(): Promise<void> {
@@ -77,8 +77,8 @@ onMounted(fetchStats)
 <template>
   <div>
     <div class="mb-8">
-      <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
-      <p class="mt-1 text-sm text-gray-500">System overview</p>
+      <h1 class="text-2xl font-bold text-text-primary">Dashboard</h1>
+      <p class="mt-1 text-sm text-text-muted">System overview</p>
     </div>
 
     <!-- Loading spinner -->
@@ -87,7 +87,7 @@ onMounted(fetchStats)
       class="flex items-center justify-center py-20"
     >
       <svg
-        class="h-8 w-8 animate-spin text-indigo-600"
+        class="h-8 w-8 animate-spin text-indigo-600 dark:text-indigo-400"
         xmlns="http://www.w3.org/2000/svg"
         fill="none"
         viewBox="0 0 24 24"
@@ -111,7 +111,7 @@ onMounted(fetchStats)
     <!-- Error state -->
     <div
       v-else-if="error !== null"
-      class="rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-700"
+      class="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-5 text-sm text-red-700 dark:text-red-300"
     >
       {{ error }}
     </div>
@@ -123,15 +123,15 @@ onMounted(fetchStats)
           v-for="card in cards"
           :key="card.key"
           :to="card.route"
-          class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition hover:shadow-md"
+          class="rounded-lg border border-border-default bg-bg-surface p-5 shadow-sm transition hover:shadow-md"
         >
           <component
             :is="card.icon"
             class="h-6 w-6"
             :class="card.color"
           />
-          <p class="mt-3 text-sm text-gray-500">{{ card.label }}</p>
-          <p class="mt-1 text-2xl font-semibold text-gray-900">
+          <p class="mt-3 text-sm text-text-muted">{{ card.label }}</p>
+          <p class="mt-1 text-2xl font-semibold text-text-primary">
             {{ stats[card.key] }}
           </p>
         </RouterLink>
@@ -142,35 +142,35 @@ onMounted(fetchStats)
         v-if="stats.queue"
         class="mt-8"
       >
-        <h2 class="mb-4 text-lg font-semibold text-gray-900">Job Queue</h2>
+        <h2 class="mb-4 text-lg font-semibold text-text-primary">Job Queue</h2>
         <div class="grid grid-cols-3 gap-4">
           <RouterLink
             to="/queue"
-            class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition hover:shadow-md"
+            class="rounded-lg border border-border-default bg-bg-surface p-5 shadow-sm transition hover:shadow-md"
           >
             <ClockIcon class="h-5 w-5 text-yellow-500" />
-            <p class="mt-2 text-sm text-gray-500">Pending</p>
-            <p class="mt-1 text-2xl font-semibold text-yellow-600">
+            <p class="mt-2 text-sm text-text-muted">Pending</p>
+            <p class="mt-1 text-2xl font-semibold text-yellow-600 dark:text-yellow-400">
               {{ stats.queue.pending }}
             </p>
           </RouterLink>
           <RouterLink
             to="/queue"
-            class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition hover:shadow-md"
+            class="rounded-lg border border-border-default bg-bg-surface p-5 shadow-sm transition hover:shadow-md"
           >
             <CheckCircleIcon class="h-5 w-5 text-green-500" />
-            <p class="mt-2 text-sm text-gray-500">Completed</p>
-            <p class="mt-1 text-2xl font-semibold text-green-600">
+            <p class="mt-2 text-sm text-text-muted">Completed</p>
+            <p class="mt-1 text-2xl font-semibold text-green-600 dark:text-green-400">
               {{ stats.queue.completed }}
             </p>
           </RouterLink>
           <RouterLink
             to="/queue"
-            class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm transition hover:shadow-md"
+            class="rounded-lg border border-border-default bg-bg-surface p-5 shadow-sm transition hover:shadow-md"
           >
             <ExclamationCircleIcon class="h-5 w-5 text-red-500" />
-            <p class="mt-2 text-sm text-gray-500">Failed</p>
-            <p class="mt-1 text-2xl font-semibold text-red-600">
+            <p class="mt-2 text-sm text-text-muted">Failed</p>
+            <p class="mt-1 text-2xl font-semibold text-red-600 dark:text-red-400">
               {{ stats.queue.failed }}
             </p>
           </RouterLink>

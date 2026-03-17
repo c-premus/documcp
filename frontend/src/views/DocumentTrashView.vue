@@ -58,8 +58,9 @@ const columns: ColumnDef<Document, unknown>[] = [
           'button',
           {
             type: 'button',
-            class: 'text-gray-500 hover:text-green-600',
+            class: 'text-text-muted hover:text-green-600 dark:hover:text-green-400',
             title: 'Restore document',
+            'aria-label': 'Restore document',
             onClick: (event: MouseEvent) => {
               event.stopPropagation()
               handleRestore(row.original)
@@ -71,8 +72,9 @@ const columns: ColumnDef<Document, unknown>[] = [
           'button',
           {
             type: 'button',
-            class: 'text-gray-500 hover:text-red-600',
+            class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
             title: 'Permanently delete',
+            'aria-label': 'Permanently delete',
             onClick: (event: MouseEvent) => {
               event.stopPropagation()
               purgeTarget.value = row.original
@@ -149,20 +151,20 @@ function handleBulkPurgeCancel(): void {
     <div class="mb-4">
       <RouterLink
         to="/documents"
-        class="text-sm text-indigo-600 hover:text-indigo-500"
+        class="text-sm text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
       >
         &larr; Documents
       </RouterLink>
 
       <div class="mt-2 flex items-center justify-between">
         <div>
-          <h1 class="text-2xl font-bold text-gray-900">Trash</h1>
-          <p class="mt-1 text-sm text-gray-500">Soft-deleted documents</p>
+          <h1 class="text-2xl font-bold text-text-primary">Trash</h1>
+          <p class="mt-1 text-sm text-text-muted">Soft-deleted documents</p>
         </div>
 
         <button
           type="button"
-          class="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+          class="rounded-md border border-red-300 dark:border-red-700 px-4 py-2 text-sm font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
           @click="showBulkPurgeDialog = true"
         >
           Purge All Older Than...
@@ -177,7 +179,7 @@ function handleBulkPurgeCancel(): void {
       description="No soft-deleted documents found."
     >
       <template #icon>
-        <TrashIcon class="mx-auto h-12 w-12 text-gray-400" />
+        <TrashIcon class="mx-auto h-12 w-12 text-text-disabled" />
       </template>
     </EmptyState>
 
@@ -221,7 +223,7 @@ function handleBulkPurgeCancel(): void {
     >
       <template #default>
         <div class="mt-3">
-          <label for="bulk-purge-days" class="block text-sm font-medium text-gray-700">
+          <label for="bulk-purge-days" class="block text-sm font-medium text-text-secondary">
             Older than (days)
           </label>
           <input
@@ -229,7 +231,7 @@ function handleBulkPurgeCancel(): void {
             v-model.number="bulkPurgeDays"
             type="number"
             min="1"
-            class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            class="mt-1 block w-full rounded-md border border-border-input bg-bg-surface text-text-primary px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
           />
         </div>
       </template>

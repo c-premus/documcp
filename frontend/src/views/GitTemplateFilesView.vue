@@ -65,24 +65,25 @@ function goBack(): void {
     <div class="flex items-center gap-3 mb-4">
       <button
         type="button"
-        class="text-gray-500 hover:text-gray-700"
+        class="text-text-muted hover:text-text-secondary"
         title="Back to templates"
+        aria-label="Back to templates"
         @click="goBack"
       >
         <ArrowLeftIcon class="h-5 w-5" />
       </button>
-      <h1 class="text-2xl font-bold text-gray-900">{{ templateName || 'Template Files' }}</h1>
+      <h1 class="text-2xl font-bold text-text-primary">{{ templateName || 'Template Files' }}</h1>
     </div>
 
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-12">
-      <div class="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-indigo-600" />
+      <div class="h-8 w-8 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400" />
     </div>
 
     <!-- Two-pane layout -->
     <div v-else class="flex gap-4 h-[calc(100vh-12rem)]">
       <!-- Left sidebar: file tree -->
-      <div class="w-72 shrink-0 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
+      <div class="w-72 shrink-0 overflow-y-auto rounded-lg border border-border-default bg-bg-surface p-2">
         <template v-if="tree.length > 0">
           <TreeNode
             v-for="item in tree"
@@ -92,29 +93,29 @@ function goBack(): void {
             @select="handleFileSelect"
           />
         </template>
-        <p v-else class="px-2 py-4 text-sm text-gray-500 text-center">No files found.</p>
+        <p v-else class="px-2 py-4 text-sm text-text-muted text-center">No files found.</p>
       </div>
 
       <!-- Right main: file content viewer -->
-      <div class="flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white flex flex-col">
+      <div class="flex-1 overflow-hidden rounded-lg border border-border-default bg-bg-surface flex flex-col">
         <template v-if="selectedPath === ''">
-          <div class="flex items-center justify-center h-full text-gray-400 text-sm">
+          <div class="flex items-center justify-center h-full text-text-disabled text-sm">
             Select a file to view its contents.
           </div>
         </template>
         <template v-else>
           <!-- File header -->
-          <div class="flex items-center gap-2 border-b border-gray-200 px-4 py-2 bg-gray-50">
-            <span class="font-mono text-sm text-gray-700">{{ selectedPath }}</span>
+          <div class="flex items-center gap-2 border-b border-border-default px-4 py-2 bg-bg-surface-alt">
+            <span class="font-mono text-sm text-text-secondary">{{ selectedPath }}</span>
           </div>
 
           <!-- File content -->
           <div v-if="fileLoading" class="flex items-center justify-center py-12">
-            <div class="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600" />
+            <div class="h-6 w-6 animate-spin rounded-full border-2 border-border-input border-t-indigo-600 dark:border-t-indigo-400" />
           </div>
           <pre
             v-else
-            class="flex-1 overflow-auto p-4 text-sm leading-relaxed text-gray-800 font-mono whitespace-pre-wrap break-words"
+            class="flex-1 overflow-auto p-4 text-sm leading-relaxed text-text-primary font-mono whitespace-pre-wrap break-words"
           >{{ fileContent }}</pre>
         </template>
       </div>

@@ -49,20 +49,20 @@ function handlePerPageChange(event: Event): void {
 </script>
 
 <template>
-  <div class="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+  <div class="flex items-center justify-between border-t border-border-default bg-bg-surface px-4 py-3 sm:px-6">
     <div class="flex flex-1 items-center justify-between">
       <div class="flex items-center gap-4">
-        <p class="text-sm text-gray-700">
+        <p class="text-sm text-text-secondary">
           Showing <span class="font-medium">{{ rangeStart }}</span> to
           <span class="font-medium">{{ rangeEnd }}</span> of
           <span class="font-medium">{{ total }}</span> results
         </p>
         <div class="flex items-center gap-2">
-          <label for="page-size" class="text-sm text-gray-700">Per page:</label>
+          <label for="page-size" class="text-sm text-text-secondary">Per page:</label>
           <select
             id="page-size"
             :value="perPage"
-            class="rounded-md border border-gray-300 bg-white py-1 pl-2 pr-8 text-sm text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            class="rounded-md border border-border-input bg-bg-surface py-1 pl-2 pr-8 text-sm text-text-secondary focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
             @change="handlePerPageChange"
           >
             <option v-for="size in PAGE_SIZE_OPTIONS" :key="size" :value="size">
@@ -75,7 +75,7 @@ function handlePerPageChange(event: Event): void {
         <button
           type="button"
           :disabled="isFirstPage"
-          class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          class="relative inline-flex items-center rounded-md border border-border-input bg-bg-surface px-4 py-2 text-sm font-medium text-text-secondary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
           @click="goToPrevious"
         >
           Previous
@@ -83,7 +83,7 @@ function handlePerPageChange(event: Event): void {
         <button
           type="button"
           :disabled="isLastPage"
-          class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          class="relative inline-flex items-center rounded-md border border-border-input bg-bg-surface px-4 py-2 text-sm font-medium text-text-secondary hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50"
           @click="goToNext"
         >
           Next

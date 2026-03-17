@@ -10,11 +10,17 @@ onMounted(() => { start() })
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50">
+  <div class="min-h-screen bg-bg-page">
+    <a
+      href="#main-content"
+      class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:rounded-md focus:bg-bg-surface focus:px-4 focus:py-2 focus:text-text-primary focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-focus"
+    >
+      Skip to content
+    </a>
     <AppSidebar />
     <div class="lg:pl-64">
       <AppHeader />
-      <main class="px-4 py-6 sm:px-6 lg:px-8">
+      <main id="main-content" class="px-4 py-6 sm:px-6 lg:px-8">
         <router-view />
       </main>
     </div>
