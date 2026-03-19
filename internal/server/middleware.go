@@ -152,6 +152,26 @@ func ipInNets(ip net.IP, nets []*net.IPNet) bool {
 	return false
 }
 
+// TimeoutExcept returns middleware that applies chi's context-based timeout to
+// all requests except those whose path starts with any of the excluded prefixes.
+// This allows long-lived connections (e.g. SSE streams on /documcp) to stay open
+// while enforcing timeouts on all other routes.
+func TimeoutExcept(timeout time.Duration, excludedPrefixes ...string) func(http.Handler) http.Handler {
+	timeoutMW := middleware.Timeout(timeout)
+	return func(next http.Handler) http.Handler {
+		withTimeout := timeoutMW(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			for _, prefix := range excludedPrefixes {
+				if strings.HasPrefix(r.URL.Path, prefix) {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+			withTimeout.ServeHTTP(w, r)
+		})
+	}
+}
+
 // RequestLogger returns middleware that logs each request using slog.
 // It captures method, path, status code, duration, and request ID.
 func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {

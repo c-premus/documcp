@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/meilisearch/meilisearch-go"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -197,10 +198,22 @@ func New(cfg Config) *Handler {
 	// Register prompts
 	h.registerPrompts(cfg.ZimEnabled, cfg.ConfluenceEnabled, cfg.GitTemplatesEnabled)
 
-	// Create HTTP handler using the streamable HTTP transport
-	h.httpHandler = mcp.NewStreamableHTTPHandler(func(_ *http.Request) *mcp.Server {
+	// Create HTTP handler using the Streamable HTTP transport (protocol 2025-03-26).
+	// The SDK v1.4.1 requires Accept: application/json, text/event-stream on all
+	// requests. We wrap with a middleware that adds text/event-stream when missing
+	// so Claude.ai clients that only send Accept: application/json still work.
+	streamableHandler := mcp.NewStreamableHTTPHandler(func(_ *http.Request) *mcp.Server {
 		return mcpServer
-	}, nil)
+	}, &mcp.StreamableHTTPOptions{
+		Stateless: false,
+	})
+	h.httpHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		accept := r.Header.Get("Accept")
+		if accept != "" && !strings.Contains(accept, "text/event-stream") && !strings.Contains(accept, "*/*") {
+			r.Header.Set("Accept", accept+", text/event-stream")
+		}
+		streamableHandler.ServeHTTP(w, r)
+	})
 
 	return h
 }

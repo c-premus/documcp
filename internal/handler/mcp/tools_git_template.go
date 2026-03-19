@@ -41,12 +41,21 @@ type gitTemplateItem struct {
 	LastSyncedAt string   `json:"last_synced_at,omitempty"`
 }
 
+type gitTemplateSearchResult struct {
+	UUID        string `json:"uuid"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Category    string `json:"category,omitempty"`
+	FileCount   int    `json:"file_count,omitempty"`
+	Status      string `json:"status,omitempty"`
+}
+
 type searchGitTemplatesResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message,omitempty"`
-	Query   string `json:"query"`
-	Results []any  `json:"results"`
-	Total   int    `json:"total"`
+	Success bool                     `json:"success"`
+	Message string                   `json:"message,omitempty"`
+	Query   string                   `json:"query"`
+	Results []gitTemplateSearchResult `json:"results"`
+	Total   int                      `json:"total"`
 }
 
 type getTemplateStructureResponse struct {
@@ -366,19 +375,19 @@ func (h *Handler) handleSearchGitTemplates(
 			return nil, searchGitTemplatesResponse{}, fmt.Errorf("searching git templates: %w", err)
 		}
 
-		results := make([]any, 0, len(templates))
+		results := make([]gitTemplateSearchResult, 0, len(templates))
 		for _, gt := range templates {
-			item := map[string]any{
-				"uuid":       gt.UUID,
-				"name":       gt.Name,
-				"file_count": gt.FileCount,
-				"status":     gt.Status,
+			item := gitTemplateSearchResult{
+				UUID:      gt.UUID,
+				Name:      gt.Name,
+				FileCount: gt.FileCount,
+				Status:    gt.Status,
 			}
 			if gt.Description.Valid {
-				item["description"] = gt.Description.String
+				item.Description = gt.Description.String
 			}
 			if gt.Category.Valid {
-				item["category"] = gt.Category.String
+				item.Category = gt.Category.String
 			}
 			results = append(results, item)
 		}
@@ -415,27 +424,30 @@ func (h *Handler) handleSearchGitTemplates(
 		return nil, searchGitTemplatesResponse{}, fmt.Errorf("searching git templates: %w", err)
 	}
 
-	results := make([]any, 0, len(resp.Hits))
+	results := make([]gitTemplateSearchResult, 0, len(resp.Hits))
 	for _, hit := range resp.Hits {
 		var m map[string]any
 		if err := hit.DecodeInto(&m); err != nil {
 			continue
 		}
-		result := map[string]any{
-			"uuid": m["uuid"],
-			"name": m["name"],
+		result := gitTemplateSearchResult{}
+		if v, ok := m["uuid"].(string); ok {
+			result.UUID = v
 		}
-		if desc, ok := m["description"]; ok {
-			result["description"] = desc
+		if v, ok := m["name"].(string); ok {
+			result.Name = v
 		}
-		if cat, ok := m["category"]; ok {
-			result["category"] = cat
+		if v, ok := m["description"].(string); ok {
+			result.Description = v
 		}
-		if fc, ok := m["file_count"]; ok {
-			result["file_count"] = fc
+		if v, ok := m["category"].(string); ok {
+			result.Category = v
 		}
-		if status, ok := m["status"]; ok {
-			result["status"] = status
+		if v, ok := m["file_count"].(float64); ok {
+			result.FileCount = int(v)
+		}
+		if v, ok := m["status"].(string); ok {
+			result.Status = v
 		}
 		results = append(results, result)
 	}

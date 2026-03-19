@@ -95,7 +95,12 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		r.Use(observability.MetricsMiddleware(deps.Metrics))
 	}
 
-	// MCP endpoint — no timeout (SSE streams must stay open indefinitely).
+	// Global middleware applied to all routes (must be defined before any routes).
+	r.Use(BlockSensitiveFiles)
+	r.Use(MaxBodySize(1 * 1024 * 1024)) // 1 MB default body limit (excludes multipart)
+	r.Use(TimeoutExcept(60*time.Second, "/documcp"))
+
+	// MCP endpoint — timeout excluded above (SSE streams must stay open indefinitely).
 	if deps.MCPHandler != nil {
 		r.Group(func(r chi.Router) {
 			if deps.OAuthService != nil {
@@ -107,11 +112,6 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		})
 		s.logger.Info("MCP endpoint registered", "path", "/documcp")
 	}
-
-	// Global middleware for all other routes
-	r.Use(middleware.Timeout(60 * time.Second))
-	r.Use(BlockSensitiveFiles)
-	r.Use(MaxBodySize(1 * 1024 * 1024)) // 1 MB default body limit (excludes multipart)
 
 	// Health check (liveness — cheap, no I/O)
 	health := handler.NewHealthHandler(deps.Version)
