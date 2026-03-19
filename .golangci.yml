@@ -1,0 +1,193 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    # Default linters (kept explicit for clarity)
+    - errcheck       # Ensure errors are handled
+    - govet          # Catches suspicious code constructs
+    - ineffassign    # Detect ineffectual assignments
+    - staticcheck    # Comprehensive static analysis (includes gosimple)
+    - unused         # Detect unused code
+
+    # Google Go Style enforcement
+    - revive         # Configurable Go linter with style rules
+    - gocritic       # Opinionated code quality checks
+    - misspell       # Spelling in comments and strings
+    - unconvert      # Unnecessary type conversions
+    - unparam        # Unused function parameters
+    - noctx          # HTTP requests must pass context
+    - exhaustive     # Exhaustive enum switch statements
+    - godot          # Comments should end with a period
+    - wrapcheck      # Errors from external packages should be wrapped
+    - testifylint    # Testify best practices
+
+    # Additional quality checks
+    - errname        # Sentinel errors prefixed with Err, error types suffixed with Error
+    - errorlint      # Proper error wrapping (Go 1.13+)
+    - bodyclose      # HTTP response body must be closed
+    - containedctx   # Detect context.Context stored in structs
+    - sqlclosecheck  # SQL rows/stmts must be closed
+
+  settings:
+    govet:
+      enable:
+        - shadow     # Detect variable shadowing
+        - printf     # Printf format string checking
+
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+          arguments:
+            - "checkPrivateReceivers"
+        - name: var-naming
+          severity: warning
+        - name: package-comments
+          severity: warning
+        - name: error-return
+          severity: error
+        - name: error-naming
+          severity: warning
+        - name: if-return
+          severity: warning
+        - name: var-declaration
+          severity: warning
+        - name: range
+          severity: warning
+        - name: time-naming
+          severity: warning
+        - name: context-as-argument
+          severity: error
+        - name: context-keys-type
+          severity: error
+        - name: blank-imports
+          severity: warning
+        - name: dot-imports
+          severity: warning
+        - name: increment-decrement
+          severity: warning
+        - name: indent-error-flow
+          severity: warning
+        - name: errorf
+          severity: warning
+        - name: unexported-return
+          severity: warning
+        - name: receiver-naming
+          severity: warning
+        - name: empty-block
+          severity: warning
+        - name: superfluous-else
+          severity: warning
+        - name: unreachable-code
+          severity: warning
+
+    gocritic:
+      enabled-checks:
+        # These extend the default set (defaults like appendAssign, dupBranchBody,
+        # dupCase, typeSwitchVar, commentFormatting, singleCaseSwitch, switchTrue,
+        # underef are already enabled automatically).
+        - hugeParam            # Flag large value copies
+        - rangeValCopy         # Flag large range value copies
+        - evalOrder            # Detect suspicious evaluation order
+        - sloppyReassign       # Detect reassignments that can be simplified
+        - unnecessaryBlock     # Detect unnecessary blocks
+        - weakCond             # Detect conditions that are always true/false
+        - boolExprSimplify     # Simplify boolean expressions
+        - builtinShadowDecl    # Detect shadowed builtins
+        - emptyFallthrough     # Detect empty fallthrough
+        - importShadow         # Detect imports shadowed by local names
+        - initClause           # Detect init clauses that can be simplified
+        - nestingReduce        # Suggest reducing nesting
+        - paramTypeCombine     # Suggest combining parameter types
+        - unlabelStmt          # Detect unnecessary labels
+        - unnamedResult        # Encourage naming results for clarity
+        - unnecessaryDefer     # Detect unnecessary defers
+      settings:
+        hugeParam:
+          sizeThreshold: 512   # Bytes; flag params larger than this
+
+    exhaustive:
+      default-signifies-exhaustive: true  # Treat default case as exhaustive
+
+    godot:
+      scope: toplevel    # Only check top-level comments (exported declarations)
+      capital: true      # Require capital letter after period in next sentence
+
+    wrapcheck:
+      ignore-sigs:
+        # Standard library functions that return sentinel errors (no wrapping needed)
+        - ".Errorf("
+        - "errors.New("
+        - "errors.Unwrap("
+        - ".Wrap("
+        - ".Wrapf("
+        - ".WithMessage("
+        - ".WithMessagef("
+        - ".WithStack("
+      ignore-package-globs:
+        # Internal packages don't need wrapping (same module boundary)
+        - "git.999.haus/chris/DocuMCP-go/internal/*"
+
+    misspell:
+      locale: US
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: false         # Allow _ = f() for intentional ignoring (with comment)
+
+    testifylint:
+      enable-all: true
+
+    errorlint:
+      errorf: true               # Check fmt.Errorf uses %w
+      asserts: true              # Check errors.As usage
+      comparison: true           # Check errors.Is usage
+
+  exclusions:
+    generated: lax               # Skip files with generated code markers
+
+    paths:
+      - vendor
+      - web/frontend/dist
+      - third_party
+
+    rules:
+      # Test files are allowed to skip error wrapping and exported comments.
+      - path: _test\.go
+        linters:
+          - wrapcheck
+          - godot
+          - errcheck
+
+      # Main and cmd packages don't need package comments.
+      - path: main\.go
+        linters:
+          - revive
+        text: "package-comments"
+
+      # Allow unexported returns in internal packages (they're private anyway).
+      - path: internal/
+        linters:
+          - revive
+        text: "unexported-return"
+
+      # Generated files should be skipped entirely.
+      - path: ".*_gen\\.go"
+        linters:
+          - revive
+          - gocritic
+          - godot
+          - wrapcheck
+
+      # MCP handler uses long string constants -- don't flag godot there.
+      - path: internal/handler/mcp/
+        linters:
+          - godot
+        source: "^// "
+
+issues:
+  max-issues-per-linter: 0      # Show all issues (no limit)
+  max-same-issues: 0            # Show all instances (no limit)
