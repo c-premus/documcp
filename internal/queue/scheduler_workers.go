@@ -22,7 +22,7 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/security"
 )
 
-// --- Interfaces (defined where consumed) ---
+// --- Interfaces (defined where consumed) ---.
 
 // ExternalServiceFinder retrieves enabled external services by type.
 type ExternalServiceFinder interface {
@@ -50,7 +50,7 @@ type SchedulerDeps struct {
 	Logger        *slog.Logger
 }
 
-// --- Sync Workers ---
+// --- Sync Workers ---.
 
 // SyncKiwixWorker syncs Kiwix ZIM archives from external services.
 type SyncKiwixWorker struct {
@@ -58,6 +58,7 @@ type SyncKiwixWorker struct {
 	Deps SchedulerDeps
 }
 
+// Work executes the SyncKiwixWorker job, syncing ZIM archives from the Kiwix catalog.
 func (w *SyncKiwixWorker) Work(ctx context.Context, _ *river.Job[SyncKiwixArgs]) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -75,7 +76,8 @@ func (w *SyncKiwixWorker) Work(ctx context.Context, _ *river.Job[SyncKiwixArgs])
 		return nil
 	}
 
-	for _, svc := range services {
+	for i := range services {
+		svc := &services[i]
 		svcLogger := logger.With("service_id", svc.ID, "base_url", svc.BaseURL)
 
 		client, clientErr := kiwix.NewClient(svc.BaseURL, svcLogger)
@@ -117,6 +119,7 @@ type SyncConfluenceWorker struct {
 	Deps SchedulerDeps
 }
 
+// Work executes the SyncConfluenceWorker job, syncing Confluence spaces from external services.
 func (w *SyncConfluenceWorker) Work(ctx context.Context, _ *river.Job[SyncConfluenceArgs]) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -134,10 +137,11 @@ func (w *SyncConfluenceWorker) Work(ctx context.Context, _ *river.Job[SyncConflu
 		return nil
 	}
 
-	for _, svc := range services {
+	for i := range services {
+		svc := &services[i]
 		svcLogger := logger.With("service_id", svc.ID, "base_url", svc.BaseURL)
 
-		email, token, err := parseConfluenceCredentials(svc)
+		email, token, err := parseConfluenceCredentials(*svc)
 		if err != nil {
 			svcLogger.Error("parsing confluence credentials", "error", err)
 			continue
@@ -182,6 +186,7 @@ type SyncGitTemplatesWorker struct {
 	Deps SchedulerDeps
 }
 
+// Work executes the SyncGitTemplatesWorker job, syncing Git template repositories.
 func (w *SyncGitTemplatesWorker) Work(ctx context.Context, _ *river.Job[SyncGitTemplatesArgs]) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -201,10 +206,11 @@ func (w *SyncGitTemplatesWorker) Work(ctx context.Context, _ *river.Job[SyncGitT
 
 	client := git.NewClient(w.Deps.GitTempDir, logger)
 
-	for _, t := range templates {
+	for i := range templates {
+		t := &templates[i]
 		tmplLogger := logger.With("template_id", t.ID, "slug", t.Slug)
 
-		syncTmpl, err := toSyncTemplate(t)
+		syncTmpl, err := toSyncTemplate(*t)
 		if err != nil {
 			tmplLogger.Error("converting git template", "error", err)
 			continue
@@ -231,7 +237,7 @@ func (w *SyncGitTemplatesWorker) Work(ctx context.Context, _ *river.Job[SyncGitT
 	return nil
 }
 
-// --- Cleanup Workers ---
+// --- Cleanup Workers ---.
 
 // CleanupOAuthTokensWorker purges expired OAuth tokens.
 type CleanupOAuthTokensWorker struct {
@@ -239,6 +245,7 @@ type CleanupOAuthTokensWorker struct {
 	Deps SchedulerDeps
 }
 
+// Work executes the CleanupOAuthTokensWorker job, purging expired OAuth tokens.
 func (w *CleanupOAuthTokensWorker) Work(ctx context.Context, _ *river.Job[CleanupOAuthTokensArgs]) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -265,6 +272,7 @@ type CleanupOrphanedFilesWorker struct {
 	Deps SchedulerDeps
 }
 
+// Work executes the CleanupOrphanedFilesWorker job, removing unreferenced files from storage.
 func (w *CleanupOrphanedFilesWorker) Work(ctx context.Context, _ *river.Job[CleanupOrphanedFilesArgs]) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -319,6 +327,7 @@ type VerifySearchIndexWorker struct {
 	Deps SchedulerDeps
 }
 
+// Work executes the VerifySearchIndexWorker job, checking consistency between the database and search index.
 func (w *VerifySearchIndexWorker) Work(ctx context.Context, _ *river.Job[VerifySearchIndexArgs]) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -377,6 +386,7 @@ type PurgeSoftDeletedWorker struct {
 	Deps SchedulerDeps
 }
 
+// Work executes the PurgeSoftDeletedWorker job, permanently removing documents soft-deleted over 30 days ago.
 func (w *PurgeSoftDeletedWorker) Work(ctx context.Context, _ *river.Job[PurgeSoftDeletedArgs]) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -419,6 +429,7 @@ type CleanupDisabledZimWorker struct {
 	Deps SchedulerDeps
 }
 
+// Work executes the CleanupDisabledZimWorker job, removing disabled ZIM archives from the search index.
 func (w *CleanupDisabledZimWorker) Work(ctx context.Context, _ *river.Job[CleanupDisabledZimArgs]) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -437,9 +448,9 @@ func (w *CleanupDisabledZimWorker) Work(ctx context.Context, _ *river.Job[Cleanu
 	}
 
 	var cleanedCount int
-	for _, archive := range archives {
-		if err := w.Deps.Indexer.DeleteZimArchive(ctx, archive.UUID); err != nil {
-			logger.Error("removing disabled ZIM archive from search index", "uuid", archive.UUID, "error", err)
+	for i := range archives {
+		if err := w.Deps.Indexer.DeleteZimArchive(ctx, archives[i].UUID); err != nil {
+			logger.Error("removing disabled ZIM archive from search index", "uuid", archives[i].UUID, "error", err)
 			continue
 		}
 		cleanedCount++
@@ -455,6 +466,7 @@ type HealthCheckServicesWorker struct {
 	Deps SchedulerDeps
 }
 
+// Work executes the HealthCheckServicesWorker job, performing HTTP health checks on external services.
 func (w *HealthCheckServicesWorker) Work(ctx context.Context, _ *river.Job[HealthCheckServicesArgs]) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -475,7 +487,8 @@ func (w *HealthCheckServicesWorker) Work(ctx context.Context, _ *river.Job[Healt
 	httpClient := &http.Client{Timeout: 10 * time.Second, Transport: security.SafeTransport()}
 
 	var healthyCount, unhealthyCount int
-	for _, svc := range services {
+	for i := range services {
+		svc := &services[i]
 		svcLogger := logger.With("service_id", svc.ID, "base_url", svc.BaseURL)
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, svc.BaseURL, nil)
@@ -525,7 +538,7 @@ func (w *HealthCheckServicesWorker) Work(ctx context.Context, _ *river.Job[Healt
 	return nil
 }
 
-// --- Helpers (moved from scheduler package) ---
+// --- Helpers (moved from scheduler package) ---.
 
 // parseConfluenceCredentials extracts email and API token from the service's
 // APIKey field, which stores them in "email:token" format.

@@ -131,19 +131,19 @@ func (h *Handler) handleListZimArchives(ctx context.Context, _ *mcp.CallToolRequ
 	}
 
 	items := make([]zimArchiveItem, 0, len(archives))
-	for _, a := range archives {
+	for i := range archives {
 		item := zimArchiveItem{
-			Name:         a.Name,
-			Title:        a.Title,
-			Language:     a.Language,
-			ArticleCount: a.ArticleCount,
-			FileSize:     a.FileSize,
+			Name:         archives[i].Name,
+			Title:        archives[i].Title,
+			Language:     archives[i].Language,
+			ArticleCount: archives[i].ArticleCount,
+			FileSize:     archives[i].FileSize,
 		}
-		if a.Description.Valid {
-			item.Description = a.Description.String
+		if archives[i].Description.Valid {
+			item.Description = archives[i].Description.String
 		}
-		if a.Category.Valid {
-			item.Category = a.Category.String
+		if archives[i].Category.Valid {
+			item.Category = archives[i].Category.String
 		}
 		items = append(items, item)
 	}

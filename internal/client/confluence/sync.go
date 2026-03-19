@@ -20,6 +20,8 @@ type SpaceIndexer interface {
 }
 
 // ConfluenceSpaceRecord is the Meilisearch-indexable record for a Confluence space.
+//
+//nolint:revive // exported stutter is intentional; renaming would be a breaking change
 type ConfluenceSpaceRecord struct {
 	UUID              string `json:"uuid"`
 	ConfluenceID      string `json:"confluence_id"`
@@ -53,10 +55,11 @@ func Sync(ctx context.Context, params SyncParams) error {
 
 	activeKeys := make([]string, 0, len(params.Spaces))
 
-	for _, space := range params.Spaces {
+	for i := range params.Spaces {
+		space := &params.Spaces[i]
 		activeKeys = append(activeKeys, space.Key)
 
-		if err := params.Repo.UpsertFromAPI(ctx, params.ServiceID, space); err != nil {
+		if err := params.Repo.UpsertFromAPI(ctx, params.ServiceID, *space); err != nil {
 			logger.Error("upserting confluence space",
 				"key", space.Key,
 				"error", err,

@@ -2,6 +2,7 @@ package oauthhandler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -128,7 +129,8 @@ func (h *Handler) tokenDeviceCode(w http.ResponseWriter, r *http.Request, client
 	})
 	if err != nil {
 		// Check for typed device code errors
-		if dcErr, ok := err.(*oauth.DeviceCodeError); ok {
+		var dcErr *oauth.DeviceCodeError
+		if errors.As(err, &dcErr) {
 			oauthError(w, http.StatusBadRequest, dcErr.Code, dcErr.Description)
 			return
 		}

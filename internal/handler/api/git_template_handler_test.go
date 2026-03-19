@@ -897,7 +897,7 @@ func TestBuildTemplateArchiveTarGz(t *testing.T) {
 
 		// No more entries.
 		_, err = tr.Next()
-		if err != io.EOF {
+		if !errors.Is(err, io.EOF) {
 			t.Errorf("expected EOF after single entry, got %v", err)
 		}
 	})
@@ -959,7 +959,7 @@ func TestBuildTemplateArchiveTarGz(t *testing.T) {
 
 		tr := tar.NewReader(gr)
 		_, err = tr.Next()
-		if err != io.EOF {
+		if !errors.Is(err, io.EOF) {
 			t.Errorf("expected EOF for empty archive, got %v", err)
 		}
 	})

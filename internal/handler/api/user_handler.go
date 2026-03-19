@@ -206,7 +206,7 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 		user.Email = req.Email
 	}
 
-	if err := h.repo.UpdateUser(r.Context(), user); err != nil {
+	if err = h.repo.UpdateUser(r.Context(), user); err != nil {
 		h.logger.Error("updating user", "id", id, "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to update user")
 		return

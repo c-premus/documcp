@@ -22,10 +22,10 @@ import (
 )
 
 const (
-	// catalogCacheKey is the cache key for the OPDS catalog.
+	// CatalogCacheKey is the cache key for the OPDS catalog.
 	catalogCacheKey = "catalog"
 
-	// catalogCacheTTL is how long the parsed catalog is cached.
+	// CatalogCacheTTL is how long the parsed catalog is cached.
 	catalogCacheTTL = 1 * time.Hour
 )
 
@@ -265,11 +265,12 @@ func validateArchiveName(name string) error {
 func parseCatalog(data []byte) ([]CatalogEntry, error) {
 	var feed opdsFeed
 	if err := xml.Unmarshal(data, &feed); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing kiwix catalog: %w", err)
 	}
 
 	entries := make([]CatalogEntry, 0, len(feed.Entries))
-	for _, e := range feed.Entries {
+	for i := range feed.Entries {
+		e := &feed.Entries[i]
 		name := e.Name
 		if name == "" {
 			name = deriveNameFromID(e.ID)

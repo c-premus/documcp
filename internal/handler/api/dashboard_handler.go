@@ -148,7 +148,7 @@ func (h *DashboardHandler) Stats(w http.ResponseWriter, r *http.Request) {
 			resp["queue"] = map[string]int{
 				"pending":   stats["available"] + stats["retryable"],
 				"completed": stats["running"],
-				"failed":    stats["discarded"] + stats["cancelled"],
+				"failed":    stats["discarded"] + stats["cancelled"], //nolint:misspell
 			}
 		}
 	}

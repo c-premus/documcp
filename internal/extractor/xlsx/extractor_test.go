@@ -73,7 +73,7 @@ func TestXLSXExtractor_Extract(t *testing.T) {
 	}
 }
 
-func TestXLSXExtractor_Extract_CancelledContext(t *testing.T) {
+func TestXLSXExtractor_Extract_CanceledContext(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -81,7 +81,7 @@ func TestXLSXExtractor_Extract_CancelledContext(t *testing.T) {
 
 	ext := xlsx.New()
 	// The select between ctx.Done() and default is non-deterministic when the
-	// context is already cancelled, so we cannot assert a specific outcome.
+	// context is already canceled, so we cannot assert a specific outcome.
 	// We verify only that Extract does not panic and that any error returned
 	// is context-related.
 	_, err := ext.Extract(ctx, sampleXLSX)

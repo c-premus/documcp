@@ -45,6 +45,8 @@ type TemplateIndexer interface {
 }
 
 // GitTemplateRecord is the Meilisearch indexable record.
+//
+//nolint:revive // exported stutter is intentional; renaming would be a breaking change
 type GitTemplateRecord struct {
 	UUID          string   `json:"uuid"`
 	Name          string   `json:"name"`

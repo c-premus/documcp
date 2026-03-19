@@ -242,7 +242,7 @@ func (r *DocumentRepository) PurgeSoftDeleted(ctx context.Context, olderThan tim
 		return nil, fmt.Errorf("building IN clause for document_tags purge: %w", err)
 	}
 	tagQuery = tx.Rebind(tagQuery)
-	if _, err := tx.ExecContext(ctx, tagQuery, tagArgs...); err != nil {
+	if _, err = tx.ExecContext(ctx, tagQuery, tagArgs...); err != nil {
 		return nil, fmt.Errorf("purging document_tags: %w", err)
 	}
 
@@ -252,7 +252,7 @@ func (r *DocumentRepository) PurgeSoftDeleted(ctx context.Context, olderThan tim
 		return nil, fmt.Errorf("building IN clause for document_versions purge: %w", err)
 	}
 	verQuery = tx.Rebind(verQuery)
-	if _, err := tx.ExecContext(ctx, verQuery, verArgs...); err != nil {
+	if _, err = tx.ExecContext(ctx, verQuery, verArgs...); err != nil {
 		return nil, fmt.Errorf("purging document_versions: %w", err)
 	}
 

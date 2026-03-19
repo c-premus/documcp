@@ -33,7 +33,8 @@ func run() error {
 		cfg.DocuMCP.ServerVersion = version
 	}
 
-	if err := cfg.Validate(); err != nil {
+	err = cfg.Validate()
+	if err != nil {
 		return err
 	}
 

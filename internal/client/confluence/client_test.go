@@ -1189,7 +1189,7 @@ func TestReadPageByTitle_MalformedJSON(t *testing.T) {
 
 // --- doGet error handling ---
 
-func TestDoGet_CancelledContext(t *testing.T) {
+func TestDoGet_CanceledContext(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{}`))
@@ -1202,7 +1202,7 @@ func TestDoGet_CancelledContext(t *testing.T) {
 
 	err := client.Health(ctx)
 	if err == nil {
-		t.Fatal("expected error for cancelled context, got nil")
+		t.Fatal("expected error for canceled context, got nil")
 	}
 }
 

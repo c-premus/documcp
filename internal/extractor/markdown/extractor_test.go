@@ -162,7 +162,7 @@ func TestMarkdownExtractor_Extract_NonExistentFile(t *testing.T) {
 	}
 }
 
-func TestMarkdownExtractor_Extract_CancelledContext(t *testing.T) {
+func TestMarkdownExtractor_Extract_CanceledContext(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -177,7 +177,7 @@ func TestMarkdownExtractor_Extract_CancelledContext(t *testing.T) {
 	ext := markdown.New()
 	_, err := ext.Extract(ctx, filePath)
 	if err == nil {
-		t.Fatal("Extract() expected error for cancelled context, got nil")
+		t.Fatal("Extract() expected error for canceled context, got nil")
 	}
 }
 

@@ -1,4 +1,4 @@
-package crypto
+package crypto //nolint:revive // package name matches directory convention; internal package shadowing is acceptable
 
 import (
 	"crypto/rand"
@@ -152,7 +152,7 @@ func TestDecryptInvalidInput(t *testing.T) {
 		}
 
 		otherKey := make([]byte, 32)
-		if _, err := rand.Read(otherKey); err != nil {
+		if _, err = rand.Read(otherKey); err != nil {
 			t.Fatal(err)
 		}
 		otherEnc, err := NewEncryptor(otherKey)

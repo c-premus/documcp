@@ -3,6 +3,7 @@ package model
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 )
 
 // GitTemplate represents a row in the "git_templates" table.
@@ -40,7 +41,7 @@ func (gt *GitTemplate) ParseTags() ([]string, error) {
 	}
 	var tags []string
 	if err := json.Unmarshal([]byte(gt.Tags.String), &tags); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshaling git template tags: %w", err)
 	}
 	return tags, nil
 }
@@ -50,7 +51,10 @@ func (gt *GitTemplate) ParseManifest(dest any) error {
 	if !gt.Manifest.Valid {
 		return nil
 	}
-	return json.Unmarshal([]byte(gt.Manifest.String), dest)
+	if err := json.Unmarshal([]byte(gt.Manifest.String), dest); err != nil {
+		return fmt.Errorf("unmarshaling git template manifest: %w", err)
+	}
+	return nil
 }
 
 // GitTemplateFile represents a row in the "git_template_files" table.
@@ -76,5 +80,8 @@ func (f *GitTemplateFile) ParseVariables(dest any) error {
 	if !f.Variables.Valid {
 		return nil
 	}
-	return json.Unmarshal([]byte(f.Variables.String), dest)
+	if err := json.Unmarshal([]byte(f.Variables.String), dest); err != nil {
+		return fmt.Errorf("unmarshaling git template file variables: %w", err)
+	}
+	return nil
 }

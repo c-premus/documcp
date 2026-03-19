@@ -1,3 +1,4 @@
+// Package repository provides database access for domain models.
 package repository
 
 import (

@@ -68,12 +68,18 @@ func NewRiverClient(cfg RiverConfig) (*RiverClient, error) {
 
 // Start begins processing jobs. Call after creating the client.
 func (rc *RiverClient) Start(ctx context.Context) error {
-	return rc.client.Start(ctx)
+	if err := rc.client.Start(ctx); err != nil {
+		return fmt.Errorf("starting river client: %w", err)
+	}
+	return nil
 }
 
 // Stop gracefully shuts down the River client, waiting for in-progress jobs.
 func (rc *RiverClient) Stop(ctx context.Context) error {
-	return rc.client.Stop(ctx)
+	if err := rc.client.Stop(ctx); err != nil {
+		return fmt.Errorf("stopping river client: %w", err)
+	}
+	return nil
 }
 
 // Insert enqueues a job. Satisfies the service.JobInserter interface.
@@ -93,7 +99,10 @@ func (rc *RiverClient) Insert(ctx context.Context, args river.JobArgs, opts *riv
 			rc.metrics.QueueJobsDispatched.WithLabelValues(result.Job.Queue, args.Kind()).Inc()
 		}
 	}
-	return result, err
+	if err != nil {
+		return nil, fmt.Errorf("inserting river job: %w", err)
+	}
+	return result, nil
 }
 
 // Client returns the underlying River client for admin operations.
@@ -106,7 +115,7 @@ func (rc *RiverClient) Client() *river.Client[pgx.Tx] {
 func (rc *RiverClient) QueueStats(ctx context.Context) (map[string]int, error) {
 	rows, err := rc.pool.Query(ctx,
 		`SELECT state, count(*) FROM river_job WHERE state = ANY($1) GROUP BY state`,
-		[]string{"available", "running", "retryable", "discarded", "cancelled"},
+		[]string{"available", "running", "retryable", "discarded", "cancelled"}, //nolint:misspell
 	)
 	if err != nil {
 		return nil, fmt.Errorf("querying queue stats: %w", err)
@@ -122,7 +131,10 @@ func (rc *RiverClient) QueueStats(ctx context.Context) (map[string]int, error) {
 		}
 		stats[state] = count
 	}
-	return stats, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating queue stats rows: %w", err)
+	}
+	return stats, nil
 }
 
 // riverErrorHandler implements river.ErrorHandler to publish failure events.
@@ -132,6 +144,7 @@ type riverErrorHandler struct {
 	logger   *slog.Logger
 }
 
+// HandleError logs and records metrics for a failed job.
 func (h *riverErrorHandler) HandleError(ctx context.Context, job *rivertype.JobRow, jobErr error) *river.ErrorHandlerResult {
 	h.logger.Error("job failed",
 		"job_id", job.ID,
@@ -157,6 +170,7 @@ func (h *riverErrorHandler) HandleError(ctx context.Context, job *rivertype.JobR
 	return nil
 }
 
+// HandlePanic logs and records metrics for a panicking job.
 func (h *riverErrorHandler) HandlePanic(ctx context.Context, job *rivertype.JobRow, panicVal any, trace string) *river.ErrorHandlerResult {
 	h.logger.Error("job panicked",
 		"job_id", job.ID,

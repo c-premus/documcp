@@ -3,6 +3,7 @@ package model
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 )
 
 // Document represents a row in the "documents" table.
@@ -36,7 +37,10 @@ func (d *Document) ParseMetadata(dest any) error {
 	if !d.Metadata.Valid {
 		return nil
 	}
-	return json.Unmarshal([]byte(d.Metadata.String), dest)
+	if err := json.Unmarshal([]byte(d.Metadata.String), dest); err != nil {
+		return fmt.Errorf("unmarshaling document metadata: %w", err)
+	}
+	return nil
 }
 
 // DocumentVersion represents a row in the "document_versions" table.
@@ -56,7 +60,10 @@ func (dv *DocumentVersion) ParseMetadata(dest any) error {
 	if !dv.Metadata.Valid {
 		return nil
 	}
-	return json.Unmarshal([]byte(dv.Metadata.String), dest)
+	if err := json.Unmarshal([]byte(dv.Metadata.String), dest); err != nil {
+		return fmt.Errorf("unmarshaling document version metadata: %w", err)
+	}
+	return nil
 }
 
 // DocumentTag represents a row in the "document_tags" table.

@@ -14,7 +14,7 @@ var essentialExact = []string{
 }
 
 // IsEssentialFile checks if a file path matches essential file patterns.
-// Essential patterns: CLAUDE.md, memory-bank/*.md, template.json, README.md, .claude/**/*
+// Essential patterns: CLAUDE.md, memory-bank/*.md, template.json, README.md, .claude/**/*.
 func IsEssentialFile(path string) bool {
 	// Normalize separators.
 	clean := filepath.ToSlash(path)

@@ -1,3 +1,4 @@
+// Package queue provides River job workers, adapters, and scheduling for background tasks.
 package queue
 
 import (
@@ -10,13 +11,14 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/search"
 )
 
-// --- Kiwix adapters ---
+// --- Kiwix adapters ---.
 
 // kiwixRepoAdapter adapts *repository.ZimArchiveRepository to satisfy kiwix.ArchiveRepo.
 type kiwixRepoAdapter struct {
 	repo *repository.ZimArchiveRepository
 }
 
+// UpsertFromCatalog creates or updates a ZIM archive record from a Kiwix catalog entry.
 func (a *kiwixRepoAdapter) UpsertFromCatalog(ctx context.Context, serviceID int64, entry kiwix.CatalogEntry) error {
 	return a.repo.UpsertFromCatalog(ctx, serviceID, repository.ZimArchiveUpsert{
 		Name:         entry.Name,
@@ -34,6 +36,7 @@ func (a *kiwixRepoAdapter) UpsertFromCatalog(ctx context.Context, serviceID int6
 	})
 }
 
+// DisableOrphaned disables ZIM archives that are no longer in the active catalog.
 func (a *kiwixRepoAdapter) DisableOrphaned(ctx context.Context, serviceID int64, activeNames []string) (int, error) {
 	return a.repo.DisableOrphaned(ctx, serviceID, activeNames)
 }
@@ -43,6 +46,7 @@ type kiwixIndexerAdapter struct {
 	indexer *search.Indexer
 }
 
+// IndexZimArchive indexes a ZIM archive in the search engine.
 func (a *kiwixIndexerAdapter) IndexZimArchive(ctx context.Context, record kiwix.ZimArchiveRecord) error {
 	return a.indexer.IndexZimArchive(ctx, search.ZimArchiveRecord{
 		UUID:         record.UUID,
@@ -57,13 +61,14 @@ func (a *kiwixIndexerAdapter) IndexZimArchive(ctx context.Context, record kiwix.
 	})
 }
 
-// --- Confluence adapters ---
+// --- Confluence adapters ---.
 
 // confluenceRepoAdapter adapts *repository.ConfluenceSpaceRepository to satisfy confluence.SpaceRepo.
 type confluenceRepoAdapter struct {
 	repo *repository.ConfluenceSpaceRepository
 }
 
+// UpsertFromAPI creates or updates a Confluence space record from the API response.
 func (a *confluenceRepoAdapter) UpsertFromAPI(ctx context.Context, serviceID int64, space confluence.Space) error {
 	return a.repo.UpsertFromAPI(ctx, serviceID, repository.ConfluenceSpaceUpsert{
 		ConfluenceID: space.ID,
@@ -77,6 +82,7 @@ func (a *confluenceRepoAdapter) UpsertFromAPI(ctx context.Context, serviceID int
 	})
 }
 
+// DisableOrphaned disables Confluence spaces that are no longer present in the API.
 func (a *confluenceRepoAdapter) DisableOrphaned(ctx context.Context, serviceID int64, activeKeys []string) (int, error) {
 	return a.repo.DisableOrphaned(ctx, serviceID, activeKeys)
 }
@@ -86,6 +92,7 @@ type confluenceIndexerAdapter struct {
 	indexer *search.Indexer
 }
 
+// IndexConfluenceSpace indexes a Confluence space in the search engine.
 func (a *confluenceIndexerAdapter) IndexConfluenceSpace(ctx context.Context, record confluence.ConfluenceSpaceRecord) error {
 	return a.indexer.IndexConfluenceSpace(ctx, search.ConfluenceSpaceRecord{
 		UUID:              record.UUID,
@@ -100,17 +107,19 @@ func (a *confluenceIndexerAdapter) IndexConfluenceSpace(ctx context.Context, rec
 	})
 }
 
-// --- Git template adapters ---
+// --- Git template adapters ---.
 
 // gitRepoAdapter adapts *repository.GitTemplateRepository to satisfy git.TemplateRepo.
 type gitRepoAdapter struct {
 	repo *repository.GitTemplateRepository
 }
 
+// UpdateSyncStatus updates the sync status of a Git template after a sync attempt.
 func (a *gitRepoAdapter) UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error {
 	return a.repo.UpdateSyncStatus(ctx, templateID, status, commitSHA, fileCount, totalSize, errMsg)
 }
 
+// ReplaceFiles replaces all files for a Git template with the provided set.
 func (a *gitRepoAdapter) ReplaceFiles(ctx context.Context, templateID int64, files []git.TemplateFile) error {
 	converted := make([]repository.GitTemplateFileInsert, len(files))
 	for i, f := range files {
@@ -133,6 +142,7 @@ type gitIndexerAdapter struct {
 	indexer *search.Indexer
 }
 
+// IndexGitTemplate indexes a Git template in the search engine.
 func (a *gitIndexerAdapter) IndexGitTemplate(ctx context.Context, record git.GitTemplateRecord) error {
 	return a.indexer.IndexGitTemplate(ctx, search.GitTemplateRecord{
 		UUID:          record.UUID,

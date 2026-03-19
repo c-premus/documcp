@@ -332,7 +332,10 @@ func TestShutdown_GracefulStop(t *testing.T) {
 
 	// After shutdown, new requests should fail.
 	url := fmt.Sprintf("http://%s/ping", srv.Addr())
-	_, err = http.Get(url) //nolint:noctx
+	resp, err := http.Get(url) //nolint:noctx
+	if resp != nil {
+		resp.Body.Close()
+	}
 	if err == nil {
 		t.Error("expected error connecting to shut-down server, got nil")
 	}

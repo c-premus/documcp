@@ -83,7 +83,7 @@ func New(cfg *config.Config) (*App, error) {
 		"database", cfg.Database.Database,
 	)
 
-	if err := database.RunMigrations(db.DB, "migrations"); err != nil {
+	if err = database.RunMigrations(db.DB, "migrations"); err != nil {
 		return nil, fmt.Errorf("running migrations: %w", err)
 	}
 
@@ -97,7 +97,7 @@ func New(cfg *config.Config) (*App, error) {
 
 	logger.Info("pgxpool connected for river queue")
 
-	if err := database.RunRiverMigrations(context.Background(), pgxPool); err != nil {
+	if err = database.RunRiverMigrations(context.Background(), pgxPool); err != nil {
 		pgxPool.Close()
 		return nil, fmt.Errorf("running river migrations: %w", err)
 	}
@@ -109,7 +109,7 @@ func New(cfg *config.Config) (*App, error) {
 	if sessionSecret == "" {
 		// Generate a random secret for development
 		b := make([]byte, 32)
-		if _, err := rand.Read(b); err != nil {
+		if _, err = rand.Read(b); err != nil {
 			return nil, fmt.Errorf("generating session secret: %w", err)
 		}
 		sessionSecret = hex.EncodeToString(b)
@@ -161,7 +161,7 @@ func New(cfg *config.Config) (*App, error) {
 	if cfg.Meilisearch.Host != "" {
 		searchClient = search.NewClient(cfg.Meilisearch.Host, cfg.Meilisearch.Key, logger)
 		if searchClient.Healthy() {
-			if err := searchClient.ConfigureIndexes(context.Background()); err != nil {
+			if err = searchClient.ConfigureIndexes(context.Background()); err != nil {
 				logger.Warn("failed to configure Meilisearch indexes", "error", err)
 			} else {
 				logger.Info("Meilisearch connected and indexes configured", "host", cfg.Meilisearch.Host)
@@ -225,12 +225,12 @@ func New(cfg *config.Config) (*App, error) {
 
 	// --- Storage ---
 	storagePath := filepath.Join(cfg.Storage.BasePath, cfg.Storage.DocumentPath)
-	if err := os.MkdirAll(storagePath, 0o755); err != nil {
+	if err = os.MkdirAll(storagePath, 0o755); err != nil {
 		return nil, fmt.Errorf("creating document storage path: %w", err)
 	}
 
 	gitTempDir := filepath.Join(cfg.Storage.BasePath, "git")
-	if err := os.MkdirAll(gitTempDir, 0o755); err != nil {
+	if err = os.MkdirAll(gitTempDir, 0o755); err != nil {
 		return nil, fmt.Errorf("creating git temp path: %w", err)
 	}
 
@@ -586,14 +586,15 @@ type docStatusAdapter struct {
 	repo *repository.DocumentRepository
 }
 
+// FindByStatus returns jobs whose associated documents have the given processing status.
 func (a *docStatusAdapter) FindByStatus(ctx context.Context, status string) ([]queue.StuckDocument, error) {
 	docs, err := a.repo.FindByStatus(ctx, status, 1000)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]queue.StuckDocument, len(docs))
-	for i, d := range docs {
-		result[i] = queue.StuckDocument{ID: d.ID, UUID: d.UUID}
+	for i := range docs {
+		result[i] = queue.StuckDocument{ID: docs[i].ID, UUID: docs[i].UUID}
 	}
 	return result, nil
 }

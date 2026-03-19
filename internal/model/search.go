@@ -3,6 +3,7 @@ package model
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 )
 
 // SearchQuery represents a row in the "search_queries" table.
@@ -21,5 +22,8 @@ func (sq *SearchQuery) ParseFilters(dest any) error {
 	if !sq.Filters.Valid {
 		return nil
 	}
-	return json.Unmarshal([]byte(sq.Filters.String), dest)
+	if err := json.Unmarshal([]byte(sq.Filters.String), dest); err != nil {
+		return fmt.Errorf("unmarshaling search query filters: %w", err)
+	}
+	return nil
 }

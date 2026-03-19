@@ -11,10 +11,10 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 )
 
-// TestErrorPaths_CancelledContext verifies that every repository method
-// returns a wrapped error when the context is cancelled. This exercises the
+// TestErrorPaths_CanceledContext verifies that every repository method
+// returns a wrapped error when the context is canceled. This exercises the
 // error-return branches that are unreachable with a healthy database.
-func TestErrorPaths_CancelledContext(t *testing.T) {
+func TestErrorPaths_CanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 

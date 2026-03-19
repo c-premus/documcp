@@ -22,9 +22,9 @@ func NewOAuthRepository(db *sqlx.DB, logger *slog.Logger) *OAuthRepository {
 	return &OAuthRepository{db: db, logger: logger}
 }
 
-// ---------------------------------------------------------------------------
-// Clients
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Clients.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // CreateClient inserts a new OAuth client and sets the generated ID and timestamps.
 func (r *OAuthRepository) CreateClient(ctx context.Context, client *model.OAuthClient) error {
@@ -73,9 +73,9 @@ func (r *OAuthRepository) FindClientByID(ctx context.Context, id int64) (*model.
 	return &client, nil
 }
 
-// ---------------------------------------------------------------------------
-// Authorization Codes
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Authorization Codes.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // CreateAuthorizationCode inserts a new authorization code and sets the generated ID and timestamps.
 func (r *OAuthRepository) CreateAuthorizationCode(ctx context.Context, code *model.OAuthAuthorizationCode) error {
@@ -119,9 +119,9 @@ func (r *OAuthRepository) RevokeAuthorizationCode(ctx context.Context, id int64)
 	return nil
 }
 
-// ---------------------------------------------------------------------------
-// Access Tokens
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Access Tokens.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // CreateAccessToken inserts a new access token and sets the generated ID and timestamps.
 func (r *OAuthRepository) CreateAccessToken(ctx context.Context, token *model.OAuthAccessToken) error {
@@ -173,9 +173,9 @@ func (r *OAuthRepository) RevokeAccessToken(ctx context.Context, id int64) error
 	return nil
 }
 
-// ---------------------------------------------------------------------------
-// Refresh Tokens
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Refresh Tokens.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // CreateRefreshToken inserts a new refresh token and sets the generated ID and timestamps.
 func (r *OAuthRepository) CreateRefreshToken(ctx context.Context, token *model.OAuthRefreshToken) error {
@@ -226,9 +226,9 @@ func (r *OAuthRepository) RevokeRefreshTokenByAccessTokenID(ctx context.Context,
 	return nil
 }
 
-// ---------------------------------------------------------------------------
-// Device Codes
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Device Codes.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // CreateDeviceCode inserts a new device code and sets the generated ID and timestamps.
 func (r *OAuthRepository) CreateDeviceCode(ctx context.Context, dc *model.OAuthDeviceCode) error {
@@ -308,9 +308,9 @@ func (r *OAuthRepository) UpdateDeviceCodeLastPolled(ctx context.Context, id int
 	return nil
 }
 
-// ---------------------------------------------------------------------------
-// Users
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Users.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // FindUserByID returns a user by its primary key.
 func (r *OAuthRepository) FindUserByID(ctx context.Context, id int64) (*model.User, error) {

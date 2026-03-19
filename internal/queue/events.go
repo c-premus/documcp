@@ -9,10 +9,14 @@ import (
 type EventType string
 
 const (
+	// EventJobDispatched is emitted when a background job is enqueued.
 	EventJobDispatched EventType = "job.dispatched"
-	EventJobCompleted  EventType = "job.completed"
-	EventJobFailed     EventType = "job.failed"
-	EventJobRetrying   EventType = "job.retrying"
+	// EventJobCompleted is emitted when a background job finishes successfully.
+	EventJobCompleted EventType = "job.completed"
+	// EventJobFailed is emitted when a background job exhausts all retries.
+	EventJobFailed EventType = "job.failed"
+	// EventJobRetrying is emitted when a background job is scheduled for retry.
+	EventJobRetrying EventType = "job.retrying"
 )
 
 // Event represents a queue lifecycle event.

@@ -19,7 +19,7 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 )
 
-// OAuthRepo defines the repository interface consumed by the OAuth actions.
+//nolint:revive // OAuthRepo is intentionally named to distinguish from other repository interfaces
 type OAuthRepo interface {
 	// Clients
 	CreateClient(ctx context.Context, client *model.OAuthClient) error
@@ -90,9 +90,9 @@ func (s *Service) FindDeviceCodeByUserCode(ctx context.Context, userCode string)
 	return s.repo.FindDeviceCodeByUserCode(ctx, userCode)
 }
 
-// ---------------------------------------------------------------------------
-// Client Registration (RFC 7591)
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Client Registration (RFC 7591).
+//nolint:godot // ---------------------------------------------------------------------------
 
 // RegisterClientParams holds the input for dynamic client registration.
 type RegisterClientParams struct {
@@ -143,15 +143,15 @@ func (s *Service) RegisterClient(ctx context.Context, params RegisterClientParam
 
 	redirectURIsJSON, err := json.Marshal(params.RedirectURIs)
 	if err != nil {
-		return nil, fmt.Errorf("marshalling redirect_uris: %w", err)
+		return nil, fmt.Errorf("marshaling redirect_uris: %w", err)
 	}
 	grantTypesJSON, err := json.Marshal(params.GrantTypes)
 	if err != nil {
-		return nil, fmt.Errorf("marshalling grant_types: %w", err)
+		return nil, fmt.Errorf("marshaling grant_types: %w", err)
 	}
 	responseTypesJSON, err := json.Marshal(params.ResponseTypes)
 	if err != nil {
-		return nil, fmt.Errorf("marshalling response_types: %w", err)
+		return nil, fmt.Errorf("marshaling response_types: %w", err)
 	}
 
 	client := &model.OAuthClient{
@@ -202,9 +202,9 @@ func (s *Service) RegisterClient(ctx context.Context, params RegisterClientParam
 	return result, nil
 }
 
-// ---------------------------------------------------------------------------
-// Authorization Code Generation
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Authorization Code Generation.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // GenerateAuthorizationCodeParams holds the input for generating an auth code.
 type GenerateAuthorizationCodeParams struct {
@@ -274,9 +274,9 @@ func (s *Service) GenerateAuthorizationCode(ctx context.Context, params Generate
 	return token.Plaintext, nil
 }
 
-// ---------------------------------------------------------------------------
-// Authorization Code Exchange
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Authorization Code Exchange.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // ExchangeAuthorizationCodeParams holds the input for exchanging an auth code.
 type ExchangeAuthorizationCodeParams struct {
@@ -311,7 +311,8 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 	}
 
 	// Verify client secret for confidential clients
-	if err := s.verifyClientAuth(client, params.ClientSecret); err != nil {
+	err = s.verifyClientAuth(client, params.ClientSecret)
+	if err != nil {
 		return nil, err
 	}
 
@@ -374,9 +375,9 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 	return s.issueTokenPair(ctx, client.ID, authCode.UserID, scope)
 }
 
-// ---------------------------------------------------------------------------
-// Refresh Token
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Refresh Token.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // RefreshTokenParams holds the input for refreshing tokens.
 type RefreshTokenParams struct {
@@ -401,7 +402,8 @@ func (s *Service) RefreshAccessToken(ctx context.Context, params RefreshTokenPar
 	}
 
 	// Verify client secret
-	if err := s.verifyClientAuth(client, params.ClientSecret); err != nil {
+	err = s.verifyClientAuth(client, params.ClientSecret)
+	if err != nil {
 		return nil, err
 	}
 
@@ -446,9 +448,9 @@ func (s *Service) RefreshAccessToken(ctx context.Context, params RefreshTokenPar
 	return s.issueTokenPair(ctx, client.ID, accessToken.UserID, scope)
 }
 
-// ---------------------------------------------------------------------------
-// Token Revocation (RFC 7009)
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Token Revocation (RFC 7009).
+//nolint:godot // ---------------------------------------------------------------------------
 
 // RevokeTokenParams holds the input for token revocation.
 type RevokeTokenParams struct {
@@ -465,7 +467,8 @@ func (s *Service) RevokeToken(ctx context.Context, params RevokeTokenParams) err
 	if err != nil {
 		return fmt.Errorf("invalid client credentials")
 	}
-	if err := s.verifyClientAuth(client, params.ClientSecret); err != nil {
+	err = s.verifyClientAuth(client, params.ClientSecret)
+	if err != nil {
 		return err
 	}
 
@@ -511,9 +514,9 @@ func (s *Service) tryRevokeRefreshToken(ctx context.Context, tokenHash string, _
 	_ = s.repo.RevokeAccessToken(ctx, token.AccessTokenID)
 }
 
-// ---------------------------------------------------------------------------
-// Device Authorization (RFC 8628)
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Device Authorization (RFC 8628).
+//nolint:godot // ---------------------------------------------------------------------------
 
 // DeviceAuthorizationParams holds the input for device authorization.
 type DeviceAuthorizationParams struct {
@@ -658,7 +661,7 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceC
 	if err != nil {
 		return nil, &DeviceCodeError{Code: "invalid_client", Description: "Invalid client"}
 	}
-	if err := s.verifyClientAuth(client, params.ClientSecret); err != nil {
+	if err = s.verifyClientAuth(client, params.ClientSecret); err != nil {
 		return nil, &DeviceCodeError{Code: "invalid_client", Description: "Invalid client credentials"}
 	}
 
@@ -725,9 +728,9 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceC
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Token Validation (for middleware)
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Token Validation (for middleware).
+//nolint:godot // ---------------------------------------------------------------------------
 
 // ValidateAccessToken validates a bearer token and returns the access token model.
 func (s *Service) ValidateAccessToken(ctx context.Context, bearerToken string) (*model.OAuthAccessToken, error) {
@@ -748,9 +751,9 @@ func (s *Service) ValidateAccessToken(ctx context.Context, bearerToken string) (
 	return token, nil
 }
 
-// ---------------------------------------------------------------------------
-// Consent Validation
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Consent Validation.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // ValidateState checks that a state parameter has a safe format.
 func ValidateState(state string) bool {
@@ -760,9 +763,9 @@ func ValidateState(state string) bool {
 	return safeStateRegexp.MatchString(state)
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Internal helpers.
+//nolint:godot // ---------------------------------------------------------------------------
 
 
 // verifyClientAuth checks client secret for confidential clients.
@@ -803,7 +806,7 @@ func (s *Service) issueTokenPair(ctx context.Context, clientID int64, userID sql
 		Revoked:   false,
 	}
 
-	if err := s.repo.CreateAccessToken(ctx, accessToken); err != nil {
+	if err = s.repo.CreateAccessToken(ctx, accessToken); err != nil {
 		return nil, fmt.Errorf("creating access token: %w", err)
 	}
 	accessTokenPair.SetID(accessToken.ID)

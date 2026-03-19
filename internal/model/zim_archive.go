@@ -3,6 +3,7 @@ package model
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 )
 
 // ZimArchive represents a row in the "zim_archives" table.
@@ -39,7 +40,7 @@ func (za *ZimArchive) ParseTags() ([]string, error) {
 	}
 	var tags []string
 	if err := json.Unmarshal([]byte(za.Tags.String), &tags); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshaling zim archive tags: %w", err)
 	}
 	return tags, nil
 }

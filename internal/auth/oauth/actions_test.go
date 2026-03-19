@@ -257,11 +257,14 @@ func makeConfidentialClient(t *testing.T, id int64, clientID, plainSecret string
 	}
 }
 
+// deviceClientID is the default client ID used by makeDeviceClient.
+const deviceClientID = "550e8400-e29b-41d4-a716-446655440004"
+
 // makeDeviceClient returns a model.OAuthClient that supports the device_code grant.
-func makeDeviceClient(id int64, clientID string) *model.OAuthClient {
+func makeDeviceClient() *model.OAuthClient {
 	return &model.OAuthClient{
-		ID:                      id,
-		ClientID:                clientID,
+		ID:                      100,
+		ClientID:                deviceClientID,
 		TokenEndpointAuthMethod: "none",
 		GrantTypes:              `["authorization_code","urn:ietf:params:oauth:grant-type:device_code"]`,
 		IsActive:                true,
@@ -306,7 +309,7 @@ func TestRegisterClient(t *testing.T) {
 		assert.Equal(t, "none", result.TokenEndpointAuthMethod, "default auth method")
 		assert.Equal(t, authscope.DefaultScopes(), result.Scope, "default scope")
 		assert.Empty(t, result.ClientSecret, "public client has no secret")
-		assert.True(t, result.ClientIDIssuedAt > 0)
+		assert.Positive(t, result.ClientIDIssuedAt)
 
 		// Verify persisted model
 		require.NotNil(t, capturedClient)
@@ -1798,7 +1801,7 @@ func TestGenerateDeviceCode(t *testing.T) {
 	t.Run("happy path returns device authorization result", func(t *testing.T) {
 		t.Parallel()
 
-		client := makeDeviceClient(testClientDBID, testClientID)
+		client := makeDeviceClient()
 
 		var capturedDC *model.OAuthDeviceCode
 		repo := &mockOAuthRepo{
@@ -1899,7 +1902,7 @@ func TestGenerateDeviceCode(t *testing.T) {
 	t.Run("database error on persist propagates", func(t *testing.T) {
 		t.Parallel()
 
-		client := makeDeviceClient(testClientDBID, testClientID)
+		client := makeDeviceClient()
 
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
@@ -1922,7 +1925,7 @@ func TestGenerateDeviceCode(t *testing.T) {
 	t.Run("empty scope sets null on model", func(t *testing.T) {
 		t.Parallel()
 
-		client := makeDeviceClient(testClientDBID, testClientID)
+		client := makeDeviceClient()
 
 		var capturedDC *model.OAuthDeviceCode
 		repo := &mockOAuthRepo{
@@ -1950,7 +1953,7 @@ func TestGenerateDeviceCode(t *testing.T) {
 	t.Run("invalid scope returns error", func(t *testing.T) {
 		t.Parallel()
 
-		client := makeDeviceClient(testClientDBID, testClientID)
+		client := makeDeviceClient()
 
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
@@ -1972,7 +1975,7 @@ func TestGenerateDeviceCode(t *testing.T) {
 	t.Run("scope exceeding client scope returns error", func(t *testing.T) {
 		t.Parallel()
 
-		client := makeDeviceClient(testClientDBID, testClientID)
+		client := makeDeviceClient()
 		client.Scope = sql.NullString{String: "mcp:access documents:read", Valid: true}
 
 		repo := &mockOAuthRepo{
@@ -1994,7 +1997,7 @@ func TestGenerateDeviceCode(t *testing.T) {
 	t.Run("valid scope subset of client scope succeeds", func(t *testing.T) {
 		t.Parallel()
 
-		client := makeDeviceClient(testClientDBID, testClientID)
+		client := makeDeviceClient()
 		client.Scope = sql.NullString{String: "mcp:access documents:read documents:write", Valid: true}
 
 		repo := &mockOAuthRepo{
@@ -2232,7 +2235,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 
 		require.Error(t, err)
 		var dcErr *DeviceCodeError
-		require.True(t, errors.As(err, &dcErr))
+		require.ErrorAs(t, err, &dcErr)
 		assert.Equal(t, "authorization_pending", dcErr.Code)
 	})
 
@@ -2262,7 +2265,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 
 		require.Error(t, err)
 		var dcErr *DeviceCodeError
-		require.True(t, errors.As(err, &dcErr))
+		require.ErrorAs(t, err, &dcErr)
 		assert.Equal(t, "access_denied", dcErr.Code)
 	})
 
@@ -2292,7 +2295,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 
 		require.Error(t, err)
 		var dcErr *DeviceCodeError
-		require.True(t, errors.As(err, &dcErr))
+		require.ErrorAs(t, err, &dcErr)
 		assert.Equal(t, "invalid_grant", dcErr.Code)
 		assert.Contains(t, dcErr.Description, "already been used")
 	})
@@ -2323,7 +2326,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 
 		require.Error(t, err)
 		var dcErr *DeviceCodeError
-		require.True(t, errors.As(err, &dcErr))
+		require.ErrorAs(t, err, &dcErr)
 		assert.Equal(t, "expired_token", dcErr.Code)
 	})
 
@@ -2359,7 +2362,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 
 		require.Error(t, err)
 		var dcErr *DeviceCodeError
-		require.True(t, errors.As(err, &dcErr))
+		require.ErrorAs(t, err, &dcErr)
 		assert.Equal(t, "slow_down", dcErr.Code)
 		assert.Equal(t, 10, updatedInterval, "interval should increase by 5")
 	})
@@ -2383,7 +2386,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 
 		require.Error(t, err)
 		var dcErr *DeviceCodeError
-		require.True(t, errors.As(err, &dcErr))
+		require.ErrorAs(t, err, &dcErr)
 		assert.Equal(t, "invalid_client", dcErr.Code)
 	})
 
@@ -2406,7 +2409,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 
 		require.Error(t, err)
 		var dcErr *DeviceCodeError
-		require.True(t, errors.As(err, &dcErr))
+		require.ErrorAs(t, err, &dcErr)
 		assert.Equal(t, "invalid_grant", dcErr.Code)
 	})
 
@@ -2436,7 +2439,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 
 		require.Error(t, err)
 		var dcErr *DeviceCodeError
-		require.True(t, errors.As(err, &dcErr))
+		require.ErrorAs(t, err, &dcErr)
 		assert.Equal(t, "invalid_grant", dcErr.Code)
 	})
 
@@ -2466,7 +2469,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 
 		require.Error(t, err)
 		var dcErr *DeviceCodeError
-		require.True(t, errors.As(err, &dcErr))
+		require.ErrorAs(t, err, &dcErr)
 		assert.Equal(t, "invalid_grant", dcErr.Code)
 	})
 }
@@ -2569,7 +2572,7 @@ func TestVerifyClientAuth(t *testing.T) {
 		client := makePublicClient(1, "test-client")
 
 		err := svc.verifyClientAuth(client, "")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		err = svc.verifyClientAuth(client, "any-secret")
 		assert.NoError(t, err)
@@ -2712,10 +2715,10 @@ func TestDeviceCodeError(t *testing.T) {
 		t.Parallel()
 
 		var err error = &DeviceCodeError{Code: "test", Description: "test desc"}
-		assert.NotNil(t, err)
+		require.Error(t, err)
 
 		var dcErr *DeviceCodeError
-		assert.True(t, errors.As(err, &dcErr))
+		require.ErrorAs(t, err, &dcErr)
 		assert.Equal(t, "test", dcErr.Code)
 	})
 }

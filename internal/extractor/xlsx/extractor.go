@@ -18,6 +18,8 @@ const mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sh
 var _ extractor.Extractor = (*XLSXExtractor)(nil)
 
 // XLSXExtractor extracts text content from XLSX spreadsheets.
+//
+//nolint:revive // exported stutter is intentional; renaming would be a breaking change
 type XLSXExtractor struct{}
 
 // New creates a new XLSXExtractor.

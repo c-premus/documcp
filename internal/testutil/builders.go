@@ -25,9 +25,9 @@ func nullTime(t time.Time) sql.NullTime {
 	return sql.NullTime{Time: t, Valid: true}
 }
 
-// ---------------------------------------------------------------------------
-// Document
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Document.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // DocumentOption configures a Document created by NewDocument.
 type DocumentOption func(*model.Document)
@@ -55,57 +55,69 @@ func NewDocument(opts ...DocumentOption) *model.Document {
 	return d
 }
 
+// WithDocumentID sets the document ID on the builder.
 func WithDocumentID(id int64) DocumentOption {
 	return func(d *model.Document) { d.ID = id }
 }
 
+// WithDocumentUUID sets the document UUID on the builder.
 func WithDocumentUUID(uuid string) DocumentOption {
 	return func(d *model.Document) { d.UUID = uuid }
 }
 
+// WithDocumentTitle sets the document title on the builder.
 func WithDocumentTitle(title string) DocumentOption {
 	return func(d *model.Document) { d.Title = title }
 }
 
+// WithDocumentDescription sets the document description on the builder.
 func WithDocumentDescription(desc string) DocumentOption {
 	return func(d *model.Document) { d.Description = nullString(desc) }
 }
 
+// WithDocumentFileType sets the document file type on the builder.
 func WithDocumentFileType(ft string) DocumentOption {
 	return func(d *model.Document) { d.FileType = ft }
 }
 
+// WithDocumentFilePath sets the document file path on the builder.
 func WithDocumentFilePath(fp string) DocumentOption {
 	return func(d *model.Document) { d.FilePath = fp }
 }
 
+// WithDocumentFileSize sets the document file size on the builder.
 func WithDocumentFileSize(size int64) DocumentOption {
 	return func(d *model.Document) { d.FileSize = size }
 }
 
+// WithDocumentMIMEType sets the document MIME type on the builder.
 func WithDocumentMIMEType(mime string) DocumentOption {
 	return func(d *model.Document) { d.MIMEType = mime }
 }
 
+// WithDocumentContent sets the document content on the builder.
 func WithDocumentContent(content string) DocumentOption {
 	return func(d *model.Document) { d.Content = nullString(content) }
 }
 
+// WithDocumentUserID sets the document user ID on the builder.
 func WithDocumentUserID(uid int64) DocumentOption {
 	return func(d *model.Document) { d.UserID = nullInt64(uid) }
 }
 
+// WithDocumentIsPublic sets the document public visibility on the builder.
 func WithDocumentIsPublic(public bool) DocumentOption {
 	return func(d *model.Document) { d.IsPublic = public }
 }
 
+// WithDocumentStatus sets the document status on the builder.
 func WithDocumentStatus(status string) DocumentOption {
 	return func(d *model.Document) { d.Status = status }
 }
 
-// ---------------------------------------------------------------------------
-// User
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// User.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // UserOption configures a User created by NewUser.
 type UserOption func(*model.User)
@@ -127,37 +139,44 @@ func NewUser(opts ...UserOption) *model.User {
 	return u
 }
 
+// WithUserID sets the user ID on the builder.
 func WithUserID(id int64) UserOption {
 	return func(u *model.User) { u.ID = id }
 }
 
+// WithUserName sets the user name on the builder.
 func WithUserName(name string) UserOption {
 	return func(u *model.User) { u.Name = name }
 }
 
+// WithUserEmail sets the user email on the builder.
 func WithUserEmail(email string) UserOption {
 	return func(u *model.User) { u.Email = email }
 }
 
+// WithUserIsAdmin sets the user admin flag on the builder.
 func WithUserIsAdmin(admin bool) UserOption {
 	return func(u *model.User) { u.IsAdmin = admin }
 }
 
+// WithUserOIDCSub sets the user OIDC subject on the builder.
 func WithUserOIDCSub(sub string) UserOption {
 	return func(u *model.User) { u.OIDCSub = nullString(sub) }
 }
 
+// WithUserOIDCProvider sets the user OIDC provider on the builder.
 func WithUserOIDCProvider(provider string) UserOption {
 	return func(u *model.User) { u.OIDCProvider = nullString(provider) }
 }
 
+// WithUserPassword sets the user password on the builder.
 func WithUserPassword(pw string) UserOption {
 	return func(u *model.User) { u.Password = nullString(pw) }
 }
 
-// ---------------------------------------------------------------------------
-// OAuthClient
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// OAuthClient.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // OAuthClientOption configures an OAuthClient created by NewOAuthClient.
 type OAuthClientOption func(*model.OAuthClient)
@@ -183,45 +202,54 @@ func NewOAuthClient(opts ...OAuthClientOption) *model.OAuthClient {
 	return c
 }
 
+// WithOAuthClientID sets the OAuth client primary key ID on the builder.
 func WithOAuthClientID(id int64) OAuthClientOption {
 	return func(c *model.OAuthClient) { c.ID = id }
 }
 
+// WithOAuthClientClientID sets the OAuth client identifier on the builder.
 func WithOAuthClientClientID(clientID string) OAuthClientOption {
 	return func(c *model.OAuthClient) { c.ClientID = clientID }
 }
 
+// WithOAuthClientName sets the OAuth client name on the builder.
 func WithOAuthClientName(name string) OAuthClientOption {
 	return func(c *model.OAuthClient) { c.ClientName = name }
 }
 
+// WithOAuthClientSecret sets the OAuth client secret on the builder.
 func WithOAuthClientSecret(secret string) OAuthClientOption {
 	return func(c *model.OAuthClient) { c.ClientSecret = nullString(secret) }
 }
 
+// WithOAuthClientRedirectURIs sets the OAuth client redirect URIs on the builder.
 func WithOAuthClientRedirectURIs(uris string) OAuthClientOption {
 	return func(c *model.OAuthClient) { c.RedirectURIs = uris }
 }
 
+// WithOAuthClientGrantTypes sets the OAuth client grant types on the builder.
 func WithOAuthClientGrantTypes(types string) OAuthClientOption {
 	return func(c *model.OAuthClient) { c.GrantTypes = types }
 }
 
+// WithOAuthClientScope sets the OAuth client scope on the builder.
 func WithOAuthClientScope(scope string) OAuthClientOption {
 	return func(c *model.OAuthClient) { c.Scope = nullString(scope) }
 }
 
+// WithOAuthClientUserID sets the OAuth client user ID on the builder.
 func WithOAuthClientUserID(uid int64) OAuthClientOption {
 	return func(c *model.OAuthClient) { c.UserID = nullInt64(uid) }
 }
 
+// WithOAuthClientIsActive sets the OAuth client active flag on the builder.
 func WithOAuthClientIsActive(active bool) OAuthClientOption {
 	return func(c *model.OAuthClient) { c.IsActive = active }
 }
 
-// ---------------------------------------------------------------------------
-// ExternalService
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// ExternalService.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // ExternalServiceOption configures an ExternalService created by NewExternalService.
 type ExternalServiceOption func(*model.ExternalService)
@@ -248,45 +276,54 @@ func NewExternalService(opts ...ExternalServiceOption) *model.ExternalService {
 	return es
 }
 
+// WithExternalServiceID sets the external service ID on the builder.
 func WithExternalServiceID(id int64) ExternalServiceOption {
 	return func(es *model.ExternalService) { es.ID = id }
 }
 
+// WithExternalServiceUUID sets the external service UUID on the builder.
 func WithExternalServiceUUID(uuid string) ExternalServiceOption {
 	return func(es *model.ExternalService) { es.UUID = uuid }
 }
 
+// WithExternalServiceName sets the external service name on the builder.
 func WithExternalServiceName(name string) ExternalServiceOption {
 	return func(es *model.ExternalService) { es.Name = name }
 }
 
+// WithExternalServiceSlug sets the external service slug on the builder.
 func WithExternalServiceSlug(slug string) ExternalServiceOption {
 	return func(es *model.ExternalService) { es.Slug = slug }
 }
 
+// WithExternalServiceType sets the external service type on the builder.
 func WithExternalServiceType(t string) ExternalServiceOption {
 	return func(es *model.ExternalService) { es.Type = t }
 }
 
+// WithExternalServiceBaseURL sets the external service base URL on the builder.
 func WithExternalServiceBaseURL(url string) ExternalServiceOption {
 	return func(es *model.ExternalService) { es.BaseURL = url }
 }
 
+// WithExternalServiceStatus sets the external service status on the builder.
 func WithExternalServiceStatus(status string) ExternalServiceOption {
 	return func(es *model.ExternalService) { es.Status = status }
 }
 
+// WithExternalServiceIsEnabled sets the external service enabled flag on the builder.
 func WithExternalServiceIsEnabled(enabled bool) ExternalServiceOption {
 	return func(es *model.ExternalService) { es.IsEnabled = enabled }
 }
 
+// WithExternalServicePriority sets the external service priority on the builder.
 func WithExternalServicePriority(p int) ExternalServiceOption {
 	return func(es *model.ExternalService) { es.Priority = p }
 }
 
-// ---------------------------------------------------------------------------
-// ZimArchive
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// ZimArchive.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // ZimArchiveOption configures a ZimArchive created by NewZimArchive.
 type ZimArchiveOption func(*model.ZimArchive)
@@ -315,45 +352,54 @@ func NewZimArchive(opts ...ZimArchiveOption) *model.ZimArchive {
 	return za
 }
 
+// WithZimArchiveID sets the ZIM archive ID on the builder.
 func WithZimArchiveID(id int64) ZimArchiveOption {
 	return func(za *model.ZimArchive) { za.ID = id }
 }
 
+// WithZimArchiveUUID sets the ZIM archive UUID on the builder.
 func WithZimArchiveUUID(uuid string) ZimArchiveOption {
 	return func(za *model.ZimArchive) { za.UUID = uuid }
 }
 
+// WithZimArchiveName sets the ZIM archive name on the builder.
 func WithZimArchiveName(name string) ZimArchiveOption {
 	return func(za *model.ZimArchive) { za.Name = name }
 }
 
+// WithZimArchiveSlug sets the ZIM archive slug on the builder.
 func WithZimArchiveSlug(slug string) ZimArchiveOption {
 	return func(za *model.ZimArchive) { za.Slug = slug }
 }
 
+// WithZimArchiveTitle sets the ZIM archive title on the builder.
 func WithZimArchiveTitle(title string) ZimArchiveOption {
 	return func(za *model.ZimArchive) { za.Title = title }
 }
 
+// WithZimArchiveLanguage sets the ZIM archive language on the builder.
 func WithZimArchiveLanguage(lang string) ZimArchiveOption {
 	return func(za *model.ZimArchive) { za.Language = lang }
 }
 
+// WithZimArchiveExternalServiceID sets the ZIM archive external service ID on the builder.
 func WithZimArchiveExternalServiceID(id int64) ZimArchiveOption {
 	return func(za *model.ZimArchive) { za.ExternalServiceID = nullInt64(id) }
 }
 
+// WithZimArchiveIsEnabled sets the ZIM archive enabled flag on the builder.
 func WithZimArchiveIsEnabled(enabled bool) ZimArchiveOption {
 	return func(za *model.ZimArchive) { za.IsEnabled = enabled }
 }
 
+// WithZimArchiveIsSearchable sets the ZIM archive searchable flag on the builder.
 func WithZimArchiveIsSearchable(searchable bool) ZimArchiveOption {
 	return func(za *model.ZimArchive) { za.IsSearchable = searchable }
 }
 
-// ---------------------------------------------------------------------------
-// ConfluenceSpace
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// ConfluenceSpace.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // ConfluenceSpaceOption configures a ConfluenceSpace created by NewConfluenceSpace.
 type ConfluenceSpaceOption func(*model.ConfluenceSpace)
@@ -380,41 +426,49 @@ func NewConfluenceSpace(opts ...ConfluenceSpaceOption) *model.ConfluenceSpace {
 	return cs
 }
 
+// WithConfluenceSpaceID sets the Confluence space ID on the builder.
 func WithConfluenceSpaceID(id int64) ConfluenceSpaceOption {
 	return func(cs *model.ConfluenceSpace) { cs.ID = id }
 }
 
+// WithConfluenceSpaceUUID sets the Confluence space UUID on the builder.
 func WithConfluenceSpaceUUID(uuid string) ConfluenceSpaceOption {
 	return func(cs *model.ConfluenceSpace) { cs.UUID = uuid }
 }
 
+// WithConfluenceSpaceKey sets the Confluence space key on the builder.
 func WithConfluenceSpaceKey(key string) ConfluenceSpaceOption {
 	return func(cs *model.ConfluenceSpace) { cs.Key = key }
 }
 
+// WithConfluenceSpaceName sets the Confluence space name on the builder.
 func WithConfluenceSpaceName(name string) ConfluenceSpaceOption {
 	return func(cs *model.ConfluenceSpace) { cs.Name = name }
 }
 
+// WithConfluenceSpaceStatus sets the Confluence space status on the builder.
 func WithConfluenceSpaceStatus(status string) ConfluenceSpaceOption {
 	return func(cs *model.ConfluenceSpace) { cs.Status = status }
 }
 
+// WithConfluenceSpaceExternalServiceID sets the Confluence space external service ID on the builder.
 func WithConfluenceSpaceExternalServiceID(id int64) ConfluenceSpaceOption {
 	return func(cs *model.ConfluenceSpace) { cs.ExternalServiceID = nullInt64(id) }
 }
 
+// WithConfluenceSpaceIsEnabled sets the Confluence space enabled flag on the builder.
 func WithConfluenceSpaceIsEnabled(enabled bool) ConfluenceSpaceOption {
 	return func(cs *model.ConfluenceSpace) { cs.IsEnabled = enabled }
 }
 
+// WithConfluenceSpaceIsSearchable sets the Confluence space searchable flag on the builder.
 func WithConfluenceSpaceIsSearchable(searchable bool) ConfluenceSpaceOption {
 	return func(cs *model.ConfluenceSpace) { cs.IsSearchable = searchable }
 }
 
-// ---------------------------------------------------------------------------
-// GitTemplate
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// GitTemplate.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // GitTemplateOption configures a GitTemplate created by NewGitTemplate.
 type GitTemplateOption func(*model.GitTemplate)
@@ -442,53 +496,64 @@ func NewGitTemplate(opts ...GitTemplateOption) *model.GitTemplate {
 	return gt
 }
 
+// WithGitTemplateID sets the git template ID on the builder.
 func WithGitTemplateID(id int64) GitTemplateOption {
 	return func(gt *model.GitTemplate) { gt.ID = id }
 }
 
+// WithGitTemplateUUID sets the git template UUID on the builder.
 func WithGitTemplateUUID(uuid string) GitTemplateOption {
 	return func(gt *model.GitTemplate) { gt.UUID = uuid }
 }
 
+// WithGitTemplateName sets the git template name on the builder.
 func WithGitTemplateName(name string) GitTemplateOption {
 	return func(gt *model.GitTemplate) { gt.Name = name }
 }
 
+// WithGitTemplateSlug sets the git template slug on the builder.
 func WithGitTemplateSlug(slug string) GitTemplateOption {
 	return func(gt *model.GitTemplate) { gt.Slug = slug }
 }
 
+// WithGitTemplateDescription sets the git template description on the builder.
 func WithGitTemplateDescription(desc string) GitTemplateOption {
 	return func(gt *model.GitTemplate) { gt.Description = nullString(desc) }
 }
 
+// WithGitTemplateRepositoryURL sets the git template repository URL on the builder.
 func WithGitTemplateRepositoryURL(url string) GitTemplateOption {
 	return func(gt *model.GitTemplate) { gt.RepositoryURL = url }
 }
 
+// WithGitTemplateBranch sets the git template branch on the builder.
 func WithGitTemplateBranch(branch string) GitTemplateOption {
 	return func(gt *model.GitTemplate) { gt.Branch = branch }
 }
 
+// WithGitTemplateUserID sets the git template user ID on the builder.
 func WithGitTemplateUserID(uid int64) GitTemplateOption {
 	return func(gt *model.GitTemplate) { gt.UserID = nullInt64(uid) }
 }
 
+// WithGitTemplateIsPublic sets the git template public visibility on the builder.
 func WithGitTemplateIsPublic(public bool) GitTemplateOption {
 	return func(gt *model.GitTemplate) { gt.IsPublic = public }
 }
 
+// WithGitTemplateIsEnabled sets the git template enabled flag on the builder.
 func WithGitTemplateIsEnabled(enabled bool) GitTemplateOption {
 	return func(gt *model.GitTemplate) { gt.IsEnabled = enabled }
 }
 
+// WithGitTemplateStatus sets the git template status on the builder.
 func WithGitTemplateStatus(status string) GitTemplateOption {
 	return func(gt *model.GitTemplate) { gt.Status = status }
 }
 
-// ---------------------------------------------------------------------------
-// SearchQuery
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// SearchQuery.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // SearchQueryOption configures a SearchQuery created by NewSearchQuery.
 type SearchQueryOption func(*model.SearchQuery)
@@ -505,18 +570,22 @@ func NewSearchQuery(opts ...SearchQueryOption) *model.SearchQuery {
 	return sq
 }
 
+// WithSearchQueryUserID sets the search query user ID on the builder.
 func WithSearchQueryUserID(uid int64) SearchQueryOption {
 	return func(sq *model.SearchQuery) { sq.UserID = nullInt64(uid) }
 }
 
+// WithSearchQueryQuery sets the search query text on the builder.
 func WithSearchQueryQuery(q string) SearchQueryOption {
 	return func(sq *model.SearchQuery) { sq.Query = q }
 }
 
+// WithSearchQueryResultsCount sets the search query results count on the builder.
 func WithSearchQueryResultsCount(n int) SearchQueryOption {
 	return func(sq *model.SearchQuery) { sq.ResultsCount = n }
 }
 
+// WithSearchQueryFilters sets the search query filters on the builder.
 func WithSearchQueryFilters(filters string) SearchQueryOption {
 	return func(sq *model.SearchQuery) { sq.Filters = nullString(filters) }
 }
