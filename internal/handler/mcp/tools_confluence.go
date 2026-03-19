@@ -25,20 +25,41 @@ type confluenceSpaceItem struct {
 	Type        string `json:"type"`
 }
 
+type confluenceSearchResult struct {
+	ID       string   `json:"id"`
+	Title    string   `json:"title"`
+	SpaceKey string   `json:"space_key"`
+	WebURL   string   `json:"web_url"`
+	Excerpt  string   `json:"excerpt,omitempty"`
+	Labels   []string `json:"labels,omitempty"`
+}
+
 type searchConfluenceResponse struct {
-	Success bool   `json:"success"`
-	Results []any  `json:"results"`
-	Count   int    `json:"count"`
-	Message string `json:"message,omitempty"`
+	Success bool                     `json:"success"`
+	Results []confluenceSearchResult `json:"results"`
+	Count   int                      `json:"count"`
+	Message string                   `json:"message,omitempty"`
+}
+
+type confluencePageDetail struct {
+	ID        string   `json:"id"`
+	Title     string   `json:"title"`
+	SpaceKey  string   `json:"space_key"`
+	WebURL    string   `json:"web_url"`
+	Version   int      `json:"version"`
+	CreatedAt string   `json:"created_at"`
+	UpdatedAt string   `json:"updated_at"`
+	Labels    []string `json:"labels,omitempty"`
+	Ancestors []string `json:"ancestors,omitempty"`
 }
 
 type readConfluencePageResponse struct {
-	Success        bool   `json:"success"`
-	Page           any    `json:"page,omitempty"`
-	Content        string `json:"content,omitempty"`
-	OriginalLength int    `json:"original_length,omitempty"`
-	Truncated      bool   `json:"truncated,omitempty"`
-	Message        string `json:"message,omitempty"`
+	Success        bool                  `json:"success"`
+	Page           *confluencePageDetail `json:"page,omitempty"`
+	Content        string                `json:"content,omitempty"`
+	OriginalLength int                   `json:"original_length,omitempty"`
+	Truncated      bool                  `json:"truncated,omitempty"`
+	Message        string                `json:"message,omitempty"`
 }
 
 // --- Tool registration ---
@@ -146,7 +167,7 @@ func (h *Handler) handleSearchConfluence(ctx context.Context, _ *mcp.CallToolReq
 	if h.confluenceClient == nil {
 		return nil, searchConfluenceResponse{
 			Success: false,
-			Results: []any{},
+			Results: []confluenceSearchResult{},
 			Message: "Confluence service not configured",
 		}, nil
 	}
@@ -168,15 +189,15 @@ func (h *Handler) handleSearchConfluence(ctx context.Context, _ *mcp.CallToolReq
 		return nil, searchConfluenceResponse{}, fmt.Errorf("searching confluence: %w", err)
 	}
 
-	items := make([]any, 0, len(result.Pages))
+	items := make([]confluenceSearchResult, 0, len(result.Pages))
 	for _, p := range result.Pages {
-		items = append(items, map[string]any{
-			"id":        p.ID,
-			"title":     p.Title,
-			"space_key": p.SpaceKey,
-			"web_url":   p.WebURL,
-			"excerpt":   p.Excerpt,
-			"labels":    p.Labels,
+		items = append(items, confluenceSearchResult{
+			ID:       p.ID,
+			Title:    p.Title,
+			SpaceKey: p.SpaceKey,
+			WebURL:   p.WebURL,
+			Excerpt:  p.Excerpt,
+			Labels:   p.Labels,
 		})
 	}
 
@@ -217,16 +238,16 @@ func (h *Handler) handleReadConfluencePage(ctx context.Context, _ *mcp.CallToolR
 	originalLength := len(content)
 	content, truncated := truncateContent(content, input.SummaryOnly, input.MaxParagraphs)
 
-	meta := map[string]any{
-		"id":         page.ID,
-		"title":      page.Title,
-		"space_key":  page.SpaceKey,
-		"web_url":    page.WebURL,
-		"version":    page.Version,
-		"created_at": page.CreatedAt,
-		"updated_at": page.UpdatedAt,
-		"labels":     page.Labels,
-		"ancestors":  page.Ancestors,
+	meta := &confluencePageDetail{
+		ID:        page.ID,
+		Title:     page.Title,
+		SpaceKey:  page.SpaceKey,
+		WebURL:    page.WebURL,
+		Version:   page.Version,
+		CreatedAt: page.CreatedAt,
+		UpdatedAt: page.UpdatedAt,
+		Labels:    page.Labels,
+		Ancestors: page.Ancestors,
 	}
 
 	return nil, readConfluencePageResponse{

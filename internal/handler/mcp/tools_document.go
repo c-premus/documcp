@@ -19,11 +19,21 @@ import (
 // --- Response types ---
 
 type searchDocumentsResponse struct {
-	Success bool   `json:"success"`
-	Query   string `json:"query"`
-	Count   int    `json:"count"`
-	Results []any  `json:"results"`
-	Message string `json:"message,omitempty"`
+	Success bool                   `json:"success"`
+	Query   string                 `json:"query"`
+	Count   int                    `json:"count"`
+	Results []documentSearchResult `json:"results"`
+	Message string                 `json:"message,omitempty"`
+}
+
+type documentSearchResult struct {
+	UUID          string   `json:"uuid"`
+	Title         string   `json:"title"`
+	FileType      string   `json:"file_type"`
+	Description   string   `json:"description,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
+	ContentLength float64  `json:"content_length,omitempty"`
+	Content       string   `json:"content,omitempty"`
 }
 
 type readDocumentResponse struct {
@@ -131,7 +141,7 @@ func (h *Handler) handleSearchDocuments(
 			Success: false,
 			Query:   input.Query,
 			Count:   0,
-			Results: []any{},
+			Results: []documentSearchResult{},
 			Message: "Search service not configured",
 		}, nil
 	}
@@ -171,29 +181,40 @@ func (h *Handler) handleSearchDocuments(
 		return nil, searchDocumentsResponse{}, fmt.Errorf("searching documents: %w", err)
 	}
 
-	results := make([]any, 0, len(resp.Hits))
+	results := make([]documentSearchResult, 0, len(resp.Hits))
 	for _, hit := range resp.Hits {
 		var m map[string]any
 		if err := hit.DecodeInto(&m); err != nil {
 			continue
 		}
-		result := map[string]any{
-			"uuid":      m["uuid"],
-			"title":     m["title"],
-			"file_type": m["file_type"],
+		result := documentSearchResult{}
+		if v, ok := m["uuid"].(string); ok {
+			result.UUID = v
 		}
-		if desc, ok := m["description"]; ok {
-			result["description"] = desc
+		if v, ok := m["title"].(string); ok {
+			result.Title = v
 		}
-		if tags, ok := m["tags"]; ok {
-			result["tags"] = tags
+		if v, ok := m["file_type"].(string); ok {
+			result.FileType = v
 		}
-		if wc, ok := m["word_count"]; ok {
-			result["content_length"] = wc
+		if v, ok := m["description"].(string); ok {
+			result.Description = v
+		}
+		if rawTags, ok := m["tags"].([]any); ok {
+			tags := make([]string, 0, len(rawTags))
+			for _, t := range rawTags {
+				if s, ok := t.(string); ok {
+					tags = append(tags, s)
+				}
+			}
+			result.Tags = tags
+		}
+		if v, ok := m["word_count"].(float64); ok {
+			result.ContentLength = v
 		}
 		if input.IncludeContent {
-			if content, ok := m["content"]; ok {
-				result["content"] = content
+			if v, ok := m["content"].(string); ok {
+				result.Content = v
 			}
 		}
 		results = append(results, result)

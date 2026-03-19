@@ -27,14 +27,21 @@ type zimArchiveItem struct {
 	FileSize     int64  `json:"file_size"`
 }
 
+type zimSearchResult struct {
+	Title   string  `json:"title"`
+	Path    string  `json:"path"`
+	Snippet string  `json:"snippet,omitempty"`
+	Score   float64 `json:"score,omitempty"`
+}
+
 type searchZimResponse struct {
-	Success    bool   `json:"success"`
-	Archive    string `json:"archive"`
-	Query      string `json:"query"`
-	SearchType string `json:"search_type"`
-	Results    []any  `json:"results"`
-	Count      int    `json:"count"`
-	Message    string `json:"message,omitempty"`
+	Success    bool              `json:"success"`
+	Archive    string            `json:"archive"`
+	Query      string            `json:"query"`
+	SearchType string            `json:"search_type"`
+	Results    []zimSearchResult `json:"results"`
+	Count      int               `json:"count"`
+	Message    string            `json:"message,omitempty"`
 }
 
 type readZimArticleResponse struct {
@@ -155,7 +162,7 @@ func (h *Handler) handleSearchZim(ctx context.Context, _ *mcp.CallToolRequest, i
 			Success: false,
 			Archive: input.Archive,
 			Query:   input.Query,
-			Results: []any{},
+			Results: []zimSearchResult{},
 			Message: "Kiwix service not configured",
 		}, nil
 	}
@@ -178,13 +185,13 @@ func (h *Handler) handleSearchZim(ctx context.Context, _ *mcp.CallToolRequest, i
 		return nil, searchZimResponse{}, fmt.Errorf("searching zim archive %s: %w", input.Archive, err)
 	}
 
-	items := make([]any, 0, len(results))
+	items := make([]zimSearchResult, 0, len(results))
 	for _, r := range results {
-		items = append(items, map[string]any{
-			"title":   r.Title,
-			"path":    r.Path,
-			"snippet": r.Snippet,
-			"score":   r.Score,
+		items = append(items, zimSearchResult{
+			Title:   r.Title,
+			Path:    r.Path,
+			Snippet: r.Snippet,
+			Score:   r.Score,
 		})
 	}
 

@@ -13,14 +13,22 @@ import (
 
 // --- Response types ---
 
+type unifiedSearchResult struct {
+	Source      string  `json:"source"`
+	UUID        string  `json:"uuid,omitempty"`
+	Title       string  `json:"title,omitempty"`
+	Description string  `json:"description,omitempty"`
+	Score       float64 `json:"score,omitempty"`
+}
+
 type unifiedSearchResponse struct {
-	Success          bool     `json:"success"`
-	Message          string   `json:"message,omitempty"`
-	Query            string   `json:"query"`
-	Results          []any    `json:"results"`
-	Total            int      `json:"total"`
-	SourcesSearched  []string `json:"sources_searched"`
-	ProcessingTimeMs int      `json:"processing_time_ms"`
+	Success          bool                 `json:"success"`
+	Message          string               `json:"message,omitempty"`
+	Query            string               `json:"query"`
+	Results          []unifiedSearchResult `json:"results"`
+	Total            int                  `json:"total"`
+	SourcesSearched  []string             `json:"sources_searched"`
+	ProcessingTimeMs int                  `json:"processing_time_ms"`
 }
 
 // --- Tool registration ---
@@ -58,7 +66,7 @@ func (h *Handler) handleUnifiedSearch(
 			Success:         false,
 			Message:         "Search service not configured",
 			Query:           input.Query,
-			Results:         []any{},
+			Results:         []unifiedSearchResult{},
 			Total:           0,
 			SourcesSearched: []string{},
 		}, nil
@@ -102,8 +110,8 @@ func (h *Handler) handleUnifiedSearch(
 
 	processingMs := int(time.Since(start).Milliseconds())
 
-	// Build result list from federated hits
-	results := make([]any, 0, len(resp.Hits))
+	// Build result list from federated hits.
+	results := make([]unifiedSearchResult, 0, len(resp.Hits))
 	sourcesMap := make(map[string]bool)
 
 	for _, hit := range resp.Hits {
@@ -112,7 +120,7 @@ func (h *Handler) handleUnifiedSearch(
 			continue
 		}
 
-		// Determine source from the federation index
+		// Determine source from the federation index.
 		source := ""
 		if idx, ok := m["_federation"].(map[string]any); ok {
 			if idxUID, ok := idx["indexUid"].(string); ok {
@@ -120,7 +128,7 @@ func (h *Handler) handleUnifiedSearch(
 			}
 		}
 		if source == "" {
-			// fallback: check known fields
+			// Fallback: check known fields.
 			if _, ok := m["file_type"]; ok {
 				source = "document"
 			} else if _, ok := m["article_count"]; ok {
@@ -134,22 +142,22 @@ func (h *Handler) handleUnifiedSearch(
 
 		sourcesMap[source] = true
 
-		result := map[string]any{
-			"source": source,
+		result := unifiedSearchResult{
+			Source: source,
 		}
-		if uuid, ok := m["uuid"].(string); ok {
-			result["uuid"] = uuid
+		if v, ok := m["uuid"].(string); ok {
+			result.UUID = v
 		}
-		if title, ok := m["title"].(string); ok {
-			result["title"] = title
-		} else if name, ok := m["name"].(string); ok {
-			result["title"] = name
+		if v, ok := m["title"].(string); ok {
+			result.Title = v
+		} else if v, ok := m["name"].(string); ok {
+			result.Title = v
 		}
-		if desc, ok := m["description"].(string); ok {
-			result["description"] = desc
+		if v, ok := m["description"].(string); ok {
+			result.Description = v
 		}
-		if score, ok := m["_rankingScore"].(float64); ok {
-			result["score"] = score
+		if v, ok := m["_rankingScore"].(float64); ok {
+			result.Score = v
 		}
 
 		results = append(results, result)
