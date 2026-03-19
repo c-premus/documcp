@@ -8,6 +8,7 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -28,6 +29,8 @@ type coreProperties struct {
 }
 
 // DOCXExtractor extracts text and metadata from DOCX files.
+//
+//nolint:revive // exported stutter is intentional; renaming would be a breaking change
 type DOCXExtractor struct{}
 
 // Compile-time check that DOCXExtractor implements extractor.Extractor.
@@ -98,7 +101,7 @@ func parseDocument(r io.Reader) (string, error) {
 
 	for {
 		tok, err := decoder.Token()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {

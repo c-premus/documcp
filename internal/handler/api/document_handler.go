@@ -435,7 +435,7 @@ func (h *DocumentHandler) Analyze(w http.ResponseWriter, r *http.Request) {
 		_ = os.Remove(tmpFile.Name())
 	}()
 
-	if _, err := io.Copy(tmpFile, file); err != nil {
+	if _, err = io.Copy(tmpFile, file); err != nil {
 		h.logger.Error("writing temp file for analysis", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to process file")
 		return
@@ -648,7 +648,7 @@ func (h *DocumentHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.repo.Restore(r.Context(), doc.ID); err != nil {
+	if err = h.repo.Restore(r.Context(), doc.ID); err != nil {
 		h.logger.Error("restoring document", "uuid", docUUID, "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to restore document")
 		return

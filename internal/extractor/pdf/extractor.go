@@ -16,6 +16,8 @@ import (
 const mimeTypePDF = "application/pdf"
 
 // PDFExtractor extracts text from PDF files via the pdftotext CLI tool.
+//
+//nolint:revive // exported stutter is intentional; renaming would be a breaking change
 type PDFExtractor struct{}
 
 // New creates a new PDFExtractor.

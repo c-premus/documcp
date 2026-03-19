@@ -270,7 +270,7 @@ func TestSearchHandler_Popular(t *testing.T) {
 		assert.Len(t, dataRaw, 3)
 		first := dataRaw[0].(map[string]any)
 		assert.Equal(t, "golang", first["query"])
-		assert.Equal(t, float64(42), first["count"])
+		assert.InEpsilon(t, float64(42), first["count"], 1e-9)
 	})
 
 	t.Run("respects custom limit parameter", func(t *testing.T) {

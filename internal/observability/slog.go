@@ -2,6 +2,7 @@ package observability
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"go.opentelemetry.io/otel/trace"
@@ -36,7 +37,10 @@ func (h *tracedHandler) Handle(ctx context.Context, record slog.Record) error {
 		)
 	}
 
-	return h.inner.Handle(ctx, record)
+	if err := h.inner.Handle(ctx, record); err != nil {
+		return fmt.Errorf("handling log record: %w", err)
+	}
+	return nil
 }
 
 // WithAttrs returns a new tracedHandler wrapping the inner handler with the

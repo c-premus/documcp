@@ -188,6 +188,12 @@ linters:
           - godot
         source: "^// "
 
+      # internal/handler/api uses package name "api" by convention -- not meaningless in context.
+      - path: internal/handler/api/
+        linters:
+          - revive
+        text: "var-naming"
+
 issues:
   max-issues-per-linter: 0      # Show all issues (no limit)
   max-same-issues: 0            # Show all instances (no limit)

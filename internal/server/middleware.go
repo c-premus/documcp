@@ -1,3 +1,4 @@
+// Package server manages the HTTP server lifecycle and middleware.
 package server
 
 import (
@@ -85,7 +86,7 @@ func MaxBodySize(maxBytes int64) func(http.Handler) http.Handler {
 
 // RealIP returns middleware that sets r.RemoteAddr to the client's real IP
 // address. When trustedProxies is non-empty, forwarded headers (X-Real-IP,
-// X-Forwarded-For) are only honoured if the direct connection originates from
+// X-Forwarded-For) are only honored if the direct connection originates from
 // a trusted network. When trustedProxies is empty, headers are ignored and
 // RemoteAddr is used as-is — secure by default.
 func RealIP(trustedProxies []*net.IPNet) func(http.Handler) http.Handler {

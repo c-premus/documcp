@@ -255,7 +255,7 @@ func (r *GitTemplateRepository) ReplaceFiles(ctx context.Context, templateID int
 		if len(f.Variables) > 0 {
 			b, jsonErr := json.Marshal(f.Variables)
 			if jsonErr != nil {
-				return fmt.Errorf("marshalling variables for file %q: %w", f.Path, jsonErr)
+				return fmt.Errorf("marshaling variables for file %q: %w", f.Path, jsonErr)
 			}
 			s := string(b)
 			variablesJSON = &s

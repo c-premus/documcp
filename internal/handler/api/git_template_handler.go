@@ -227,7 +227,7 @@ func (h *GitTemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if len(body.Tags) > 0 {
 		tagsJSON, err := json.Marshal(body.Tags)
 		if err != nil {
-			h.logger.Error("marshalling tags", "error", err)
+			h.logger.Error("marshaling tags", "error", err)
 			errorResponse(w, http.StatusInternalServerError, "failed to process tags")
 			return
 		}
@@ -303,7 +303,7 @@ func (h *GitTemplateHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if body.Tags != nil {
 		tagsJSON, jsonErr := json.Marshal(body.Tags)
 		if jsonErr != nil {
-			h.logger.Error("marshalling tags for update", "error", jsonErr)
+			h.logger.Error("marshaling tags for update", "error", jsonErr)
 			errorResponse(w, http.StatusInternalServerError, "failed to process tags")
 			return
 		}
@@ -398,7 +398,8 @@ func (h *GitTemplateHandler) Structure(w http.ResponseWriter, r *http.Request) {
 	variableSet := make(map[string]bool)
 
 	fileItems := make([]gitTemplateFileResponse, 0, len(files))
-	for _, f := range files {
+	for i := range files {
+		f := &files[i]
 		fileTree = append(fileTree, f.Path)
 
 		if f.IsEssential {
@@ -545,11 +546,11 @@ func (h *GitTemplateHandler) DeploymentGuide(w http.ResponseWriter, r *http.Requ
 	}
 
 	deploymentFiles := make([]deploymentFileResp, 0)
-	for _, f := range files {
-		if !f.IsEssential {
+	for i := range files {
+		if !files[i].IsEssential {
 			continue
 		}
-		content := f.Content.String
+		content := files[i].Content.String
 		if len(variables) > 0 {
 			var unresolved []string
 			content, unresolved = substituteTemplateVariables(content, variables)
@@ -558,7 +559,7 @@ func (h *GitTemplateHandler) DeploymentGuide(w http.ResponseWriter, r *http.Requ
 			}
 		}
 		deploymentFiles = append(deploymentFiles, deploymentFileResp{
-			Path:    f.Path,
+			Path:    files[i].Path,
 			Content: content,
 		})
 	}
@@ -604,7 +605,7 @@ func (h *GitTemplateHandler) Download(w http.ResponseWriter, r *http.Request) {
 		Variables map[string]string `json:"variables"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err = json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errorResponse(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
@@ -628,8 +629,8 @@ func (h *GitTemplateHandler) Download(w http.ResponseWriter, r *http.Request) {
 	allUnresolved := make(map[string]bool)
 
 	entries := make([]templateArchiveEntry, 0, len(files))
-	for _, f := range files {
-		content := f.Content.String
+	for i := range files {
+		content := files[i].Content.String
 		if len(body.Variables) > 0 {
 			var unresolved []string
 			content, unresolved = substituteTemplateVariables(content, body.Variables)
@@ -637,7 +638,7 @@ func (h *GitTemplateHandler) Download(w http.ResponseWriter, r *http.Request) {
 				allUnresolved[u] = true
 			}
 		}
-		entries = append(entries, templateArchiveEntry{path: f.Path, content: content})
+		entries = append(entries, templateArchiveEntry{path: files[i].Path, content: content})
 	}
 
 	var buf bytes.Buffer
@@ -728,9 +729,8 @@ func toGitTemplateResponse(gt *model.GitTemplate) gitTemplateResponse {
 // substituteTemplateVariables replaces {{key}} placeholders in content with values
 // from the provided map. Returns the substituted content and a list of unresolved
 // variable names.
-func substituteTemplateVariables(content string, variables map[string]string) (string, []string) {
-	var unresolved []string
-	result := content
+func substituteTemplateVariables(content string, variables map[string]string) (result string, missingVars []string) {
+	result = content
 
 	matches := templateVariablePattern.FindAllStringSubmatch(content, -1)
 	seen := make(map[string]bool)
@@ -739,11 +739,11 @@ func substituteTemplateVariables(content string, variables map[string]string) (s
 		if val, ok := variables[key]; ok {
 			result = strings.ReplaceAll(result, "{{"+key+"}}", val)
 		} else if !seen[key] {
-			unresolved = append(unresolved, key)
+			missingVars = append(missingVars, key)
 			seen[key] = true
 		}
 	}
-	return result, unresolved
+	return result, missingVars
 }
 
 // parseTemplateVariablesJSON decodes a JSON string into a map of variable substitutions.
@@ -798,7 +798,10 @@ func buildTemplateArchiveZip(w *bytes.Buffer, entries []templateArchiveEntry) er
 			return fmt.Errorf("writing zip entry %q: %w", e.path, err)
 		}
 	}
-	return zw.Close()
+	if err := zw.Close(); err != nil {
+		return fmt.Errorf("closing zip writer: %w", err)
+	}
+	return nil
 }
 
 // buildTemplateArchiveTarGz writes a gzip-compressed tar archive to w.
@@ -823,7 +826,10 @@ func buildTemplateArchiveTarGz(w *bytes.Buffer, entries []templateArchiveEntry) 
 	if err := tw.Close(); err != nil {
 		return fmt.Errorf("closing tar writer: %w", err)
 	}
-	return gw.Close()
+	if err := gw.Close(); err != nil {
+		return fmt.Errorf("closing gzip writer: %w", err)
+	}
+	return nil
 }
 
 // ValidateURL handles POST /api/admin/git-templates/validate-url -- SSRF validation.

@@ -67,7 +67,7 @@ func ValidateExternalURL(rawURL string) error {
 	}
 
 	// Resolve hostname and verify all resolved IPs.
-	addrs, err := net.LookupHost(hostname)
+	addrs, err := net.DefaultResolver.LookupHost(context.Background(), hostname)
 	if err != nil {
 		return fmt.Errorf("resolving hostname %q: %w", hostname, err)
 	}
@@ -91,7 +91,11 @@ func ValidateExternalURL(rawURL string) error {
 // passes but the hostname resolves to a private IP by the time the connection
 // is actually established.
 func SafeTransport() *http.Transport {
-	base := http.DefaultTransport.(*http.Transport).Clone()
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		transport = &http.Transport{}
+	}
+	base := transport.Clone()
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 
 	base.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {

@@ -51,8 +51,9 @@ func Sync(ctx context.Context, params SyncParams) error {
 	activeNames := make([]string, 0, len(params.Entries))
 	var upsertErrors int
 
-	for _, entry := range params.Entries {
-		if err := params.Repo.UpsertFromCatalog(ctx, params.ServiceID, entry); err != nil {
+	for i := range params.Entries {
+		entry := &params.Entries[i]
+		if err := params.Repo.UpsertFromCatalog(ctx, params.ServiceID, *entry); err != nil {
 			params.Logger.Error("upserting archive from catalog",
 				"name", entry.Name,
 				"error", err,

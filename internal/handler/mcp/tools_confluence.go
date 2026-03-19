@@ -143,14 +143,14 @@ func (h *Handler) handleListConfluenceSpaces(ctx context.Context, _ *mcp.CallToo
 	}
 
 	items := make([]confluenceSpaceItem, 0, len(spaces))
-	for _, s := range spaces {
+	for i := range spaces {
 		item := confluenceSpaceItem{
-			Key:  s.Key,
-			Name: s.Name,
-			Type: s.Type,
+			Key:  spaces[i].Key,
+			Name: spaces[i].Name,
+			Type: spaces[i].Type,
 		}
-		if s.Description.Valid {
-			item.Description = s.Description.String
+		if spaces[i].Description.Valid {
+			item.Description = spaces[i].Description.String
 		}
 		items = append(items, item)
 	}
@@ -219,11 +219,12 @@ func (h *Handler) handleReadConfluencePage(ctx context.Context, _ *mcp.CallToolR
 	var page *confluence.Page
 	var err error
 
-	if input.PageID != "" {
+	switch {
+	case input.PageID != "":
 		page, err = h.confluenceClient.ReadPage(ctx, input.PageID)
-	} else if input.SpaceKey != "" && input.Title != "" {
+	case input.SpaceKey != "" && input.Title != "":
 		page, err = h.confluenceClient.ReadPageByTitle(ctx, input.SpaceKey, input.Title)
-	} else {
+	default:
 		return nil, readConfluencePageResponse{
 			Success: false,
 			Message: "Either page_id or both space_key and title are required",

@@ -1,6 +1,7 @@
+// Package dto defines data transfer objects for MCP tool inputs and outputs.
 package dto
 
-// --- Document tools ---
+// --- Document tools ---.
 
 // SearchDocumentsInput holds parameters for searching uploaded documents.
 type SearchDocumentsInput struct {
@@ -43,7 +44,7 @@ type DeleteDocumentInput struct {
 	UUID string `json:"uuid" jsonschema:"UUID of document to delete,required"`
 }
 
-// --- ZIM tools ---
+// --- ZIM tools ---.
 
 // ListZimArchivesInput holds parameters for listing available ZIM archives.
 type ListZimArchivesInput struct {
@@ -69,7 +70,7 @@ type ReadZimArticleInput struct {
 	MaxParagraphs int    `json:"max_paragraphs,omitempty" jsonschema:"Limit to first N paragraphs (1-100)"`
 }
 
-// --- Confluence tools ---
+// --- Confluence tools ---.
 
 // ListConfluenceSpacesInput holds parameters for listing Confluence spaces.
 type ListConfluenceSpacesInput struct {
@@ -94,7 +95,7 @@ type ReadConfluencePageInput struct {
 	MaxParagraphs int    `json:"max_paragraphs,omitempty" jsonschema:"Limit to first N paragraphs (1-100)"`
 }
 
-// --- Git Template tools ---
+// --- Git Template tools ---.
 
 // ListGitTemplatesInput holds parameters for listing available git templates.
 type ListGitTemplatesInput struct {
@@ -134,7 +135,7 @@ type DownloadTemplateInput struct {
 	Variables string `json:"variables,omitempty" jsonschema:"JSON object of variables for placeholder substitution"`
 }
 
-// --- Unified Search ---
+// --- Unified Search ---.
 
 // UnifiedSearchInput holds parameters for searching across all content sources.
 type UnifiedSearchInput struct {

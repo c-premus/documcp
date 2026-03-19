@@ -106,10 +106,8 @@ func TestHealth(t *testing.T) {
 				if !strings.Contains(err.Error(), tt.errSubstr) {
 					t.Errorf("error %q should contain %q", err.Error(), tt.errSubstr)
 				}
-			} else {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
 		})
 	}
@@ -667,10 +665,8 @@ func TestValidateArticlePath(t *testing.T) {
 				if !strings.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("error %q should contain %q", err.Error(), tt.errMsg)
 				}
-			} else {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
 		})
 	}
@@ -1036,7 +1032,7 @@ func TestNewClient(t *testing.T) {
 
 // --- Context cancellation ---
 
-func TestSearch_ContextCancelled(t *testing.T) {
+func TestSearch_ContextCanceled(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(5 * time.Second)
 	}))
@@ -1048,11 +1044,11 @@ func TestSearch_ContextCancelled(t *testing.T) {
 
 	_, err := client.Search(ctx, "archive", "query", "suggest", 10)
 	if err == nil {
-		t.Fatal("expected error for cancelled context, got nil")
+		t.Fatal("expected error for canceled context, got nil")
 	}
 }
 
-func TestReadArticle_ContextCancelled(t *testing.T) {
+func TestReadArticle_ContextCanceled(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(5 * time.Second)
 	}))
@@ -1064,6 +1060,6 @@ func TestReadArticle_ContextCancelled(t *testing.T) {
 
 	_, err := client.ReadArticle(ctx, "archive", "A/Article")
 	if err == nil {
-		t.Fatal("expected error for cancelled context, got nil")
+		t.Fatal("expected error for canceled context, got nil")
 	}
 }

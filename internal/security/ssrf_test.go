@@ -122,7 +122,10 @@ func TestSafeTransport(t *testing.T) {
 	t.Run("blocks connection to loopback", func(t *testing.T) {
 		client := &http.Client{Transport: security.SafeTransport()}
 		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1:1/test", nil)
-		_, err := client.Do(req)
+		resp, err := client.Do(req)
+		if resp != nil {
+			resp.Body.Close()
+		}
 		if err == nil {
 			t.Fatal("expected error connecting to loopback via SafeTransport")
 		}
@@ -131,7 +134,10 @@ func TestSafeTransport(t *testing.T) {
 	t.Run("blocks connection to private IP", func(t *testing.T) {
 		client := &http.Client{Transport: security.SafeTransport()}
 		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://10.0.0.1:1/test", nil)
-		_, err := client.Do(req)
+		resp, err := client.Do(req)
+		if resp != nil {
+			resp.Body.Close()
+		}
 		if err == nil {
 			t.Fatal("expected error connecting to private IP via SafeTransport")
 		}

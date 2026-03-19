@@ -278,7 +278,7 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 		require.Equal(t, http.StatusOK, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
 		// Default config is 15 minutes = 900 seconds
-		assert.Equal(t, float64(900), result["expires_in"])
+		assert.InEpsilon(t, float64(900), result["expires_in"], 1e-9)
 	})
 
 	t.Run("interval is at least 5 seconds", func(t *testing.T) {

@@ -1,3 +1,4 @@
+// Package mcphandler provides the MCP protocol handler and tool implementations.
 package mcphandler
 
 import "strings"

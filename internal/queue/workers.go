@@ -21,7 +21,7 @@ func nextRetryFromBackoffs(attempt int) time.Time {
 	return time.Now().Add(retryBackoffs[idx])
 }
 
-// --- Interfaces (defined where consumed) ---
+// --- Interfaces (defined where consumed) ---.
 
 // DocumentProcessor extracts content from a document.
 // Implemented by *service.DocumentPipeline.
@@ -40,7 +40,7 @@ type DocumentLister interface {
 	FindByStatus(ctx context.Context, status string, limit int) ([]model.Document, error)
 }
 
-// --- Document Workers ---
+// --- Document Workers ---.
 
 // DocumentExtractWorker processes document extraction jobs.
 type DocumentExtractWorker struct {
@@ -49,6 +49,7 @@ type DocumentExtractWorker struct {
 	Metrics  *observability.Metrics
 }
 
+// Work executes the document extraction job for a single document.
 func (w *DocumentExtractWorker) Work(ctx context.Context, job *river.Job[DocumentExtractArgs]) error {
 	start := time.Now()
 	err := w.Pipeline.ProcessDocument(ctx, job.Args.DocumentID)
@@ -58,6 +59,7 @@ func (w *DocumentExtractWorker) Work(ctx context.Context, job *river.Job[Documen
 	return err
 }
 
+// NextRetry returns the next retry time for a failed document extraction.
 func (w *DocumentExtractWorker) NextRetry(job *river.Job[DocumentExtractArgs]) time.Time {
 	return nextRetryFromBackoffs(job.Attempt)
 }
@@ -69,6 +71,7 @@ type DocumentIndexWorker struct {
 	Metrics *observability.Metrics
 }
 
+// Work executes the document indexing job for a single document.
 func (w *DocumentIndexWorker) Work(ctx context.Context, job *river.Job[DocumentIndexArgs]) error {
 	start := time.Now()
 	err := w.Indexer.IndexDocumentByID(ctx, job.Args.DocumentID)
@@ -78,6 +81,7 @@ func (w *DocumentIndexWorker) Work(ctx context.Context, job *river.Job[DocumentI
 	return err
 }
 
+// NextRetry returns the next retry time for a failed document indexing.
 func (w *DocumentIndexWorker) NextRetry(job *river.Job[DocumentIndexArgs]) time.Time {
 	return nextRetryFromBackoffs(job.Attempt)
 }
@@ -90,6 +94,7 @@ type ReindexAllWorker struct {
 	Logger  *slog.Logger
 }
 
+// Work executes the full reindex job, re-indexing all processed documents.
 func (w *ReindexAllWorker) Work(ctx context.Context, _ *river.Job[ReindexAllArgs]) error {
 	if w.Lister == nil || w.Indexer == nil {
 		return fmt.Errorf("reindex worker not configured: lister=%v, indexer=%v", w.Lister != nil, w.Indexer != nil)
@@ -111,15 +116,15 @@ func (w *ReindexAllWorker) Work(ctx context.Context, _ *river.Job[ReindexAllArgs
 			continue
 		}
 
-		for _, doc := range docs {
+		for i := range docs {
 			if err := ctx.Err(); err != nil {
-				return fmt.Errorf("reindex cancelled after %d/%d documents: %w", succeeded, total, err)
+				return fmt.Errorf("reindex canceled after %d/%d documents: %w", succeeded, total, err)
 			}
 
 			total++
-			if err := w.Indexer.IndexDocumentByID(ctx, doc.ID); err != nil {
+			if err := w.Indexer.IndexDocumentByID(ctx, docs[i].ID); err != nil {
 				failed++
-				logger.Warn("reindex: failed to index document", "doc_id", doc.ID, "error", err)
+				logger.Warn("reindex: failed to index document", "doc_id", docs[i].ID, "error", err)
 				continue
 			}
 			succeeded++

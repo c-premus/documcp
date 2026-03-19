@@ -210,7 +210,7 @@ func TestDOCXExtractor_Extract_InvalidZip(t *testing.T) {
 	}
 }
 
-func TestDOCXExtractor_Extract_CancelledContext(t *testing.T) {
+func TestDOCXExtractor_Extract_CanceledContext(t *testing.T) {
 	t.Parallel()
 
 	filePath := createDocx(t, []string{"text"}, nil)
@@ -221,7 +221,7 @@ func TestDOCXExtractor_Extract_CancelledContext(t *testing.T) {
 	ext := docx.New()
 	_, err := ext.Extract(ctx, filePath)
 	if err == nil {
-		t.Fatal("Extract() expected error for cancelled context, got nil")
+		t.Fatal("Extract() expected error for canceled context, got nil")
 	}
 }
 
@@ -243,13 +243,13 @@ func TestDOCXExtractor_Extract_MissingDocumentXML(t *testing.T) {
 	if err != nil {
 		t.Fatalf("creating dummy in zip: %v", err)
 	}
-	if _, err := w.Write([]byte("hello")); err != nil {
+	if _, err = w.Write([]byte("hello")); err != nil {
 		t.Fatalf("writing dummy: %v", err)
 	}
-	if err := zw.Close(); err != nil {
+	if err = zw.Close(); err != nil {
 		t.Fatalf("closing zip writer: %v", err)
 	}
-	if err := f.Close(); err != nil {
+	if err = f.Close(); err != nil {
 		t.Fatalf("closing file: %v", err)
 	}
 
@@ -355,13 +355,13 @@ func TestDOCXExtractor_Extract_MultiRunParagraph(t *testing.T) {
 		`<w:p><w:r><w:t>Hello </w:t></w:r><w:r><w:t>World</w:t></w:r></w:p>` +
 		`</w:body></w:document>`
 
-	if _, err := w.Write([]byte(docXML)); err != nil {
+	if _, err = w.Write([]byte(docXML)); err != nil {
 		t.Fatalf("writing document.xml: %v", err)
 	}
-	if err := zw.Close(); err != nil {
+	if err = zw.Close(); err != nil {
 		t.Fatalf("closing zip writer: %v", err)
 	}
-	if err := f.Close(); err != nil {
+	if err = f.Close(); err != nil {
 		t.Fatalf("closing file: %v", err)
 	}
 
@@ -401,13 +401,13 @@ func TestDOCXExtractor_Extract_WhitespaceOnlyParagraph(t *testing.T) {
 		`<w:p><w:r><w:t>After blank</w:t></w:r></w:p>` +
 		`</w:body></w:document>`
 
-	if _, err := w.Write([]byte(docXML)); err != nil {
+	if _, err = w.Write([]byte(docXML)); err != nil {
 		t.Fatalf("writing document.xml: %v", err)
 	}
-	if err := zw.Close(); err != nil {
+	if err = zw.Close(); err != nil {
 		t.Fatalf("closing zip writer: %v", err)
 	}
-	if err := f.Close(); err != nil {
+	if err = f.Close(); err != nil {
 		t.Fatalf("closing file: %v", err)
 	}
 

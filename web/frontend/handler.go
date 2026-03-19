@@ -1,3 +1,4 @@
+// Package frontend serves the embedded Vue SPA static assets.
 package frontend
 
 import (

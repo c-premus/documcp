@@ -187,7 +187,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		Name   string   `json:"name"`
 		Groups []string `json:"groups"`
 	}
-	if err := idToken.Claims(&claims); err != nil {
+	if err = idToken.Claims(&claims); err != nil {
 		h.logger.Error("parsing ID token claims", "error", err)
 		http.Error(w, "Authentication failed", http.StatusUnauthorized)
 		return
@@ -278,7 +278,7 @@ func (h *Handler) findOrCreateUser(ctx context.Context, sub, email, name string,
 		if isAdmin, shouldSync := h.resolveAdmin(groups); shouldSync {
 			user.IsAdmin = isAdmin
 		}
-		if err := h.repo.UpdateUser(ctx, user); err != nil {
+		if err = h.repo.UpdateUser(ctx, user); err != nil {
 			return nil, fmt.Errorf("linking OIDC identity: %w", err)
 		}
 		return user, nil
@@ -314,9 +314,9 @@ func (h *Handler) findOrCreateUser(ctx context.Context, sub, email, name string,
 }
 
 // resolveAdmin determines if a user should be admin based on their OIDC groups.
-// Returns (isAdmin, shouldSync). shouldSync is false when adminGroups is not
+// Returns (isAdmin, shouldSync). ShouldSync is false when adminGroups is not
 // configured, meaning IsAdmin should not be touched (manual assignment preserved).
-func (h *Handler) resolveAdmin(groups []string) (isAdmin bool, shouldSync bool) {
+func (h *Handler) resolveAdmin(groups []string) (isAdmin, shouldSync bool) {
 	if len(h.adminGroups) == 0 {
 		return false, false
 	}
@@ -354,7 +354,7 @@ func isSafeRedirect(redirect string) bool {
 func generateState() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		return "", err
+		return "", fmt.Errorf("generating state: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }

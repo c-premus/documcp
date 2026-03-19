@@ -134,12 +134,12 @@ func (s *DocumentService) Update(ctx context.Context, docUUID string, params Upd
 		doc.IsPublic = *params.IsPublic
 	}
 
-	if err := s.repo.Update(ctx, doc); err != nil {
+	if err = s.repo.Update(ctx, doc); err != nil {
 		return nil, fmt.Errorf("updating document: %w", err)
 	}
 
 	if params.Tags != nil {
-		if err := s.repo.ReplaceTags(ctx, doc.ID, params.Tags); err != nil {
+		if err = s.repo.ReplaceTags(ctx, doc.ID, params.Tags); err != nil {
 			return nil, fmt.Errorf("replacing tags on document: %w", err)
 		}
 	}

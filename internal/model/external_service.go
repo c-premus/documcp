@@ -3,6 +3,7 @@ package model
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 )
 
 // ExternalService represents a row in the "external_services" table.
@@ -34,5 +35,8 @@ func (es *ExternalService) ParseConfig(dest any) error {
 	if !es.Config.Valid {
 		return nil
 	}
-	return json.Unmarshal([]byte(es.Config.String), dest)
+	if err := json.Unmarshal([]byte(es.Config.String), dest); err != nil {
+		return fmt.Errorf("unmarshaling external service config: %w", err)
+	}
+	return nil
 }

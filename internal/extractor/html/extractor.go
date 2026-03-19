@@ -1,6 +1,6 @@
 // Package html extracts text content from HTML files by sanitizing and
 // converting them to Markdown.
-package html
+package html //nolint:revive // package name matches directory convention; internal package shadowing is acceptable
 
 import (
 	"context"
@@ -25,6 +25,8 @@ var supportedMIMETypes = map[string]bool{
 var titleRe = regexp.MustCompile(`(?i)<title[^>]*>(.*?)</title>`)
 
 // HTMLExtractor extracts text content from HTML files.
+//
+//nolint:revive // exported stutter is intentional; renaming would be a breaking change
 type HTMLExtractor struct {
 	policy *bluemonday.Policy
 }

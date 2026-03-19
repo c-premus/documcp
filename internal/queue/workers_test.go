@@ -289,7 +289,7 @@ func TestReindexAllWorker_Work(t *testing.T) {
 		assert.Contains(t, err.Error(), "1 failures")
 	})
 
-	t.Run("cancelled_context", func(t *testing.T) {
+	t.Run("canceled_context", func(t *testing.T) {
 		t.Parallel()
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -301,7 +301,7 @@ func TestReindexAllWorker_Work(t *testing.T) {
 		worker := &ReindexAllWorker{Indexer: &mockDocumentIndexer{}, Lister: lister}
 		err := worker.Work(ctx, makeJob())
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "cancelled")
+		assert.Contains(t, err.Error(), "canceled")
 	})
 
 	t.Run("lister_error_continues", func(t *testing.T) {

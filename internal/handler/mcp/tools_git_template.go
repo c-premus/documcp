@@ -140,9 +140,8 @@ var variablePattern = regexp.MustCompile(`\{\{(\w+)\}\}`)
 // substituteVariables replaces {{key}} placeholders in content using the
 // provided variable map. It returns the substituted content and a list of
 // any unresolved variable names.
-func substituteVariables(content string, variables map[string]string) (string, []string) {
-	var unresolved []string
-	result := content
+func substituteVariables(content string, variables map[string]string) (result string, missingVars []string) {
+	result = content
 
 	matches := variablePattern.FindAllStringSubmatch(content, -1)
 	seen := make(map[string]bool)
@@ -151,11 +150,11 @@ func substituteVariables(content string, variables map[string]string) (string, [
 		if val, ok := variables[key]; ok {
 			result = strings.ReplaceAll(result, "{{"+key+"}}", val)
 		} else if !seen[key] {
-			unresolved = append(unresolved, key)
+			missingVars = append(missingVars, key)
 			seen[key] = true
 		}
 	}
-	return result, unresolved
+	return result, missingVars
 }
 
 // parseVariablesJSON decodes a JSON string into a map of variable substitutions.
@@ -313,7 +312,8 @@ func (h *Handler) handleListGitTemplates(
 	}
 
 	items := make([]gitTemplateItem, 0, len(templates))
-	for _, gt := range templates {
+	for i := range templates {
+		gt := &templates[i]
 		item := gitTemplateItem{
 			UUID:      gt.UUID,
 			Name:      gt.Name,
@@ -376,7 +376,8 @@ func (h *Handler) handleSearchGitTemplates(
 		}
 
 		results := make([]gitTemplateSearchResult, 0, len(templates))
-		for _, gt := range templates {
+		for i := range templates {
+			gt := &templates[i]
 			item := gitTemplateSearchResult{
 				UUID:      gt.UUID,
 				Name:      gt.Name,
@@ -482,16 +483,16 @@ func (h *Handler) handleGetTemplateStructure(
 	essentialFiles := make([]string, 0)
 	variableSet := make(map[string]bool)
 
-	for _, f := range files {
-		fileTree = append(fileTree, f.Path)
+	for i := range files {
+		fileTree = append(fileTree, files[i].Path)
 
-		if f.IsEssential {
-			essentialFiles = append(essentialFiles, f.Path)
+		if files[i].IsEssential {
+			essentialFiles = append(essentialFiles, files[i].Path)
 		}
 
 		// Extract {{variables}} from file content.
-		if f.Content.Valid {
-			matches := variablePattern.FindAllStringSubmatch(f.Content.String, -1)
+		if files[i].Content.Valid {
+			matches := variablePattern.FindAllStringSubmatch(files[i].Content.String, -1)
 			for _, match := range matches {
 				variableSet[match[1]] = true
 			}
@@ -610,11 +611,11 @@ func (h *Handler) handleGetDeploymentGuide(
 	allUnresolved := make(map[string]bool)
 	deploymentFiles := make([]deploymentFile, 0)
 
-	for _, f := range files {
-		if !f.IsEssential {
+	for i := range files {
+		if !files[i].IsEssential {
 			continue
 		}
-		content := f.Content.String
+		content := files[i].Content.String
 		if len(variables) > 0 {
 			var unresolved []string
 			content, unresolved = substituteVariables(content, variables)
@@ -623,7 +624,7 @@ func (h *Handler) handleGetDeploymentGuide(
 			}
 		}
 		deploymentFiles = append(deploymentFiles, deploymentFile{
-			Path:    f.Path,
+			Path:    files[i].Path,
 			Content: content,
 		})
 	}
@@ -684,8 +685,8 @@ func (h *Handler) handleDownloadTemplate(
 
 	// Prepare file contents with optional variable substitution.
 	entries := make([]archiveEntry, 0, len(files))
-	for _, f := range files {
-		content := f.Content.String
+	for i := range files {
+		content := files[i].Content.String
 		if len(variables) > 0 {
 			var unresolved []string
 			content, unresolved = substituteVariables(content, variables)
@@ -693,7 +694,7 @@ func (h *Handler) handleDownloadTemplate(
 				allUnresolved[u] = true
 			}
 		}
-		entries = append(entries, archiveEntry{path: f.Path, content: content})
+		entries = append(entries, archiveEntry{path: files[i].Path, content: content})
 	}
 
 	var buf bytes.Buffer
@@ -747,7 +748,10 @@ func buildZip(w *bytes.Buffer, entries []archiveEntry) error {
 			return fmt.Errorf("writing zip entry %q: %w", e.path, err)
 		}
 	}
-	return zw.Close()
+	if err := zw.Close(); err != nil {
+		return fmt.Errorf("closing zip writer: %w", err)
+	}
+	return nil
 }
 
 // buildTarGz writes a gzip-compressed tar archive containing the given entries to w.
@@ -772,5 +776,8 @@ func buildTarGz(w *bytes.Buffer, entries []archiveEntry) error {
 	if err := tw.Close(); err != nil {
 		return fmt.Errorf("closing tar writer: %w", err)
 	}
-	return gw.Close()
+	if err := gw.Close(); err != nil {
+		return fmt.Errorf("closing gzip writer: %w", err)
+	}
+	return nil
 }

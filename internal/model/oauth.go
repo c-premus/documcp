@@ -3,6 +3,7 @@ package model
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -30,7 +31,7 @@ type OAuthClient struct {
 func (c *OAuthClient) ParseRedirectURIs() ([]string, error) {
 	var uris []string
 	if err := json.Unmarshal([]byte(c.RedirectURIs), &uris); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshaling redirect URIs: %w", err)
 	}
 	return uris, nil
 }
@@ -39,7 +40,7 @@ func (c *OAuthClient) ParseRedirectURIs() ([]string, error) {
 func (c *OAuthClient) ParseGrantTypes() ([]string, error) {
 	var types []string
 	if err := json.Unmarshal([]byte(c.GrantTypes), &types); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshaling grant types: %w", err)
 	}
 	return types, nil
 }
@@ -48,7 +49,7 @@ func (c *OAuthClient) ParseGrantTypes() ([]string, error) {
 func (c *OAuthClient) ParseResponseTypes() ([]string, error) {
 	var types []string
 	if err := json.Unmarshal([]byte(c.ResponseTypes), &types); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshaling response types: %w", err)
 	}
 	return types, nil
 }

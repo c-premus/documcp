@@ -132,7 +132,7 @@ func (s *ExternalServiceService) Update(ctx context.Context, svcUUID string, par
 		svc.Slug = slugify(params.Name)
 	}
 	if params.BaseURL != "" {
-		if err := security.ValidateExternalURL(params.BaseURL); err != nil {
+		if err = security.ValidateExternalURL(params.BaseURL); err != nil {
 			return nil, fmt.Errorf("base URL validation: %w", err)
 		}
 		svc.BaseURL = params.BaseURL
@@ -150,7 +150,7 @@ func (s *ExternalServiceService) Update(ctx context.Context, svcUUID string, par
 		svc.IsEnabled = *params.IsEnabled
 	}
 
-	if err := s.repo.Update(ctx, svc); err != nil {
+	if err = s.repo.Update(ctx, svc); err != nil {
 		return nil, fmt.Errorf("updating external service: %w", err)
 	}
 
@@ -209,7 +209,7 @@ func (s *ExternalServiceService) CheckHealth(ctx context.Context, svcUUID string
 		)
 	}
 
-	if err := s.repo.UpdateHealthStatus(ctx, svc.ID, status, latencyMs, lastError); err != nil {
+	if err = s.repo.UpdateHealthStatus(ctx, svc.ID, status, latencyMs, lastError); err != nil {
 		return nil, fmt.Errorf("updating health status: %w", err)
 	}
 

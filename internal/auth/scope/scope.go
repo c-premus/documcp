@@ -38,7 +38,7 @@ var All = map[string]bool{
 	Admin:          true,
 }
 
-// Valid returns true if scope is a recognised scope string.
+// Valid returns true if scope is a recognized scope string.
 func Valid(s string) bool {
 	return All[s]
 }
@@ -72,7 +72,7 @@ func IsSubset(requested, allowed string) bool {
 }
 
 // ValidateAll returns the list of scopes in the space-delimited string that are
-// not recognised. An empty input yields a nil slice.
+// not recognized. An empty input yields a nil slice.
 func ValidateAll(scopes string) []string {
 	var invalid []string
 	for _, s := range ParseScopes(scopes) {

@@ -91,7 +91,7 @@ func VerifySecret(hash, secret string) bool {
 }
 
 // GenerateClientSecret creates a random 64-character client secret.
-func GenerateClientSecret() (plaintext string, hashed string, err error) {
+func GenerateClientSecret() (plaintext, hashed string, err error) {
 	plaintext, err = randomString(64)
 	if err != nil {
 		return "", "", fmt.Errorf("generating client secret: %w", err)

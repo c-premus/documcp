@@ -270,7 +270,7 @@ func TestHandleDocumentAnalysis(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			assertPromptResult(t, result, 2)
+			assertPromptResult(t, result)
 			assertMessageRole(t, result.Messages[0], "assistant")
 			assertMessageRole(t, result.Messages[1], "user")
 			assertMessageContains(t, result.Messages[1], tt.args["document_ids"])
@@ -308,7 +308,7 @@ func TestHandleSearchQueryBuilder(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			assertPromptResult(t, result, 2)
+			assertPromptResult(t, result)
 			assertMessageRole(t, result.Messages[0], "assistant")
 			assertMessageRole(t, result.Messages[1], "user")
 			assertMessageContains(t, result.Messages[1], tt.args["goal"])
@@ -346,7 +346,7 @@ func TestHandleKnowledgeBaseBuilder(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			assertPromptResult(t, result, 2)
+			assertPromptResult(t, result)
 			assertMessageRole(t, result.Messages[0], "assistant")
 			assertMessageRole(t, result.Messages[1], "user")
 			assertMessageContains(t, result.Messages[1], tt.args["goal"])
@@ -384,7 +384,7 @@ func TestHandleGitTemplateSetup(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			assertPromptResult(t, result, 2)
+			assertPromptResult(t, result)
 			assertMessageRole(t, result.Messages[0], "assistant")
 			assertMessageRole(t, result.Messages[1], "user")
 			assertMessageContains(t, result.Messages[1], tt.args["intent"])
@@ -422,7 +422,7 @@ func TestHandleZimResearch(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			assertPromptResult(t, result, 2)
+			assertPromptResult(t, result)
 			assertMessageRole(t, result.Messages[0], "assistant")
 			assertMessageRole(t, result.Messages[1], "user")
 			assertMessageContains(t, result.Messages[1], tt.args["topic"])
@@ -460,7 +460,7 @@ func TestHandleConfluenceResearch(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			assertPromptResult(t, result, 2)
+			assertPromptResult(t, result)
 			assertMessageRole(t, result.Messages[0], "assistant")
 			assertMessageRole(t, result.Messages[1], "user")
 			assertMessageContains(t, result.Messages[1], tt.args["topic"])
@@ -498,7 +498,7 @@ func TestHandleCrossSourceResearch(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			assertPromptResult(t, result, 2)
+			assertPromptResult(t, result)
 			assertMessageRole(t, result.Messages[0], "assistant")
 			assertMessageRole(t, result.Messages[1], "user")
 			assertMessageContains(t, result.Messages[1], tt.args["topic"])
@@ -567,13 +567,13 @@ func makePromptRequest(name string, args map[string]string) *mcp.GetPromptReques
 
 // assertPromptResult verifies that the result is non-nil and contains the
 // expected number of messages.
-func assertPromptResult(t *testing.T, result *mcp.GetPromptResult, wantMsgCount int) {
+func assertPromptResult(t *testing.T, result *mcp.GetPromptResult) {
 	t.Helper()
 	if result == nil {
 		t.Fatal("result is nil")
 	}
-	if len(result.Messages) != wantMsgCount {
-		t.Fatalf("got %d messages, want %d", len(result.Messages), wantMsgCount)
+	if len(result.Messages) != 2 {
+		t.Fatalf("got %d messages, want 2", len(result.Messages))
 	}
 }
 

@@ -176,7 +176,7 @@ func (r *ZimArchiveRepository) UpsertFromCatalog(ctx context.Context, serviceID 
 	if len(entry.Tags) > 0 {
 		b, err := json.Marshal(entry.Tags)
 		if err != nil {
-			return fmt.Errorf("marshalling tags for zim archive %q: %w", entry.Name, err)
+			return fmt.Errorf("marshaling tags for zim archive %q: %w", entry.Name, err)
 		}
 		s := string(b)
 		tagsJSON = &s

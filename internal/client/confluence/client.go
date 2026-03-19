@@ -79,9 +79,10 @@ func (c *Client) ListSpaces(ctx context.Context, spaceType, query string, limit 
 
 	cacheKey := fmt.Sprintf("spaces:%s:%d", spaceType, limit)
 	if cached, ok := c.cache.get(cacheKey); ok {
-		c.logger.Debug("spaces cache hit", "key", cacheKey)
-		spaces := cached.([]Space)
-		return filterSpaces(spaces, query), nil
+		if spaces, ok := cached.([]Space); ok {
+			c.logger.Debug("spaces cache hit", "key", cacheKey)
+			return filterSpaces(spaces, query), nil
+		}
 	}
 
 	params := url.Values{}
@@ -142,8 +143,10 @@ func (c *Client) SearchPages(ctx context.Context, params SearchPagesParams) (Sea
 
 	cacheKey := fmt.Sprintf("search:%s:%d:%d", cql, limit, params.Start)
 	if cached, ok := c.cache.get(cacheKey); ok {
-		c.logger.Debug("search cache hit", "cql", cql)
-		return cached.(SearchResult), nil
+		if result, ok := cached.(SearchResult); ok {
+			c.logger.Debug("search cache hit", "cql", cql)
+			return result, nil
+		}
 	}
 
 	qp := url.Values{}
@@ -198,9 +201,10 @@ func (c *Client) SearchPages(ctx context.Context, params SearchPagesParams) (Sea
 func (c *Client) ReadPage(ctx context.Context, pageID string) (*Page, error) {
 	cacheKey := "page:" + pageID
 	if cached, ok := c.cache.get(cacheKey); ok {
-		c.logger.Debug("page cache hit", "page_id", pageID)
-		p := cached.(*Page)
-		return p, nil
+		if p, ok := cached.(*Page); ok {
+			c.logger.Debug("page cache hit", "page_id", pageID)
+			return p, nil
+		}
 	}
 
 	params := url.Values{}
@@ -352,10 +356,10 @@ func filterSpaces(spaces []Space, query string) []Space {
 	}
 	q := strings.ToLower(query)
 	filtered := make([]Space, 0)
-	for _, s := range spaces {
-		if strings.Contains(strings.ToLower(s.Name), q) ||
-			strings.Contains(strings.ToLower(s.Key), q) {
-			filtered = append(filtered, s)
+	for i := range spaces {
+		if strings.Contains(strings.ToLower(spaces[i].Name), q) ||
+			strings.Contains(strings.ToLower(spaces[i].Key), q) {
+			filtered = append(filtered, spaces[i])
 		}
 	}
 	return filtered

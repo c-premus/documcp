@@ -1,3 +1,4 @@
+// Package model defines the domain models for DocuMCP.
 package model
 
 import "database/sql"

@@ -74,9 +74,9 @@ func (m *mockUserRepo) ToggleAdmin(ctx context.Context, id int64) error {
 // Helpers
 // ---------------------------------------------------------------------------
 
-func chiCtxWithParam(r *http.Request, key, val string) *http.Request {
+func chiCtxWithParam(r *http.Request, val string) *http.Request {
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add(key, val)
+	rctx.URLParams.Add("id", val)
 	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 }
 
@@ -189,7 +189,7 @@ func TestUserHandler_Show_Success(t *testing.T) {
 	}
 
 	h := NewUserHandler(repo, discardLogger())
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/1", nil), "id", "1")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/1", nil), "1")
 	rec := httptest.NewRecorder()
 
 	h.Show(rec, req)
@@ -209,7 +209,7 @@ func TestUserHandler_Show_NotFound(t *testing.T) {
 	}
 
 	h := NewUserHandler(repo, discardLogger())
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/999", nil), "id", "999")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/999", nil), "999")
 	rec := httptest.NewRecorder()
 
 	h.Show(rec, req)
@@ -223,7 +223,7 @@ func TestUserHandler_Show_InvalidID(t *testing.T) {
 	t.Parallel()
 
 	h := NewUserHandler(&mockUserRepo{}, discardLogger())
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/abc", nil), "id", "abc")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/abc", nil), "abc")
 	rec := httptest.NewRecorder()
 
 	h.Show(rec, req)
@@ -330,7 +330,7 @@ func TestUserHandler_Update_Success(t *testing.T) {
 	h := NewUserHandler(repo, discardLogger())
 
 	body := `{"name":"Alice Updated"}`
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodPut, "/api/admin/users/1", bytes.NewBufferString(body)), "id", "1")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodPut, "/api/admin/users/1", bytes.NewBufferString(body)), "1")
 	rec := httptest.NewRecorder()
 
 	h.Update(rec, req)
@@ -352,7 +352,7 @@ func TestUserHandler_Update_NotFound(t *testing.T) {
 	h := NewUserHandler(repo, discardLogger())
 
 	body := `{"name":"Updated"}`
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodPut, "/api/admin/users/999", bytes.NewBufferString(body)), "id", "999")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodPut, "/api/admin/users/999", bytes.NewBufferString(body)), "999")
 	rec := httptest.NewRecorder()
 
 	h.Update(rec, req)
@@ -374,7 +374,7 @@ func TestUserHandler_Delete_Success(t *testing.T) {
 	h := NewUserHandler(repo, discardLogger())
 
 	// Set a different user as the current user so self-deletion check passes.
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/2", nil), "id", "2")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/2", nil), "2")
 	req = withAuthUser(req, &model.User{ID: 99, Name: "Admin"})
 	rec := httptest.NewRecorder()
 
@@ -390,7 +390,7 @@ func TestUserHandler_Delete_SelfDeletion(t *testing.T) {
 
 	h := NewUserHandler(&mockUserRepo{}, discardLogger())
 
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/42", nil), "id", "42")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/42", nil), "42")
 	req = withAuthUser(req, &model.User{ID: 42, Name: "Self"})
 	rec := httptest.NewRecorder()
 
@@ -412,7 +412,7 @@ func TestUserHandler_Delete_RepoError(t *testing.T) {
 
 	h := NewUserHandler(repo, discardLogger())
 
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/2", nil), "id", "2")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/2", nil), "2")
 	req = withAuthUser(req, &model.User{ID: 99})
 	rec := httptest.NewRecorder()
 
@@ -438,7 +438,7 @@ func TestUserHandler_ToggleAdmin_Success(t *testing.T) {
 
 	h := NewUserHandler(repo, discardLogger())
 
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/2/toggle-admin", nil), "id", "2")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/2/toggle-admin", nil), "2")
 	req = withAuthUser(req, &model.User{ID: 99})
 	rec := httptest.NewRecorder()
 
@@ -454,7 +454,7 @@ func TestUserHandler_ToggleAdmin_SelfDemotion(t *testing.T) {
 
 	h := NewUserHandler(&mockUserRepo{}, discardLogger())
 
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/42/toggle-admin", nil), "id", "42")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/42/toggle-admin", nil), "42")
 	req = withAuthUser(req, &model.User{ID: 42})
 	rec := httptest.NewRecorder()
 

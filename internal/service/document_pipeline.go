@@ -1,3 +1,4 @@
+// Package service implements business logic and orchestration.
 package service
 
 import (
@@ -153,13 +154,13 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 		doc.UserID = sql.NullInt64{Int64: *params.UserID, Valid: true}
 	}
 
-	if err := p.repo.Create(ctx, doc); err != nil {
+	if err = p.repo.Create(ctx, doc); err != nil {
 		_ = os.Remove(absPath)
 		return nil, fmt.Errorf("creating document record: %w", err)
 	}
 
 	if len(params.Tags) > 0 {
-		if err := p.repo.ReplaceTags(ctx, doc.ID, params.Tags); err != nil {
+		if err = p.repo.ReplaceTags(ctx, doc.ID, params.Tags); err != nil {
 			return nil, fmt.Errorf("setting tags on uploaded document: %w", err)
 		}
 	}

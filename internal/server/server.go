@@ -64,7 +64,7 @@ func New(cfg Config, logger *slog.Logger) *Server {
 }
 
 // Start starts the HTTP server. It blocks until the server stops or returns an
-// error. http.ErrServerClosed is not returned when the server is shut down
+// Error http.ErrServerClosed is not returned when the server is shut down
 // gracefully via Shutdown.
 func (s *Server) Start() error {
 	s.logger.Info("starting HTTP server", "addr", s.httpServer.Addr)
@@ -104,7 +104,7 @@ func (s *Server) Addr() string {
 // It is intended for use in tests. The actual listener address can be retrieved
 // from the returned net.Listener.
 func (s *Server) ListenAndServeOnAvailablePort() (net.Listener, error) {
-	ln, err := net.Listen("tcp", ":0")
+	ln, err := new(net.ListenConfig).Listen(context.Background(), "tcp", ":0")
 	if err != nil {
 		return nil, fmt.Errorf("listening on available port: %w", err)
 	}

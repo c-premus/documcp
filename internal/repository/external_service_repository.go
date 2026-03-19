@@ -192,7 +192,10 @@ func (r *ExternalServiceRepository) ReorderPriorities(ctx context.Context, servi
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing reorder transaction: %w", err)
+	}
+	return nil
 }
 
 // UpdateHealthStatus updates health-related fields for an external service.

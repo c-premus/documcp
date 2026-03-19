@@ -28,7 +28,7 @@ var (
 		"blockquote": regexp.MustCompile(`<blockquote[^>]*>`),
 	}
 
-	// convertCodeMacros regexes.
+	// ConvertCodeMacros regexes.
 	reCodeMacro = regexp.MustCompile(
 		`(?s)<ac:structured-macro\s[^>]*ac:name="code"[^>]*>` +
 			`(.*?)` +
@@ -42,7 +42,7 @@ var (
 		`(?s)<ac:plain-text-body[^>]*>(.*?)</ac:plain-text-body>`,
 	)
 
-	// convertPanelMacros regexes (keyed by panel name).
+	// ConvertPanelMacros regexes (keyed by panel name).
 	rePanelMacro = map[string]*regexp.Regexp{
 		"info":    regexp.MustCompile(`(?s)<ac:structured-macro\s[^>]*ac:name="info"[^>]*>(.*?)</ac:structured-macro>`),
 		"note":    regexp.MustCompile(`(?s)<ac:structured-macro\s[^>]*ac:name="note"[^>]*>(.*?)</ac:structured-macro>`),
@@ -53,29 +53,29 @@ var (
 		`(?s)<ac:rich-text-body[^>]*>(.*?)</ac:rich-text-body>`,
 	)
 
-	// stripACMacros regex.
+	// StripACMacros regex.
 	reACMacro = regexp.MustCompile(`</?ac:[^>]+>`)
 
-	// convertLinks regexes.
+	// ConvertLinks regexes.
 	reLinkTag = regexp.MustCompile(`(?s)<a\s[^>]*href="([^"]*)"[^>]*>(.*?)</a>`)
 
-	// convertImages regexes.
+	// ConvertImages regexes.
 	reImgTag = regexp.MustCompile(`<img\s[^>]*src="([^"]*)"[^>]*/?>`)
 	reAltAttr = regexp.MustCompile(`alt="([^"]*)"`)
 
-	// convertTables regexes.
+	// ConvertTables regexes.
 	reTable = regexp.MustCompile(`(?s)<table[^>]*>(.*?)</table>`)
 	reRow   = regexp.MustCompile(`(?s)<tr[^>]*>(.*?)</tr>`)
 	reCell  = regexp.MustCompile(`(?s)<(?:th|td)[^>]*>(.*?)</(?:th|td)>`)
 
-	// convertLists regexes.
+	// ConvertLists regexes.
 	reOL = regexp.MustCompile(`(?s)<ol[^>]*>(.*?)</ol>`)
 	reUL = regexp.MustCompile(`(?s)<ul[^>]*>(.*?)</ul>`)
 
-	// convertListItems regexes.
+	// ConvertListItems regexes.
 	reLI = regexp.MustCompile(`(?s)<li[^>]*>(.*?)</li>`)
 
-	// cleanWhitespace regex.
+	// CleanWhitespace regex.
 	reMultiNL = regexp.MustCompile(`\n{3,}`)
 )
 

@@ -38,7 +38,7 @@ func (h *QueueHandler) Stats(w http.ResponseWriter, r *http.Request) {
 			"running":   counts["running"],
 			"retryable": counts["retryable"],
 			"discarded": counts["discarded"],
-			"cancelled": counts["cancelled"],
+			"cancelled": counts["cancelled"], //nolint:misspell
 		},
 	})
 }

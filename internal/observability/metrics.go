@@ -149,6 +149,7 @@ var (
 	dbWaitDurDesc  = prometheus.NewDesc(namespace+"_db_wait_duration_seconds_total", "Total time waited for connections.", nil, nil)
 )
 
+// Describe sends the metric descriptors to the provided channel.
 func (c *dbStatsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- dbOpenDesc
 	ch <- dbInUseDesc
@@ -157,6 +158,7 @@ func (c *dbStatsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- dbWaitDurDesc
 }
 
+// Collect gathers and sends current database connection pool metrics.
 func (c *dbStatsCollector) Collect(ch chan<- prometheus.Metric) {
 	stats := c.db.Stats()
 	ch <- prometheus.MustNewConstMetric(dbOpenDesc, prometheus.GaugeValue, float64(stats.OpenConnections))

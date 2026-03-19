@@ -1,5 +1,5 @@
 // Package crypto provides symmetric encryption for secrets stored at rest.
-package crypto
+package crypto //nolint:revive // package name matches directory convention; internal package shadowing is acceptable
 
 import (
 	"crypto/aes"

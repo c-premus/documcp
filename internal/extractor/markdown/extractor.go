@@ -20,6 +20,8 @@ var supportedMIMETypes = map[string]bool{
 }
 
 // MarkdownExtractor reads Markdown files and returns their content as-is.
+//
+//nolint:revive // exported stutter is intentional; renaming would be a breaking change
 type MarkdownExtractor struct{}
 
 // New creates a new MarkdownExtractor.

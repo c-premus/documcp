@@ -12,6 +12,8 @@ import (
 )
 
 // SearchResult holds a normalized result from any index.
+//
+//nolint:revive // exported stutter is intentional; renaming would be a breaking change
 type SearchResult struct {
 	UUID        string  `json:"uuid"`
 	Title       string  `json:"title"`
@@ -24,6 +26,8 @@ type SearchResult struct {
 }
 
 // SearchParams holds parameters for searching a single index.
+//
+//nolint:revive // exported stutter is intentional; renaming would be a breaking change
 type SearchParams struct {
 	Query    string
 	IndexUID string

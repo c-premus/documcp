@@ -47,7 +47,7 @@ func TestPDFExtractor_Extract_NonExistentFile(t *testing.T) {
 	}
 }
 
-func TestPDFExtractor_Extract_CancelledContext(t *testing.T) {
+func TestPDFExtractor_Extract_CanceledContext(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -56,10 +56,10 @@ func TestPDFExtractor_Extract_CancelledContext(t *testing.T) {
 	ext := pdf.New()
 	_, err := ext.Extract(ctx, "/any/path/file.pdf")
 	// The PDF extractor does not check ctx.Err() upfront like the others;
-	// instead the cancelled context propagates through exec.CommandContext.
+	// instead the canceled context propagates through exec.CommandContext.
 	// Either way, we expect an error.
 	if err == nil {
-		t.Fatal("Extract() expected error for cancelled context, got nil")
+		t.Fatal("Extract() expected error for canceled context, got nil")
 	}
 }
 

@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"strings"
@@ -34,7 +35,7 @@ func TestWriteCredentialScript_ScriptOutputsToken(t *testing.T) {
 	}
 	defer cleanup()
 
-	out, err := exec.Command(scriptPath).Output()
+	out, err := exec.CommandContext(context.Background(), scriptPath).Output()
 	if err != nil {
 		t.Fatalf("failed to execute script: %v", err)
 	}
@@ -95,7 +96,7 @@ func TestWriteCredentialScript_EscapesSingleQuotes(t *testing.T) {
 	defer cleanup()
 
 	// Execute the script and confirm the token round-trips correctly.
-	out, err := exec.Command(scriptPath).Output()
+	out, err := exec.CommandContext(context.Background(), scriptPath).Output()
 	if err != nil {
 		t.Fatalf("failed to execute script: %v", err)
 	}
@@ -140,7 +141,7 @@ func TestWriteCredentialScript_SpecialCharacters(t *testing.T) {
 			}
 			defer cleanup()
 
-			out, err := exec.Command(scriptPath).Output()
+			out, err := exec.CommandContext(context.Background(), scriptPath).Output()
 			if err != nil {
 				t.Fatalf("failed to execute script for token %q: %v", tt.token, err)
 			}
@@ -175,7 +176,7 @@ func TestWriteCredentialScript_CommandInjectionPrevention(t *testing.T) {
 			}
 			defer cleanup()
 
-			out, err := exec.Command(scriptPath).Output()
+			out, err := exec.CommandContext(context.Background(), scriptPath).Output()
 			if err != nil {
 				t.Fatalf("script execution failed: %v", err)
 			}
@@ -375,10 +376,8 @@ func TestValidateRepositoryURL(t *testing.T) {
 				if !strings.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("error %q should contain %q", err.Error(), tt.errMsg)
 				}
-			} else {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
 		})
 	}

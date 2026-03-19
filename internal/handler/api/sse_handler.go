@@ -1,4 +1,4 @@
-package api
+package api //nolint:revive // package name matches REST API handler directory convention
 
 import (
 	"encoding/json"

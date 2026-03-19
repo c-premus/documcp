@@ -151,9 +151,9 @@ func (ix *Indexer) Searcher() *Searcher {
 	return NewSearcher(ix.client, ix.logger)
 }
 
-// ---------------------------------------------------------------------------
-// ZIM archive indexing
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// ZIM archive indexing.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // ZimArchiveRecord represents a ZIM archive to be indexed in Meilisearch.
 type ZimArchiveRecord struct {
@@ -208,9 +208,9 @@ func (ix *Indexer) IndexZimArchiveBatch(ctx context.Context, recs []ZimArchiveRe
 	return nil
 }
 
-// ---------------------------------------------------------------------------
-// Confluence space indexing
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Confluence space indexing.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // ConfluenceSpaceRecord represents a Confluence space to be indexed.
 type ConfluenceSpaceRecord struct {
@@ -267,9 +267,9 @@ func (ix *Indexer) SoftDeleteConfluenceSpace(ctx context.Context, uuid string) e
 	return nil
 }
 
-// ---------------------------------------------------------------------------
-// Git template indexing
-// ---------------------------------------------------------------------------
+//nolint:godot // ---------------------------------------------------------------------------
+// Git template indexing.
+//nolint:godot // ---------------------------------------------------------------------------
 
 // GitTemplateRecord represents a Git template to be indexed.
 type GitTemplateRecord struct {

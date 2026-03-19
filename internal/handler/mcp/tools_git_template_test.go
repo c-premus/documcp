@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"io"
 	"testing"
 )
@@ -318,7 +319,7 @@ func TestBuildTarGz(t *testing.T) {
 		var idx int
 		for {
 			hdr, err := tr.Next()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {
@@ -369,7 +370,7 @@ func TestBuildTarGz(t *testing.T) {
 
 		tr := tar.NewReader(gr)
 		_, err = tr.Next()
-		if err != io.EOF {
+		if !errors.Is(err, io.EOF) {
 			t.Errorf("expected EOF for empty archive, got: %v", err)
 		}
 	})

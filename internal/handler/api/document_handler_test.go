@@ -1130,7 +1130,7 @@ func TestDocumentHandler_Analyze(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 		body := decodeJSONBody(t, rr.Body)
 		data := body["data"].(map[string]any)
-		assert.Equal(t, float64(1), data["reading_time"])
+		assert.InEpsilon(t, float64(1), data["reading_time"], 1e-9)
 	})
 }
 
@@ -1679,7 +1679,7 @@ func TestDocumentHandler_List(t *testing.T) {
 		require.True(t, ok)
 		assert.Empty(t, data)
 		meta := body["meta"].(map[string]any)
-		assert.Equal(t, float64(0), meta["total"])
+		assert.InDelta(t, float64(0), meta["total"], 0.001)
 	})
 
 	t.Run("returns documents with tags and pagination metadata", func(t *testing.T) {
@@ -1715,9 +1715,9 @@ func TestDocumentHandler_List(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 		body := decodeJSONBody(t, rr.Body)
 		meta := body["meta"].(map[string]any)
-		assert.Equal(t, float64(42), meta["total"])
-		assert.Equal(t, float64(10), meta["limit"])
-		assert.Equal(t, float64(5), meta["offset"])
+		assert.InEpsilon(t, float64(42), meta["total"], 1e-9)
+		assert.InEpsilon(t, float64(10), meta["limit"], 1e-9)
+		assert.InEpsilon(t, float64(5), meta["offset"], 1e-9)
 
 		data, ok := body["data"].([]any)
 		require.True(t, ok)
@@ -2132,7 +2132,7 @@ func TestDocumentHandler_BulkPurge(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 		body := decodeJSONBody(t, rr.Body)
 		assert.Equal(t, "Purged 2 documents.", body["message"])
-		assert.Equal(t, float64(2), body["count"])
+		assert.InEpsilon(t, float64(2), body["count"], 1e-9)
 		assert.Equal(t, 30*24*time.Hour, capturedDuration)
 	})
 
@@ -2291,7 +2291,7 @@ func TestDocumentHandler_ListDeleted(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 		body := decodeJSONBody(t, rr.Body)
 		meta := body["meta"].(map[string]any)
-		assert.Equal(t, float64(1), meta["total"])
+		assert.InEpsilon(t, float64(1), meta["total"], 1e-9)
 		data := body["data"].([]any)
 		assert.Len(t, data, 1)
 		first := data[0].(map[string]any)
@@ -2316,7 +2316,7 @@ func TestDocumentHandler_ListDeleted(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rr.Code)
 		body := decodeJSONBody(t, rr.Body)
 		meta2 := body["meta"].(map[string]any)
-		assert.Equal(t, float64(0), meta2["total"])
+		assert.InDelta(t, float64(0), meta2["total"], 0.001)
 		data := body["data"].([]any)
 		assert.Empty(t, data)
 	})
