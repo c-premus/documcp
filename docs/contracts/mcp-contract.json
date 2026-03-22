@@ -18,7 +18,7 @@
   "server": {
     "name": "DocuMCP Server",
     "version": "1.0.0",
-    "instructions": "Documentation knowledge base with full-text search.\n\n**Unified Search**\n- `unified_search` - Search across ALL sources (documents, templates, archives, wikis) in one request. Use for discovery; type-specific tools for deep search.\n\n**Documents**\n- `search_documents` - Full-text search with filters (file type, tags). Returns metadata and snippets.\n- `read_document` - Retrieve document content by UUID. Supports `summary_only` and `max_paragraphs`.\n- `create_document` - Create documents (markdown, pdf, docx, xlsx, html). Auto-indexed for search.\n- `update_document` - Modify title, description, tags, or visibility.\n- `delete_document` - Remove documents (ownership required).\n\n**ZIM Archives** (offline documentation: DevDocs, Wikipedia, Stack Exchange)\n- `list_zim_archives` - List available archives with category/language filters.\n- `search_zim` - Search within an archive. `suggest` matches titles, `fulltext` searches content.\n- `read_zim_article` - Retrieve article content. Supports `summary_only` and `max_paragraphs`.\n\n**Confluence**\n- `list_confluence_spaces` - List spaces (global or personal). Returns space keys for filtering.\n- `search_confluence` - Search pages via CQL or simple query. Supports space filtering.\n- `read_confluence_page` - Retrieve page content as markdown by ID or space+title.\n\n**Git Templates** (project bootstrapping: CLAUDE.md, Memory Bank)\n- `list_git_templates` - List available templates with category filter.\n- `search_git_templates` - Full-text search across README files and metadata.\n- `get_template_structure` - View folder tree, essential files, and required variables.\n- `get_template_file` - Retrieve file content with optional variable substitution.\n- `get_deployment_guide` - Get deployment instructions with all essential files.\n- `download_template` - Download a complete template as a base64-encoded archive (zip or tar.gz). Reduces deployment from ~45 API calls to 1.\n\n**Prompts**\n- `document_analysis` - Analyze documents (summarize, compare, extract, assess). Supports multiple documents.\n- `search_query_builder` - Query construction assistance.\n- `knowledge_base_builder` - Guide document creation and organization.\n- `git_template_setup` - Template discovery, preview, and deployment.\n- `zim_research` - Research across ZIM archives.\n- `confluence_research` - Research across Confluence spaces.\n- `cross_source_research` - Research across all sources (Documents, ZIM, Confluence, Git Templates).\n\n**Availability**: ZIM tools require Kiwix service configuration. Confluence tools require Confluence service configuration. Git Template tools are enabled by default. Document tools are always available. Configure services in Admin panel under External Services.\n\n**Access Control**: Document modifications require ownership. Public documents are readable by all.",
+    "instructions": "Documentation knowledge base with full-text search.\n\n**Unified Search**\n- `unified_search` - Search across ALL sources (documents, templates, archives, wikis) in one request. Use for discovery; type-specific tools for deep search.\n\n**Documents**\n- `search_documents` - Full-text search with filters (file type, tags). Returns metadata and snippets.\n- `read_document` - Retrieve document content by UUID. Supports `summary_only` and `max_paragraphs`.\n- `create_document` - Create documents (markdown, pdf, docx, xlsx, html). Auto-indexed for search.\n- `update_document` - Modify title, description, tags, or visibility.\n- `delete_document` - Remove documents (ownership required).\n\n**ZIM Archives** (offline documentation: DevDocs, Wikipedia, Stack Exchange)\n- `list_zim_archives` - List available archives with category/language filters.\n- `search_zim` - Search within an archive. `suggest` matches titles, `fulltext` searches content.\n- `read_zim_article` - Retrieve article content. Supports `summary_only` and `max_paragraphs`.\n\n**Git Templates** (project bootstrapping: CLAUDE.md, Memory Bank)\n- `list_git_templates` - List available templates with category filter.\n- `search_git_templates` - Full-text search across README files and metadata.\n- `get_template_structure` - View folder tree, essential files, and required variables.\n- `get_template_file` - Retrieve file content with optional variable substitution.\n- `get_deployment_guide` - Get deployment instructions with all essential files.\n- `download_template` - Download a complete template as a base64-encoded archive (zip or tar.gz). Reduces deployment from ~45 API calls to 1.\n\n**Prompts**\n- `document_analysis` - Analyze documents (summarize, compare, extract, assess). Supports multiple documents.\n- `search_query_builder` - Query construction assistance.\n- `knowledge_base_builder` - Guide document creation and organization.\n- `git_template_setup` - Template discovery, preview, and deployment.\n- `zim_research` - Research across ZIM archives.\n- `cross_source_research` - Research across all sources (Documents, ZIM, Git Templates).\n\n**Availability**: ZIM tools require Kiwix service configuration. Git Template tools are enabled by default. Document tools are always available. Configure services in Admin panel under External Services.\n\n**Access Control**: Document modifications require ownership. Public documents are readable by all.",
     "pagination": {
       "default_length": 100,
       "max_length": 100,
@@ -29,7 +29,7 @@
     {
       "name": "unified_search",
       "title": "Unified Search",
-      "description": "Search across ALL content types in a single request: Documents, Git Templates, ZIM Archives, and Confluence Spaces.\n\nReturns results ranked by relevance with a `source` field indicating the content type. Use for discovery -- then use type-specific tools (search_documents, search_zim, search_confluence, search_git_templates) for deep content search with full filter options.\n\n**Sources** (filter with `types` param):\n- `document` -- Uploaded documents (PDF, DOCX, XLSX, HTML, Markdown)\n- `git_template` -- Git template README and metadata\n- `zim_archive` -- ZIM archive metadata (DevDocs, Wikipedia, Stack Exchange)\n- `confluence_space` -- Confluence space metadata",
+      "description": "Search across ALL content types in a single request: Documents, Git Templates, and ZIM Archives.\n\nReturns results ranked by relevance with a `source` field indicating the content type. Use for discovery -- then use type-specific tools (search_documents, search_zim, search_git_templates) for deep content search with full filter options.\n\n**Sources** (filter with `types` param):\n- `document` -- Uploaded documents (PDF, DOCX, XLSX, HTML, Markdown)\n- `git_template` -- Git template README and metadata\n- `zim_archive` -- ZIM archive metadata (DevDocs, Wikipedia, Stack Exchange)",
       "annotations": {
         "readOnlyHint": true,
         "idempotentHint": true
@@ -47,7 +47,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Filter to specific content types: document, git_template, zim_archive, confluence_space. Omit to search all."
+            "description": "Filter to specific content types: document, git_template, zim_archive. Omit to search all."
           },
           "limit": {
             "type": "integer",
@@ -465,151 +465,6 @@
         "contentType": "application/json",
         "schema": {
           "description": "JSON object with: success (boolean), archive (string), path (string), title (string), content (string), truncated (boolean), original_length (integer)"
-        }
-      }
-    },
-    {
-      "name": "list_confluence_spaces",
-      "title": "List Confluence Spaces",
-      "description": "List available Confluence spaces.\n\n**Space Types:**\n- `global`: Organization-wide spaces\n- `personal`: User-specific spaces\n- `knowledge_base`: Knowledge base spaces\n\nReturns space keys, names, and descriptions. Space keys can be used with `search_confluence` to filter results.\n\n**Workflow:** Use the `key` field as `space` parameter in `search_confluence` to search within a specific space.",
-      "annotations": {
-        "readOnlyHint": true,
-        "idempotentHint": true
-      },
-      "conditional": {
-        "config_key": "documcp.confluence.enabled",
-        "default": true,
-        "additional_check": "Confluence external service must be configured (ExternalService::TYPE_CONFLUENCE)"
-      },
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "description": "Search query to filter spaces by name, key, or description"
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "global",
-              "personal",
-              "knowledge_base"
-            ],
-            "description": "Filter by space type: global (organization-wide) or personal (user-specific)"
-          },
-          "limit": {
-            "type": "integer",
-            "default": 50,
-            "minimum": 1,
-            "maximum": 100,
-            "description": "Maximum number of results (default: 50, max: 100)"
-          }
-        },
-        "required": []
-      },
-      "responseFormat": {
-        "type": "text",
-        "contentType": "application/json",
-        "schema": {
-          "description": "JSON object with: success (boolean), spaces (array of {key, name, description, type}), count (integer)"
-        }
-      }
-    },
-    {
-      "name": "search_confluence",
-      "title": "Search Confluence",
-      "description": "Search Confluence pages using CQL (Confluence Query Language) or simple text queries.\n\n**Search Methods:**\n- `query`: Full-text search across page content\n- `cql`: Advanced search using Confluence Query Language\n\n**CQL Examples:**\n- `text ~ \"search term\"` - Full-text search\n- `space = \"DEV\" AND type = page` - Pages in specific space\n- `title ~ \"API\"` - Title contains text\n- `label = \"documentation\"` - Pages with label\n- `lastModified >= \"2024-01-01\"` - Recently modified\n\nReturns page ID, title, space key, URL, excerpt, and labels. Max 50 results.\n\n**Workflow:** Use `id` from results with `read_confluence_page` (as `page_id`) to fetch full page content.",
-      "annotations": {
-        "readOnlyHint": true,
-        "idempotentHint": true
-      },
-      "conditional": {
-        "config_key": "documcp.confluence.enabled",
-        "default": true,
-        "additional_check": "Confluence external service must be configured (ExternalService::TYPE_CONFLUENCE)"
-      },
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "cql": {
-            "type": "string",
-            "description": "CQL (Confluence Query Language) query for advanced search. Takes precedence over simple query."
-          },
-          "query": {
-            "type": "string",
-            "description": "Simple full-text search query. Searches across page content."
-          },
-          "space": {
-            "type": "string",
-            "description": "Filter results to a specific space by key (e.g., \"DEV\", \"DOCS\")"
-          },
-          "limit": {
-            "type": "integer",
-            "default": 25,
-            "minimum": 1,
-            "maximum": 50,
-            "description": "Maximum number of results (default: 25, max: 50)"
-          }
-        },
-        "required": [],
-        "notes": "At least one of 'cql' or 'query' must be provided. Validated at runtime."
-      },
-      "responseFormat": {
-        "type": "text",
-        "contentType": "application/json",
-        "schema": {
-          "description": "JSON object with: success (boolean), cql (string, the effective CQL query used), results (array of {id, title, space_key, web_url, excerpt, labels, content_length}), count (integer), total_size (integer), has_more (boolean)"
-        }
-      }
-    },
-    {
-      "name": "read_confluence_page",
-      "title": "Read Confluence Page",
-      "description": "Read the full content of a Confluence page as markdown.\n\n**Page Identification:**\n- `page_id`: Confluence page ID (from search results)\n- `space_key` + `title`: Space key and exact page title\n\n**Content Options:**\n- `summary_only`: Returns first section only\n- `max_paragraphs`: Limits content to first N paragraphs\n\nReturns page metadata (ID, title, space, URL, version, dates, labels, ancestors) and markdown content.",
-      "annotations": {
-        "readOnlyHint": true,
-        "idempotentHint": true
-      },
-      "conditional": {
-        "config_key": "documcp.confluence.enabled",
-        "default": true,
-        "additional_check": "Confluence external service must be configured (ExternalService::TYPE_CONFLUENCE)"
-      },
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "page_id": {
-            "type": "string",
-            "description": "Confluence page ID (from search results). Use this OR space_key + title."
-          },
-          "space_key": {
-            "type": "string",
-            "description": "Space key (e.g., \"DEV\"). Use with title parameter."
-          },
-          "title": {
-            "type": "string",
-            "description": "Exact page title. Use with space_key parameter."
-          },
-          "summary_only": {
-            "type": "boolean",
-            "default": false,
-            "description": "Return only the lead section (first paragraphs before first heading). Useful for quick overviews."
-          },
-          "max_paragraphs": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100,
-            "description": "Limit content to first N paragraphs. Useful for previews."
-          }
-        },
-        "required": [],
-        "notes": "Either 'page_id' OR both 'space_key' and 'title' must be provided. Validated at runtime."
-      },
-      "responseFormat": {
-        "type": "text",
-        "contentType": "application/json",
-        "schema": {
-          "description": "JSON object with: success (boolean), page ({id, title, space_key, web_url, version, created_at, updated_at, labels, ancestors}), content (string, markdown), truncated (boolean), original_length (integer)"
         }
       }
     },
@@ -1165,62 +1020,9 @@
       }
     },
     {
-      "name": "confluence_research",
-      "title": "confluence_research",
-      "description": "Research Confluence spaces and pages with CQL search. Args: topic*, space, depth",
-      "conditional": {
-        "config_key": "documcp.confluence.enabled",
-        "default": true,
-        "additional_check": "Confluence external service must be configured (ExternalService::TYPE_CONFLUENCE)"
-      },
-      "arguments": [
-        {
-          "name": "topic",
-          "type": "string",
-          "description": "The topic or question to research",
-          "required": true
-        },
-        {
-          "name": "space",
-          "type": "string",
-          "default": "",
-          "description": "Optional space key to limit search (e.g., \"DEV\", \"DOCS\")",
-          "required": false
-        },
-        {
-          "name": "depth",
-          "type": "string",
-          "enum": [
-            "quick",
-            "standard",
-            "deep"
-          ],
-          "default": "standard",
-          "description": "Research depth: quick, standard, or deep",
-          "required": false
-        }
-      ],
-      "messagesStructure": {
-        "roles": [
-          "assistant",
-          "user"
-        ],
-        "messages": [
-          {
-            "role": "assistant",
-            "description": "System context with available tools (list_confluence_spaces, search_confluence, read_confluence_page), tool call examples, CQL reference, and tips for effective research"
-          },
-          {
-            "role": "user",
-            "description": "Research topic, space filter, depth guidance (quick/standard/deep), and request to research and provide comprehensive summary"
-          }
-        ]
-      }
-    },
-    {
       "name": "cross_source_research",
       "title": "cross_source_research",
-      "description": "Research across all sources (Documents, ZIM, Confluence, Git Templates). Args: topic*, sources, depth",
+      "description": "Research across all sources (Documents, ZIM, Git Templates). Args: topic*, sources, depth",
       "conditional": null,
       "arguments": [
         {
@@ -1237,7 +1039,6 @@
             "enum": [
               "documents",
               "zim",
-              "confluence",
               "git_templates"
             ]
           },
@@ -1266,7 +1067,7 @@
         "messages": [
           {
             "role": "assistant",
-            "description": "System context with source-specific tool references (conditionally included based on sources parameter): Documents (search_documents, read_document), ZIM (list_zim_archives, search_zim, read_zim_article), Confluence (list_confluence_spaces, search_confluence, read_confluence_page), Git Templates (search_git_templates, get_template_structure, get_template_file), plus synthesis guidance"
+            "description": "System context with source-specific tool references (conditionally included based on sources parameter): Documents (search_documents, read_document), ZIM (list_zim_archives, search_zim, read_zim_article), Git Templates (search_git_templates, get_template_structure, get_template_file), plus synthesis guidance"
           },
           {
             "role": "user",
@@ -1286,9 +1087,6 @@
     "list_zim_archives",
     "search_zim",
     "read_zim_article",
-    "list_confluence_spaces",
-    "search_confluence",
-    "read_confluence_page",
     "list_git_templates",
     "search_git_templates",
     "get_template_structure",
@@ -1302,7 +1100,6 @@
     "knowledge_base_builder",
     "git_template_setup",
     "zim_research",
-    "confluence_research",
     "cross_source_research"
   ],
   "conditionalRegistrationSummary": {
@@ -1328,18 +1125,6 @@
       ],
       "prompts": [
         "zim_research"
-      ]
-    },
-    "requires_confluence_service": {
-      "config_key": "documcp.confluence.enabled",
-      "external_service": "ExternalService::TYPE_CONFLUENCE",
-      "tools": [
-        "list_confluence_spaces",
-        "search_confluence",
-        "read_confluence_page"
-      ],
-      "prompts": [
-        "confluence_research"
       ]
     },
     "requires_git_templates_enabled": {

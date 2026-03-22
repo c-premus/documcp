@@ -3,6 +3,8 @@
 **Version**: 1.0
 **Date**: 2026-02-24
 **Status**: Reference (derived from production v1.17.3)
+
+> **Note (March 2026):** Confluence integration (REQ-MCP-TOOL-010–012, REQ-MCP-PROMPT-006, `confluence_spaces` index) was removed from the Go rewrite. These requirements are retained for historical reference only and are not implemented in DocuMCP-go.
 **Purpose**: Complete functional and non-functional requirements for DocuMCP, suitable for reimplementation in any language/framework.
 
 ---

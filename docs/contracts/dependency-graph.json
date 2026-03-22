@@ -98,14 +98,9 @@
           "ExternalServiceManager",
           "ExternalServiceHealthChecker",
           "KiwixServeClient",
-          "ConfluenceClient",
           "UnifiedSearchAction",
           "CheckExternalServiceHealthJob",
-          "ListConfluenceSpacesTool",
-          "SearchConfluenceTool",
-          "ReadConfluencePageTool",
-          "ZimResearchPrompt",
-          "ConfluenceResearchPrompt"
+          "ZimResearchPrompt"
         ]
       },
       "GitTemplate": {
@@ -260,53 +255,12 @@
           "CleanupDisabledArchivesAction",
           "ZimArchiveController"
         ]
-      },
-      "ConfluenceSpace": {
-        "file": "internal/domain/ConfluenceSpace.go",
-        "table": "confluence_spaces",
-        "relationships": {
-          "externalService": { "type": "belongsTo", "target": "ExternalService" }
-        },
-        "interfaces": ["Searchable"],
-        "used_by": [
-          "ListConfluenceSpacesAction",
-          "SyncConfluenceSpacesAction",
-          "ConfluenceController"
-        ]
       }
     },
     "dtos": {
       "DetermineAdminStatusDTO": {
         "file": "internal/domain/auth/DetermineAdminStatusDTO.go",
         "used_by_action": "DetermineAdminStatusFromGroupsAction"
-      },
-      "ConfluencePageDTO": {
-        "file": "internal/domain/confluence/ConfluencePageDTO.go",
-        "used_by_action": "ReadConfluencePageAction"
-      },
-      "ConfluenceSearchResultDTO": {
-        "file": "internal/domain/confluence/ConfluenceSearchResultDTO.go",
-        "used_by_action": "SearchConfluencePagesAction"
-      },
-      "ConfluenceSpaceDTO": {
-        "file": "internal/domain/confluence/ConfluenceSpaceDTO.go",
-        "used_by_action": "SyncConfluenceSpacesAction"
-      },
-      "ListConfluenceSpacesDTO": {
-        "file": "internal/domain/confluence/ListConfluenceSpacesDTO.go",
-        "used_by_action": "ListConfluenceSpacesAction"
-      },
-      "ReadConfluencePageDTO": {
-        "file": "internal/domain/confluence/ReadConfluencePageDTO.go",
-        "used_by_action": "ReadConfluencePageAction"
-      },
-      "SearchConfluencePagesDTO": {
-        "file": "internal/domain/confluence/SearchConfluencePagesDTO.go",
-        "used_by_action": "SearchConfluencePagesAction"
-      },
-      "SyncConfluenceSpacesDTO": {
-        "file": "internal/domain/confluence/SyncConfluenceSpacesDTO.go",
-        "used_by_action": "SyncConfluenceSpacesAction"
       },
       "AnalyzeDocumentMetadataDTO": {
         "file": "internal/domain/document/AnalyzeDocumentMetadataDTO.go",
@@ -587,30 +541,6 @@
         "dto": "DetermineAdminStatusDTO",
         "depends_on": [],
         "used_by": ["OAuthService"]
-      },
-      "ListConfluenceSpacesAction": {
-        "file": "internal/service/confluence/ListConfluenceSpacesAction.go",
-        "dto": "ListConfluenceSpacesDTO",
-        "depends_on": ["ConfluenceSpace"],
-        "used_by": ["ConfluenceController", "ListConfluenceSpacesTool"]
-      },
-      "ReadConfluencePageAction": {
-        "file": "internal/service/confluence/ReadConfluencePageAction.go",
-        "dto": "ReadConfluencePageDTO",
-        "depends_on": ["ConfluenceClient"],
-        "used_by": ["ConfluenceController", "ReadConfluencePageTool"]
-      },
-      "SearchConfluencePagesAction": {
-        "file": "internal/service/confluence/SearchConfluencePagesAction.go",
-        "dto": "SearchConfluencePagesDTO",
-        "depends_on": ["ConfluenceClient"],
-        "used_by": ["ConfluenceController", "SearchConfluenceTool"]
-      },
-      "SyncConfluenceSpacesAction": {
-        "file": "internal/service/confluence/SyncConfluenceSpacesAction.go",
-        "dto": "SyncConfluenceSpacesDTO",
-        "depends_on": ["ConfluenceClient", "ConfluenceSpace"],
-        "used_by": []
       },
       "AnalyzeDocumentMetadataAction": {
         "file": "internal/service/document/AnalyzeDocumentMetadataAction.go",
@@ -931,11 +861,6 @@
         "depends_on": ["PermanentlyDeleteDocumentAction", "Document"],
         "used_by": []
       },
-      "ConfluenceClient": {
-        "file": "internal/service/confluence/ConfluenceClient.go",
-        "depends_on": ["ExternalServiceManager", "ExternalService"],
-        "used_by": ["ReadConfluencePageAction", "SearchConfluencePagesAction", "SyncConfluenceSpacesAction"]
-      },
       "DocumentService": {
         "file": "internal/service/DocumentService.go",
         "depends_on": ["CreateDocumentAction", "DeleteDocumentAction", "IndexDocumentInMeilisearchAction", "UpdateDocumentAction", "ProcessDocumentUploadJob", "Document", "User"],
@@ -949,7 +874,7 @@
       "ExternalServiceManager": {
         "file": "internal/service/ExternalServiceManager.go",
         "depends_on": ["ExternalService"],
-        "used_by": ["ConfluenceClient", "KiwixServeClient", "UnifiedSearchAction", "ListConfluenceSpacesTool", "SearchConfluenceTool", "ReadConfluencePageTool", "ZimResearchPrompt", "ConfluenceResearchPrompt"]
+        "used_by": ["KiwixServeClient", "UnifiedSearchAction", "ZimResearchPrompt"]
       },
       "GitTemplateClient": {
         "file": "internal/service/gittemplate/GitTemplateClient.go",
@@ -1034,12 +959,6 @@
         "file": "internal/handler/api/UnifiedSearchController.go",
         "depends_on": ["UnifiedSearchAction"],
         "input_validation": ["UnifiedSearchRequest"],
-        "used_by": []
-      },
-      "ConfluenceController": {
-        "file": "internal/handler/api/ConfluenceController.go",
-        "depends_on": ["ListConfluenceSpacesAction", "ReadConfluencePageAction", "SearchConfluencePagesAction", "ConfluenceSpace"],
-        "input_validation": ["ListConfluenceSpacesRequest", "SearchConfluencePagesRequest"],
         "used_by": []
       },
       "ZimArchiveController": {
@@ -1155,21 +1074,6 @@
         "depends_on": ["ReadZimArticleAction", "KiwixServeClient"],
         "used_by": []
       },
-      "ListConfluenceSpacesTool": {
-        "file": "internal/handler/mcp/ListConfluenceSpacesTool.go",
-        "depends_on": ["ListConfluenceSpacesAction", "ExternalServiceManager", "ExternalService"],
-        "used_by": []
-      },
-      "SearchConfluenceTool": {
-        "file": "internal/handler/mcp/SearchConfluenceTool.go",
-        "depends_on": ["SearchConfluencePagesAction", "ExternalServiceManager", "ExternalService"],
-        "used_by": []
-      },
-      "ReadConfluencePageTool": {
-        "file": "internal/handler/mcp/ReadConfluencePageTool.go",
-        "depends_on": ["ReadConfluencePageAction", "ExternalServiceManager", "ExternalService"],
-        "used_by": []
-      },
       "ListGitTemplatesTool": {
         "file": "internal/handler/mcp/ListGitTemplatesTool.go",
         "depends_on": ["ListGitTemplatesAction", "GitTemplate"],
@@ -1230,11 +1134,6 @@
       "GitTemplateSetupPrompt": {
         "file": "internal/handler/mcp/GitTemplateSetupPrompt.go",
         "depends_on": [],
-        "used_by": []
-      },
-      "ConfluenceResearchPrompt": {
-        "file": "internal/handler/mcp/ConfluenceResearchPrompt.go",
-        "depends_on": ["ExternalServiceManager", "ExternalService"],
         "used_by": []
       }
     },
@@ -1434,8 +1333,8 @@
       {
         "name": "ExternalService",
         "type": "model",
-        "consumer_count": 11,
-        "note": "Used by Kiwix, Confluence, health checks, and MCP tools"
+        "consumer_count": 6,
+        "note": "Used by Kiwix, health checks, and MCP tools"
       },
       {
         "name": "GitTemplate",
@@ -1458,8 +1357,8 @@
       {
         "name": "ExternalServiceManager",
         "type": "service",
-        "consumer_count": 8,
-        "note": "Gateway for all external API clients (Kiwix, Confluence)"
+        "consumer_count": 3,
+        "note": "Gateway for all external API clients (Kiwix)"
       },
       {
         "name": "TokenHashingService",

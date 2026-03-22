@@ -6,19 +6,19 @@ This document maps the component relationships across the entire DocuMCP applica
 
 | Layer | Count | Description |
 |-------|------:|-------------|
-| Models | 15 | Eloquent models mapping to database tables |
-| DTOs | 75 | Final readonly data transfer objects |
-| Actions | 56 | Single-responsibility business logic classes |
-| Services | 18 | Orchestration services composing actions |
-| Controllers | 14 | HTTP request handlers (API + Auth + Admin) |
-| MCP Tools | 18 | MCP protocol tool handlers |
-| MCP Prompts | 7 | MCP protocol prompt handlers |
+| Models | 14 | Eloquent models mapping to database tables |
+| DTOs | 68 | Final readonly data transfer objects |
+| Actions | 52 | Single-responsibility business logic classes |
+| Services | 17 | Orchestration services composing actions |
+| Controllers | 13 | HTTP request handlers (API + Auth + Admin) |
+| MCP Tools | 15 | MCP protocol tool handlers |
+| MCP Prompts | 6 | MCP protocol prompt handlers |
 | Middleware | 8 | HTTP middleware pipeline |
 | Extractors | 5 | Document content extraction (PDF, DOCX, XLSX, HTML, MD) |
 | Jobs | 6 | Background queue workers |
-| **Total** | **222** | |
+| **Total** | **210** | |
 
-## Models (15)
+## Models (14)
 
 | Model | Table | Key Relationships | Used By (count) |
 |-------|-------|-------------------|----------------:|
@@ -26,7 +26,7 @@ This document maps the component relationships across the entire DocuMCP applica
 | Document | documents | belongsTo: User; hasMany: DocumentVersion, DocumentTag | 23 |
 | DocumentTag | document_tags | belongsTo: Document | 2 |
 | DocumentVersion | document_versions | belongsTo: Document | 0 |
-| ExternalService | external_services | (none) | 11 |
+| ExternalService | external_services | (none) | 6 |
 | GitTemplate | git_templates | belongsTo: User; hasMany: GitTemplateFile | 16 |
 | GitTemplateFile | git_template_files | belongsTo: GitTemplate | 2 |
 | OAuthClient | oauth_clients | belongsTo: User; hasMany: OAuthAuthorizationCode, OAuthAccessToken | 11 |
@@ -36,24 +36,15 @@ This document maps the component relationships across the entire DocuMCP applica
 | OAuthRefreshToken | oauth_refresh_tokens | belongsTo: OAuthAccessToken | 6 |
 | SearchQuery | search_queries | belongsTo: User | 1 |
 | ZimArchive | zim_archives | belongsTo: ExternalService | 7 |
-| ConfluenceSpace | confluence_spaces | belongsTo: ExternalService | 3 |
 
-Notable traits: Document and GitTemplate use `SoftDeletes`, `Searchable` (Laravel Scout), and `DatabaseCompatibility`. ZimArchive and ConfluenceSpace use `Searchable`. Four OAuth models use `TokenHashingService` via static `findByPlain*` methods.
+Notable traits: Document and GitTemplate use `SoftDeletes`, `Searchable` (Laravel Scout), and `DatabaseCompatibility`. ZimArchive uses `Searchable`. Four OAuth models use `TokenHashingService` via static `findByPlain*` methods.
 
-## Actions (56)
+## Actions (52)
 
 ### Auth (1)
 | Action | DTO | Dependencies | Consumers |
 |--------|-----|-------------|-----------|
 | DetermineAdminStatusFromGroupsAction | DetermineAdminStatusDTO | (none) | OAuthService |
-
-### Confluence (4)
-| Action | DTO | Dependencies | Consumers |
-|--------|-----|-------------|-----------|
-| ListConfluenceSpacesAction | ListConfluenceSpacesDTO | ConfluenceSpace | ConfluenceController, ListConfluenceSpacesTool |
-| ReadConfluencePageAction | ReadConfluencePageDTO | ConfluenceClient | ConfluenceController, ReadConfluencePageTool |
-| SearchConfluencePagesAction | SearchConfluencePagesDTO | ConfluenceClient | ConfluenceController, SearchConfluenceTool |
-| SyncConfluenceSpacesAction | SyncConfluenceSpacesDTO | ConfluenceClient, ConfluenceSpace | (command only) |
 
 ### Documents (10)
 | Action | DTO | Dependencies | Consumers |
@@ -139,15 +130,14 @@ Notable traits: Document and GitTemplate use `SoftDeletes`, `Searchable` (Larave
 | SuggestZimArticlesAction | SuggestZimArticlesDTO | KiwixServeClient, ZimArchive | ZimArchiveController, SearchZimTool |
 | SyncOpdsCatalogAction | SyncOpdsCatalogDTO | KiwixServeClient, ZimArchive | (command only) |
 
-## Services (18)
+## Services (17)
 
 | Service | Dependencies | Consumers |
 |---------|-------------|-----------|
 | AdminService | PermanentlyDeleteDocumentAction, Document | (admin panel) |
-| ConfluenceClient | ExternalServiceManager, ExternalService | ReadConfluencePageAction, SearchConfluencePagesAction, SyncConfluenceSpacesAction |
 | DocumentService | CreateDocumentAction, DeleteDocumentAction, IndexDocumentInMeilisearchAction, UpdateDocumentAction, ProcessDocumentUploadJob, Document, User | DocumentController, 4 MCP tools |
 | ExternalServiceHealthChecker | ExternalService | CheckExternalServiceHealthJob |
-| ExternalServiceManager | ExternalService | ConfluenceClient, KiwixServeClient, UnifiedSearchAction, 3 MCP tools, 2 MCP prompts |
+| ExternalServiceManager | ExternalService | KiwixServeClient, UnifiedSearchAction, 1 MCP prompt |
 | GitTemplateClient | GitTemplate | SyncGitTemplateAction, GitTemplateController |
 | HealthCheckService | (none) | HealthController |
 | KiwixServeClient | ExternalServiceManager, ExternalService | ReadZimArticleAction, SearchZimArticlesAction, SuggestZimArticlesAction, SyncOpdsCatalogAction, ReadZimArticleTool |
@@ -162,14 +152,13 @@ Notable traits: Document and GitTemplate use `SoftDeletes`, `Searchable` (Larave
 | DocumentMetrics | (none) | SearchController, DocumentController |
 | PrometheusService | (none) | MetricsController, LaravelMcpAuth |
 
-## Controllers (14)
+## Controllers (13)
 
 | Controller | Type | Key Dependencies | FormRequests |
 |-----------|------|-----------------|-------------|
 | DocumentController | API | DocumentService, DocumentMetrics | ListDocumentsRequest, StoreDocumentRequest, UpdateDocumentRequest |
 | SearchController | API | SearchService, DocumentMetrics | SearchDocumentRequest, AutocompleteSearchRequest |
 | UnifiedSearchController | API | UnifiedSearchAction | UnifiedSearchRequest |
-| ConfluenceController | API | 3 Confluence actions | ListConfluenceSpacesRequest, SearchConfluencePagesRequest |
 | ZimArchiveController | API | 4 Zim actions | ListZimArchivesRequest, SearchZimArticlesRequest, SuggestZimArticlesRequest |
 | GitTemplateController | API | 8 GitTemplate actions, GitTemplateClient | 5 FormRequests |
 | DocumentAnalysisController | API | AnalyzeDocumentMetadataAction | AnalyzeDocumentRequest |
@@ -182,7 +171,7 @@ Notable traits: Document and GitTemplate use `SoftDeletes`, `Searchable` (Larave
 
 Note: Total FormRequest files in the codebase: 26.
 
-## MCP Tools (18)
+## MCP Tools (15)
 
 | Tool | Primary Dependencies |
 |------|---------------------|
@@ -195,9 +184,6 @@ Note: Total FormRequest files in the codebase: 26.
 | list_zim_archives | SearchZimArchivesAction |
 | search_zim | SearchZimArticlesAction, SuggestZimArticlesAction |
 | read_zim_article | ReadZimArticleAction, KiwixServeClient |
-| list_confluence_spaces | ListConfluenceSpacesAction, ExternalServiceManager |
-| search_confluence | SearchConfluencePagesAction, ExternalServiceManager |
-| read_confluence_page | ReadConfluencePageAction, ExternalServiceManager |
 | list_git_templates | ListGitTemplatesAction |
 | search_git_templates | SearchGitTemplatesAction |
 | get_template_structure | GetTemplateStructureAction |
@@ -205,7 +191,7 @@ Note: Total FormRequest files in the codebase: 26.
 | get_deployment_guide | GenerateDeploymentGuideAction |
 | download_template | GenerateTemplateArchiveAction |
 
-## MCP Prompts (7)
+## MCP Prompts (6)
 
 | Prompt | Dependencies |
 |--------|-------------|
@@ -215,7 +201,6 @@ Note: Total FormRequest files in the codebase: 26.
 | CrossSourceResearchPrompt | (none) |
 | ZimResearchPrompt | ExternalServiceManager |
 | GitTemplateSetupPrompt | (none) |
-| ConfluenceResearchPrompt | ExternalServiceManager |
 
 ## Middleware (8)
 
@@ -259,12 +244,12 @@ All extractors are consumed exclusively by TextExtractionService, which acts as 
 
 | Phase | Name | Components | Rationale |
 |------:|------|-----------|-----------|
-| 1 | Database & Types | DDL (database-schema.sql), 75 DTO structs, 15 model structs | Foundation types with no dependencies |
-| 2 | Repository Layer | Repository interfaces for 15 models, PostgreSQL implementations | Data access wrapping raw SQL/pgx |
-| 3 | Use Cases / Actions | 56 action equivalents, TokenHashingService, TextExtractionService | Business logic depending only on repos + types |
-| 4 | Services | 18 orchestration services | Higher-level workflows composing actions |
-| 5 | HTTP Handlers | 14 controllers, 8 middleware, 26 request validation structs | REST API surface depending on services + actions |
-| 6 | MCP Server | MCP JSON-RPC handler, 18 tool handlers, 7 prompt handlers | Alternative transport depending on services + actions |
+| 1 | Database & Types | DDL (database-schema.sql), 68 DTO structs, 14 model structs | Foundation types with no dependencies |
+| 2 | Repository Layer | Repository interfaces for 14 models, PostgreSQL implementations | Data access wrapping raw SQL/pgx |
+| 3 | Use Cases / Actions | 52 action equivalents, TokenHashingService, TextExtractionService | Business logic depending only on repos + types |
+| 4 | Services | 17 orchestration services | Higher-level workflows composing actions |
+| 5 | HTTP Handlers | 13 controllers, 8 middleware, 26 request validation structs | REST API surface depending on services + actions |
+| 6 | MCP Server | MCP JSON-RPC handler, 15 tool handlers, 6 prompt handlers | Alternative transport depending on services + actions |
 | 7 | OAuth Server | Authorization endpoints, PKCE, Device flow, Token management, OIDC | Complex subsystem best built as a unit |
 | 8 | Background Jobs & Extractors | 6 job handlers, 5 document extractors, health checks | Async processing; can be implemented last |
 
@@ -274,9 +259,9 @@ All extractors are consumed exclusively by TextExtractionService, which acts as 
 
 1. **No circular dependencies**: The dependency flow is strictly unidirectional: Models -> DTOs -> Actions -> Services -> Controllers/MCP Tools/Jobs. Two cross-action dependencies exist (ReindexMissingDocumentsAction -> IndexDocumentInMeilisearchAction and CleanupSoftDeletedDocumentsAction -> PermanentlyDeleteDocumentAction), but both are within the same domain and unidirectional.
 
-2. **High fan-out components**: Document (23 consumers), GitTemplate (16), ExternalService (11), OAuthClient (11), ExternalServiceManager (8), TokenHashingService (9), and DocumentService (6) are the most widely shared components. These should be implemented early and with stable interfaces.
+2. **High fan-out components**: Document (23 consumers), GitTemplate (16), OAuthClient (11), TokenHashingService (9), ExternalService (6), DocumentService (6), and ExternalServiceManager (3) are the most widely shared components. These should be implemented early and with stable interfaces.
 
-3. **ExternalServiceManager as gateway**: All external API clients (KiwixServeClient, ConfluenceClient) go through ExternalServiceManager for service discovery and configuration. In Go, this becomes a central dependency injection point.
+3. **ExternalServiceManager as gateway**: All external API clients (KiwixServeClient) go through ExternalServiceManager for service discovery and configuration. In Go, this becomes a central dependency injection point.
 
 4. **TokenHashingService is critical path**: Used by 5 OAuth actions for token generation and by 4 OAuth models for token lookup (static findByPlain* methods). Must be implemented in Phase 3.
 
@@ -286,4 +271,4 @@ All extractors are consumed exclusively by TextExtractionService, which acts as 
 
 7. **Soft deletes**: Document and GitTemplate use soft deletes. The Go rewrite must implement `deleted_at` filtering at the repository level.
 
-8. **Scout (Meilisearch) integration**: Document, GitTemplate, ZimArchive, and ConfluenceSpace models use Laravel Scout for search indexing. In Go, Meilisearch integration must be handled explicitly in the repository or action layer.
+8. **Scout (Meilisearch) integration**: Document, GitTemplate, and ZimArchive models use Laravel Scout for search indexing. In Go, Meilisearch integration must be handled explicitly in the repository or action layer.

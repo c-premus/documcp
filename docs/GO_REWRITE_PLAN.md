@@ -3,6 +3,8 @@
 **Version**: 1.0
 **Date**: 2026-02-24
 **Status**: Planning / Evaluation
+
+> **Note (March 2026):** Confluence integration was removed from the Go rewrite scope. References to `ConfluenceClient`, Confluence tools, and `confluence_spaces` throughout this document reflect the original PHP v1.17.3 feature set and are retained for historical context only.
 **Companion Document**: [REQUIREMENTS_SPECIFICATION.md](./REQUIREMENTS_SPECIFICATION.md)
 
 ---

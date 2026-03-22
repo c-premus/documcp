@@ -63,8 +63,6 @@ tags:
     description: Document CRUD and file management
   - name: ZIM Archives
     description: Access ZIM archive documentation (DevDocs, Wikipedia, Stack Exchange)
-  - name: Confluence
-    description: Access Atlassian Confluence documentation
   - name: Git Templates
     description: Manage Git-based project templates
   - name: OAuth
@@ -299,8 +297,8 @@ paths:
       tags: [Search]
       summary: Unified search
       description: |
-        Search across all content types (documents, git templates, ZIM archives,
-        Confluence spaces) in a single request. Requires authentication.
+        Search across all content types (documents, git templates, ZIM archives)
+        in a single request. Requires authentication.
         Rate limit: `search` (120/min).
 
         **Required scope:** `search:read`
@@ -323,7 +321,7 @@ paths:
             maxItems: 4
             items:
               type: string
-              enum: [document, git_template, zim_archive, confluence_space]
+              enum: [document, git_template, zim_archive]
           style: form
           explode: true
         - name: limit
@@ -969,213 +967,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "429":
           $ref: "#/components/responses/RateLimitExceeded"
-
-  # ---------------------------------------------------------------------------
-  # Confluence
-  # ---------------------------------------------------------------------------
-  /api/confluence/spaces:
-    get:
-      operationId: listConfluenceSpaces
-      tags: [Confluence]
-      summary: List Confluence spaces
-      description: |
-        Retrieve a paginated list of available Confluence spaces.
-        Requires authentication. Rate limit: `search` (120/min).
-
-        **Required scope:** `confluence:read`
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: query
-          in: query
-          description: Search query to filter spaces by name or key
-          schema:
-            type: [string, "null"]
-            maxLength: 255
-        - name: type
-          in: query
-          description: Filter by space type
-          schema:
-            type: [string, "null"]
-            enum: [global, personal]
-        - name: per_page
-          in: query
-          description: Items per page (default 15, max 100)
-          schema:
-            type: [integer, "null"]
-            minimum: 1
-            maximum: 100
-            default: 15
-      responses:
-        "200":
-          description: Paginated list of Confluence spaces
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/PaginatedEnvelope"
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/ConfluenceSpace"
-        "401":
-          $ref: "#/components/responses/Unauthenticated"
-        "422":
-          $ref: "#/components/responses/ValidationError"
-        "429":
-          $ref: "#/components/responses/RateLimitExceeded"
-
-  /api/confluence/spaces/{key}:
-    parameters:
-      - name: key
-        in: path
-        required: true
-        description: Confluence space key
-        schema:
-          type: string
-        example: DEV
-
-    get:
-      operationId: showConfluenceSpace
-      tags: [Confluence]
-      summary: Show Confluence space
-      description: |
-        Retrieve details of a specific Confluence space by key.
-        Requires authentication. Rate limit: `search` (120/min).
-
-        **Required scope:** `confluence:read`
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Space details
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/ConfluenceSpace"
-        "401":
-          $ref: "#/components/responses/Unauthenticated"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "429":
-          $ref: "#/components/responses/RateLimitExceeded"
-
-  /api/confluence/pages:
-    get:
-      operationId: searchConfluencePages
-      tags: [Confluence]
-      summary: Search Confluence pages
-      description: |
-        Search for pages using CQL (Confluence Query Language) or simple text queries.
-        At least one of `cql` or `query` is required.
-        Requires authentication. Rate limit: `search` (120/min).
-
-        **Required scope:** `confluence:read`
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: cql
-          in: query
-          description: CQL query for advanced search
-          schema:
-            type: [string, "null"]
-            maxLength: 1000
-        - name: query
-          in: query
-          description: Simple full-text search query
-          schema:
-            type: [string, "null"]
-            maxLength: 255
-        - name: space
-          in: query
-          description: Filter results to a specific space key
-          schema:
-            type: [string, "null"]
-            maxLength: 50
-        - name: limit
-          in: query
-          description: Maximum results (default 25, max 50)
-          schema:
-            type: [integer, "null"]
-            minimum: 1
-            maximum: 50
-            default: 25
-        - name: start
-          in: query
-          description: Starting index for pagination (0-based)
-          schema:
-            type: [integer, "null"]
-            minimum: 0
-            default: 0
-      responses:
-        "200":
-          description: Search results with pagination metadata
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ConfluenceSearchResponse"
-        "400":
-          description: Missing required search parameter
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiErrorEnvelope"
-        "401":
-          $ref: "#/components/responses/Unauthenticated"
-        "422":
-          $ref: "#/components/responses/ValidationError"
-        "429":
-          $ref: "#/components/responses/RateLimitExceeded"
-
-  /api/confluence/pages/{pageId}:
-    parameters:
-      - name: pageId
-        in: path
-        required: true
-        description: Confluence page ID
-        schema:
-          type: string
-        example: "123456"
-
-    get:
-      operationId: readConfluencePage
-      tags: [Confluence]
-      summary: Read Confluence page
-      description: |
-        Retrieve the full content of a specific Confluence page.
-        Requires authentication. Rate limit: `search` (120/min).
-
-        **Required scope:** `confluence:read`
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Page content
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/ConfluencePage"
-        "401":
-          $ref: "#/components/responses/Unauthenticated"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "429":
-          $ref: "#/components/responses/RateLimitExceeded"
-
-  # ---------------------------------------------------------------------------
-  # Git Templates
   # ---------------------------------------------------------------------------
   /api/git-templates:
     get:
@@ -2575,102 +2366,6 @@ components:
         score:
           type: [number, "null"]
 
-    ConfluenceSpace:
-      type: object
-      properties:
-        uuid:
-          type: string
-          format: uuid
-        confluence_id:
-          type: string
-        key:
-          type: string
-        name:
-          type: string
-        description:
-          type: [string, "null"]
-        type:
-          type: string
-          enum: [global, personal]
-        status:
-          type: string
-        homepage_id:
-          type: [string, "null"]
-        icon_url:
-          type: [string, "null"]
-          format: uri
-        last_synced_at:
-          type: [string, "null"]
-          format: date-time
-
-    ConfluencePage:
-      type: object
-      properties:
-        id:
-          type: string
-        title:
-          type: string
-        space_key:
-          type: [string, "null"]
-        parent_id:
-          type: [string, "null"]
-        web_url:
-          type: [string, "null"]
-          format: uri
-        version:
-          type: [string, "null"]
-        created_at:
-          type: [string, "null"]
-        updated_at:
-          type: [string, "null"]
-        labels:
-          type: array
-          items:
-            type: string
-        ancestors:
-          type: [array, "null"]
-          items:
-            type: object
-        content:
-          type: [string, "null"]
-
-    ConfluenceSearchResponse:
-      type: object
-      properties:
-        data:
-          type: array
-          items:
-            type: object
-            properties:
-              id:
-                type: string
-              title:
-                type: string
-              space_key:
-                type: [string, "null"]
-              web_url:
-                type: [string, "null"]
-                format: uri
-              excerpt:
-                type: string
-              labels:
-                type: array
-                items:
-                  type: string
-        meta:
-          type: object
-          properties:
-            total:
-              type: integer
-            start:
-              type: integer
-            limit:
-              type: integer
-            has_more:
-              type: boolean
-            cql:
-              type: [string, "null"]
-
     GitTemplate:
       type: object
       properties:
@@ -2857,7 +2552,7 @@ components:
           type: string
         source:
           type: string
-          enum: [document, git_template, zim_archive, confluence_space]
+          enum: [document, git_template, zim_archive]
         title:
           type: string
         description:
@@ -3216,7 +2911,6 @@ components:
             documents:write: "Create, update, and delete documents"
             search:read: Search across all indexes
             zim:read: Read ZIM archives and articles
-            confluence:read: Read Confluence spaces and pages
             templates:read: Read Git templates and files
             templates:write: "Create, update, and delete Git templates"
             services:read: Read external service configuration
