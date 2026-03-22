@@ -1026,7 +1026,8 @@ func TestBuildTemplateArchiveTarGz(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 type mockGitTemplateRepo struct {
-	ListFn             func(ctx context.Context, category string, limit int) ([]model.GitTemplate, error)
+	ListFn             func(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error)
+	CountFilteredFn    func(ctx context.Context, category string) (int, error)
 	SearchFn           func(ctx context.Context, query, category string, limit int) ([]model.GitTemplate, error)
 	FindByUUIDFn       func(ctx context.Context, uuid string) (*model.GitTemplate, error)
 	CreateFn           func(ctx context.Context, tmpl *model.GitTemplate) error
@@ -1036,8 +1037,12 @@ type mockGitTemplateRepo struct {
 	FindFileByPathFn   func(ctx context.Context, templateID int64, path string) (*model.GitTemplateFile, error)
 }
 
-func (m *mockGitTemplateRepo) List(ctx context.Context, category string, limit int) ([]model.GitTemplate, error) {
-	return m.ListFn(ctx, category, limit)
+func (m *mockGitTemplateRepo) List(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error) {
+	return m.ListFn(ctx, category, limit, offset)
+}
+
+func (m *mockGitTemplateRepo) CountFiltered(ctx context.Context, category string) (int, error) {
+	return m.CountFilteredFn(ctx, category)
 }
 
 func (m *mockGitTemplateRepo) Search(ctx context.Context, query, category string, limit int) ([]model.GitTemplate, error) {
@@ -1232,12 +1237,16 @@ func TestGitTemplateHandler_List(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockGitTemplateRepo{
-			ListFn: func(_ context.Context, category string, limit int) ([]model.GitTemplate, error) {
+			CountFilteredFn: func(_ context.Context, _ string) (int, error) { return 2, nil },
+			ListFn: func(_ context.Context, category string, limit, offset int) ([]model.GitTemplate, error) {
 				if category != "" {
 					t.Errorf("category = %q, want empty", category)
 				}
 				if limit != 50 {
 					t.Errorf("limit = %d, want 50", limit)
+				}
+				if offset != 0 {
+					t.Errorf("offset = %d, want 0", offset)
 				}
 				return []model.GitTemplate{
 					{UUID: "t1", Name: "Template One", Slug: "template-one", RepositoryURL: "https://github.com/a/b", Branch: "main", Status: "synced"},
@@ -1273,22 +1282,26 @@ func TestGitTemplateHandler_List(t *testing.T) {
 		}
 	})
 
-	t.Run("passes category filter and custom limit", func(t *testing.T) {
+	t.Run("passes category filter and custom per_page", func(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockGitTemplateRepo{
-			ListFn: func(_ context.Context, category string, limit int) ([]model.GitTemplate, error) {
+			CountFilteredFn: func(_ context.Context, _ string) (int, error) { return 0, nil },
+			ListFn: func(_ context.Context, category string, limit, offset int) ([]model.GitTemplate, error) {
 				if category != "devops" {
 					t.Errorf("category = %q, want devops", category)
 				}
 				if limit != 10 {
 					t.Errorf("limit = %d, want 10", limit)
 				}
+				if offset != 0 {
+					t.Errorf("offset = %d, want 0", offset)
+				}
 				return []model.GitTemplate{}, nil
 			},
 		}
 		h := newGitTemplateHandlerWithMock(repo)
-		req := httptest.NewRequest(http.MethodGet, "/api/git-templates?category=devops&limit=10", http.NoBody)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates?category=devops&per_page=10", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -1298,11 +1311,43 @@ func TestGitTemplateHandler_List(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 500 when repo returns error", func(t *testing.T) {
+	t.Run("returns 500 when count fails", func(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockGitTemplateRepo{
-			ListFn: func(_ context.Context, _ string, _ int) ([]model.GitTemplate, error) {
+			CountFilteredFn: func(_ context.Context, _ string) (int, error) {
+				return 0, errors.New("db connection lost")
+			},
+			ListFn: func(_ context.Context, _ string, _, _ int) ([]model.GitTemplate, error) {
+				t.Error("ListFn should not be called when count fails")
+				return nil, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.List(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "failed to count git templates" {
+			t.Errorf("message = %v, want 'failed to count git templates'", msg)
+		}
+	})
+
+	t.Run("returns 500 when list fails", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			CountFilteredFn: func(_ context.Context, _ string) (int, error) { return 5, nil },
+			ListFn: func(_ context.Context, _ string, _, _ int) ([]model.GitTemplate, error) {
 				return nil, errors.New("db connection lost")
 			},
 		}
@@ -1329,7 +1374,8 @@ func TestGitTemplateHandler_List(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockGitTemplateRepo{
-			ListFn: func(_ context.Context, _ string, _ int) ([]model.GitTemplate, error) {
+			CountFilteredFn: func(_ context.Context, _ string) (int, error) { return 0, nil },
+			ListFn: func(_ context.Context, _ string, _, _ int) ([]model.GitTemplate, error) {
 				return []model.GitTemplate{}, nil
 			},
 		}
@@ -1353,11 +1399,12 @@ func TestGitTemplateHandler_List(t *testing.T) {
 		}
 	})
 
-	t.Run("negative limit defaults to 50", func(t *testing.T) {
+	t.Run("negative per_page defaults to 50", func(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockGitTemplateRepo{
-			ListFn: func(_ context.Context, _ string, limit int) ([]model.GitTemplate, error) {
+			CountFilteredFn: func(_ context.Context, _ string) (int, error) { return 0, nil },
+			ListFn: func(_ context.Context, _ string, limit, _ int) ([]model.GitTemplate, error) {
 				if limit != 50 {
 					t.Errorf("limit = %d, want 50 (default)", limit)
 				}
@@ -1365,7 +1412,7 @@ func TestGitTemplateHandler_List(t *testing.T) {
 			},
 		}
 		h := newGitTemplateHandlerWithMock(repo)
-		req := httptest.NewRequest(http.MethodGet, "/api/git-templates?limit=-5", http.NoBody)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates?per_page=-5", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)

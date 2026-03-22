@@ -40,7 +40,7 @@ func NewZimArchiveRepository(db *sqlx.DB, logger *slog.Logger) *ZimArchiveReposi
 }
 
 // List returns enabled ZIM archives with optional filtering by category, language, and search query.
-func (r *ZimArchiveRepository) List(ctx context.Context, category, language, query string, limit int) ([]model.ZimArchive, error) {
+func (r *ZimArchiveRepository) List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error) {
 	q := `SELECT * FROM zim_archives WHERE is_enabled = true`
 	args := []any{}
 	argIdx := 1
@@ -69,6 +69,12 @@ func (r *ZimArchiveRepository) List(ctx context.Context, category, language, que
 	if limit > 0 {
 		q += fmt.Sprintf(` LIMIT $%d`, argIdx)
 		args = append(args, limit)
+		argIdx++
+	}
+
+	if offset > 0 {
+		q += fmt.Sprintf(` OFFSET $%d`, argIdx)
+		args = append(args, offset)
 	}
 
 	var archives []model.ZimArchive
@@ -77,6 +83,38 @@ func (r *ZimArchiveRepository) List(ctx context.Context, category, language, que
 		return nil, fmt.Errorf("listing zim archives: %w", err)
 	}
 	return archives, nil
+}
+
+// CountFiltered returns the total number of enabled ZIM archives matching the given filters.
+func (r *ZimArchiveRepository) CountFiltered(ctx context.Context, category, language, query string) (int, error) {
+	q := `SELECT COUNT(*) FROM zim_archives WHERE is_enabled = true`
+	args := []any{}
+	argIdx := 1
+
+	if category != "" {
+		q += fmt.Sprintf(` AND category = $%d`, argIdx)
+		args = append(args, category)
+		argIdx++
+	}
+
+	if language != "" {
+		q += fmt.Sprintf(` AND language = $%d`, argIdx)
+		args = append(args, language)
+		argIdx++
+	}
+
+	if query != "" {
+		q += fmt.Sprintf(` AND (name ILIKE $%d OR title ILIKE $%d)`, argIdx, argIdx+1)
+		likeQuery := "%" + query + "%"
+		args = append(args, likeQuery, likeQuery)
+	}
+
+	var count int
+	err := r.db.QueryRowContext(ctx, q, args...).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting zim archives: %w", err)
+	}
+	return count, nil
 }
 
 // FindByName returns a ZIM archive by its name, if enabled.

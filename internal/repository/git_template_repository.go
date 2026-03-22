@@ -38,7 +38,7 @@ func NewGitTemplateRepository(db *sqlx.DB, logger *slog.Logger, enc *crypto.Encr
 }
 
 // List returns enabled, non-deleted git templates with an optional category filter.
-func (r *GitTemplateRepository) List(ctx context.Context, category string, limit int) ([]model.GitTemplate, error) {
+func (r *GitTemplateRepository) List(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error) {
 	q := `SELECT * FROM git_templates WHERE is_enabled = true AND deleted_at IS NULL`
 	args := []any{}
 	argIdx := 1
@@ -54,6 +54,12 @@ func (r *GitTemplateRepository) List(ctx context.Context, category string, limit
 	if limit > 0 {
 		q += fmt.Sprintf(` LIMIT $%d`, argIdx)
 		args = append(args, limit)
+		argIdx++
+	}
+
+	if offset > 0 {
+		q += fmt.Sprintf(` OFFSET $%d`, argIdx)
+		args = append(args, offset)
 	}
 
 	var templates []model.GitTemplate
@@ -63,6 +69,25 @@ func (r *GitTemplateRepository) List(ctx context.Context, category string, limit
 	}
 	r.decryptTokens(templates)
 	return templates, nil
+}
+
+// CountFiltered returns the total number of enabled, non-deleted git templates matching the given filters.
+func (r *GitTemplateRepository) CountFiltered(ctx context.Context, category string) (int, error) {
+	q := `SELECT COUNT(*) FROM git_templates WHERE is_enabled = true AND deleted_at IS NULL`
+	args := []any{}
+	argIdx := 1
+
+	if category != "" {
+		q += fmt.Sprintf(` AND category = $%d`, argIdx)
+		args = append(args, category)
+	}
+
+	var count int
+	err := r.db.QueryRowContext(ctx, q, args...).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting git templates: %w", err)
+	}
+	return count, nil
 }
 
 // FindByUUID returns a git template by its UUID, if enabled and not soft-deleted.

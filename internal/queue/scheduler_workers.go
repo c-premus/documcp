@@ -139,7 +139,7 @@ func (w *SyncGitTemplatesWorker) Work(ctx context.Context, _ *river.Job[SyncGitT
 	logger := w.Deps.Logger.With("job", "git")
 	logger.Info("starting git template sync")
 
-	templates, err := w.Deps.GitRepo.List(ctx, "", 100)
+	templates, err := w.Deps.GitRepo.List(ctx, "", 100, 0)
 	if err != nil {
 		return fmt.Errorf("listing git templates: %w", err)
 	}

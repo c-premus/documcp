@@ -72,7 +72,7 @@ describe('gitTemplates store', () => {
       stubFetch({ data: [], meta: { total: 0 } })
 
       const store = useGitTemplatesStore()
-      await store.fetchTemplates('documentation')
+      await store.fetchTemplates({ category: 'documentation' })
 
       const calledUrl = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string
       expect(calledUrl).toContain('/api/git-templates?')
