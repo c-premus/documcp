@@ -201,8 +201,7 @@ func RequireScope(scope string) func(http.Handler) http.Handler {
 			}
 
 			// Check if the required scope is present (space-delimited).
-			scopes := strings.Split(tokenScope, " ")
-			for _, s := range scopes {
+			for s := range strings.SplitSeq(tokenScope, " ") {
 				if s == scope {
 					next.ServeHTTP(w, r)
 					return
@@ -223,4 +222,3 @@ func jsonError(w http.ResponseWriter, status int, message string) {
 		"message": message,
 	})
 }
-

@@ -38,7 +38,7 @@ func TestMetricsMiddleware_RecordsRequestMetrics(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/documents/abc-123", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/documents/abc-123", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	r.ServeHTTP(rec, req)
@@ -78,7 +78,7 @@ func TestMetricsMiddleware_ActiveConnectionsReturnToZero(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ping", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	r.ServeHTTP(rec, req)
@@ -104,7 +104,7 @@ func TestMetricsMiddleware_UnmatchedRoute(t *testing.T) {
 	})
 
 	// Request a path that does not match any route.
-	req := httptest.NewRequest(http.MethodGet, "/unknown-path", nil)
+	req := httptest.NewRequest(http.MethodGet, "/unknown-path", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	r.ServeHTTP(rec, req)

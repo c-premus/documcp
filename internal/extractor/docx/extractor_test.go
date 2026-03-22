@@ -199,7 +199,7 @@ func TestDOCXExtractor_Extract_InvalidZip(t *testing.T) {
 
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "bad.docx")
-	if err := os.WriteFile(filePath, []byte("this is not a zip file"), 0o644); err != nil {
+	if err := os.WriteFile(filePath, []byte("this is not a zip file"), 0o600); err != nil {
 		t.Fatalf("writing temp file: %v", err)
 	}
 

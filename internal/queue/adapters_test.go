@@ -46,11 +46,11 @@ func TestAdapters_InsertOpts_QueueAndMaxAttempts(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		args        river.JobArgs
-		wantQueue   string
-		wantMaxAtt  int
-		wantPri     int
+		name       string
+		args       river.JobArgs
+		wantQueue  string
+		wantMaxAtt int
+		wantPri    int
 	}{
 		{"DocumentExtract", DocumentExtractArgs{DocumentID: 1, DocUUID: "a"}, "high", 4, 1},
 		{"DocumentIndex", DocumentIndexArgs{DocumentID: 2, DocUUID: "b"}, "default", 4, 2},

@@ -121,7 +121,7 @@ func TestMarkdownExtractor_Extract(t *testing.T) {
 
 			dir := t.TempDir()
 			filePath := filepath.Join(dir, "test.md")
-			if err := os.WriteFile(filePath, []byte(tt.content), 0o644); err != nil {
+			if err := os.WriteFile(filePath, []byte(tt.content), 0o600); err != nil {
 				t.Fatalf("writing temp file: %v", err)
 			}
 
@@ -167,7 +167,7 @@ func TestMarkdownExtractor_Extract_CanceledContext(t *testing.T) {
 
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(filePath, []byte("content"), 0o644); err != nil {
+	if err := os.WriteFile(filePath, []byte("content"), 0o600); err != nil {
 		t.Fatalf("writing temp file: %v", err)
 	}
 

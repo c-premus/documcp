@@ -190,12 +190,12 @@ func (h *Handler) handleSearchQueryBuilder(_ context.Context, req *mcp.GetPrompt
 
 	var contextSection string
 	if searchContext != "" {
-		contextSection = fmt.Sprintf("\n**Additional context:** %s", searchContext)
+		contextSection = "\n**Additional context:** " + searchContext
 	}
 
 	var fileTypeSection string
 	if fileTypes != "" {
-		fileTypeSection = fmt.Sprintf("\n**Preferred file types:** %s", fileTypes)
+		fileTypeSection = "\n**Preferred file types:** " + fileTypes
 	}
 
 	assistantText := `You are a search query optimization assistant with access to the DocuMCP knowledge base.
@@ -313,7 +313,7 @@ func (h *Handler) handleGitTemplateSetup(_ context.Context, req *mcp.GetPromptRe
 
 	var categoryFilter string
 	if category != "" {
-		categoryFilter = fmt.Sprintf("\n**Category filter:** %s", category)
+		categoryFilter = "\n**Category filter:** " + category
 	}
 
 	assistantText := fmt.Sprintf(`You are a project setup assistant with access to git template tools.
@@ -395,7 +395,7 @@ func (h *Handler) handleZimResearch(_ context.Context, req *mcp.GetPromptRequest
 
 	var sourcesSection string
 	if preferredSources != "" {
-		sourcesSection = fmt.Sprintf("\n**Preferred sources:** %s", preferredSources)
+		sourcesSection = "\n**Preferred sources:** " + preferredSources
 	}
 
 	depthGuidance := zimDepthGuidance(depth)
@@ -468,7 +468,7 @@ func (h *Handler) handleConfluenceResearch(_ context.Context, req *mcp.GetPrompt
 
 	var spaceFilter string
 	if space != "" {
-		spaceFilter = fmt.Sprintf("\n**Space filter:** %s", space)
+		spaceFilter = "\n**Space filter:** " + space
 	}
 
 	depthGuidance := confluenceDepthGuidance(depth)

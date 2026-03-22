@@ -51,11 +51,11 @@ type gitTemplateSearchResult struct {
 }
 
 type searchGitTemplatesResponse struct {
-	Success bool                     `json:"success"`
-	Message string                   `json:"message,omitempty"`
-	Query   string                   `json:"query"`
+	Success bool                      `json:"success"`
+	Message string                    `json:"message,omitempty"`
+	Query   string                    `json:"query"`
 	Results []gitTemplateSearchResult `json:"results"`
-	Total   int                      `json:"total"`
+	Total   int                       `json:"total"`
 }
 
 type getTemplateStructureResponse struct {
@@ -412,7 +412,7 @@ func (h *Handler) handleSearchGitTemplates(
 	var filters []string
 	filters = append(filters, "__soft_deleted = false")
 	if input.Category != "" {
-		filters = append(filters, fmt.Sprintf(`category = "%s"`, sanitizeFilterValue(input.Category)))
+		filters = append(filters, `category = "`+sanitizeFilterValue(input.Category)+`"`)
 	}
 
 	resp, err := h.searcher.Search(ctx, search.SearchParams{
@@ -466,11 +466,11 @@ func (h *Handler) handleGetTemplateStructure(
 	_ *mcp.CallToolRequest,
 	input dto.GetTemplateStructureInput,
 ) (*mcp.CallToolResult, getTemplateStructureResponse, error) {
-	tmpl, err := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
-	if err != nil {
+	tmpl, _ := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
+	if tmpl == nil {
 		return nil, getTemplateStructureResponse{
 			Success: false,
-			Message: fmt.Sprintf("Template %s not found", input.UUID),
+			Message: "Template " + input.UUID + " not found",
 		}, nil
 	}
 
@@ -531,16 +531,16 @@ func (h *Handler) handleGetTemplateFile(
 	_ *mcp.CallToolRequest,
 	input dto.GetTemplateFileInput,
 ) (*mcp.CallToolResult, getTemplateFileResponse, error) {
-	tmpl, err := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
-	if err != nil {
+	tmpl, _ := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
+	if tmpl == nil {
 		return nil, getTemplateFileResponse{
 			Success: false,
-			Message: fmt.Sprintf("Template %s not found", input.UUID),
+			Message: "Template " + input.UUID + " not found",
 		}, nil
 	}
 
-	file, err := h.gitTemplateRepo.FindFileByPath(ctx, tmpl.ID, input.Path)
-	if err != nil {
+	file, _ := h.gitTemplateRepo.FindFileByPath(ctx, tmpl.ID, input.Path)
+	if file == nil {
 		return nil, getTemplateFileResponse{
 			Success: false,
 			Message: fmt.Sprintf("File %q not found in template %s", input.Path, input.UUID),
@@ -590,11 +590,11 @@ func (h *Handler) handleGetDeploymentGuide(
 	_ *mcp.CallToolRequest,
 	input dto.GetDeploymentGuideInput,
 ) (*mcp.CallToolResult, getDeploymentGuideResponse, error) {
-	tmpl, err := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
-	if err != nil {
+	tmpl, _ := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
+	if tmpl == nil {
 		return nil, getDeploymentGuideResponse{
 			Success: false,
-			Message: fmt.Sprintf("Template %s not found", input.UUID),
+			Message: "Template " + input.UUID + " not found",
 		}, nil
 	}
 
@@ -658,11 +658,11 @@ func (h *Handler) handleDownloadTemplate(
 	_ *mcp.CallToolRequest,
 	input dto.DownloadTemplateInput,
 ) (*mcp.CallToolResult, downloadTemplateResponse, error) {
-	tmpl, err := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
-	if err != nil {
+	tmpl, _ := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
+	if tmpl == nil {
 		return nil, downloadTemplateResponse{
 			Success: false,
-			Message: fmt.Sprintf("Template %s not found", input.UUID),
+			Message: "Template " + input.UUID + " not found",
 		}, nil
 	}
 
@@ -730,7 +730,7 @@ func (h *Handler) handleDownloadTemplate(
 		FileCount:           len(entries),
 		ArchiveBase64:       encoded,
 		UnresolvedVariables: unresolvedList,
-		Usage:               fmt.Sprintf("Decode the base64 archive_base64 field and save as %s", filename),
+		Usage:               "Decode the base64 archive_base64 field and save as " + filename,
 	}, nil
 }
 
@@ -762,7 +762,7 @@ func buildTarGz(w *bytes.Buffer, entries []archiveEntry) error {
 	for _, e := range entries {
 		hdr := &tar.Header{
 			Name: e.path,
-			Mode: 0644,
+			Mode: 0o600,
 			Size: int64(len(e.content)),
 		}
 		if err := tw.WriteHeader(hdr); err != nil {

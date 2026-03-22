@@ -62,7 +62,7 @@ func NewMetrics() *Metrics {
 		DocumentCount: prometheus.NewGauge(
 			prometheus.GaugeOpts{
 				Namespace: namespace,
-				Name:      "document_count",
+				Name:      "documents",
 				Help:      "Current number of indexed documents.",
 			},
 		),
@@ -142,11 +142,11 @@ type dbStatsCollector struct {
 }
 
 var (
-	dbOpenDesc     = prometheus.NewDesc(namespace+"_db_open_connections", "Number of open connections.", nil, nil)
-	dbInUseDesc    = prometheus.NewDesc(namespace+"_db_in_use_connections", "Number of connections in use.", nil, nil)
-	dbIdleDesc     = prometheus.NewDesc(namespace+"_db_idle_connections", "Number of idle connections.", nil, nil)
+	dbOpenDesc      = prometheus.NewDesc(namespace+"_db_open_connections", "Number of open connections.", nil, nil)
+	dbInUseDesc     = prometheus.NewDesc(namespace+"_db_in_use_connections", "Number of connections in use.", nil, nil)
+	dbIdleDesc      = prometheus.NewDesc(namespace+"_db_idle_connections", "Number of idle connections.", nil, nil)
 	dbWaitCountDesc = prometheus.NewDesc(namespace+"_db_wait_count_total", "Total number of connections waited for.", nil, nil)
-	dbWaitDurDesc  = prometheus.NewDesc(namespace+"_db_wait_duration_seconds_total", "Total time waited for connections.", nil, nil)
+	dbWaitDurDesc   = prometheus.NewDesc(namespace+"_db_wait_duration_seconds_total", "Total time waited for connections.", nil, nil)
 )
 
 // Describe sends the metric descriptors to the provided channel.

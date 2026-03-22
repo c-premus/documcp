@@ -3,7 +3,6 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -279,7 +278,7 @@ func newTestConfluenceHandler() *ConfluenceHandler {
 	return &ConfluenceHandler{
 		repo:             nil,
 		confluenceClient: nil,
-		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		logger:           slog.New(slog.DiscardHandler),
 	}
 }
 
@@ -290,7 +289,7 @@ func TestConfluenceHandler_SearchPages_NilClient(t *testing.T) {
 		t.Parallel()
 
 		h := newTestConfluenceHandler()
-		req := httptest.NewRequest(http.MethodGet, "/api/confluence/pages?query=test", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/confluence/pages?query=test", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.SearchPages(rr, req)
@@ -316,7 +315,7 @@ func TestConfluenceHandler_ReadPage_NilClient(t *testing.T) {
 		t.Parallel()
 
 		h := newTestConfluenceHandler()
-		req := httptest.NewRequest(http.MethodGet, "/api/confluence/pages/12345", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/confluence/pages/12345", http.NoBody)
 		req = chiContext(req, map[string]string{"pageId": "12345"})
 		rr := httptest.NewRecorder()
 
@@ -339,7 +338,7 @@ func TestConfluenceHandler_ReadPage_NilClient(t *testing.T) {
 func TestNewConfluenceHandler(t *testing.T) {
 	t.Parallel()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	h := NewConfluenceHandler(nil, nil, logger)
 
 	if h == nil {
@@ -361,7 +360,7 @@ func TestConfluenceHandler_SearchPages_MissingParams(t *testing.T) {
 
 		h := newTestConfluenceHandler()
 		// Even without query params, the nil client check comes first.
-		req := httptest.NewRequest(http.MethodGet, "/api/confluence/pages", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/confluence/pages", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.SearchPages(rr, req)
@@ -371,4 +370,3 @@ func TestConfluenceHandler_SearchPages_MissingParams(t *testing.T) {
 		}
 	})
 }
-

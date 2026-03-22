@@ -22,7 +22,7 @@ import (
 func newTestServer(t *testing.T) *server.Server {
 	t.Helper()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	cfg := server.DefaultConfig()
 	srv := server.New(cfg, logger)
 	srv.RegisterRoutes(server.Deps{Version: "test-version"})
@@ -33,7 +33,7 @@ func newTestServer(t *testing.T) *server.Server {
 func newTestServerWithDeps(t *testing.T, deps server.Deps) *server.Server {
 	t.Helper()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	cfg := server.DefaultConfig()
 	srv := server.New(cfg, logger)
 	srv.RegisterRoutes(deps)
@@ -61,7 +61,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/health", nil)
+			req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 			rec := httptest.NewRecorder()
 
 			srv.Router().ServeHTTP(rec, req)
@@ -103,7 +103,7 @@ func TestSecurityHeaders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.header, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/health", nil)
+			req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 			rec := httptest.NewRecorder()
 
 			srv.Router().ServeHTTP(rec, req)
@@ -117,7 +117,7 @@ func TestSecurityHeaders(t *testing.T) {
 }
 
 func TestRequestID(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	cfg := server.DefaultConfig()
 	srv := server.New(cfg, logger)
 
@@ -129,7 +129,7 @@ func TestRequestID(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test-reqid", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test-reqid", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -152,7 +152,7 @@ func TestNotFound(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req := httptest.NewRequest(http.MethodGet, tt.path, http.NoBody)
 			rec := httptest.NewRecorder()
 
 			srv.Router().ServeHTTP(rec, req)
@@ -194,7 +194,7 @@ func TestDefaultConfig(t *testing.T) {
 func TestNew_SetsAddr(t *testing.T) {
 	t.Parallel()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	cfg := server.Config{
 		Host: "127.0.0.1",
 		Port: 9999,
@@ -210,7 +210,7 @@ func TestNew_SetsAddr(t *testing.T) {
 func TestNew_RouterNotNil(t *testing.T) {
 	t.Parallel()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	srv := server.New(server.DefaultConfig(), logger)
 
 	if srv.Router() == nil {
@@ -221,7 +221,7 @@ func TestNew_RouterNotNil(t *testing.T) {
 func TestListenAndServeOnAvailablePort(t *testing.T) {
 	t.Parallel()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	cfg := server.DefaultConfig()
 	srv := server.New(cfg, logger)
 
@@ -254,7 +254,7 @@ func TestListenAndServeOnAvailablePort(t *testing.T) {
 
 	// Verify we can actually make an HTTP request to the server.
 	url := fmt.Sprintf("http://%s/test-available-port", addr)
-	resp, err := http.Get(url) //nolint:noctx
+	resp, err := http.Get(url) //nolint:noctx // test helper; context not needed for connectivity check
 	if err != nil {
 		t.Fatalf("HTTP GET %s returned unexpected error: %v", url, err)
 	}
@@ -276,7 +276,7 @@ func TestListenAndServeOnAvailablePort(t *testing.T) {
 func TestListenAndServeOnAvailablePort_RandomPort(t *testing.T) {
 	t.Parallel()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	// Create two servers; they should get different ports.
 	srv1 := server.New(server.DefaultConfig(), logger)
@@ -310,7 +310,7 @@ func TestListenAndServeOnAvailablePort_RandomPort(t *testing.T) {
 func TestShutdown_GracefulStop(t *testing.T) {
 	t.Parallel()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	srv := server.New(server.DefaultConfig(), logger)
 
 	srv.Router().Get("/ping", func(w http.ResponseWriter, _ *http.Request) {
@@ -332,9 +332,11 @@ func TestShutdown_GracefulStop(t *testing.T) {
 
 	// After shutdown, new requests should fail.
 	url := fmt.Sprintf("http://%s/ping", srv.Addr())
-	resp, err := http.Get(url) //nolint:noctx
+	resp, err := http.Get(url) //nolint:noctx // test helper; context not needed for connectivity check
 	if resp != nil {
-		resp.Body.Close()
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("closing response body: %v", closeErr)
+		}
 	}
 	if err == nil {
 		t.Error("expected error connecting to shut-down server, got nil")
@@ -355,7 +357,7 @@ func TestAddr_Format(t *testing.T) {
 		{"empty host", "", 8080, ":8080"},
 	}
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -381,7 +383,7 @@ func TestHealthEndpoint_MethodNotAllowed(t *testing.T) {
 
 	for _, method := range methods {
 		t.Run(method, func(t *testing.T) {
-			req := httptest.NewRequest(method, "/health", nil)
+			req := httptest.NewRequest(method, "/health", http.NoBody)
 			rec := httptest.NewRecorder()
 
 			srv.Router().ServeHTTP(rec, req)
@@ -404,12 +406,12 @@ func TestHealthEndpoint_WithDifferentVersions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.version, func(t *testing.T) {
-			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+			logger := slog.New(slog.DiscardHandler)
 			cfg := server.DefaultConfig()
 			srv := server.New(cfg, logger)
 			srv.RegisterRoutes(server.Deps{Version: tt.version})
 
-			req := httptest.NewRequest(http.MethodGet, "/health", nil)
+			req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 			rec := httptest.NewRecorder()
 
 			srv.Router().ServeHTTP(rec, req)
@@ -433,7 +435,7 @@ func TestSecurityHeaders_PresentOnAllEndpoints(t *testing.T) {
 	srv := newTestServer(t)
 
 	// Security headers should be on non-existent paths too.
-	req := httptest.NewRequest(http.MethodGet, "/some/random/path", nil)
+	req := httptest.NewRequest(http.MethodGet, "/some/random/path", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -450,7 +452,7 @@ func TestSecurityHeaders_PresentOnAllEndpoints(t *testing.T) {
 func TestListenAndServeOnAvailablePort_PortIsNonZero(t *testing.T) {
 	t.Parallel()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	srv := server.New(server.DefaultConfig(), logger)
 
 	ln, err := srv.ListenAndServeOnAvailablePort()
@@ -493,7 +495,7 @@ func TestRegisterRoutes_APIReturns503WithoutOAuth(t *testing.T) {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
 			t.Parallel()
 
-			req := httptest.NewRequest(tt.method, tt.path, nil)
+			req := httptest.NewRequest(tt.method, tt.path, http.NoBody)
 			rec := httptest.NewRecorder()
 
 			srv.Router().ServeHTTP(rec, req)
@@ -524,7 +526,7 @@ func TestRegisterRoutes_AdminLoginRedirect(t *testing.T) {
 
 	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/login", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/login", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -558,7 +560,7 @@ func TestRegisterRoutes_MCPHandler(t *testing.T) {
 		MCPHandler: mcpHandler,
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/documcp/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/documcp/", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -585,7 +587,7 @@ func TestRegisterRoutes_MCPHandlerSubpath(t *testing.T) {
 		MCPHandler: mcpHandler,
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/documcp/some/path", nil)
+	req := httptest.NewRequest(http.MethodPost, "/documcp/some/path", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -600,7 +602,7 @@ func TestRegisterRoutes_MCPHandlerNotRegisteredWhenNil(t *testing.T) {
 
 	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
 
-	req := httptest.NewRequest(http.MethodGet, "/documcp/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/documcp/", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -630,7 +632,7 @@ func TestRegisterRoutes_SPAHandler(t *testing.T) {
 	})
 
 	// /admin should redirect to /admin/
-	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -645,7 +647,7 @@ func TestRegisterRoutes_SPAHandler(t *testing.T) {
 	}
 
 	// /admin/ should serve the SPA
-	req2 := httptest.NewRequest(http.MethodGet, "/admin/", nil)
+	req2 := httptest.NewRequest(http.MethodGet, "/admin/", http.NoBody)
 	rec2 := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec2, req2)
@@ -669,7 +671,7 @@ func TestRegisterRoutes_SPAHandlerSubpath(t *testing.T) {
 		SPAHandler: spaHandler,
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -699,7 +701,7 @@ func TestDefaultConfig_ReadHeaderTimeout(t *testing.T) {
 func TestRegisterRoutes_CSPHeaderPresent(t *testing.T) {
 	srv := newTestServer(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -754,7 +756,7 @@ func TestRegisterRoutes_ReadinessEndpointWithDB(t *testing.T) {
 		DB:      db,
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -770,7 +772,7 @@ func TestRegisterRoutes_ReadinessEndpointNotRegisteredWithoutDB(t *testing.T) {
 
 	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
 
-	req := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health/ready", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -790,7 +792,7 @@ func TestRegisterRoutes_APIErrorResponseFormat(t *testing.T) {
 
 	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/documents", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/documents", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -825,7 +827,7 @@ func TestRegisterRoutes_AdminEndpointWithoutAuth(t *testing.T) {
 	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
 
 	// Admin routes are under /api which requires OAuth, so they should 503.
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -845,7 +847,7 @@ func TestRegisterRoutes_AdminWithoutSPA(t *testing.T) {
 	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
 
 	// Without SPA handler, /admin/ should return 404.
-	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -874,7 +876,7 @@ func TestRegisterRoutes_MCPHandlerWithoutOAuth(t *testing.T) {
 		// OAuthService is nil -- no auth middleware on MCP
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/documcp/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/documcp/", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -896,7 +898,7 @@ func TestRegisterRoutes_MiddlewareOrder(t *testing.T) {
 
 	// Verify that all expected middleware are active by checking
 	// that a request to /health gets both security headers and a request ID.
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
@@ -922,7 +924,7 @@ func TestRegisterRoutes_AdminLoginRedirectPreservesMethod(t *testing.T) {
 	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
 
 	// POST to /admin/login should still get routed (chi only registers GET).
-	req := httptest.NewRequest(http.MethodPost, "/admin/login", nil)
+	req := httptest.NewRequest(http.MethodPost, "/admin/login", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)

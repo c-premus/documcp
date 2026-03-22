@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -39,7 +39,7 @@ func (m *mockUserRepo) FindUserByID(ctx context.Context, id int64) (*model.User,
 	if m.findUserByIDFn != nil {
 		return m.findUserByIDFn(ctx, id)
 	}
-	return nil, fmt.Errorf("not found")
+	return nil, errors.New("not found")
 }
 
 func (m *mockUserRepo) CreateUser(ctx context.Context, user *model.User) error {
@@ -103,7 +103,7 @@ func TestUserHandler_List_Success(t *testing.T) {
 
 	h := NewUserHandler(repo, discardLogger())
 
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/users?limit=10&offset=0", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/users?limit=10&offset=0", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.List(rec, req)
@@ -142,7 +142,7 @@ func TestUserHandler_List_DefaultLimitOffset(t *testing.T) {
 
 	h := NewUserHandler(repo, discardLogger())
 
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/users", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/users", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.List(rec, req)
@@ -160,12 +160,12 @@ func TestUserHandler_List_Error(t *testing.T) {
 
 	repo := &mockUserRepo{
 		listUsersFn: func(_ context.Context, _ string, _, _ int) ([]model.User, int, error) {
-			return nil, 0, fmt.Errorf("db error")
+			return nil, 0, errors.New("db error")
 		},
 	}
 
 	h := NewUserHandler(repo, discardLogger())
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/users", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/users", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.List(rec, req)
@@ -189,7 +189,7 @@ func TestUserHandler_Show_Success(t *testing.T) {
 	}
 
 	h := NewUserHandler(repo, discardLogger())
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/1", nil), "1")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/1", http.NoBody), "1")
 	rec := httptest.NewRecorder()
 
 	h.Show(rec, req)
@@ -204,12 +204,12 @@ func TestUserHandler_Show_NotFound(t *testing.T) {
 
 	repo := &mockUserRepo{
 		findUserByIDFn: func(_ context.Context, _ int64) (*model.User, error) {
-			return nil, fmt.Errorf("not found")
+			return nil, errors.New("not found")
 		},
 	}
 
 	h := NewUserHandler(repo, discardLogger())
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/999", nil), "999")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/999", http.NoBody), "999")
 	rec := httptest.NewRecorder()
 
 	h.Show(rec, req)
@@ -223,7 +223,7 @@ func TestUserHandler_Show_InvalidID(t *testing.T) {
 	t.Parallel()
 
 	h := NewUserHandler(&mockUserRepo{}, discardLogger())
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/abc", nil), "abc")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/abc", http.NoBody), "abc")
 	rec := httptest.NewRecorder()
 
 	h.Show(rec, req)
@@ -297,7 +297,7 @@ func TestUserHandler_Create_RepoError(t *testing.T) {
 
 	repo := &mockUserRepo{
 		createUserFn: func(_ context.Context, _ *model.User) error {
-			return fmt.Errorf("unique constraint violation")
+			return errors.New("unique constraint violation")
 		},
 	}
 
@@ -345,7 +345,7 @@ func TestUserHandler_Update_NotFound(t *testing.T) {
 
 	repo := &mockUserRepo{
 		findUserByIDFn: func(_ context.Context, _ int64) (*model.User, error) {
-			return nil, fmt.Errorf("not found")
+			return nil, errors.New("not found")
 		},
 	}
 
@@ -374,7 +374,7 @@ func TestUserHandler_Delete_Success(t *testing.T) {
 	h := NewUserHandler(repo, discardLogger())
 
 	// Set a different user as the current user so self-deletion check passes.
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/2", nil), "2")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/2", http.NoBody), "2")
 	req = withAuthUser(req, &model.User{ID: 99, Name: "Admin"})
 	rec := httptest.NewRecorder()
 
@@ -390,7 +390,7 @@ func TestUserHandler_Delete_SelfDeletion(t *testing.T) {
 
 	h := NewUserHandler(&mockUserRepo{}, discardLogger())
 
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/42", nil), "42")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/42", http.NoBody), "42")
 	req = withAuthUser(req, &model.User{ID: 42, Name: "Self"})
 	rec := httptest.NewRecorder()
 
@@ -406,13 +406,13 @@ func TestUserHandler_Delete_RepoError(t *testing.T) {
 
 	repo := &mockUserRepo{
 		deleteUserFn: func(_ context.Context, _ int64) error {
-			return fmt.Errorf("db error")
+			return errors.New("db error")
 		},
 	}
 
 	h := NewUserHandler(repo, discardLogger())
 
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/2", nil), "2")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/2", http.NoBody), "2")
 	req = withAuthUser(req, &model.User{ID: 99})
 	rec := httptest.NewRecorder()
 
@@ -438,7 +438,7 @@ func TestUserHandler_ToggleAdmin_Success(t *testing.T) {
 
 	h := NewUserHandler(repo, discardLogger())
 
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/2/toggle-admin", nil), "2")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/2/toggle-admin", http.NoBody), "2")
 	req = withAuthUser(req, &model.User{ID: 99})
 	rec := httptest.NewRecorder()
 
@@ -454,7 +454,7 @@ func TestUserHandler_ToggleAdmin_SelfDemotion(t *testing.T) {
 
 	h := NewUserHandler(&mockUserRepo{}, discardLogger())
 
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/42/toggle-admin", nil), "42")
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/42/toggle-admin", http.NoBody), "42")
 	req = withAuthUser(req, &model.User{ID: 42})
 	rec := httptest.NewRecorder()
 

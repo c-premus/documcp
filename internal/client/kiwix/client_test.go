@@ -767,9 +767,9 @@ func TestClassifyCategory(t *testing.T) {
 
 func TestExtractTitle(t *testing.T) {
 	tests := []struct {
-		name    string
-		html    string
-		want    string
+		name string
+		html string
+		want string
 	}{
 		{
 			name: "standard title tag",

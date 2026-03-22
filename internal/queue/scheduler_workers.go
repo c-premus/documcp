@@ -491,7 +491,7 @@ func (w *HealthCheckServicesWorker) Work(ctx context.Context, _ *river.Job[Healt
 		svc := &services[i]
 		svcLogger := logger.With("service_id", svc.ID, "base_url", svc.BaseURL)
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, svc.BaseURL, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, svc.BaseURL, http.NoBody)
 		if err != nil {
 			svcLogger.Error("creating health check request", "error", err)
 			if updateErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", 0, fmt.Sprintf("creating request: %v", err)); updateErr != nil {

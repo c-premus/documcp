@@ -121,7 +121,7 @@ func (h *SearchHandler) FederatedSearch(w http.ResponseWriter, r *http.Request) 
 	// Parse optional source types filter.
 	var indexes []string
 	if types := r.URL.Query().Get("types"); types != "" {
-		for _, t := range strings.Split(types, ",") {
+		for t := range strings.SplitSeq(types, ",") {
 			switch strings.TrimSpace(t) {
 			case "document":
 				indexes = append(indexes, search.IndexDocuments)
@@ -226,7 +226,7 @@ func (h *SearchHandler) Autocomplete(w http.ResponseWriter, r *http.Request) {
 // highlightPrefix wraps the matched prefix portion of title in <em> tags.
 // The match is case-insensitive. Both segments are HTML-escaped to prevent XSS.
 func highlightPrefix(title, prefix string) string {
-	if len(prefix) == 0 || len(prefix) > len(title) {
+	if prefix == "" || len(prefix) > len(title) {
 		return html.EscapeString(title)
 	}
 	if !strings.EqualFold(title[:len(prefix)], prefix) {

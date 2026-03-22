@@ -3,7 +3,7 @@ package oauthhandler
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -23,7 +23,7 @@ func TestHandler_Authorize(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
@@ -38,7 +38,7 @@ func TestHandler_Authorize(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=token&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=token&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
@@ -53,7 +53,7 @@ func TestHandler_Authorize(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&redirect_uri=https://example.com/cb&state=abcdefgh", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&redirect_uri=https://example.com/cb&state=abcdefgh", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
@@ -68,7 +68,7 @@ func TestHandler_Authorize(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&state=abcdefgh", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&state=abcdefgh", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
@@ -83,7 +83,7 @@ func TestHandler_Authorize(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
@@ -98,7 +98,7 @@ func TestHandler_Authorize(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=short", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=short", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
@@ -113,7 +113,7 @@ func TestHandler_Authorize(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&code_challenge_method=plain", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&code_challenge_method=plain", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
@@ -128,7 +128,7 @@ func TestHandler_Authorize(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
@@ -147,7 +147,7 @@ func TestHandler_Authorize(t *testing.T) {
 		h, store := newHandlerWithRepo(repo)
 		store.session.Values["user_id"] = int64(42)
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
@@ -175,7 +175,7 @@ func TestHandler_Authorize(t *testing.T) {
 		store.session.Values["user_id"] = int64(42)
 
 		// Use a redirect_uri that doesn't match the registered one
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://evil.com/steal&state=abcdefgh", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://evil.com/steal&state=abcdefgh", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
@@ -204,7 +204,7 @@ func TestHandler_Authorize(t *testing.T) {
 		store.session.Values["user_id"] = int64(42)
 
 		// No code_challenge for public client
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
@@ -232,7 +232,7 @@ func TestHandler_Authorize(t *testing.T) {
 		h, store := newHandlerWithRepo(repo)
 		store.session.Values["user_id"] = int64(42)
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&code_challenge=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&code_challenge=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
@@ -259,7 +259,7 @@ func TestHandler_Authorize(t *testing.T) {
 		h, store := newHandlerWithRepo(repo)
 		store.session.Values["user_id"] = int64(42)
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&scope=mcp:access", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&scope=mcp:access", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
@@ -289,7 +289,7 @@ func TestHandler_Authorize(t *testing.T) {
 		h, store := newHandlerWithRepo(repo)
 		store.session.Values["user_id"] = int64(42)
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
@@ -316,7 +316,7 @@ func TestHandler_Authorize(t *testing.T) {
 		h, store := newHandlerWithRepo(repo)
 		store.session.Values["user_id"] = int64(42)
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&scope=mcp:read", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&scope=mcp:read", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
@@ -573,7 +573,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
-				return nil, fmt.Errorf("db error")
+				return nil, errors.New("db error")
 			},
 		}
 		h, store := newHandlerWithRepo(repo)
@@ -612,7 +612,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 				}, nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, _ *model.OAuthAuthorizationCode) error {
-				return fmt.Errorf("db error")
+				return errors.New("db error")
 			},
 		}
 		h, store := newHandlerWithRepo(repo)

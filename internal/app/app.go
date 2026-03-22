@@ -25,11 +25,11 @@ import (
 	"github.com/riverqueue/river"
 
 	"github.com/c-premus/documcp/internal/auth/oauth"
-	"github.com/c-premus/documcp/internal/crypto"
 	"github.com/c-premus/documcp/internal/auth/oidc"
 	"github.com/c-premus/documcp/internal/client/confluence"
 	"github.com/c-premus/documcp/internal/client/kiwix"
 	"github.com/c-premus/documcp/internal/config"
+	"github.com/c-premus/documcp/internal/crypto"
 	"github.com/c-premus/documcp/internal/database"
 	"github.com/c-premus/documcp/internal/extractor"
 	docxext "github.com/c-premus/documcp/internal/extractor/docx"
@@ -225,12 +225,12 @@ func New(cfg *config.Config) (*App, error) {
 
 	// --- Storage ---
 	storagePath := filepath.Join(cfg.Storage.BasePath, cfg.Storage.DocumentPath)
-	if err = os.MkdirAll(storagePath, 0o755); err != nil {
+	if err = os.MkdirAll(storagePath, 0o750); err != nil {
 		return nil, fmt.Errorf("creating document storage path: %w", err)
 	}
 
 	gitTempDir := filepath.Join(cfg.Storage.BasePath, "git")
-	if err = os.MkdirAll(gitTempDir, 0o755); err != nil {
+	if err = os.MkdirAll(gitTempDir, 0o750); err != nil {
 		return nil, fmt.Errorf("creating git temp path: %w", err)
 	}
 

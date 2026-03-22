@@ -37,8 +37,8 @@ func newTestSSEHandler() (*SSEHandler, *queue.EventBus) {
 // ---------------------------------------------------------------------------
 
 type sseRecorder struct {
-	mu        sync.Mutex
-	rr        *httptest.ResponseRecorder
+	mu         sync.Mutex
+	rr         *httptest.ResponseRecorder
 	firstWrite chan struct{} // closed on the first Write call
 	once       sync.Once
 }
@@ -163,7 +163,7 @@ func TestSSEHandler_Stream(t *testing.T) {
 
 		h, _ := newTestSSEHandler()
 
-		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
 		w := &nonFlushableWriter{header: http.Header{}, code: http.StatusOK}
 
 		h.Stream(w, req)
@@ -178,7 +178,7 @@ func TestSSEHandler_Stream(t *testing.T) {
 		h, eb := newTestSSEHandler()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
 		req = req.WithContext(ctx)
 		rec := newSSERecorder()
 
@@ -212,7 +212,7 @@ func TestSSEHandler_Stream(t *testing.T) {
 		h, eb := newTestSSEHandler()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
 		req = req.WithContext(ctx)
 		rec := newSSERecorder()
 
@@ -275,7 +275,7 @@ func TestSSEHandler_Stream(t *testing.T) {
 		h, eb := newTestSSEHandler()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
 		req = req.WithContext(ctx)
 		rec := newSSERecorder()
 
@@ -316,7 +316,7 @@ func TestSSEHandler_Stream(t *testing.T) {
 		h, eb := newTestSSEHandler()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
 		req = req.WithContext(ctx)
 		rec := newSSERecorder()
 
@@ -353,7 +353,7 @@ func TestSSEHandler_Stream(t *testing.T) {
 		h, eb := newTestSSEHandler()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
 		req = req.WithContext(ctx)
 		rec := newSSERecorder()
 

@@ -2,7 +2,7 @@ package oauthhandler
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -96,7 +96,7 @@ func TestHandler_Revoke(t *testing.T) {
 				}, nil
 			},
 			FindAccessTokenByTokenFunc: func(_ context.Context, _ string) (*model.OAuthAccessToken, error) {
-				return nil, fmt.Errorf("not found")
+				return nil, errors.New("not found")
 			},
 		}
 		h, _ := newHandlerWithRepo(repo)
@@ -122,7 +122,7 @@ func TestHandler_Revoke(t *testing.T) {
 				}, nil
 			},
 			FindRefreshTokenByTokenFunc: func(_ context.Context, _ string) (*model.OAuthRefreshToken, error) {
-				return nil, fmt.Errorf("not found")
+				return nil, errors.New("not found")
 			},
 		}
 		h, _ := newHandlerWithRepo(repo)
@@ -148,10 +148,10 @@ func TestHandler_Revoke(t *testing.T) {
 				}, nil
 			},
 			FindAccessTokenByTokenFunc: func(_ context.Context, _ string) (*model.OAuthAccessToken, error) {
-				return nil, fmt.Errorf("not found")
+				return nil, errors.New("not found")
 			},
 			FindRefreshTokenByTokenFunc: func(_ context.Context, _ string) (*model.OAuthRefreshToken, error) {
-				return nil, fmt.Errorf("not found")
+				return nil, errors.New("not found")
 			},
 		}
 		h, _ := newHandlerWithRepo(repo)
@@ -179,10 +179,10 @@ func TestHandler_Revoke(t *testing.T) {
 				}, nil
 			},
 			FindAccessTokenByTokenFunc: func(_ context.Context, _ string) (*model.OAuthAccessToken, error) {
-				return nil, fmt.Errorf("not found")
+				return nil, errors.New("not found")
 			},
 			FindRefreshTokenByTokenFunc: func(_ context.Context, _ string) (*model.OAuthRefreshToken, error) {
-				return nil, fmt.Errorf("not found")
+				return nil, errors.New("not found")
 			},
 		}
 		h, _ := newHandlerWithRepo(repo)
@@ -210,7 +210,7 @@ func TestHandler_Revoke(t *testing.T) {
 				}, nil
 			},
 			FindAccessTokenByTokenFunc: func(_ context.Context, _ string) (*model.OAuthAccessToken, error) {
-				return nil, fmt.Errorf("not found")
+				return nil, errors.New("not found")
 			},
 		}
 		h, _ := newHandlerWithRepo(repo)
@@ -244,7 +244,7 @@ func TestHandler_Revoke(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
-				return nil, fmt.Errorf("db error")
+				return nil, errors.New("db error")
 			},
 		}
 		h, _ := newHandlerWithRepo(repo)
@@ -274,11 +274,11 @@ func TestHandler_Revoke(t *testing.T) {
 			},
 			FindAccessTokenByTokenFunc: func(_ context.Context, _ string) (*model.OAuthAccessToken, error) {
 				accessTokenLookedUp = true
-				return nil, fmt.Errorf("not found")
+				return nil, errors.New("not found")
 			},
 			FindRefreshTokenByTokenFunc: func(_ context.Context, _ string) (*model.OAuthRefreshToken, error) {
 				refreshTokenLookedUp = true
-				return nil, fmt.Errorf("not found")
+				return nil, errors.New("not found")
 			},
 		}
 		h, _ := newHandlerWithRepo(repo)

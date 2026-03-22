@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -133,7 +134,7 @@ func (c *Client) ListSpaces(ctx context.Context, spaceType, query string, limit 
 func (c *Client) SearchPages(ctx context.Context, params SearchPagesParams) (SearchResult, error) {
 	cql := buildSearchCQL(params)
 	if cql == "" {
-		return SearchResult{}, fmt.Errorf("searching pages: either cql or query is required")
+		return SearchResult{}, errors.New("searching pages: either cql or query is required")
 	}
 
 	limit := params.Limit
@@ -260,7 +261,7 @@ func (c *Client) doGet(ctx context.Context, path string, params url.Values) ([]b
 		u += "?" + params.Encode()
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("creating request for %s: %w", path, err)
 	}
@@ -297,13 +298,13 @@ func buildSearchCQL(params SearchPagesParams) string {
 	case params.CQL != "":
 		cql = params.CQL
 	case params.Query != "":
-		cql = fmt.Sprintf(`text~"%s"`, escapeCQL(params.Query))
+		cql = `text~"` + escapeCQL(params.Query) + `"`
 	default:
 		return ""
 	}
 
 	if params.Space != "" {
-		cql = fmt.Sprintf(`space="%s" AND (%s)`, escapeCQL(params.Space), cql)
+		cql = `space="` + escapeCQL(params.Space) + `" AND (` + cql + `)`
 	}
 
 	return cql

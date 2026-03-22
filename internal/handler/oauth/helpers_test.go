@@ -21,26 +21,26 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockOAuthRepo struct {
-	CreateClientFunc                   func(ctx context.Context, client *model.OAuthClient) error
-	FindClientByClientIDFunc           func(ctx context.Context, clientID string) (*model.OAuthClient, error)
-	FindClientByIDFunc                 func(ctx context.Context, id int64) (*model.OAuthClient, error)
-	CreateAuthorizationCodeFunc        func(ctx context.Context, code *model.OAuthAuthorizationCode) error
-	FindAuthorizationCodeByCodeFunc    func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
-	RevokeAuthorizationCodeFunc        func(ctx context.Context, id int64) error
-	CreateAccessTokenFunc              func(ctx context.Context, token *model.OAuthAccessToken) error
-	FindAccessTokenByIDFunc            func(ctx context.Context, id int64) (*model.OAuthAccessToken, error)
-	FindAccessTokenByTokenFunc         func(ctx context.Context, tokenHash string) (*model.OAuthAccessToken, error)
-	RevokeAccessTokenFunc              func(ctx context.Context, id int64) error
-	CreateRefreshTokenFunc             func(ctx context.Context, token *model.OAuthRefreshToken) error
-	FindRefreshTokenByTokenFunc        func(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error)
-	RevokeRefreshTokenFunc             func(ctx context.Context, id int64) error
+	CreateClientFunc                      func(ctx context.Context, client *model.OAuthClient) error
+	FindClientByClientIDFunc              func(ctx context.Context, clientID string) (*model.OAuthClient, error)
+	FindClientByIDFunc                    func(ctx context.Context, id int64) (*model.OAuthClient, error)
+	CreateAuthorizationCodeFunc           func(ctx context.Context, code *model.OAuthAuthorizationCode) error
+	FindAuthorizationCodeByCodeFunc       func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
+	RevokeAuthorizationCodeFunc           func(ctx context.Context, id int64) error
+	CreateAccessTokenFunc                 func(ctx context.Context, token *model.OAuthAccessToken) error
+	FindAccessTokenByIDFunc               func(ctx context.Context, id int64) (*model.OAuthAccessToken, error)
+	FindAccessTokenByTokenFunc            func(ctx context.Context, tokenHash string) (*model.OAuthAccessToken, error)
+	RevokeAccessTokenFunc                 func(ctx context.Context, id int64) error
+	CreateRefreshTokenFunc                func(ctx context.Context, token *model.OAuthRefreshToken) error
+	FindRefreshTokenByTokenFunc           func(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error)
+	RevokeRefreshTokenFunc                func(ctx context.Context, id int64) error
 	RevokeRefreshTokenByAccessTokenIDFunc func(ctx context.Context, accessTokenID int64) error
-	CreateDeviceCodeFunc               func(ctx context.Context, dc *model.OAuthDeviceCode) error
-	FindDeviceCodeByDeviceCodeFunc     func(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error)
-	FindDeviceCodeByUserCodeFunc       func(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
-	UpdateDeviceCodeStatusFunc         func(ctx context.Context, id int64, status string, userID *int64) error
-	UpdateDeviceCodeLastPolledFunc     func(ctx context.Context, id int64, interval int) error
-	FindUserByIDFunc                   func(ctx context.Context, id int64) (*model.User, error)
+	CreateDeviceCodeFunc                  func(ctx context.Context, dc *model.OAuthDeviceCode) error
+	FindDeviceCodeByDeviceCodeFunc        func(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error)
+	FindDeviceCodeByUserCodeFunc          func(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
+	UpdateDeviceCodeStatusFunc            func(ctx context.Context, id int64, status string, userID *int64) error
+	UpdateDeviceCodeLastPolledFunc        func(ctx context.Context, id int64, interval int) error
+	FindUserByIDFunc                      func(ctx context.Context, id int64) (*model.User, error)
 }
 
 func (m *mockOAuthRepo) CreateClient(ctx context.Context, client *model.OAuthClient) error {
@@ -218,7 +218,7 @@ func (m *mockSessionStore) Save(_ *http.Request, _ http.ResponseWriter, _ *sessi
 // ---------------------------------------------------------------------------
 
 func discardLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 func defaultOAuthConfig() config.OAuthConfig {

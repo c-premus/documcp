@@ -2,7 +2,7 @@ package handler_test
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,7 +17,7 @@ func TestReadinessHandler_NilDB(t *testing.T) {
 
 	h := handler.NewReadinessHandler("1.0.0", nil, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -55,7 +55,7 @@ func TestReadinessHandler_DBHealthy(t *testing.T) {
 
 	h := handler.NewReadinessHandler("2.0.0", db, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -86,11 +86,11 @@ func TestReadinessHandler_DBUnhealthy(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	mock.ExpectPing().WillReturnError(fmt.Errorf("connection refused"))
+	mock.ExpectPing().WillReturnError(errors.New("connection refused"))
 
 	h := handler.NewReadinessHandler("3.0.0", db, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -117,7 +117,7 @@ func TestReadinessHandler_ContentType(t *testing.T) {
 
 	h := handler.NewReadinessHandler("1.0.0", nil, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)

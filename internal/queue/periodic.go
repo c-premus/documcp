@@ -3,8 +3,8 @@ package queue
 import (
 	"log/slog"
 
-	"github.com/robfig/cron/v3"
 	"github.com/riverqueue/river"
+	"github.com/robfig/cron/v3"
 
 	"github.com/c-premus/documcp/internal/config"
 )

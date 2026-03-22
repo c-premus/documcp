@@ -214,16 +214,14 @@ func TestEventBus_ConcurrentPublishSubscribe(t *testing.T) {
 
 	// Spawn concurrent publishers.
 	for range numGoroutines {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for j := range numEvents {
 				eb.Publish(Event{
 					Type:  EventJobDispatched,
 					JobID: int64(j),
 				})
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

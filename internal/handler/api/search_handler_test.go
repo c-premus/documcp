@@ -3,8 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -31,7 +30,7 @@ func newTestSearchHandler() *SearchHandler {
 		searcher:    nil, // will cause panic if Search/FederatedSearch reaches Meilisearch call
 		queryLister: nil,
 		suggester:   nil,
-		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		logger:      slog.New(slog.DiscardHandler),
 	}
 }
 
@@ -46,7 +45,7 @@ func TestSearchHandler_Search(t *testing.T) {
 		t.Parallel()
 
 		h := newTestSearchHandler()
-		req := httptest.NewRequest(http.MethodGet, "/api/search", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Search(rr, req)
@@ -68,7 +67,7 @@ func TestSearchHandler_Search(t *testing.T) {
 		t.Parallel()
 
 		h := newTestSearchHandler()
-		req := httptest.NewRequest(http.MethodGet, "/api/search?q=", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search?q=", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Search(rr, req)
@@ -82,7 +81,7 @@ func TestSearchHandler_Search(t *testing.T) {
 		t.Parallel()
 
 		h := newTestSearchHandler()
-		req := httptest.NewRequest(http.MethodGet, "/api/search", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Search(rr, req)
@@ -100,7 +99,7 @@ func TestSearchHandler_Search(t *testing.T) {
 		t.Parallel()
 
 		h := newTestSearchHandler()
-		req := httptest.NewRequest(http.MethodGet, "/api/search", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Search(rr, req)
@@ -114,7 +113,7 @@ func TestSearchHandler_Search(t *testing.T) {
 		t.Parallel()
 
 		h := newTestSearchHandler()
-		req := httptest.NewRequest(http.MethodGet, "/api/search?q=test&file_type=exe", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search?q=test&file_type=exe", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Search(rr, req)
@@ -143,7 +142,7 @@ func TestSearchHandler_FederatedSearch(t *testing.T) {
 		t.Parallel()
 
 		h := newTestSearchHandler()
-		req := httptest.NewRequest(http.MethodGet, "/api/search/unified", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/unified", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.FederatedSearch(rr, req)
@@ -165,7 +164,7 @@ func TestSearchHandler_FederatedSearch(t *testing.T) {
 		t.Parallel()
 
 		h := newTestSearchHandler()
-		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.FederatedSearch(rr, req)
@@ -179,7 +178,7 @@ func TestSearchHandler_FederatedSearch(t *testing.T) {
 		t.Parallel()
 
 		h := newTestSearchHandler()
-		req := httptest.NewRequest(http.MethodGet, "/api/search/unified", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/unified", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.FederatedSearch(rr, req)
@@ -227,7 +226,7 @@ func newSearchHandlerWithMocks(ql searchQueryLister, ts titleSuggester) *SearchH
 		searcher:    nil,
 		queryLister: ql,
 		suggester:   ts,
-		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		logger:      slog.New(slog.DiscardHandler),
 	}
 }
 
@@ -254,7 +253,7 @@ func TestSearchHandler_Popular(t *testing.T) {
 		}
 		h := newSearchHandlerWithMocks(ql, nil)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/popular", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/popular", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Popular(rr, req)
@@ -287,7 +286,7 @@ func TestSearchHandler_Popular(t *testing.T) {
 		}
 		h := newSearchHandlerWithMocks(ql, nil)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/popular?limit=25", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/popular?limit=25", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Popular(rr, req)
@@ -308,7 +307,7 @@ func TestSearchHandler_Popular(t *testing.T) {
 		}
 		h := newSearchHandlerWithMocks(ql, nil)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/popular?limit=200", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/popular?limit=200", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Popular(rr, req)
@@ -329,7 +328,7 @@ func TestSearchHandler_Popular(t *testing.T) {
 		}
 		h := newSearchHandlerWithMocks(ql, nil)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/popular?limit=0", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/popular?limit=0", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Popular(rr, req)
@@ -350,7 +349,7 @@ func TestSearchHandler_Popular(t *testing.T) {
 		}
 		h := newSearchHandlerWithMocks(ql, nil)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/popular?limit=-5", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/popular?limit=-5", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Popular(rr, req)
@@ -364,12 +363,12 @@ func TestSearchHandler_Popular(t *testing.T) {
 
 		ql := &mockQueryLister{
 			popularQueriesFn: func(_ context.Context, _ int) ([]repository.PopularQuery, error) {
-				return nil, fmt.Errorf("database connection lost")
+				return nil, errors.New("database connection lost")
 			},
 		}
 		h := newSearchHandlerWithMocks(ql, nil)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/popular", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/popular", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Popular(rr, req)
@@ -391,7 +390,7 @@ func TestSearchHandler_Popular(t *testing.T) {
 		}
 		h := newSearchHandlerWithMocks(ql, nil)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/popular", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/popular", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Popular(rr, req)
@@ -419,7 +418,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 
 		h := newSearchHandlerWithMocks(nil, &mockTitleSuggester{})
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Autocomplete(rr, req)
@@ -436,7 +435,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 
 		h := newSearchHandlerWithMocks(nil, &mockTitleSuggester{})
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=a", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=a", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Autocomplete(rr, req)
@@ -454,7 +453,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		h := newSearchHandlerWithMocks(nil, &mockTitleSuggester{})
 
 		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query="+
-			strings.Repeat("x", 101), nil)
+			strings.Repeat("x", 101), http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Autocomplete(rr, req)
@@ -478,7 +477,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		}
 		h := newSearchHandlerWithMocks(nil, ts)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=go", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=go", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Autocomplete(rr, req)
@@ -521,7 +520,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		}
 		h := newSearchHandlerWithMocks(nil, ts)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=te&limit=8", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=te&limit=8", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Autocomplete(rr, req)
@@ -542,7 +541,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		}
 		h := newSearchHandlerWithMocks(nil, ts)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=te&limit=100", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=te&limit=100", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Autocomplete(rr, req)
@@ -563,7 +562,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		}
 		h := newSearchHandlerWithMocks(nil, ts)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=test", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=test", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Autocomplete(rr, req)
@@ -577,12 +576,12 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 
 		ts := &mockTitleSuggester{
 			suggestTitlesFn: func(_ context.Context, _ string, _ int) ([]repository.TitleSuggestion, error) {
-				return nil, fmt.Errorf("database timeout")
+				return nil, errors.New("database timeout")
 			},
 		}
 		h := newSearchHandlerWithMocks(nil, ts)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=test", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=test", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Autocomplete(rr, req)
@@ -604,7 +603,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		}
 		h := newSearchHandlerWithMocks(nil, ts)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=zzz", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=zzz", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Autocomplete(rr, req)
@@ -632,7 +631,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		}
 		h := newSearchHandlerWithMocks(nil, ts)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=ab", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=ab", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Autocomplete(rr, req)
@@ -756,4 +755,3 @@ func TestHighlightPrefix(t *testing.T) {
 		})
 	}
 }
-

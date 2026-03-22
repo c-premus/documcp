@@ -3,7 +3,7 @@ package oauthhandler
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -235,7 +235,7 @@ func TestHandler_Token_AuthorizationCode(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
-				return nil, fmt.Errorf("db error")
+				return nil, errors.New("db error")
 			},
 		}
 		h, _ := newHandlerWithRepo(repo)
@@ -277,7 +277,7 @@ func TestHandler_Token_RefreshToken(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
-				return nil, fmt.Errorf("db error")
+				return nil, errors.New("db error")
 			},
 		}
 		h, _ := newHandlerWithRepo(repo)
@@ -298,7 +298,7 @@ func TestHandler_Token_RefreshToken(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
-				return nil, fmt.Errorf("not found")
+				return nil, errors.New("not found")
 			},
 		}
 		h, _ := newHandlerWithRepo(repo)
@@ -376,7 +376,7 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
-				return nil, fmt.Errorf("db error")
+				return nil, errors.New("db error")
 			},
 		}
 		h, _ := newHandlerWithRepo(repo)

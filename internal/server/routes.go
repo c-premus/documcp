@@ -16,8 +16,8 @@ import (
 
 	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
 	"github.com/c-premus/documcp/internal/auth/oauth"
-	authscope "github.com/c-premus/documcp/internal/auth/scope"
 	"github.com/c-premus/documcp/internal/auth/oidc"
+	authscope "github.com/c-premus/documcp/internal/auth/scope"
 	"github.com/c-premus/documcp/internal/handler"
 	apihandler "github.com/c-premus/documcp/internal/handler/api"
 	oauthhandler "github.com/c-premus/documcp/internal/handler/oauth"
@@ -54,14 +54,14 @@ type Deps struct {
 
 	// Vue SPA
 	AuthHandler *apihandler.AuthHandler // nil if not configured
-	SPAHandler  http.Handler           // nil if not configured
+	SPAHandler  http.Handler            // nil if not configured
 
 	// Search health
 	SearchClient interface{ Healthy() bool } // for readiness checks (nil disables Meilisearch check)
 
 	// Observability
-	Metrics      *observability.Metrics // nil disables Prometheus metrics
-	OTELEnabled  bool                   // enables tracing middleware
+	Metrics     *observability.Metrics // nil disables Prometheus metrics
+	OTELEnabled bool                   // enables tracing middleware
 
 	// Security
 	CSRFKey  []byte // 32-byte key for CSRF token generation (nil disables CSRF)

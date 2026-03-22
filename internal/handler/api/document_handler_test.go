@@ -5,7 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"log/slog"
 	"mime/multipart"
@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -123,14 +124,14 @@ func (m *mockPipeline) Upload(ctx context.Context, params service.UploadDocument
 	if m.uploadFn != nil {
 		return m.uploadFn(ctx, params)
 	}
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (m *mockPipeline) Update(ctx context.Context, docUUID string, params service.UpdateDocumentParams) (*model.Document, error) {
 	if m.updateFn != nil {
 		return m.updateFn(ctx, docUUID, params)
 	}
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (m *mockPipeline) Delete(ctx context.Context, docUUID string) error {
@@ -224,7 +225,7 @@ func (m *mockHandlerRepo) ListDeleted(ctx context.Context, limit, offset int, us
 // ---------------------------------------------------------------------------
 
 func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 func newTestDocument(uuid string) *model.Document {
@@ -316,7 +317,7 @@ func TestDocumentHandler_Show(t *testing.T) {
 		}
 		h := newDocumentHandlerForTest(mock)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/nonexistent", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/nonexistent", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "nonexistent"})
 		rr := httptest.NewRecorder()
 
@@ -337,12 +338,12 @@ func TestDocumentHandler_Show(t *testing.T) {
 
 		mock := &mockDocumentRepo{
 			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return nil, fmt.Errorf("connection refused")
+				return nil, errors.New("connection refused")
 			},
 		}
 		h := newDocumentHandlerForTest(mock)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/abc-123", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/abc-123", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "abc-123"})
 		rr := httptest.NewRecorder()
 
@@ -418,7 +419,7 @@ func TestDocumentHandler_Update(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 			updateFn: func(_ context.Context, _ *model.Document) error {
-				return fmt.Errorf("database write error")
+				return errors.New("database write error")
 			},
 		}
 		h := newDocumentHandlerForTest(mock)
@@ -483,7 +484,7 @@ func TestDocumentHandler_Delete(t *testing.T) {
 		}
 		h := newDocumentHandlerForTest(mock)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/documents/abc-123", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/abc-123", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "abc-123"})
 		rr := httptest.NewRecorder()
 
@@ -508,7 +509,7 @@ func TestDocumentHandler_Delete(t *testing.T) {
 		}
 		h := newDocumentHandlerForTest(mock)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/documents/nonexistent", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/nonexistent", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "nonexistent"})
 		rr := httptest.NewRecorder()
 
@@ -531,12 +532,12 @@ func TestDocumentHandler_Delete(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 			softDeleteFn: func(_ context.Context, _ int64) error {
-				return fmt.Errorf("database error")
+				return errors.New("database error")
 			},
 		}
 		h := newDocumentHandlerForTest(mock)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/documents/abc-123", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/abc-123", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "abc-123"})
 		rr := httptest.NewRecorder()
 
@@ -897,12 +898,7 @@ func (m *mockExtractor) Extract(ctx context.Context, filePath string) (*extracto
 }
 
 func (m *mockExtractor) Supports(mimeType string) bool {
-	for _, mt := range m.mimeTypes {
-		if mt == mimeType {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.mimeTypes, mimeType)
 }
 
 // newDocumentHandlerWithExtractor creates a DocumentHandler with a pipeline
@@ -1077,7 +1073,7 @@ func TestDocumentHandler_Analyze(t *testing.T) {
 		ext := &mockExtractor{
 			mimeTypes: []string{"text/markdown"},
 			extractFn: func(_ context.Context, _ string) (*extractor.ExtractedContent, error) {
-				return nil, fmt.Errorf("extraction engine failure")
+				return nil, errors.New("extraction engine failure")
 			},
 		}
 		h := newDocumentHandlerWithExtractor(&mockDocumentRepo{}, ext)
@@ -1151,7 +1147,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/nonexistent/download", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/nonexistent/download", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "nonexistent"})
 		rr := httptest.NewRecorder()
 
@@ -1167,12 +1163,12 @@ func TestDocumentHandler_Download(t *testing.T) {
 
 		repo := &mockHandlerRepo{
 			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return nil, fmt.Errorf("connection refused")
+				return nil, errors.New("connection refused")
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/abc/download", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/abc/download", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "abc"})
 		rr := httptest.NewRecorder()
 
@@ -1197,7 +1193,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/priv-uuid/download", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/priv-uuid/download", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "priv-uuid"})
 		rr := httptest.NewRecorder()
 
@@ -1223,7 +1219,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 		h := newTestHandler(&mockPipeline{}, repo)
 
 		user := &model.User{ID: 99, Name: "Stranger"}
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/priv-uuid-2/download", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/priv-uuid-2/download", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "priv-uuid-2"})
 		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
 		req = req.WithContext(ctx)
@@ -1248,7 +1244,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/no-file-uuid/download", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/no-file-uuid/download", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "no-file-uuid"})
 		rr := httptest.NewRecorder()
 
@@ -1274,7 +1270,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/missing-file-uuid/download", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/missing-file-uuid/download", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "missing-file-uuid"})
 		rr := httptest.NewRecorder()
 
@@ -1290,10 +1286,10 @@ func TestDocumentHandler_Download(t *testing.T) {
 
 		tmpDir := t.TempDir()
 		subDir := filepath.Join(tmpDir, "markdown")
-		require.NoError(t, os.MkdirAll(subDir, 0o755))
+		require.NoError(t, os.MkdirAll(subDir, 0o750))
 
 		fileContent := "# Hello World\n\nThis is test content."
-		require.NoError(t, os.WriteFile(filepath.Join(subDir, "test.md"), []byte(fileContent), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(subDir, "test.md"), []byte(fileContent), 0o600))
 
 		doc := newTestDocument("dl-uuid-1")
 		doc.IsPublic = true
@@ -1308,7 +1304,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/dl-uuid-1/download", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/dl-uuid-1/download", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "dl-uuid-1"})
 		rr := httptest.NewRecorder()
 
@@ -1325,8 +1321,8 @@ func TestDocumentHandler_Download(t *testing.T) {
 
 		tmpDir := t.TempDir()
 		subDir := filepath.Join(tmpDir, "markdown")
-		require.NoError(t, os.MkdirAll(subDir, 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(subDir, "private.md"), []byte("secret"), 0o644))
+		require.NoError(t, os.MkdirAll(subDir, 0o750))
+		require.NoError(t, os.WriteFile(filepath.Join(subDir, "private.md"), []byte("secret"), 0o600))
 
 		doc := newTestDocument("owner-dl-uuid")
 		doc.IsPublic = false
@@ -1341,7 +1337,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
 
 		user := &model.User{ID: 42, Name: "Owner"}
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/owner-dl-uuid/download", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/owner-dl-uuid/download", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "owner-dl-uuid"})
 		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
 		req = req.WithContext(ctx)
@@ -1358,8 +1354,8 @@ func TestDocumentHandler_Download(t *testing.T) {
 
 		tmpDir := t.TempDir()
 		subDir := filepath.Join(tmpDir, "markdown")
-		require.NoError(t, os.MkdirAll(subDir, 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(subDir, "test.md"), []byte("content"), 0o644))
+		require.NoError(t, os.MkdirAll(subDir, 0o750))
+		require.NoError(t, os.WriteFile(filepath.Join(subDir, "test.md"), []byte("content"), 0o600))
 
 		doc := newTestDocument("notitle-uuid")
 		doc.IsPublic = true
@@ -1373,7 +1369,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/notitle-uuid/download", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/notitle-uuid/download", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "notitle-uuid"})
 		rr := httptest.NewRecorder()
 
@@ -1388,8 +1384,8 @@ func TestDocumentHandler_Download(t *testing.T) {
 
 		tmpDir := t.TempDir()
 		subDir := filepath.Join(tmpDir, "markdown")
-		require.NoError(t, os.MkdirAll(subDir, 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(subDir, "test.md"), []byte("data"), 0o644))
+		require.NoError(t, os.MkdirAll(subDir, 0o750))
+		require.NoError(t, os.WriteFile(filepath.Join(subDir, "test.md"), []byte("data"), 0o600))
 
 		doc := newTestDocument("notype-uuid")
 		doc.IsPublic = true
@@ -1403,7 +1399,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/notype-uuid/download", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/notype-uuid/download", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "notype-uuid"})
 		rr := httptest.NewRecorder()
 
@@ -1668,7 +1664,7 @@ func TestDocumentHandler_List(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -1707,7 +1703,7 @@ func TestDocumentHandler_List(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents?limit=10&offset=5", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents?limit=10&offset=5", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -1742,7 +1738,7 @@ func TestDocumentHandler_List(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents?file_type=pdf&status=indexed&q=test&sort=title&order=asc", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents?file_type=pdf&status=indexed&q=test&sort=title&order=asc", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -1760,12 +1756,12 @@ func TestDocumentHandler_List(t *testing.T) {
 
 		repo := &mockHandlerRepo{
 			listFn: func(_ context.Context, _ repository.DocumentListParams) (*repository.DocumentListResult, error) {
-				return nil, fmt.Errorf("database down")
+				return nil, errors.New("database down")
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -1787,12 +1783,12 @@ func TestDocumentHandler_List(t *testing.T) {
 				}, nil
 			},
 			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
-				return nil, fmt.Errorf("tags error")
+				return nil, errors.New("tags error")
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -1836,7 +1832,7 @@ func TestDocumentHandler_Restore(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/documents/restore-uuid/restore", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/restore-uuid/restore", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "restore-uuid"})
 		rr := httptest.NewRecorder()
 
@@ -1859,7 +1855,7 @@ func TestDocumentHandler_Restore(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/documents/missing/restore", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/missing/restore", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "missing"})
 		rr := httptest.NewRecorder()
 
@@ -1875,12 +1871,12 @@ func TestDocumentHandler_Restore(t *testing.T) {
 
 		repo := &mockHandlerRepo{
 			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return nil, fmt.Errorf("database error")
+				return nil, errors.New("database error")
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/documents/err/restore", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/err/restore", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "err"})
 		rr := httptest.NewRecorder()
 
@@ -1904,7 +1900,7 @@ func TestDocumentHandler_Restore(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/documents/not-deleted-uuid/restore", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/not-deleted-uuid/restore", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "not-deleted-uuid"})
 		rr := httptest.NewRecorder()
 
@@ -1926,12 +1922,12 @@ func TestDocumentHandler_Restore(t *testing.T) {
 				return doc, nil
 			},
 			restoreFn: func(_ context.Context, _ int64) error {
-				return fmt.Errorf("restore failed")
+				return errors.New("restore failed")
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/documents/restore-fail-uuid/restore", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/restore-fail-uuid/restore", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "restore-fail-uuid"})
 		rr := httptest.NewRecorder()
 
@@ -1956,12 +1952,12 @@ func TestDocumentHandler_Restore(t *testing.T) {
 				return nil
 			},
 			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return nil, fmt.Errorf("re-fetch failed")
+				return nil, errors.New("re-fetch failed")
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/documents/refetch-fail-uuid/restore", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/refetch-fail-uuid/restore", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "refetch-fail-uuid"})
 		rr := httptest.NewRecorder()
 
@@ -1995,7 +1991,7 @@ func TestDocumentHandler_Purge(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/documents/purge-uuid/purge", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/purge-uuid/purge", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "purge-uuid"})
 		rr := httptest.NewRecorder()
 
@@ -2011,9 +2007,9 @@ func TestDocumentHandler_Purge(t *testing.T) {
 
 		tmpDir := t.TempDir()
 		subDir := filepath.Join(tmpDir, "markdown")
-		require.NoError(t, os.MkdirAll(subDir, 0o755))
+		require.NoError(t, os.MkdirAll(subDir, 0o750))
 		filePath := filepath.Join(subDir, "to-delete.md")
-		require.NoError(t, os.WriteFile(filePath, []byte("delete me"), 0o644))
+		require.NoError(t, os.WriteFile(filePath, []byte("delete me"), 0o600))
 
 		doc := newTestDocument("purge-file-uuid")
 
@@ -2027,7 +2023,7 @@ func TestDocumentHandler_Purge(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/documents/purge-file-uuid/purge", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/purge-file-uuid/purge", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "purge-file-uuid"})
 		rr := httptest.NewRecorder()
 
@@ -2048,7 +2044,7 @@ func TestDocumentHandler_Purge(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/documents/missing/purge", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/missing/purge", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "missing"})
 		rr := httptest.NewRecorder()
 
@@ -2062,12 +2058,12 @@ func TestDocumentHandler_Purge(t *testing.T) {
 
 		repo := &mockHandlerRepo{
 			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return nil, fmt.Errorf("db error")
+				return nil, errors.New("db error")
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/documents/err/purge", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/err/purge", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "err"})
 		rr := httptest.NewRecorder()
 
@@ -2085,12 +2081,12 @@ func TestDocumentHandler_Purge(t *testing.T) {
 				return doc, nil
 			},
 			purgeSingleFn: func(_ context.Context, _ int64) (string, error) {
-				return "", fmt.Errorf("purge failed")
+				return "", errors.New("purge failed")
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/documents/purge-err-uuid/purge", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/purge-err-uuid/purge", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "purge-err-uuid"})
 		rr := httptest.NewRecorder()
 
@@ -2124,7 +2120,7 @@ func TestDocumentHandler_BulkPurge(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.BulkPurge(rr, req)
@@ -2148,7 +2144,7 @@ func TestDocumentHandler_BulkPurge(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge?older_than_days=7", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge?older_than_days=7", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.BulkPurge(rr, req)
@@ -2164,7 +2160,7 @@ func TestDocumentHandler_BulkPurge(t *testing.T) {
 
 		h := newTestHandler(&mockPipeline{}, &mockHandlerRepo{})
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge?older_than_days=-1", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge?older_than_days=-1", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.BulkPurge(rr, req)
@@ -2179,7 +2175,7 @@ func TestDocumentHandler_BulkPurge(t *testing.T) {
 
 		h := newTestHandler(&mockPipeline{}, &mockHandlerRepo{})
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge?older_than_days=abc", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge?older_than_days=abc", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.BulkPurge(rr, req)
@@ -2192,12 +2188,12 @@ func TestDocumentHandler_BulkPurge(t *testing.T) {
 
 		repo := &mockHandlerRepo{
 			purgeSoftDeletedFn: func(_ context.Context, _ time.Duration) ([]repository.DocumentFilePath, error) {
-				return nil, fmt.Errorf("purge error")
+				return nil, errors.New("purge error")
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.BulkPurge(rr, req)
@@ -2212,9 +2208,9 @@ func TestDocumentHandler_BulkPurge(t *testing.T) {
 
 		tmpDir := t.TempDir()
 		subDir := filepath.Join(tmpDir, "pdf")
-		require.NoError(t, os.MkdirAll(subDir, 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(subDir, "a.pdf"), []byte("aaa"), 0o644))
-		require.NoError(t, os.WriteFile(filepath.Join(subDir, "b.pdf"), []byte("bbb"), 0o644))
+		require.NoError(t, os.MkdirAll(subDir, 0o750))
+		require.NoError(t, os.WriteFile(filepath.Join(subDir, "a.pdf"), []byte("aaa"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(subDir, "b.pdf"), []byte("bbb"), 0o600))
 
 		repo := &mockHandlerRepo{
 			purgeSoftDeletedFn: func(_ context.Context, _ time.Duration) ([]repository.DocumentFilePath, error) {
@@ -2226,7 +2222,7 @@ func TestDocumentHandler_BulkPurge(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.BulkPurge(rr, req)
@@ -2250,7 +2246,7 @@ func TestDocumentHandler_BulkPurge(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge?older_than_days=0", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge?older_than_days=0", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.BulkPurge(rr, req)
@@ -2283,7 +2279,7 @@ func TestDocumentHandler_ListDeleted(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash?limit=10&offset=0", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash?limit=10&offset=0", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.ListDeleted(rr, req)
@@ -2308,7 +2304,7 @@ func TestDocumentHandler_ListDeleted(t *testing.T) {
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.ListDeleted(rr, req)
@@ -2326,12 +2322,12 @@ func TestDocumentHandler_ListDeleted(t *testing.T) {
 
 		repo := &mockHandlerRepo{
 			listDeletedFn: func(_ context.Context, _ int, _ int, _ *int64) ([]model.Document, int, error) {
-				return nil, 0, fmt.Errorf("db error")
+				return nil, 0, errors.New("db error")
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.ListDeleted(rr, req)
@@ -2350,12 +2346,12 @@ func TestDocumentHandler_ListDeleted(t *testing.T) {
 				return []model.Document{doc}, 1, nil
 			},
 			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
-				return nil, fmt.Errorf("tags unavailable")
+				return nil, errors.New("tags unavailable")
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.ListDeleted(rr, req)
@@ -2393,7 +2389,7 @@ func TestDocumentHandler_Show_Success(t *testing.T) {
 		}
 		h := newTestHandler(p, repo)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/show-uuid", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/show-uuid", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "show-uuid"})
 		rr := httptest.NewRecorder()
 
@@ -2430,7 +2426,7 @@ func TestDocumentHandler_List_OwnershipScoping(t *testing.T) {
 		h := newTestHandler(&mockPipeline{}, repo)
 
 		user := &model.User{ID: 42, IsAdmin: false}
-		req := httptest.NewRequest(http.MethodGet, "/api/documents", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents", http.NoBody)
 		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
@@ -2455,7 +2451,7 @@ func TestDocumentHandler_List_OwnershipScoping(t *testing.T) {
 		h := newTestHandler(&mockPipeline{}, repo)
 
 		user := &model.User{ID: 1, IsAdmin: true}
-		req := httptest.NewRequest(http.MethodGet, "/api/documents", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents", http.NoBody)
 		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
@@ -2486,7 +2482,7 @@ func TestDocumentHandler_Show_OwnershipScoping(t *testing.T) {
 		h := newTestHandler(p, repo)
 
 		user := &model.User{ID: 42, IsAdmin: false}
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/own-doc", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/own-doc", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "own-doc"})
 		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
 		req = req.WithContext(ctx)
@@ -2513,7 +2509,7 @@ func TestDocumentHandler_Show_OwnershipScoping(t *testing.T) {
 		h := newTestHandler(p, repo)
 
 		user := &model.User{ID: 42, IsAdmin: false}
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/public-doc", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/public-doc", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "public-doc"})
 		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
 		req = req.WithContext(ctx)
@@ -2540,7 +2536,7 @@ func TestDocumentHandler_Show_OwnershipScoping(t *testing.T) {
 		h := newTestHandler(p, repo)
 
 		user := &model.User{ID: 42, IsAdmin: false}
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/other-doc", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/other-doc", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "other-doc"})
 		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
 		req = req.WithContext(ctx)
@@ -2569,7 +2565,7 @@ func TestDocumentHandler_Show_OwnershipScoping(t *testing.T) {
 		h := newTestHandler(p, repo)
 
 		user := &model.User{ID: 42, IsAdmin: false}
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/unowned-doc", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/unowned-doc", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "unowned-doc"})
 		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
 		req = req.WithContext(ctx)
@@ -2634,7 +2630,7 @@ func TestDocumentHandler_ListDeleted_OwnershipScoping(t *testing.T) {
 		h := newTestHandler(&mockPipeline{}, repo)
 
 		user := &model.User{ID: 42, IsAdmin: false}
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash", http.NoBody)
 		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
@@ -2661,7 +2657,7 @@ func TestDocumentHandler_ListDeleted_OwnershipScoping(t *testing.T) {
 		h := newTestHandler(&mockPipeline{}, repo)
 
 		user := &model.User{ID: 1, IsAdmin: true}
-		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/documents/trash", http.NoBody)
 		ctx := context.WithValue(req.Context(), authmiddleware.UserContextKey, user)
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()

@@ -24,7 +24,7 @@ func TestTracing_PassesRequestThrough(t *testing.T) {
 	mw := observability.Tracing("test-tracer")
 	handler := mw(inner)
 
-	req := httptest.NewRequest(http.MethodGet, "/test/path", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test/path", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -68,7 +68,7 @@ func TestTracing_PreservesResponseStatus(t *testing.T) {
 			mw := observability.Tracing("test-tracer")
 			handler := mw(inner)
 
-			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 			rec := httptest.NewRecorder()
 
 			handler.ServeHTTP(rec, req)
@@ -104,7 +104,7 @@ func TestTracing_PreservesRequestMethod(t *testing.T) {
 			mw := observability.Tracing("test-tracer")
 			handler := mw(inner)
 
-			req := httptest.NewRequest(method, "/test", nil)
+			req := httptest.NewRequest(method, "/test", http.NoBody)
 			rec := httptest.NewRecorder()
 
 			handler.ServeHTTP(rec, req)
@@ -130,7 +130,7 @@ func TestTracing_PropagatesContextToHandler(t *testing.T) {
 	mw := observability.Tracing("test-tracer")
 	handler := mw(inner)
 
-	req := httptest.NewRequest(http.MethodGet, "/ctx-test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ctx-test", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -153,7 +153,7 @@ func TestTracing_WithResponseBody(t *testing.T) {
 	mw := observability.Tracing("test-tracer")
 	handler := mw(inner)
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -186,7 +186,7 @@ func TestTracing_WithChiRouter(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/documents/test-uuid-123", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/documents/test-uuid-123", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	r.ServeHTTP(rec, req)
@@ -212,7 +212,7 @@ func TestTracing_DefaultStatusCodeWhenNotExplicitlySet(t *testing.T) {
 	mw := observability.Tracing("test-tracer")
 	handler := mw(inner)
 
-	req := httptest.NewRequest(http.MethodGet, "/implicit", nil)
+	req := httptest.NewRequest(http.MethodGet, "/implicit", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -232,7 +232,7 @@ func TestTracing_WithContentLength(t *testing.T) {
 	mw := observability.Tracing("test-tracer")
 	handler := mw(inner)
 
-	req := httptest.NewRequest(http.MethodPost, "/with-content", nil)
+	req := httptest.NewRequest(http.MethodPost, "/with-content", http.NoBody)
 	req.ContentLength = 1024
 	rec := httptest.NewRecorder()
 

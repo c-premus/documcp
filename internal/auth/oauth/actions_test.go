@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -26,29 +25,29 @@ import (
 
 type mockOAuthRepo struct {
 	// Clients
-	CreateClientFunc        func(ctx context.Context, client *model.OAuthClient) error
+	CreateClientFunc         func(ctx context.Context, client *model.OAuthClient) error
 	FindClientByClientIDFunc func(ctx context.Context, clientID string) (*model.OAuthClient, error)
-	FindClientByIDFunc      func(ctx context.Context, id int64) (*model.OAuthClient, error)
+	FindClientByIDFunc       func(ctx context.Context, id int64) (*model.OAuthClient, error)
 	// Authorization Codes
-	CreateAuthorizationCodeFunc        func(ctx context.Context, code *model.OAuthAuthorizationCode) error
-	FindAuthorizationCodeByCodeFunc    func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
-	RevokeAuthorizationCodeFunc        func(ctx context.Context, id int64) error
+	CreateAuthorizationCodeFunc     func(ctx context.Context, code *model.OAuthAuthorizationCode) error
+	FindAuthorizationCodeByCodeFunc func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
+	RevokeAuthorizationCodeFunc     func(ctx context.Context, id int64) error
 	// Access Tokens
-	CreateAccessTokenFunc     func(ctx context.Context, token *model.OAuthAccessToken) error
-	FindAccessTokenByIDFunc   func(ctx context.Context, id int64) (*model.OAuthAccessToken, error)
+	CreateAccessTokenFunc      func(ctx context.Context, token *model.OAuthAccessToken) error
+	FindAccessTokenByIDFunc    func(ctx context.Context, id int64) (*model.OAuthAccessToken, error)
 	FindAccessTokenByTokenFunc func(ctx context.Context, tokenHash string) (*model.OAuthAccessToken, error)
-	RevokeAccessTokenFunc     func(ctx context.Context, id int64) error
+	RevokeAccessTokenFunc      func(ctx context.Context, id int64) error
 	// Refresh Tokens
-	CreateRefreshTokenFunc              func(ctx context.Context, token *model.OAuthRefreshToken) error
-	FindRefreshTokenByTokenFunc         func(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error)
-	RevokeRefreshTokenFunc              func(ctx context.Context, id int64) error
+	CreateRefreshTokenFunc                func(ctx context.Context, token *model.OAuthRefreshToken) error
+	FindRefreshTokenByTokenFunc           func(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error)
+	RevokeRefreshTokenFunc                func(ctx context.Context, id int64) error
 	RevokeRefreshTokenByAccessTokenIDFunc func(ctx context.Context, accessTokenID int64) error
 	// Device Codes
-	CreateDeviceCodeFunc            func(ctx context.Context, dc *model.OAuthDeviceCode) error
-	FindDeviceCodeByDeviceCodeFunc  func(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error)
-	FindDeviceCodeByUserCodeFunc    func(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
-	UpdateDeviceCodeStatusFunc      func(ctx context.Context, id int64, status string, userID *int64) error
-	UpdateDeviceCodeLastPolledFunc  func(ctx context.Context, id int64, interval int) error
+	CreateDeviceCodeFunc           func(ctx context.Context, dc *model.OAuthDeviceCode) error
+	FindDeviceCodeByDeviceCodeFunc func(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error)
+	FindDeviceCodeByUserCodeFunc   func(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
+	UpdateDeviceCodeStatusFunc     func(ctx context.Context, id int64, status string, userID *int64) error
+	UpdateDeviceCodeLastPolledFunc func(ctx context.Context, id int64, interval int) error
 	// Users
 	FindUserByIDFunc func(ctx context.Context, id int64) (*model.User, error)
 }
@@ -1609,7 +1608,7 @@ func TestRevokeToken(t *testing.T) {
 				}
 				return nil, sql.ErrNoRows
 			},
-			RevokeAccessTokenFunc: func(_ context.Context, _ int64) error { return nil },
+			RevokeAccessTokenFunc:                 func(_ context.Context, _ int64) error { return nil },
 			RevokeRefreshTokenByAccessTokenIDFunc: func(_ context.Context, _ int64) error { return nil },
 			FindRefreshTokenByTokenFunc: func(_ context.Context, _ string) (*model.OAuthRefreshToken, error) {
 				refreshLookedUp = true
@@ -2811,7 +2810,7 @@ func TestIssueTokenPair(t *testing.T) {
 
 		repo := &mockOAuthRepo{
 			CreateAccessTokenFunc: func(_ context.Context, _ *model.OAuthAccessToken) error {
-				return fmt.Errorf("db error")
+				return errors.New("db error")
 			},
 		}
 		svc := testService(repo)
@@ -2836,7 +2835,7 @@ func TestIssueTokenPair(t *testing.T) {
 				return nil
 			},
 			CreateRefreshTokenFunc: func(_ context.Context, _ *model.OAuthRefreshToken) error {
-				return fmt.Errorf("db error")
+				return errors.New("db error")
 			},
 		}
 		svc := testService(repo)

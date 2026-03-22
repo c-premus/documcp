@@ -140,7 +140,7 @@ func (r *DocumentRepository) ReplaceTags(ctx context.Context, documentID int64, 
 	if err != nil {
 		return fmt.Errorf("beginning transaction for replacing tags on document %d: %w", documentID, err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer tx.Rollback() //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
 
 	_, err = tx.ExecContext(ctx, `DELETE FROM document_tags WHERE document_id = $1`, documentID)
 	if err != nil {
@@ -216,7 +216,7 @@ func (r *DocumentRepository) PurgeSoftDeleted(ctx context.Context, olderThan tim
 	if err != nil {
 		return nil, fmt.Errorf("beginning purge soft-deleted transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer tx.Rollback() //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
 
 	// 1. Select documents to purge.
 	var paths []DocumentFilePath
@@ -306,7 +306,7 @@ func (r *DocumentRepository) PurgeSingle(ctx context.Context, id int64) (string,
 	if err != nil {
 		return "", fmt.Errorf("beginning purge single transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer tx.Rollback() //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
 
 	// Get file path before deletion.
 	var filePath string

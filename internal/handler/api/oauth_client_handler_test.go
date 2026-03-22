@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -43,7 +43,7 @@ func (m *mockOAuthClientRepo) FindClientByID(ctx context.Context, id int64) (*mo
 	if m.findClientByIDFn != nil {
 		return m.findClientByIDFn(ctx, id)
 	}
-	return nil, fmt.Errorf("not found")
+	return nil, errors.New("not found")
 }
 
 func (m *mockOAuthClientRepo) DeactivateClient(ctx context.Context, id int64) error {
@@ -79,7 +79,7 @@ func TestOAuthClientHandler_List_Success(t *testing.T) {
 
 	h := NewOAuthClientHandler(repo, discardLogger())
 
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.List(rec, req)
@@ -109,13 +109,13 @@ func TestOAuthClientHandler_List_Error(t *testing.T) {
 
 	repo := &mockOAuthClientRepo{
 		listClientsFn: func(_ context.Context, _ string, _, _ int) ([]model.OAuthClient, int, error) {
-			return nil, 0, fmt.Errorf("db error")
+			return nil, 0, errors.New("db error")
 		},
 	}
 
 	h := NewOAuthClientHandler(repo, discardLogger())
 
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.List(rec, req)
@@ -201,7 +201,7 @@ func TestOAuthClientHandler_Create_RepoError(t *testing.T) {
 
 	repo := &mockOAuthClientRepo{
 		createClientFn: func(_ context.Context, _ *model.OAuthClient) error {
-			return fmt.Errorf("constraint violation")
+			return errors.New("constraint violation")
 		},
 	}
 
@@ -229,7 +229,7 @@ func TestOAuthClientHandler_Revoke_Success(t *testing.T) {
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "1")
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/oauth-clients/1/revoke", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/oauth-clients/1/revoke", http.NoBody)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rec := httptest.NewRecorder()
 
@@ -247,7 +247,7 @@ func TestOAuthClientHandler_Revoke_InvalidID(t *testing.T) {
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "abc")
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/oauth-clients/abc/revoke", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/oauth-clients/abc/revoke", http.NoBody)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rec := httptest.NewRecorder()
 
@@ -263,7 +263,7 @@ func TestOAuthClientHandler_Revoke_Error(t *testing.T) {
 
 	repo := &mockOAuthClientRepo{
 		deactivateClientFn: func(_ context.Context, _ int64) error {
-			return fmt.Errorf("db error")
+			return errors.New("db error")
 		},
 	}
 
@@ -271,7 +271,7 @@ func TestOAuthClientHandler_Revoke_Error(t *testing.T) {
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "1")
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/oauth-clients/1/revoke", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/oauth-clients/1/revoke", http.NoBody)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rec := httptest.NewRecorder()
 
@@ -307,7 +307,7 @@ func TestOAuthClientHandler_Show_Success(t *testing.T) {
 					IsActive:                true,
 				}, nil
 			}
-			return nil, fmt.Errorf("not found")
+			return nil, errors.New("not found")
 		},
 	}
 
@@ -315,7 +315,7 @@ func TestOAuthClientHandler_Show_Success(t *testing.T) {
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "1")
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients/1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients/1", http.NoBody)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rec := httptest.NewRecorder()
 
@@ -346,7 +346,7 @@ func TestOAuthClientHandler_Show_InvalidID(t *testing.T) {
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "abc")
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients/abc", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients/abc", http.NoBody)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rec := httptest.NewRecorder()
 
@@ -362,7 +362,7 @@ func TestOAuthClientHandler_Show_NotFound(t *testing.T) {
 
 	repo := &mockOAuthClientRepo{
 		findClientByIDFn: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
-			return nil, fmt.Errorf("not found")
+			return nil, errors.New("not found")
 		},
 	}
 
@@ -370,7 +370,7 @@ func TestOAuthClientHandler_Show_NotFound(t *testing.T) {
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "999")
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients/999", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients/999", http.NoBody)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rec := httptest.NewRecorder()
 

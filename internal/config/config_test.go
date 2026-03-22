@@ -747,7 +747,7 @@ db_host: yaml-db-host
 db_database: yamldb
 db_username: yamluser
 `
-	if err := os.WriteFile(configFile, []byte(yamlContent), 0o644); err != nil {
+	if err := os.WriteFile(configFile, []byte(yamlContent), 0o600); err != nil {
 		t.Fatalf("writing config file: %v", err)
 	}
 

@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
-	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -90,7 +89,7 @@ func (m *mockDocumentRepo) CreateVersion(ctx context.Context, version *model.Doc
 // ---------------------------------------------------------------------------
 
 func discardLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 func ptrBool(b bool) *bool { return &b }
@@ -121,8 +120,8 @@ func TestDocumentService_FindByUUID(t *testing.T) {
 			repoFn: func(_ context.Context, _ string) (*model.Document, error) {
 				return nil, sql.ErrNoRows
 			},
-			wantDoc: false,
-			wantErr: true,
+			wantDoc:   false,
+			wantErr:   true,
 			errSubstr: "not found",
 		},
 		{

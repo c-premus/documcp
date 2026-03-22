@@ -3,7 +3,7 @@ package oauthhandler
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -129,7 +129,7 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 				}, nil
 			},
 			CreateDeviceCodeFunc: func(_ context.Context, _ *model.OAuthDeviceCode) error {
-				return fmt.Errorf("database connection lost")
+				return errors.New("database connection lost")
 			},
 		}
 		h, _ := newHandlerWithRepo(repo)
@@ -355,7 +355,7 @@ func TestHandler_DeviceVerification(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/device", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/device", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.DeviceVerification(rr, req)
@@ -369,7 +369,7 @@ func TestHandler_DeviceVerification(t *testing.T) {
 		h, store := newHandlerWithRepo(&mockOAuthRepo{})
 		store.session.Values["user_id"] = int64(42)
 
-		req := httptest.NewRequest(http.MethodGet, "/oauth/device?user_code=ABCD-EFGH", nil)
+		req := httptest.NewRequest(http.MethodGet, "/oauth/device?user_code=ABCD-EFGH", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.DeviceVerification(rr, req)
