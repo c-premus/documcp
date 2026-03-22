@@ -18,11 +18,6 @@ func TestSoftDeleteFilter(t *testing.T) {
 			want:     "__soft_deleted = false",
 		},
 		{
-			name:     "confluence_spaces index returns soft delete filter",
-			indexUID: IndexConfluenceSpaces,
-			want:     "__soft_deleted = false",
-		},
-		{
 			name:     "git_templates index returns soft delete filter",
 			indexUID: IndexGitTemplates,
 			want:     "__soft_deleted = false",

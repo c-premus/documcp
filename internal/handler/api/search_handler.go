@@ -127,8 +127,6 @@ func (h *SearchHandler) FederatedSearch(w http.ResponseWriter, r *http.Request) 
 				indexes = append(indexes, search.IndexDocuments)
 			case "zim_archive":
 				indexes = append(indexes, search.IndexZimArchives)
-			case "confluence_space":
-				indexes = append(indexes, search.IndexConfluenceSpaces)
 			case "git_template":
 				indexes = append(indexes, search.IndexGitTemplates)
 			}

@@ -91,7 +91,7 @@ func (m *mockExternalServiceRepo) ReorderPriorities(ctx context.Context, service
 // ---------------------------------------------------------------------------
 
 func newExternalServiceHandler(mock *mockExternalServiceRepo) *ExternalServiceHandler {
-	svc := service.NewExternalServiceService(mock, nil, nil, nil, testLogger())
+	svc := service.NewExternalServiceService(mock, nil, nil, testLogger())
 	return NewExternalServiceHandler(svc, mock, nil, testLogger())
 }
 

@@ -1,5 +1,5 @@
 // Package search provides Meilisearch integration for full-text indexing and
-// querying across documents, ZIM archives, Confluence spaces, and Git templates.
+// querying across documents, ZIM archives, and Git templates.
 package search
 
 import (
@@ -12,10 +12,9 @@ import (
 
 // Index UIDs matching the PHP version.
 const (
-	IndexDocuments        = "documents"
-	IndexZimArchives      = "zim_archives"
-	IndexConfluenceSpaces = "confluence_spaces"
-	IndexGitTemplates     = "git_templates"
+	IndexDocuments   = "documents"
+	IndexZimArchives = "zim_archives"
+	IndexGitTemplates = "git_templates"
 )
 
 // Client wraps the Meilisearch service manager and provides index setup.
@@ -73,18 +72,6 @@ func (c *Client) ConfigureIndexes(ctx context.Context) error {
 					"uuid", "language", "category", "creator", "tags", "article_count",
 				},
 				SortableAttributes: []string{"title", "article_count"},
-			},
-		},
-		{
-			uid:     IndexConfluenceSpaces,
-			primary: "uuid",
-			settings: &meilisearch.Settings{
-				SearchableAttributes: []string{"name", "key", "description"},
-				FilterableAttributes: []string{
-					"uuid", "key", "type", "status",
-					"external_service_id", "is_enabled", "__soft_deleted",
-				},
-				SortableAttributes: []string{"name", "key"},
 			},
 		},
 		{

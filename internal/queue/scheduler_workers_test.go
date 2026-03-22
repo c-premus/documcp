@@ -382,55 +382,6 @@ func TestSyncKiwixWorker_Work(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// SyncConfluenceWorker
-// ---------------------------------------------------------------------------
-
-func TestSyncConfluenceWorker_Work(t *testing.T) {
-	t.Parallel()
-
-	t.Run("no enabled services returns nil", func(t *testing.T) {
-		t.Parallel()
-
-		finder := &mockExternalServiceFinder{
-			findEnabledByTypeFn: func(_ context.Context, _ string) ([]model.ExternalService, error) {
-				return []model.ExternalService{}, nil
-			},
-		}
-
-		worker := &SyncConfluenceWorker{
-			Deps: SchedulerDeps{
-				Services: finder,
-				Logger:   testLogger(),
-			},
-		}
-
-		err := worker.Work(context.Background(), makeJob(SyncConfluenceArgs{}))
-		require.NoError(t, err)
-	})
-
-	t.Run("FindEnabledByType error is returned", func(t *testing.T) {
-		t.Parallel()
-
-		finder := &mockExternalServiceFinder{
-			findEnabledByTypeFn: func(_ context.Context, _ string) ([]model.ExternalService, error) {
-				return nil, assert.AnError
-			},
-		}
-
-		worker := &SyncConfluenceWorker{
-			Deps: SchedulerDeps{
-				Services: finder,
-				Logger:   testLogger(),
-			},
-		}
-
-		err := worker.Work(context.Background(), makeJob(SyncConfluenceArgs{}))
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "finding enabled confluence services")
-	})
-}
-
-// ---------------------------------------------------------------------------
 // SyncGitTemplatesWorker
 // ---------------------------------------------------------------------------
 
@@ -441,10 +392,6 @@ func TestSyncGitTemplatesWorker_Work(t *testing.T) {
 	// We can't easily mock that without an interface, so test nil deps behavior.
 	// (GitRepo is always non-nil in prod, so Work will call GitRepo.List directly.)
 }
-
-// ---------------------------------------------------------------------------
-// Helper: parseConfluenceCredentials (already in scheduler_helpers_test.go)
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // CleanupOrphanedFilesWorker — orphan removal with t.TempDir

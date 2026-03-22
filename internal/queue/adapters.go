@@ -4,7 +4,6 @@ package queue
 import (
 	"context"
 
-	"git.999.haus/chris/DocuMCP-go/internal/client/confluence"
 	"git.999.haus/chris/DocuMCP-go/internal/client/git"
 	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
@@ -58,52 +57,6 @@ func (a *kiwixIndexerAdapter) IndexZimArchive(ctx context.Context, record kiwix.
 		Creator:      record.Creator,
 		Tags:         record.Tags,
 		ArticleCount: record.ArticleCount,
-	})
-}
-
-// --- Confluence adapters ---.
-
-// confluenceRepoAdapter adapts *repository.ConfluenceSpaceRepository to satisfy confluence.SpaceRepo.
-type confluenceRepoAdapter struct {
-	repo *repository.ConfluenceSpaceRepository
-}
-
-// UpsertFromAPI creates or updates a Confluence space record from the API response.
-func (a *confluenceRepoAdapter) UpsertFromAPI(ctx context.Context, serviceID int64, space confluence.Space) error {
-	return a.repo.UpsertFromAPI(ctx, serviceID, repository.ConfluenceSpaceUpsert{
-		ConfluenceID: space.ID,
-		Key:          space.Key,
-		Name:         space.Name,
-		Description:  space.Description,
-		Type:         space.Type,
-		Status:       space.Status,
-		HomepageID:   space.HomepageID,
-		IconURL:      space.IconURL,
-	})
-}
-
-// DisableOrphaned disables Confluence spaces that are no longer present in the API.
-func (a *confluenceRepoAdapter) DisableOrphaned(ctx context.Context, serviceID int64, activeKeys []string) (int, error) {
-	return a.repo.DisableOrphaned(ctx, serviceID, activeKeys)
-}
-
-// confluenceIndexerAdapter adapts *search.Indexer to satisfy confluence.SpaceIndexer.
-type confluenceIndexerAdapter struct {
-	indexer *search.Indexer
-}
-
-// IndexConfluenceSpace indexes a Confluence space in the search engine.
-func (a *confluenceIndexerAdapter) IndexConfluenceSpace(ctx context.Context, record confluence.ConfluenceSpaceRecord) error {
-	return a.indexer.IndexConfluenceSpace(ctx, search.ConfluenceSpaceRecord{
-		UUID:              record.UUID,
-		ConfluenceID:      record.ConfluenceID,
-		Key:               record.Key,
-		Name:              record.Name,
-		Description:       record.Description,
-		Type:              record.Type,
-		Status:            record.Status,
-		ExternalServiceID: record.ExternalServiceID,
-		IsEnabled:         record.IsEnabled,
 	})
 }
 

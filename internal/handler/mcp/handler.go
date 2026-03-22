@@ -9,7 +9,6 @@ import (
 	"github.com/meilisearch/meilisearch-go"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"git.999.haus/chris/DocuMCP-go/internal/client/confluence"
 	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
@@ -28,11 +27,6 @@ type documentServicer interface {
 	Delete(ctx context.Context, uuid string) error
 }
 
-// confluenceSpaceLister abstracts the confluence space repository methods.
-type confluenceSpaceLister interface {
-	List(ctx context.Context, spaceType, query string, limit int) ([]model.ConfluenceSpace, error)
-}
-
 // zimArchiveLister abstracts the ZIM archive repository methods.
 type zimArchiveLister interface {
 	List(ctx context.Context, category, language, query string, limit int) ([]model.ZimArchive, error)
@@ -45,13 +39,6 @@ type gitTemplateStore interface {
 	FindByUUID(ctx context.Context, uuid string) (*model.GitTemplate, error)
 	FilesForTemplate(ctx context.Context, templateID int64) ([]model.GitTemplateFile, error)
 	FindFileByPath(ctx context.Context, templateID int64, path string) (*model.GitTemplateFile, error)
-}
-
-// confluenceSearcher abstracts the Confluence client methods.
-type confluenceSearcher interface {
-	SearchPages(ctx context.Context, params confluence.SearchPagesParams) (confluence.SearchResult, error)
-	ReadPage(ctx context.Context, pageID string) (*confluence.Page, error)
-	ReadPageByTitle(ctx context.Context, spaceKey, title string) (*confluence.Page, error)
 }
 
 // kiwixSearcher abstracts the Kiwix client methods.
@@ -85,11 +72,6 @@ const serverInstructions = `Documentation knowledge base with full-text search.
 - ` + "`search_zim`" + ` - Search within an archive. ` + "`suggest`" + ` matches titles, ` + "`fulltext`" + ` searches content.
 - ` + "`read_zim_article`" + ` - Retrieve article content. Supports ` + "`summary_only`" + ` and ` + "`max_paragraphs`" + `.
 
-**Confluence**
-- ` + "`list_confluence_spaces`" + ` - List spaces (global or personal). Returns space keys for filtering.
-- ` + "`search_confluence`" + ` - Search pages via CQL or simple query. Supports space filtering.
-- ` + "`read_confluence_page`" + ` - Retrieve page content as markdown by ID or space+title.
-
 **Git Templates** (project bootstrapping: CLAUDE.md, Memory Bank)
 - ` + "`list_git_templates`" + ` - List available templates with category filter.
 - ` + "`search_git_templates`" + ` - Full-text search across README files and metadata.
@@ -98,7 +80,7 @@ const serverInstructions = `Documentation knowledge base with full-text search.
 - ` + "`get_deployment_guide`" + ` - Get deployment instructions with all essential files.
 - ` + "`download_template`" + ` - Download a complete template as a base64-encoded archive.
 
-**Availability**: ZIM tools require Kiwix service configuration. Confluence tools require Confluence service configuration. Git Template tools are enabled by default. Document tools are always available.
+**Availability**: ZIM tools require Kiwix service configuration. Git Template tools are enabled by default. Document tools are always available.
 
 **Access Control**: Document modifications require ownership. Public documents are readable by all.`
 
@@ -112,15 +94,13 @@ type Handler struct {
 	documentService     documentServicer
 	documentRepo        *repository.DocumentRepository
 	externalServiceRepo *repository.ExternalServiceRepository
-	zimArchiveRepo      zimArchiveLister
-	confluenceSpaceRepo confluenceSpaceLister
-	gitTemplateRepo     gitTemplateStore
+	zimArchiveRepo  zimArchiveLister
+	gitTemplateRepo gitTemplateStore
 	searchQueryRepo     *repository.SearchQueryRepository
 
 	// External service clients (nil means service not configured)
-	kiwixClient      kiwixSearcher
-	confluenceClient confluenceSearcher
-	searcher         contentSearcher
+	kiwixClient kiwixSearcher
+	searcher    contentSearcher
 }
 
 // Config holds all optional dependencies for the MCP handler.
@@ -138,17 +118,14 @@ type Config struct {
 	// Conditionally registered
 	ExternalServiceRepo *repository.ExternalServiceRepository
 	ZimArchiveRepo      zimArchiveLister
-	ConfluenceSpaceRepo confluenceSpaceLister
 	GitTemplateRepo     gitTemplateStore
 
 	// External service clients (nil means service not configured)
-	KiwixClient      kiwixSearcher
-	ConfluenceClient confluenceSearcher
-	Searcher         contentSearcher
+	KiwixClient kiwixSearcher
+	Searcher    contentSearcher
 
 	// Feature flags
 	ZimEnabled          bool
-	ConfluenceEnabled   bool
 	GitTemplatesEnabled bool
 }
 
@@ -171,11 +148,9 @@ func New(cfg Config) *Handler {
 		documentRepo:        cfg.DocumentRepo,
 		externalServiceRepo: cfg.ExternalServiceRepo,
 		zimArchiveRepo:      cfg.ZimArchiveRepo,
-		confluenceSpaceRepo: cfg.ConfluenceSpaceRepo,
 		gitTemplateRepo:     cfg.GitTemplateRepo,
 		searchQueryRepo:     cfg.SearchQueryRepo,
 		kiwixClient:         cfg.KiwixClient,
-		confluenceClient:    cfg.ConfluenceClient,
 		searcher:            cfg.Searcher,
 	}
 
@@ -187,16 +162,12 @@ func New(cfg Config) *Handler {
 		h.registerZimTools()
 	}
 
-	if cfg.ConfluenceEnabled && cfg.ConfluenceSpaceRepo != nil {
-		h.registerConfluenceTools()
-	}
-
 	if cfg.GitTemplatesEnabled && cfg.GitTemplateRepo != nil {
 		h.registerGitTemplateTools()
 	}
 
 	// Register prompts
-	h.registerPrompts(cfg.ZimEnabled, cfg.ConfluenceEnabled, cfg.GitTemplatesEnabled)
+	h.registerPrompts(cfg.ZimEnabled, cfg.GitTemplatesEnabled)
 
 	// Create HTTP handler using the Streamable HTTP transport (protocol 2025-03-26).
 	// The SDK v1.4.1 requires Accept: application/json, text/event-stream on all

@@ -42,7 +42,7 @@ func TestConfigureIndexes_Success(t *testing.T) {
 		t.Fatalf("ConfigureIndexes() unexpected error: %v", err)
 	}
 
-	wantUIDs := []string{IndexDocuments, IndexZimArchives, IndexConfluenceSpaces, IndexGitTemplates}
+	wantUIDs := []string{IndexDocuments, IndexZimArchives, IndexGitTemplates}
 	if len(createdUIDs) != len(wantUIDs) {
 		t.Fatalf("created %d indexes, want %d", len(createdUIDs), len(wantUIDs))
 	}
@@ -78,8 +78,8 @@ func TestConfigureIndexes_CreateIndexError_ContinuesWithSettings(t *testing.T) {
 		t.Fatalf("ConfigureIndexes() unexpected error: %v", err)
 	}
 
-	if settingsCalled != 4 {
-		t.Errorf("UpdateSettings called %d times, want 4", settingsCalled)
+	if settingsCalled != 3 {
+		t.Errorf("UpdateSettings called %d times, want 3", settingsCalled)
 	}
 }
 
@@ -752,136 +752,6 @@ func TestIndexZimArchiveBatch_Error(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Confluence Space operations
-// ---------------------------------------------------------------------------
-
-func TestIndexConfluenceSpace_Success(t *testing.T) {
-	t.Parallel()
-
-	var capturedIndex string
-	idx := &mockIndexManager{}
-	sm := &mockServiceManager{
-		indexFn: func(uid string) meilisearch.IndexManager {
-			capturedIndex = uid
-			return idx
-		},
-	}
-
-	ix := newTestIndexer(sm)
-	err := ix.IndexConfluenceSpace(context.Background(), ConfluenceSpaceRecord{UUID: "conf-1"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if capturedIndex != IndexConfluenceSpaces {
-		t.Errorf("used index %q, want %q", capturedIndex, IndexConfluenceSpaces)
-	}
-}
-
-func TestIndexConfluenceSpace_Error(t *testing.T) {
-	t.Parallel()
-
-	wantErr := errors.New("fail")
-	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, _ any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
-			return nil, wantErr
-		},
-	}
-	sm := &mockServiceManager{
-		indexFn: func(_ string) meilisearch.IndexManager { return idx },
-	}
-
-	ix := newTestIndexer(sm)
-	err := ix.IndexConfluenceSpace(context.Background(), ConfluenceSpaceRecord{UUID: "conf-1"})
-	if !errors.Is(err, wantErr) {
-		t.Errorf("error = %v, want wrapped %v", err, wantErr)
-	}
-}
-
-func TestDeleteConfluenceSpace_Success(t *testing.T) {
-	t.Parallel()
-
-	idx := &mockIndexManager{}
-	sm := &mockServiceManager{
-		indexFn: func(_ string) meilisearch.IndexManager { return idx },
-	}
-
-	ix := newTestIndexer(sm)
-	err := ix.DeleteConfluenceSpace(context.Background(), "conf-uuid")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestDeleteConfluenceSpace_Error(t *testing.T) {
-	t.Parallel()
-
-	wantErr := errors.New("fail")
-	idx := &mockIndexManager{
-		deleteDocumentWithContextFn: func(_ context.Context, _ string, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
-			return nil, wantErr
-		},
-	}
-	sm := &mockServiceManager{
-		indexFn: func(_ string) meilisearch.IndexManager { return idx },
-	}
-
-	ix := newTestIndexer(sm)
-	err := ix.DeleteConfluenceSpace(context.Background(), "conf-uuid")
-	if !errors.Is(err, wantErr) {
-		t.Errorf("error = %v, want wrapped %v", err, wantErr)
-	}
-}
-
-func TestSoftDeleteConfluenceSpace_Success(t *testing.T) {
-	t.Parallel()
-
-	var capturedDocs any
-	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, docs any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
-			capturedDocs = docs
-			return &meilisearch.TaskInfo{TaskUID: 1}, nil
-		},
-	}
-	sm := &mockServiceManager{
-		indexFn: func(_ string) meilisearch.IndexManager { return idx },
-	}
-
-	ix := newTestIndexer(sm)
-	err := ix.SoftDeleteConfluenceSpace(context.Background(), "conf-uuid")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	records, ok := capturedDocs.([]map[string]any)
-	if !ok || len(records) != 1 {
-		t.Fatalf("expected 1 record, got %T", capturedDocs)
-	}
-	if records[0]["__soft_deleted"] != true {
-		t.Error("__soft_deleted should be true")
-	}
-}
-
-func TestSoftDeleteConfluenceSpace_Error(t *testing.T) {
-	t.Parallel()
-
-	wantErr := errors.New("fail")
-	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, _ any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
-			return nil, wantErr
-		},
-	}
-	sm := &mockServiceManager{
-		indexFn: func(_ string) meilisearch.IndexManager { return idx },
-	}
-
-	ix := newTestIndexer(sm)
-	err := ix.SoftDeleteConfluenceSpace(context.Background(), "conf-uuid")
-	if !errors.Is(err, wantErr) {
-		t.Errorf("error = %v, want wrapped %v", err, wantErr)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Git Template operations
 // ---------------------------------------------------------------------------
 
@@ -1190,11 +1060,11 @@ func TestFederatedSearch_DefaultIndexes(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(capturedQueries) != 4 {
-		t.Fatalf("expected 4 queries (all indexes), got %d", len(capturedQueries))
+	if len(capturedQueries) != 3 {
+		t.Fatalf("expected 3 queries (all indexes), got %d", len(capturedQueries))
 	}
 
-	wantUIDs := []string{IndexDocuments, IndexZimArchives, IndexConfluenceSpaces, IndexGitTemplates}
+	wantUIDs := []string{IndexDocuments, IndexZimArchives, IndexGitTemplates}
 	for i, want := range wantUIDs {
 		if capturedQueries[i].IndexUID != want {
 			t.Errorf("query[%d].IndexUID = %q, want %q", i, capturedQueries[i].IndexUID, want)
@@ -1291,7 +1161,6 @@ func TestFederatedSearch_SoftDeleteFilters(t *testing.T) {
 	wantFilters := []string{
 		"__soft_deleted = false", // documents
 		"",                       // zim_archives (no soft delete)
-		"__soft_deleted = false", // confluence_spaces
 		"__soft_deleted = false", // git_templates
 	}
 

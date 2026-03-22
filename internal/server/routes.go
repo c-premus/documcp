@@ -39,7 +39,6 @@ type Deps struct {
 
 	// Phase 4: External service clients & REST API
 	ZimHandler             *apihandler.ZimHandler
-	ConfluenceHandler      *apihandler.ConfluenceHandler
 	GitTemplateHandler     *apihandler.GitTemplateHandler
 	ExternalServiceHandler *apihandler.ExternalServiceHandler
 	UserHandler            *apihandler.UserHandler
@@ -289,21 +288,6 @@ func (s *Server) RegisterRoutes(deps Deps) {
 				r.Get("/{archive}/articles/*", deps.ZimHandler.ReadArticle)
 			})
 			s.logger.Info("ZIM API endpoints registered")
-		}
-
-		// Confluence endpoints (60/min per IP)
-		if deps.ConfluenceHandler != nil {
-			r.Route("/confluence", func(r chi.Router) {
-				r.Use(httprate.LimitByIP(60, time.Minute))
-				if deps.OAuthService != nil {
-					r.Use(authmiddleware.RequireScope(authscope.ConfluenceRead))
-				}
-				r.Get("/spaces", deps.ConfluenceHandler.ListSpaces)
-				r.Get("/spaces/{key}", deps.ConfluenceHandler.ShowSpace)
-				r.Get("/pages/search", deps.ConfluenceHandler.SearchPages)
-				r.Get("/pages/{id}", deps.ConfluenceHandler.ReadPage)
-			})
-			s.logger.Info("Confluence API endpoints registered")
 		}
 
 		// Git template endpoints

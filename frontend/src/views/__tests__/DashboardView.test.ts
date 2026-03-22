@@ -13,7 +13,6 @@ interface DashboardStats {
   oauth_clients: number
   external_services: number
   zim_archives: number
-  confluence_spaces: number
   git_templates: number
   queue?: { pending: number; completed: number; failed: number }
 }
@@ -45,7 +44,6 @@ const sampleStats: DashboardStats = {
   oauth_clients: 3,
   external_services: 2,
   zim_archives: 7,
-  confluence_spaces: 4,
   git_templates: 10,
 }
 
@@ -96,8 +94,6 @@ describe('DashboardView', () => {
     expect(wrapper.text()).toContain('2')
     expect(wrapper.text()).toContain('ZIM Archives')
     expect(wrapper.text()).toContain('7')
-    expect(wrapper.text()).toContain('Confluence Spaces')
-    expect(wrapper.text()).toContain('4')
     expect(wrapper.text()).toContain('Git Templates')
     expect(wrapper.text()).toContain('10')
   })

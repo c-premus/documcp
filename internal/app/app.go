@@ -26,7 +26,6 @@ import (
 
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oidc"
-	"git.999.haus/chris/DocuMCP-go/internal/client/confluence"
 	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
 	"git.999.haus/chris/DocuMCP-go/internal/config"
 	"git.999.haus/chris/DocuMCP-go/internal/crypto"
@@ -148,7 +147,6 @@ func New(cfg *config.Config) (*App, error) {
 	documentRepo := repository.NewDocumentRepository(db, logger)
 	externalServiceRepo := repository.NewExternalServiceRepository(db, logger)
 	zimArchiveRepo := repository.NewZimArchiveRepository(db, logger)
-	confluenceSpaceRepo := repository.NewConfluenceSpaceRepository(db, logger)
 	gitTemplateRepo := repository.NewGitTemplateRepository(db, logger, encryptor)
 	searchQueryRepo := repository.NewSearchQueryRepository(db, logger)
 	oauthRepo := repository.NewOAuthRepository(db, logger)
@@ -177,7 +175,6 @@ func New(cfg *config.Config) (*App, error) {
 	// --- External Service Clients ---
 	// Look up configured external services from the database and create clients.
 	var kiwixClient *kiwix.Client
-	var confluenceClient *confluence.Client
 
 	kiwixServices, err := externalServiceRepo.FindEnabledByType(context.Background(), "kiwix")
 	if err != nil {
@@ -190,27 +187,6 @@ func New(cfg *config.Config) (*App, error) {
 			logger.Warn("kiwix client URL rejected", "base_url", svc.BaseURL, "error", kiwixErr)
 		} else {
 			logger.Info("Kiwix client configured", "base_url", svc.BaseURL)
-		}
-	}
-
-	confluenceServices, err := externalServiceRepo.FindEnabledByType(context.Background(), "confluence")
-	if err != nil {
-		logger.Warn("failed to look up confluence services", "error", err)
-	} else if len(confluenceServices) > 0 {
-		svc := confluenceServices[0]
-		// API key is stored in the api_key column (format: "email:token" or just token)
-		email := ""
-		apiToken := svc.APIKey.String
-		if parts := strings.SplitN(apiToken, ":", 2); len(parts) == 2 {
-			email = parts[0]
-			apiToken = parts[1]
-		}
-		var confErr error
-		confluenceClient, confErr = confluence.NewClient(svc.BaseURL, email, apiToken, logger)
-		if confErr != nil {
-			logger.Warn("confluence client URL rejected", "base_url", svc.BaseURL, "error", confErr)
-		} else {
-			logger.Info("Confluence client configured", "base_url", svc.BaseURL)
 		}
 	}
 
@@ -250,7 +226,6 @@ func New(cfg *config.Config) (*App, error) {
 		Services:      externalServiceRepo,
 		HealthChecker: externalServiceRepo,
 		ZimRepo:       zimArchiveRepo,
-		ConfRepo:      confluenceSpaceRepo,
 		GitRepo:       gitTemplateRepo,
 		OAuthRepo:     oauthRepo,
 		DocRepo:       documentRepo,
@@ -272,7 +247,6 @@ func New(cfg *config.Config) (*App, error) {
 
 	// Register scheduler migration workers.
 	river.AddWorker(workers, &queue.SyncKiwixWorker{Deps: schedulerDeps})
-	river.AddWorker(workers, &queue.SyncConfluenceWorker{Deps: schedulerDeps})
 	river.AddWorker(workers, &queue.SyncGitTemplatesWorker{Deps: schedulerDeps})
 	river.AddWorker(workers, &queue.CleanupOAuthTokensWorker{Deps: schedulerDeps})
 	river.AddWorker(workers, &queue.CleanupOrphanedFilesWorker{Deps: schedulerDeps})
@@ -288,7 +262,6 @@ func New(cfg *config.Config) (*App, error) {
 		logger.Info("periodic jobs configured",
 			"count", len(periodicJobs),
 			"kiwix_schedule", cfg.Scheduler.KiwixSchedule,
-			"confluence_schedule", cfg.Scheduler.ConfluenceSchedule,
 			"git_schedule", cfg.Scheduler.GitSchedule,
 		)
 	}
@@ -335,7 +308,6 @@ func New(cfg *config.Config) (*App, error) {
 	}
 	externalServiceSvc := service.NewExternalServiceService(
 		externalServiceRepo,
-		confluenceSpaceRepo,
 		zimArchiveRepo,
 		extSvcIndexCleaner,
 		logger,
@@ -374,7 +346,6 @@ func New(cfg *config.Config) (*App, error) {
 		searchH = apihandler.NewSearchHandler(searcher, searchQueryRepo, documentRepo, logger)
 	}
 	zimH := apihandler.NewZimHandler(zimArchiveRepo, kiwixClient, logger)
-	confluenceH := apihandler.NewConfluenceHandler(confluenceSpaceRepo, confluenceClient, logger)
 	gitTemplateH := apihandler.NewGitTemplateHandler(gitTemplateRepo, riverClient, logger)
 	externalServiceH := apihandler.NewExternalServiceHandler(externalServiceSvc, externalServiceRepo, riverClient, logger)
 	userH := apihandler.NewUserHandler(oauthRepo, logger)
@@ -391,7 +362,6 @@ func New(cfg *config.Config) (*App, error) {
 		oauthRepo,
 		externalServiceRepo,
 		zimArchiveRepo,
-		confluenceSpaceRepo,
 		gitTemplateRepo,
 		riverClient,
 		logger,
@@ -414,17 +384,12 @@ func New(cfg *config.Config) (*App, error) {
 		SearchQueryRepo:     searchQueryRepo,
 		ExternalServiceRepo: externalServiceRepo,
 		ZimArchiveRepo:      zimArchiveRepo,
-		ConfluenceSpaceRepo: confluenceSpaceRepo,
 		GitTemplateRepo:     gitTemplateRepo,
 		ZimEnabled:          true,
-		ConfluenceEnabled:   true,
 		GitTemplatesEnabled: true,
 	}
 	if kiwixClient != nil {
 		mcpCfg.KiwixClient = kiwixClient
-	}
-	if confluenceClient != nil {
-		mcpCfg.ConfluenceClient = confluenceClient
 	}
 	if searcher != nil {
 		mcpCfg.Searcher = searcher
@@ -480,7 +445,6 @@ func New(cfg *config.Config) (*App, error) {
 		DocumentHandler:        documentH,
 		SearchHandler:          searchH,
 		ZimHandler:             zimH,
-		ConfluenceHandler:      confluenceH,
 		GitTemplateHandler:     gitTemplateH,
 		ExternalServiceHandler: externalServiceH,
 		UserHandler:            userH,

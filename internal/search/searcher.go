@@ -101,7 +101,6 @@ func (s *Searcher) FederatedSearch(ctx context.Context, params FederatedSearchPa
 		indexes = []string{
 			IndexDocuments,
 			IndexZimArchives,
-			IndexConfluenceSpaces,
 			IndexGitTemplates,
 		}
 	}
@@ -142,7 +141,7 @@ func (s *Searcher) FederatedSearch(ctx context.Context, params FederatedSearchPa
 // for indexes that support it.
 func softDeleteFilter(indexUID string) string {
 	switch indexUID {
-	case IndexDocuments, IndexConfluenceSpaces, IndexGitTemplates:
+	case IndexDocuments, IndexGitTemplates:
 		return "__soft_deleted = false"
 	default:
 		return ""

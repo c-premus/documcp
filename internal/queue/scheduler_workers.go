@@ -8,12 +8,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/riverqueue/river"
 
-	"git.999.haus/chris/DocuMCP-go/internal/client/confluence"
 	"git.999.haus/chris/DocuMCP-go/internal/client/git"
 	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
@@ -40,7 +38,6 @@ type SchedulerDeps struct {
 	Services      ExternalServiceFinder
 	HealthChecker ExternalServiceHealthChecker
 	ZimRepo       *repository.ZimArchiveRepository
-	ConfRepo      *repository.ConfluenceSpaceRepository
 	GitRepo       *repository.GitTemplateRepository
 	OAuthRepo     *repository.OAuthRepository
 	DocRepo       *repository.DocumentRepository
@@ -124,88 +121,6 @@ func (w *SyncKiwixWorker) Work(ctx context.Context, _ *river.Job[SyncKiwixArgs])
 			}
 		}
 		svcLogger.Info("kiwix service sync completed", "entries", len(entries))
-	}
-	return nil
-}
-
-// SyncConfluenceWorker syncs Confluence spaces from external services.
-type SyncConfluenceWorker struct {
-	river.WorkerDefaults[SyncConfluenceArgs]
-	Deps SchedulerDeps
-}
-
-// Work executes the SyncConfluenceWorker job, syncing Confluence spaces from external services.
-func (w *SyncConfluenceWorker) Work(ctx context.Context, _ *river.Job[SyncConfluenceArgs]) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
-
-	logger := w.Deps.Logger.With("job", "confluence")
-	logger.Info("starting confluence sync")
-
-	services, err := w.Deps.Services.FindEnabledByType(ctx, "confluence")
-	if err != nil {
-		return fmt.Errorf("finding enabled confluence services: %w", err)
-	}
-
-	if len(services) == 0 {
-		logger.Info("no enabled confluence services found")
-		return nil
-	}
-
-	for i := range services {
-		svc := &services[i]
-		svcLogger := logger.With("service_id", svc.ID, "base_url", svc.BaseURL)
-
-		email, token, err := parseConfluenceCredentials(*svc)
-		if err != nil {
-			svcLogger.Error("parsing confluence credentials", "error", err)
-			continue
-		}
-
-		client, clientErr := confluence.NewClient(svc.BaseURL, email, token, svcLogger)
-		if clientErr != nil {
-			svcLogger.Error("confluence client URL rejected", "error", clientErr)
-			continue
-		}
-
-		spaces, err := client.ListSpaces(ctx, "", "", 0)
-		if err != nil {
-			svcLogger.Error("listing confluence spaces", "error", err)
-			if w.Deps.HealthChecker != nil {
-				if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", 0, err.Error()); hErr != nil {
-					svcLogger.Error("updating health status", "error", hErr)
-				}
-			}
-			continue
-		}
-
-		var indexer confluence.SpaceIndexer
-		if w.Deps.Indexer != nil {
-			indexer = &confluenceIndexerAdapter{indexer: w.Deps.Indexer}
-		}
-
-		if err := confluence.Sync(ctx, confluence.SyncParams{
-			ServiceID: svc.ID,
-			Spaces:    spaces,
-			Repo:      &confluenceRepoAdapter{repo: w.Deps.ConfRepo},
-			Indexer:   indexer,
-			Logger:    svcLogger,
-		}); err != nil {
-			svcLogger.Error(fmt.Sprintf("syncing confluence service %d: %v", svc.ID, err))
-			if w.Deps.HealthChecker != nil {
-				if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", 0, err.Error()); hErr != nil {
-					svcLogger.Error("updating health status", "error", hErr)
-				}
-			}
-			continue
-		}
-
-		if w.Deps.HealthChecker != nil {
-			if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "healthy", 0, ""); hErr != nil {
-				svcLogger.Error("updating health status", "error", hErr)
-			}
-		}
-		svcLogger.Info("confluence service sync completed", "spaces", len(spaces))
 	}
 	return nil
 }
@@ -569,21 +484,6 @@ func (w *HealthCheckServicesWorker) Work(ctx context.Context, _ *river.Job[Healt
 }
 
 // --- Helpers (moved from scheduler package) ---.
-
-// parseConfluenceCredentials extracts email and API token from the service's
-// APIKey field, which stores them in "email:token" format.
-func parseConfluenceCredentials(svc model.ExternalService) (email, token string, err error) {
-	if !svc.APIKey.Valid || svc.APIKey.String == "" {
-		return "", "", fmt.Errorf("service %d has no API key configured", svc.ID)
-	}
-
-	parts := strings.SplitN(svc.APIKey.String, ":", 2)
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("service %d API key must be in email:token format", svc.ID)
-	}
-
-	return parts[0], parts[1], nil
-}
 
 // toSyncTemplate converts a model.GitTemplate to the git.SyncTemplate type.
 func toSyncTemplate(t model.GitTemplate) (git.SyncTemplate, error) {

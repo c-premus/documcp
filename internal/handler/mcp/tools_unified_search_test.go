@@ -30,11 +30,6 @@ func TestIndexToSource(t *testing.T) {
 			want:     "zim_archive",
 		},
 		{
-			name:     "confluence_spaces index returns confluence_space",
-			indexUID: search.IndexConfluenceSpaces,
-			want:     "confluence_space",
-		},
-		{
 			name:     "unknown index returns input unchanged",
 			indexUID: "unknown_index",
 			want:     "unknown_index",

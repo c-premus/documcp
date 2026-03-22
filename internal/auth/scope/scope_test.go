@@ -109,7 +109,7 @@ func TestDefaultScopes(t *testing.T) {
 
 	got := DefaultScopes()
 	assert.Equal(t,
-		"mcp:access documents:read search:read zim:read confluence:read templates:read services:read",
+		"mcp:access documents:read search:read zim:read templates:read services:read",
 		got,
 	)
 

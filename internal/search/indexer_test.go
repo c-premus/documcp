@@ -193,43 +193,6 @@ func TestZimArchiveRecord_JSONSerialization(t *testing.T) {
 	}
 }
 
-func TestConfluenceSpaceRecord_JSONSerialization(t *testing.T) {
-	t.Parallel()
-
-	rec := search.ConfluenceSpaceRecord{
-		UUID:              "conf-uuid",
-		ConfluenceID:      "12345",
-		Key:               "DEV",
-		Name:              "Development Space",
-		Description:       "Dev team space",
-		Type:              "global",
-		Status:            "current",
-		ExternalServiceID: 1,
-		IsEnabled:         true,
-		SoftDeleted:       false,
-	}
-
-	data, err := json.Marshal(rec)
-	if err != nil {
-		t.Fatalf("json.Marshal() unexpected error: %v", err)
-	}
-
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		t.Fatalf("json.Unmarshal() unexpected error: %v", err)
-	}
-
-	wantKeys := []string{
-		"uuid", "confluence_id", "key", "name", "type",
-		"external_service_id", "is_enabled", "__soft_deleted",
-	}
-	for _, key := range wantKeys {
-		if _, ok := m[key]; !ok {
-			t.Errorf("JSON output missing expected key %q", key)
-		}
-	}
-}
-
 func TestGitTemplateRecord_JSONSerialization(t *testing.T) {
 	t.Parallel()
 

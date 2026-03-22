@@ -169,15 +169,8 @@ func (h *ExternalServiceHandler) Create(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if h.inserter != nil {
-		var jobErr error
-		switch created.Type {
-		case "kiwix":
-			_, jobErr = h.inserter.Insert(r.Context(), queue.SyncKiwixArgs{}, nil)
-		case "confluence":
-			_, jobErr = h.inserter.Insert(r.Context(), queue.SyncConfluenceArgs{}, nil)
-		}
-		if jobErr != nil {
+	if h.inserter != nil && created.Type == "kiwix" {
+		if _, jobErr := h.inserter.Insert(r.Context(), queue.SyncKiwixArgs{}, nil); jobErr != nil {
 			h.logger.Warn("failed to enqueue sync after external service create", "type", created.Type, "error", jobErr)
 		}
 	}
@@ -300,8 +293,6 @@ func (h *ExternalServiceHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	switch svc.Type {
 	case "kiwix":
 		_, jobErr = h.inserter.Insert(r.Context(), queue.SyncKiwixArgs{}, nil)
-	case "confluence":
-		_, jobErr = h.inserter.Insert(r.Context(), queue.SyncConfluenceArgs{}, nil)
 	default:
 		errorResponse(w, http.StatusBadRequest, "sync not supported for service type: "+svc.Type)
 		return

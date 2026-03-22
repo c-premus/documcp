@@ -188,8 +188,6 @@ function typeBadgeStyle(type: string): { bg: string; text: string } {
   switch (type) {
     case 'kiwix':
       return { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-800 dark:text-blue-300' }
-    case 'confluence':
-      return { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-800 dark:text-purple-300' }
     default:
       return { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-800 dark:text-gray-300' }
   }
@@ -319,7 +317,7 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
     cell: ({ row }) => {
       const service = row.original
       const isSyncing = syncingUUIDs.value.has(service.uuid)
-      const canSync = service.type === 'kiwix' || service.type === 'confluence'
+      const canSync = service.type === 'kiwix'
       return h('div', { class: 'flex items-center gap-2' }, [
         canSync
           ? h(
@@ -398,7 +396,6 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
       >
         <option value="">All Types</option>
         <option value="kiwix">Kiwix</option>
-        <option value="confluence">Confluence</option>
       </select>
 
       <div class="flex-1" />

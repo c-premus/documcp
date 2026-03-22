@@ -12,7 +12,7 @@ import (
 // Core prompts (document_analysis, search_query_builder, knowledge_base_builder,
 // cross_source_research) are always registered. Source-specific prompts are
 // registered only when their backing service is enabled.
-func (h *Handler) registerPrompts(zimEnabled, confluenceEnabled, gitTemplatesEnabled bool) {
+func (h *Handler) registerPrompts(zimEnabled, gitTemplatesEnabled bool) {
 	// Always registered
 	h.server.AddPrompt(documentAnalysisPrompt(), h.handleDocumentAnalysis)
 	h.server.AddPrompt(searchQueryBuilderPrompt(), h.handleSearchQueryBuilder)
@@ -25,9 +25,6 @@ func (h *Handler) registerPrompts(zimEnabled, confluenceEnabled, gitTemplatesEna
 	}
 	if zimEnabled {
 		h.server.AddPrompt(zimResearchPrompt(), h.handleZimResearch)
-	}
-	if confluenceEnabled {
-		h.server.AddPrompt(confluenceResearchPrompt(), h.handleConfluenceResearch)
 	}
 }
 
@@ -94,25 +91,13 @@ func zimResearchPrompt() *mcp.Prompt {
 	}
 }
 
-func confluenceResearchPrompt() *mcp.Prompt {
-	return &mcp.Prompt{
-		Name:        "confluence_research",
-		Description: "Research a topic across Confluence wiki spaces using text search and page retrieval",
-		Arguments: []*mcp.PromptArgument{
-			{Name: "topic", Description: "The topic to research in Confluence", Required: true},
-			{Name: "space", Description: "Confluence space key to limit the search (e.g., ENG, OPS)"},
-			{Name: "depth", Description: "Research depth: quick, standard, deep (default: standard)"},
-		},
-	}
-}
-
 func crossSourceResearchPrompt() *mcp.Prompt {
 	return &mcp.Prompt{
 		Name:        "cross_source_research",
-		Description: "Research a topic across all available sources (documents, ZIM archives, Confluence, templates)",
+		Description: "Research a topic across all available sources (documents, ZIM archives, templates)",
 		Arguments: []*mcp.PromptArgument{
 			{Name: "topic", Description: "The topic to research across sources", Required: true},
-			{Name: "sources", Description: "Comma-separated source list: documents, zim, confluence, templates (default: all available)"},
+			{Name: "sources", Description: "Comma-separated source list: documents, zim, templates (default: all available)"},
 			{Name: "depth", Description: "Research depth: quick, standard, deep (default: standard)"},
 		},
 	}
@@ -459,77 +444,6 @@ Please follow the 4-step research workflow to find, read, and synthesize informa
 	}, nil
 }
 
-func (h *Handler) handleConfluenceResearch(_ context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	args := req.Params.Arguments
-
-	topic := args["topic"]
-	space := args["space"]
-	depth := defaultArg(args, "depth", "standard")
-
-	var spaceFilter string
-	if space != "" {
-		spaceFilter = "\n**Space filter:** " + space
-	}
-
-	depthGuidance := confluenceDepthGuidance(depth)
-
-	assistantText := fmt.Sprintf(`You are a research assistant with access to Confluence wiki spaces.
-
-**Available tools:**
-- list_confluence_spaces: List spaces (global or personal) to find relevant wikis
-- search_confluence: Search pages via text query with optional space filtering
-- read_confluence_page: Retrieve page content as markdown by page ID or by space key + title
-
-**Research depth:** %s
-
-## Workflow
-
-### Step 1: Discover spaces
-List available Confluence spaces to understand the wiki structure.
-
-`+"```"+`
-list_confluence_spaces()
-`+"```"+`
-
-### Step 2: Search for content
-Use text queries with optional space filtering.
-
-`+"```"+`
-search_confluence(query: "topic keywords", space: "ENG")
-`+"```"+`
-
-### Step 3: Read pages
-Retrieve full page content for the most relevant results.
-
-`+"```"+`
-read_confluence_page(page_id: "12345")
-read_confluence_page(space: "ENG", title: "Page Title")
-`+"```"+`
-
-### Step 4: Synthesize
-Compile findings into a structured summary with page references.
-
-## Depth guidance
-%s`, depth, depthGuidance)
-
-	userText := fmt.Sprintf(`I want to research a topic in Confluence.
-
-**Topic:** %s%s
-**Depth:** %s
-
-Please search Confluence for relevant pages, read the most promising results, and provide a synthesized summary.`,
-		topic, spaceFilter, depth,
-	)
-
-	return &mcp.GetPromptResult{
-		Description: "Confluence research for: " + truncate(topic, 60),
-		Messages: []*mcp.PromptMessage{
-			{Role: "assistant", Content: &mcp.TextContent{Text: assistantText}},
-			{Role: "user", Content: &mcp.TextContent{Text: userText}},
-		},
-	}, nil
-}
-
 func (h *Handler) handleCrossSourceResearch(_ context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 	args := req.Params.Arguments
 
@@ -555,11 +469,6 @@ func (h *Handler) handleCrossSourceResearch(_ context.Context, req *mcp.GetPromp
 - list_zim_archives: List offline archives (DevDocs, Wikipedia, Stack Exchange)
 - search_zim: Search within archives (suggest or fulltext mode)
 - read_zim_article: Retrieve article content
-
-**Confluence (if enabled):**
-- list_confluence_spaces: List wiki spaces
-- search_confluence: Search pages via text query
-- read_confluence_page: Retrieve page content as markdown
 
 **Git Templates (if enabled):**
 - list_git_templates: List project templates
@@ -732,17 +641,6 @@ func zimDepthGuidance(depth string) string {
 		return `Search all relevant archives. Read full articles (no max_paragraphs limit). Cross-reference multiple sources. Provide an exhaustive synthesis with detailed citations.`
 	default: // standard
 		return `Search 2-3 archives. Read key articles with max_paragraphs: 15. Provide a thorough summary covering the main aspects of the topic.`
-	}
-}
-
-func confluenceDepthGuidance(depth string) string {
-	switch strings.ToLower(depth) {
-	case "quick":
-		return `Search in 1 space. Read 2-3 top results. Provide a brief summary with page links.`
-	case "deep":
-		return `Search across all relevant spaces. Read 5-10 pages. Follow page hierarchies (ancestor pages). Provide a comprehensive synthesis with full citations.`
-	default: // standard
-		return `Search in 1-2 spaces. Read 3-5 top results. Provide a structured summary with page references and key quotes.`
 	}
 }
 

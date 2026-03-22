@@ -10,7 +10,6 @@ import (
 	"github.com/meilisearch/meilisearch-go"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"git.999.haus/chris/DocuMCP-go/internal/client/confluence"
 	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
 	"git.999.haus/chris/DocuMCP-go/internal/dto"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
@@ -61,17 +60,6 @@ func (m *mockDocumentService) Delete(ctx context.Context, uuid string) error {
 		return m.deleteFn(ctx, uuid)
 	}
 	return nil
-}
-
-type mockConfluenceSpaceRepo struct {
-	listFn func(ctx context.Context, spaceType, query string, limit int) ([]model.ConfluenceSpace, error)
-}
-
-func (m *mockConfluenceSpaceRepo) List(ctx context.Context, spaceType, query string, limit int) ([]model.ConfluenceSpace, error) {
-	if m.listFn != nil {
-		return m.listFn(ctx, spaceType, query, limit)
-	}
-	return nil, nil
 }
 
 type mockZimArchiveRepo struct {
@@ -128,33 +116,6 @@ func (m *mockGitTemplateRepo) FindFileByPath(ctx context.Context, templateID int
 	return nil, nil
 }
 
-type mockConfluenceClient struct {
-	searchPagesFn     func(ctx context.Context, params confluence.SearchPagesParams) (confluence.SearchResult, error)
-	readPageFn        func(ctx context.Context, pageID string) (*confluence.Page, error)
-	readPageByTitleFn func(ctx context.Context, spaceKey, title string) (*confluence.Page, error)
-}
-
-func (m *mockConfluenceClient) SearchPages(ctx context.Context, params confluence.SearchPagesParams) (confluence.SearchResult, error) {
-	if m.searchPagesFn != nil {
-		return m.searchPagesFn(ctx, params)
-	}
-	return confluence.SearchResult{}, nil
-}
-
-func (m *mockConfluenceClient) ReadPage(ctx context.Context, pageID string) (*confluence.Page, error) {
-	if m.readPageFn != nil {
-		return m.readPageFn(ctx, pageID)
-	}
-	return nil, nil
-}
-
-func (m *mockConfluenceClient) ReadPageByTitle(ctx context.Context, spaceKey, title string) (*confluence.Page, error) {
-	if m.readPageByTitleFn != nil {
-		return m.readPageByTitleFn(ctx, spaceKey, title)
-	}
-	return nil, nil
-}
-
 type mockKiwixClient struct {
 	searchFn      func(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error)
 	readArticleFn func(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error)
@@ -196,13 +157,11 @@ func (m *mockSearcher) FederatedSearch(ctx context.Context, params search.Federa
 // newHandlerWithMocks creates a Handler with a real MCP server and the provided
 // mock dependencies. Pass nil for any dependency you don't need.
 func newHandlerWithMocks(opts struct {
-	docSvc         *mockDocumentService
-	confluenceRepo *mockConfluenceSpaceRepo
-	zimRepo        *mockZimArchiveRepo
-	gitRepo        *mockGitTemplateRepo
-	confluenceC    *mockConfluenceClient
-	kiwixC         *mockKiwixClient
-	searcher       *mockSearcher
+	docSvc   *mockDocumentService
+	zimRepo  *mockZimArchiveRepo
+	gitRepo  *mockGitTemplateRepo
+	kiwixC   *mockKiwixClient
+	searcher *mockSearcher
 }) *Handler {
 	srv := mcp.NewServer(
 		&mcp.Implementation{Name: "test", Version: "v0.0.0"},
@@ -215,17 +174,11 @@ func newHandlerWithMocks(opts struct {
 	if opts.docSvc != nil {
 		h.documentService = opts.docSvc
 	}
-	if opts.confluenceRepo != nil {
-		h.confluenceSpaceRepo = opts.confluenceRepo
-	}
 	if opts.zimRepo != nil {
 		h.zimArchiveRepo = opts.zimRepo
 	}
 	if opts.gitRepo != nil {
 		h.gitTemplateRepo = opts.gitRepo
-	}
-	if opts.confluenceC != nil {
-		h.confluenceClient = opts.confluenceC
 	}
 	if opts.kiwixC != nil {
 		h.kiwixClient = opts.kiwixC
@@ -282,19 +235,6 @@ func TestNew(t *testing.T) {
 		}
 	})
 
-	t.Run("conditionally registers confluence tools when enabled", func(t *testing.T) {
-		h := New(Config{
-			ServerName:          "test",
-			ServerVersion:       "v1",
-			Logger:              slog.Default(),
-			ConfluenceEnabled:   true,
-			ConfluenceSpaceRepo: &mockConfluenceSpaceRepo{},
-		})
-		if h == nil {
-			t.Fatal("New() returned nil")
-		}
-	})
-
 	t.Run("conditionally registers git template tools when enabled", func(t *testing.T) {
 		h := New(Config{
 			ServerName:          "test",
@@ -331,13 +271,11 @@ func TestHandleReadDocument(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{docSvc: docSvc})
 
 		_, resp, err := h.handleReadDocument(ctx, nil, dto.ReadDocumentInput{UUID: "abc-123"})
@@ -371,13 +309,11 @@ func TestHandleReadDocument(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{docSvc: docSvc})
 
 		_, _, err := h.handleReadDocument(ctx, nil, dto.ReadDocumentInput{UUID: "not-found"})
@@ -393,13 +329,11 @@ func TestHandleReadDocument(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{docSvc: docSvc})
 
 		_, _, err := h.handleReadDocument(ctx, nil, dto.ReadDocumentInput{UUID: "fail"})
@@ -424,13 +358,11 @@ func TestHandleReadDocument(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{docSvc: docSvc})
 
 		_, resp, err := h.handleReadDocument(ctx, nil, dto.ReadDocumentInput{
@@ -458,13 +390,11 @@ func TestHandleReadDocument(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{docSvc: docSvc})
 
 		_, _, err := h.handleReadDocument(ctx, nil, dto.ReadDocumentInput{UUID: "x"})
@@ -489,13 +419,11 @@ func TestHandleCreateDocument(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{docSvc: docSvc})
 
 		_, resp, err := h.handleCreateDocument(ctx, nil, dto.CreateDocumentInput{
@@ -525,13 +453,11 @@ func TestHandleCreateDocument(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{docSvc: docSvc})
 
 		_, _, err := h.handleCreateDocument(ctx, nil, dto.CreateDocumentInput{
@@ -559,13 +485,11 @@ func TestHandleUpdateDocument(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{docSvc: docSvc})
 
 		_, resp, err := h.handleUpdateDocument(ctx, nil, dto.UpdateDocumentInput{
@@ -590,13 +514,11 @@ func TestHandleUpdateDocument(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{docSvc: docSvc})
 
 		_, _, err := h.handleUpdateDocument(ctx, nil, dto.UpdateDocumentInput{UUID: "x"})
@@ -616,13 +538,11 @@ func TestHandleDeleteDocument(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{docSvc: docSvc})
 
 		_, resp, err := h.handleDeleteDocument(ctx, nil, dto.DeleteDocumentInput{UUID: "del-uuid"})
@@ -644,13 +564,11 @@ func TestHandleDeleteDocument(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{docSvc: docSvc})
 
 		_, _, err := h.handleDeleteDocument(ctx, nil, dto.DeleteDocumentInput{UUID: "x"})
@@ -665,13 +583,11 @@ func TestHandleSearchDocuments(t *testing.T) {
 
 	t.Run("returns not configured when searcher is nil", func(t *testing.T) {
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{})
 
 		_, resp, err := h.handleSearchDocuments(ctx, nil, dto.SearchDocumentsInput{Query: "test"})
@@ -693,13 +609,11 @@ func TestHandleSearchDocuments(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{searcher: s})
 
 		_, _, err := h.handleSearchDocuments(ctx, nil, dto.SearchDocumentsInput{Query: "test"})
@@ -717,13 +631,11 @@ func TestHandleSearchDocuments(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{searcher: s})
 
 		// Limit 0 defaults to 10
@@ -748,13 +660,11 @@ func TestHandleSearchDocuments(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{searcher: s})
 
 		_, _, _ = h.handleSearchDocuments(ctx, nil, dto.SearchDocumentsInput{
@@ -775,384 +685,6 @@ func TestHandleSearchDocuments(t *testing.T) {
 			if !containsStr(capturedFilter, want) {
 				t.Errorf("filter %q missing substring %q", capturedFilter, want)
 			}
-		}
-	})
-}
-
-// ===== Confluence tool handler tests =====
-
-func TestHandleListConfluenceSpaces(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("returns spaces successfully", func(t *testing.T) {
-		repo := &mockConfluenceSpaceRepo{
-			listFn: func(_ context.Context, _, _ string, _ int) ([]model.ConfluenceSpace, error) {
-				return []model.ConfluenceSpace{
-					{Key: "ENG", Name: "Engineering", Type: "global", Description: sql.NullString{String: "Eng space", Valid: true}},
-					{Key: "OPS", Name: "Operations", Type: "global", Description: sql.NullString{Valid: false}},
-				}, nil
-			},
-		}
-		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
-		}{confluenceRepo: repo})
-
-		_, resp, err := h.handleListConfluenceSpaces(ctx, nil, dto.ListConfluenceSpacesInput{})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !resp.Success {
-			t.Error("expected Success=true")
-		}
-		if resp.Count != 2 {
-			t.Errorf("Count = %d, want 2", resp.Count)
-		}
-		if resp.Spaces[0].Key != "ENG" {
-			t.Errorf("first space Key = %q, want %q", resp.Spaces[0].Key, "ENG")
-		}
-		if resp.Spaces[0].Description != "Eng space" {
-			t.Errorf("first space Description = %q, want %q", resp.Spaces[0].Description, "Eng space")
-		}
-		if resp.Spaces[1].Description != "" {
-			t.Errorf("second space Description = %q, want empty", resp.Spaces[1].Description)
-		}
-	})
-
-	t.Run("clamps limit", func(t *testing.T) {
-		var capturedLimit int
-		repo := &mockConfluenceSpaceRepo{
-			listFn: func(_ context.Context, _, _ string, limit int) ([]model.ConfluenceSpace, error) {
-				capturedLimit = limit
-				return nil, nil
-			},
-		}
-		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
-		}{confluenceRepo: repo})
-
-		_, _, _ = h.handleListConfluenceSpaces(ctx, nil, dto.ListConfluenceSpacesInput{Limit: 0})
-		if capturedLimit != 50 {
-			t.Errorf("default limit = %d, want 50", capturedLimit)
-		}
-
-		_, _, _ = h.handleListConfluenceSpaces(ctx, nil, dto.ListConfluenceSpacesInput{Limit: 200})
-		if capturedLimit != 100 {
-			t.Errorf("max limit = %d, want 100", capturedLimit)
-		}
-	})
-
-	t.Run("returns error when repo fails", func(t *testing.T) {
-		repo := &mockConfluenceSpaceRepo{
-			listFn: func(_ context.Context, _, _ string, _ int) ([]model.ConfluenceSpace, error) {
-				return nil, errors.New("db error")
-			},
-		}
-		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
-		}{confluenceRepo: repo})
-
-		_, _, err := h.handleListConfluenceSpaces(ctx, nil, dto.ListConfluenceSpacesInput{})
-		if err == nil {
-			t.Fatal("expected error")
-		}
-	})
-}
-
-func TestHandleSearchConfluence(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("returns not configured when client is nil", func(t *testing.T) {
-		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
-		}{})
-
-		_, resp, err := h.handleSearchConfluence(ctx, nil, dto.SearchConfluenceInput{Query: "test"})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if resp.Success {
-			t.Error("expected Success=false")
-		}
-		if resp.Message != "Confluence service not configured" {
-			t.Errorf("Message = %q", resp.Message)
-		}
-	})
-
-	t.Run("returns search results", func(t *testing.T) {
-		cc := &mockConfluenceClient{
-			searchPagesFn: func(_ context.Context, params confluence.SearchPagesParams) (confluence.SearchResult, error) {
-				return confluence.SearchResult{
-					CQL: `text ~ "test"`,
-					Pages: []confluence.PageSummary{
-						{ID: "1", Title: "Page 1", SpaceKey: "ENG", WebURL: "/page/1"},
-					},
-				}, nil
-			},
-		}
-		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
-		}{confluenceC: cc})
-
-		_, resp, err := h.handleSearchConfluence(ctx, nil, dto.SearchConfluenceInput{Query: "test"})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !resp.Success {
-			t.Error("expected Success=true")
-		}
-		if resp.Count != 1 {
-			t.Errorf("Count = %d, want 1", resp.Count)
-		}
-	})
-
-	t.Run("clamps limit", func(t *testing.T) {
-		var capturedLimit int
-		cc := &mockConfluenceClient{
-			searchPagesFn: func(_ context.Context, params confluence.SearchPagesParams) (confluence.SearchResult, error) {
-				capturedLimit = params.Limit
-				return confluence.SearchResult{}, nil
-			},
-		}
-		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
-		}{confluenceC: cc})
-
-		_, _, _ = h.handleSearchConfluence(ctx, nil, dto.SearchConfluenceInput{Query: "x", Limit: 0})
-		if capturedLimit != 25 {
-			t.Errorf("default limit = %d, want 25", capturedLimit)
-		}
-
-		_, _, _ = h.handleSearchConfluence(ctx, nil, dto.SearchConfluenceInput{Query: "x", Limit: 100})
-		if capturedLimit != 50 {
-			t.Errorf("max limit = %d, want 50", capturedLimit)
-		}
-	})
-
-	t.Run("returns error when client fails", func(t *testing.T) {
-		cc := &mockConfluenceClient{
-			searchPagesFn: func(_ context.Context, _ confluence.SearchPagesParams) (confluence.SearchResult, error) {
-				return confluence.SearchResult{}, errors.New("api error")
-			},
-		}
-		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
-		}{confluenceC: cc})
-
-		_, _, err := h.handleSearchConfluence(ctx, nil, dto.SearchConfluenceInput{Query: "test"})
-		if err == nil {
-			t.Fatal("expected error")
-		}
-	})
-}
-
-func TestHandleReadConfluencePage(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("returns not configured when client is nil", func(t *testing.T) {
-		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
-		}{})
-
-		_, resp, err := h.handleReadConfluencePage(ctx, nil, dto.ReadConfluencePageInput{PageID: "1"})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if resp.Success {
-			t.Error("expected Success=false")
-		}
-	})
-
-	t.Run("reads page by ID", func(t *testing.T) {
-		cc := &mockConfluenceClient{
-			readPageFn: func(_ context.Context, pageID string) (*confluence.Page, error) {
-				return &confluence.Page{
-					ID:       pageID,
-					Title:    "Test Page",
-					SpaceKey: "ENG",
-					Content:  "Page content\n\n## Section\n\nMore content.",
-				}, nil
-			},
-		}
-		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
-		}{confluenceC: cc})
-
-		_, resp, err := h.handleReadConfluencePage(ctx, nil, dto.ReadConfluencePageInput{PageID: "123"})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !resp.Success {
-			t.Error("expected Success=true")
-		}
-		if resp.Content != "Page content\n\n## Section\n\nMore content." {
-			t.Errorf("Content = %q", resp.Content)
-		}
-	})
-
-	t.Run("reads page by space key and title", func(t *testing.T) {
-		cc := &mockConfluenceClient{
-			readPageByTitleFn: func(_ context.Context, spaceKey, title string) (*confluence.Page, error) {
-				return &confluence.Page{
-					ID:       "456",
-					Title:    title,
-					SpaceKey: spaceKey,
-					Content:  "By title",
-				}, nil
-			},
-		}
-		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
-		}{confluenceC: cc})
-
-		_, resp, err := h.handleReadConfluencePage(ctx, nil, dto.ReadConfluencePageInput{
-			SpaceKey: "ENG",
-			Title:    "My Page",
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !resp.Success {
-			t.Error("expected Success=true")
-		}
-	})
-
-	t.Run("returns error when neither page_id nor space+title provided", func(t *testing.T) {
-		cc := &mockConfluenceClient{}
-		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
-		}{confluenceC: cc})
-
-		_, resp, err := h.handleReadConfluencePage(ctx, nil, dto.ReadConfluencePageInput{})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if resp.Success {
-			t.Error("expected Success=false")
-		}
-		if resp.Message != "Either page_id or both space_key and title are required" {
-			t.Errorf("Message = %q", resp.Message)
-		}
-	})
-
-	t.Run("applies truncation to page content", func(t *testing.T) {
-		cc := &mockConfluenceClient{
-			readPageFn: func(_ context.Context, _ string) (*confluence.Page, error) {
-				return &confluence.Page{
-					ID:      "1",
-					Content: "P1\n\nP2\n\nP3\n\nP4",
-				}, nil
-			},
-		}
-		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
-		}{confluenceC: cc})
-
-		_, resp, err := h.handleReadConfluencePage(ctx, nil, dto.ReadConfluencePageInput{
-			PageID:        "1",
-			MaxParagraphs: 2,
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !resp.Truncated {
-			t.Error("expected Truncated=true")
-		}
-		if resp.Content != "P1\n\nP2" {
-			t.Errorf("Content = %q, want %q", resp.Content, "P1\n\nP2")
-		}
-	})
-
-	t.Run("returns error when ReadPage fails", func(t *testing.T) {
-		cc := &mockConfluenceClient{
-			readPageFn: func(_ context.Context, _ string) (*confluence.Page, error) {
-				return nil, errors.New("not found")
-			},
-		}
-		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
-		}{confluenceC: cc})
-
-		_, _, err := h.handleReadConfluencePage(ctx, nil, dto.ReadConfluencePageInput{PageID: "999"})
-		if err == nil {
-			t.Fatal("expected error")
 		}
 	})
 }
@@ -1179,13 +711,11 @@ func TestHandleListZimArchives(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{zimRepo: repo})
 
 		_, resp, err := h.handleListZimArchives(ctx, nil, dto.ListZimArchivesInput{})
@@ -1218,13 +748,11 @@ func TestHandleListZimArchives(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{zimRepo: repo})
 
 		_, _, _ = h.handleListZimArchives(ctx, nil, dto.ListZimArchivesInput{Limit: 0})
@@ -1245,13 +773,11 @@ func TestHandleListZimArchives(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{zimRepo: repo})
 
 		_, _, err := h.handleListZimArchives(ctx, nil, dto.ListZimArchivesInput{})
@@ -1266,13 +792,11 @@ func TestHandleSearchZim(t *testing.T) {
 
 	t.Run("returns not configured when client is nil", func(t *testing.T) {
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{})
 
 		_, resp, err := h.handleSearchZim(ctx, nil, dto.SearchZimInput{Archive: "test", Query: "go"})
@@ -1296,13 +820,11 @@ func TestHandleSearchZim(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{kiwixC: kc})
 
 		_, resp, err := h.handleSearchZim(ctx, nil, dto.SearchZimInput{Archive: "devdocs", Query: "go"})
@@ -1329,13 +851,11 @@ func TestHandleSearchZim(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{kiwixC: kc})
 
 		_, _, _ = h.handleSearchZim(ctx, nil, dto.SearchZimInput{Archive: "test", Query: "go", SearchType: ""})
@@ -1353,13 +873,11 @@ func TestHandleSearchZim(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{kiwixC: kc})
 
 		_, _, _ = h.handleSearchZim(ctx, nil, dto.SearchZimInput{Archive: "x", Query: "x", Limit: 0})
@@ -1380,13 +898,11 @@ func TestHandleSearchZim(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{kiwixC: kc})
 
 		_, _, err := h.handleSearchZim(ctx, nil, dto.SearchZimInput{Archive: "x", Query: "x"})
@@ -1401,13 +917,11 @@ func TestHandleReadZimArticle(t *testing.T) {
 
 	t.Run("returns not configured when client is nil", func(t *testing.T) {
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{})
 
 		_, resp, err := h.handleReadZimArticle(ctx, nil, dto.ReadZimArticleInput{Archive: "test", Path: "/a"})
@@ -1429,13 +943,11 @@ func TestHandleReadZimArticle(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{kiwixC: kc})
 
 		_, resp, err := h.handleReadZimArticle(ctx, nil, dto.ReadZimArticleInput{Archive: "dev", Path: "/go"})
@@ -1460,13 +972,11 @@ func TestHandleReadZimArticle(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{kiwixC: kc})
 
 		_, resp, err := h.handleReadZimArticle(ctx, nil, dto.ReadZimArticleInput{
@@ -1492,13 +1002,11 @@ func TestHandleReadZimArticle(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{kiwixC: kc})
 
 		_, _, err := h.handleReadZimArticle(ctx, nil, dto.ReadZimArticleInput{Archive: "x", Path: "/a"})
@@ -1531,13 +1039,11 @@ func TestHandleListGitTemplates(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, resp, err := h.handleListGitTemplates(ctx, nil, dto.ListGitTemplatesInput{})
@@ -1573,13 +1079,11 @@ func TestHandleListGitTemplates(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, _, _ = h.handleListGitTemplates(ctx, nil, dto.ListGitTemplatesInput{Limit: 0})
@@ -1600,13 +1104,11 @@ func TestHandleListGitTemplates(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, _, err := h.handleListGitTemplates(ctx, nil, dto.ListGitTemplatesInput{})
@@ -1635,13 +1137,11 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, resp, err := h.handleSearchGitTemplates(ctx, nil, dto.SearchGitTemplatesInput{Query: "claude"})
@@ -1665,13 +1165,11 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, _, _ = h.handleSearchGitTemplates(ctx, nil, dto.SearchGitTemplatesInput{Query: "x", Limit: 0})
@@ -1692,13 +1190,11 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, _, err := h.handleSearchGitTemplates(ctx, nil, dto.SearchGitTemplatesInput{Query: "x"})
@@ -1715,13 +1211,11 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		}
 		repo := &mockGitTemplateRepo{}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo, searcher: s})
 
 		_, _, err := h.handleSearchGitTemplates(ctx, nil, dto.SearchGitTemplatesInput{Query: "x"})
@@ -1756,13 +1250,11 @@ func TestHandleGetTemplateStructure(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, resp, err := h.handleGetTemplateStructure(ctx, nil, dto.GetTemplateStructureInput{UUID: "t1"})
@@ -1793,13 +1285,11 @@ func TestHandleGetTemplateStructure(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, resp, err := h.handleGetTemplateStructure(ctx, nil, dto.GetTemplateStructureInput{UUID: "missing"})
@@ -1821,13 +1311,11 @@ func TestHandleGetTemplateStructure(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, _, err := h.handleGetTemplateStructure(ctx, nil, dto.GetTemplateStructureInput{UUID: "t1"})
@@ -1856,13 +1344,11 @@ func TestHandleGetTemplateFile(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, resp, err := h.handleGetTemplateFile(ctx, nil, dto.GetTemplateFileInput{
@@ -1898,13 +1384,11 @@ func TestHandleGetTemplateFile(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, resp, err := h.handleGetTemplateFile(ctx, nil, dto.GetTemplateFileInput{
@@ -1934,13 +1418,11 @@ func TestHandleGetTemplateFile(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, _, err := h.handleGetTemplateFile(ctx, nil, dto.GetTemplateFileInput{
@@ -1960,13 +1442,11 @@ func TestHandleGetTemplateFile(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, resp, err := h.handleGetTemplateFile(ctx, nil, dto.GetTemplateFileInput{UUID: "missing", Path: "x"})
@@ -1988,13 +1468,11 @@ func TestHandleGetTemplateFile(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, resp, err := h.handleGetTemplateFile(ctx, nil, dto.GetTemplateFileInput{UUID: "t1", Path: "missing.md"})
@@ -2029,13 +1507,11 @@ func TestHandleGetDeploymentGuide(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, resp, err := h.handleGetDeploymentGuide(ctx, nil, dto.GetDeploymentGuideInput{
@@ -2069,13 +1545,11 @@ func TestHandleGetDeploymentGuide(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, resp, err := h.handleGetDeploymentGuide(ctx, nil, dto.GetDeploymentGuideInput{UUID: "missing"})
@@ -2097,13 +1571,11 @@ func TestHandleGetDeploymentGuide(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, _, err := h.handleGetDeploymentGuide(ctx, nil, dto.GetDeploymentGuideInput{
@@ -2131,13 +1603,11 @@ func TestHandleDownloadTemplate(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, resp, err := h.handleDownloadTemplate(ctx, nil, dto.DownloadTemplateInput{UUID: "t1"})
@@ -2176,13 +1646,11 @@ func TestHandleDownloadTemplate(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, resp, err := h.handleDownloadTemplate(ctx, nil, dto.DownloadTemplateInput{UUID: "t1", Format: "tar.gz"})
@@ -2209,13 +1677,11 @@ func TestHandleDownloadTemplate(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, resp, err := h.handleDownloadTemplate(ctx, nil, dto.DownloadTemplateInput{
@@ -2237,13 +1703,11 @@ func TestHandleDownloadTemplate(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{gitRepo: repo})
 
 		_, resp, err := h.handleDownloadTemplate(ctx, nil, dto.DownloadTemplateInput{UUID: "missing"})
@@ -2263,13 +1727,11 @@ func TestHandleUnifiedSearch(t *testing.T) {
 
 	t.Run("returns not configured when searcher is nil", func(t *testing.T) {
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{})
 
 		_, resp, err := h.handleUnifiedSearch(ctx, nil, dto.UnifiedSearchInput{Query: "test"})
@@ -2291,13 +1753,11 @@ func TestHandleUnifiedSearch(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{searcher: s})
 
 		_, _, err := h.handleUnifiedSearch(ctx, nil, dto.UnifiedSearchInput{Query: "test"})
@@ -2315,13 +1775,11 @@ func TestHandleUnifiedSearch(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{searcher: s})
 
 		_, _, _ = h.handleUnifiedSearch(ctx, nil, dto.UnifiedSearchInput{Query: "x", Limit: 0})
@@ -2344,13 +1802,11 @@ func TestHandleUnifiedSearch(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{searcher: s})
 
 		_, _, _ = h.handleUnifiedSearch(ctx, nil, dto.UnifiedSearchInput{
@@ -2377,13 +1833,11 @@ func TestHandleUnifiedSearch(t *testing.T) {
 			},
 		}
 		h := newHandlerWithMocks(struct {
-			docSvc         *mockDocumentService
-			confluenceRepo *mockConfluenceSpaceRepo
-			zimRepo        *mockZimArchiveRepo
-			gitRepo        *mockGitTemplateRepo
-			confluenceC    *mockConfluenceClient
-			kiwixC         *mockKiwixClient
-			searcher       *mockSearcher
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
 		}{searcher: s})
 
 		_, _, _ = h.handleUnifiedSearch(ctx, nil, dto.UnifiedSearchInput{

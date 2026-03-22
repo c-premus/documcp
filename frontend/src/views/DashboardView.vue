@@ -7,7 +7,6 @@ import {
   KeyIcon,
   ServerIcon,
   BookOpenIcon,
-  CloudIcon,
   CodeBracketIcon,
   ClockIcon,
   CheckCircleIcon,
@@ -26,7 +25,6 @@ interface DashboardStats {
   readonly oauth_clients: number
   readonly external_services: number
   readonly zim_archives: number
-  readonly confluence_spaces: number
   readonly git_templates: number
   readonly queue?: QueueStats
 }
@@ -49,7 +47,6 @@ const cards: readonly StatCard[] = [
   { label: 'OAuth Clients', key: 'oauth_clients', icon: KeyIcon, color: 'text-purple-600 dark:text-purple-400', route: '/oauth-clients' },
   { label: 'External Services', key: 'external_services', icon: ServerIcon, color: 'text-teal-600 dark:text-teal-400', route: '/external-services' },
   { label: 'ZIM Archives', key: 'zim_archives', icon: BookOpenIcon, color: 'text-amber-600 dark:text-amber-400', route: '/zim-archives' },
-  { label: 'Confluence Spaces', key: 'confluence_spaces', icon: CloudIcon, color: 'text-cyan-600 dark:text-cyan-400', route: '/confluence-spaces' },
   { label: 'Git Templates', key: 'git_templates', icon: CodeBracketIcon, color: 'text-emerald-600 dark:text-emerald-400', route: '/git-templates' },
 ] as const
 

@@ -70,31 +70,6 @@ type ReadZimArticleInput struct {
 	MaxParagraphs int    `json:"max_paragraphs,omitempty" jsonschema:"Limit to first N paragraphs (1-100)"`
 }
 
-// --- Confluence tools ---.
-
-// ListConfluenceSpacesInput holds parameters for listing Confluence spaces.
-type ListConfluenceSpacesInput struct {
-	Query string `json:"query,omitempty" jsonschema:"Search query to filter spaces"`
-	Type  string `json:"type,omitempty" jsonschema:"Filter by type: global, personal, knowledge_base"`
-	Limit int    `json:"limit,omitempty" jsonschema:"Max results (default 50, max 100)"`
-}
-
-// SearchConfluenceInput holds parameters for searching Confluence content.
-type SearchConfluenceInput struct {
-	Query string `json:"query,omitempty" jsonschema:"Simple full-text search query"`
-	Space string `json:"space,omitempty" jsonschema:"Filter to specific space by key"`
-	Limit int    `json:"limit,omitempty" jsonschema:"Max results (default 25, max 50)"`
-}
-
-// ReadConfluencePageInput holds parameters for reading a Confluence page.
-type ReadConfluencePageInput struct {
-	PageID        string `json:"page_id,omitempty" jsonschema:"Confluence page ID"`
-	SpaceKey      string `json:"space_key,omitempty" jsonschema:"Space key (use with title)"`
-	Title         string `json:"title,omitempty" jsonschema:"Exact page title (use with space_key)"`
-	SummaryOnly   bool   `json:"summary_only,omitempty" jsonschema:"Return only lead section"`
-	MaxParagraphs int    `json:"max_paragraphs,omitempty" jsonschema:"Limit to first N paragraphs (1-100)"`
-}
-
 // --- Git Template tools ---.
 
 // ListGitTemplatesInput holds parameters for listing available git templates.
@@ -140,7 +115,7 @@ type DownloadTemplateInput struct {
 // UnifiedSearchInput holds parameters for searching across all content sources.
 type UnifiedSearchInput struct {
 	Query  string   `json:"query" jsonschema:"Search text (1-255 characters),required"`
-	Types  []string `json:"types,omitempty" jsonschema:"Filter to specific content types: document, git_template, zim_archive, confluence_space"`
+	Types  []string `json:"types,omitempty" jsonschema:"Filter to specific content types: document, git_template, zim_archive"`
 	Limit  int      `json:"limit,omitempty" jsonschema:"Max results across all sources (default 20, max 100)"`
 	Offset int      `json:"offset,omitempty" jsonschema:"Pagination offset (default 0)"`
 }

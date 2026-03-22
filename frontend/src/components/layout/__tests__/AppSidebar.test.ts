@@ -10,7 +10,7 @@ const router = createRouter({
   routes: [{ path: '/:pathMatch(.*)*', name: 'catchAll', component: { template: '<div />' } }],
 })
 
-const standardNavItems = ['Dashboard', 'Documents', 'ZIM Archives', 'Confluence Spaces', 'Git Templates']
+const standardNavItems = ['Dashboard', 'Documents', 'ZIM Archives', 'Git Templates']
 const adminNavItems = ['Users', 'OAuth Clients', 'External Services', 'Queue']
 
 describe('AppSidebar', () => {
@@ -19,7 +19,7 @@ describe('AppSidebar', () => {
     await router.isReady()
   })
 
-  it('renders all 5 standard nav items', () => {
+  it('renders all 4 standard nav items', () => {
     const pinia = createPinia()
     setActivePinia(pinia)
     const auth = useAuthStore()

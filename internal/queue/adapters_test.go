@@ -24,7 +24,6 @@ func TestAdapters_KindValues(t *testing.T) {
 		want string
 	}{
 		{"SyncKiwix", SyncKiwixArgs{}, "sync_kiwix"},
-		{"SyncConfluence", SyncConfluenceArgs{}, "sync_confluence"},
 		{"SyncGitTemplates", SyncGitTemplatesArgs{}, "sync_git_templates"},
 		{"CleanupOAuthTokens", CleanupOAuthTokensArgs{}, "cleanup_oauth_tokens"},
 		{"CleanupOrphanedFiles", CleanupOrphanedFilesArgs{}, "cleanup_orphaned_files"},
@@ -56,7 +55,6 @@ func TestAdapters_InsertOpts_QueueAndMaxAttempts(t *testing.T) {
 		{"DocumentIndex", DocumentIndexArgs{DocumentID: 2, DocUUID: "b"}, "default", 4, 2},
 		{"ReindexAll", ReindexAllArgs{}, "low", 2, 4},
 		{"SyncKiwix", SyncKiwixArgs{}, "low", 2, 4},
-		{"SyncConfluence", SyncConfluenceArgs{}, "low", 2, 4},
 		{"SyncGitTemplates", SyncGitTemplatesArgs{}, "low", 2, 4},
 		{"CleanupOAuthTokens", CleanupOAuthTokensArgs{}, "low", 2, 4},
 		{"CleanupOrphanedFiles", CleanupOrphanedFilesArgs{}, "low", 2, 4},
@@ -89,7 +87,6 @@ func TestAdapters_SchedulerJobs_HaveUniqueOpts(t *testing.T) {
 	schedulerArgs := []river.JobArgs{
 		ReindexAllArgs{},
 		SyncKiwixArgs{},
-		SyncConfluenceArgs{},
 		SyncGitTemplatesArgs{},
 		CleanupOAuthTokensArgs{},
 		CleanupOrphanedFilesArgs{},

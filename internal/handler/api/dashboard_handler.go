@@ -30,10 +30,6 @@ type dashboardZimCounter interface {
 	Count(ctx context.Context) (int, error)
 }
 
-type dashboardConfluenceCounter interface {
-	Count(ctx context.Context) (int, error)
-}
-
 type dashboardGitTemplateCounter interface {
 	Count(ctx context.Context) (int, error)
 }
@@ -45,7 +41,6 @@ type DashboardHandler struct {
 	oauthClientRepo dashboardOAuthClientCounter
 	extSvcRepo      dashboardExternalServiceCounter
 	zimRepo         dashboardZimCounter
-	confluenceRepo  dashboardConfluenceCounter
 	gitTemplateRepo dashboardGitTemplateCounter
 	riverClient     *queue.RiverClient
 	logger          *slog.Logger
@@ -59,7 +54,6 @@ func NewDashboardHandler(
 	oauthClientRepo dashboardOAuthClientCounter,
 	extSvcRepo dashboardExternalServiceCounter,
 	zimRepo dashboardZimCounter,
-	confluenceRepo dashboardConfluenceCounter,
 	gitTemplateRepo dashboardGitTemplateCounter,
 	riverClient *queue.RiverClient,
 	logger *slog.Logger,
@@ -70,7 +64,6 @@ func NewDashboardHandler(
 		oauthClientRepo: oauthClientRepo,
 		extSvcRepo:      extSvcRepo,
 		zimRepo:         zimRepo,
-		confluenceRepo:  confluenceRepo,
 		gitTemplateRepo: gitTemplateRepo,
 		riverClient:     riverClient,
 		logger:          logger,
@@ -116,13 +109,6 @@ func (h *DashboardHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		return h.zimRepo.Count(ctx)
 	})
 
-	confluenceSpaces := h.countOrZero(ctx, "confluence_spaces", func(ctx context.Context) (int, error) {
-		if h.confluenceRepo == nil {
-			return 0, nil
-		}
-		return h.confluenceRepo.Count(ctx)
-	})
-
 	gitTemplates := h.countOrZero(ctx, "git_templates", func(ctx context.Context) (int, error) {
 		if h.gitTemplateRepo == nil {
 			return 0, nil
@@ -136,8 +122,7 @@ func (h *DashboardHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		"oauth_clients":     oauthClients,
 		"external_services": extServices,
 		"zim_archives":      zimArchives,
-		"confluence_spaces": confluenceSpaces,
-		"git_templates":     gitTemplates,
+		"git_templates": gitTemplates,
 	}
 
 	if h.riverClient != nil {
