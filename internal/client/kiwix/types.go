@@ -15,8 +15,10 @@ type CatalogEntry struct {
 	ArticleCount int64    // Number of articles in the archive
 	MediaCount   int64    // Number of media items in the archive
 	FileSize     int64    // Size in bytes
-	Tags         []string // Descriptive tags
-	Name         string   // Archive name (derived from ID)
+	Tags             []string // Descriptive tags
+	Name             string   // Archive name (derived from ID)
+	ContentID        string   // Versioned content ID for search/article reading (e.g. "gobyexample.com_en_all_2025-11")
+	HasFulltextIndex bool     // Whether fulltext search index is available
 }
 
 // SearchResult represents a single search result from Kiwix.

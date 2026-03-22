@@ -24,6 +24,28 @@ func newTestClient(t *testing.T, serverURL string) *Client {
 	}
 }
 
+// catalogForArchive returns a minimal OPDS XML catalog with a single entry
+// matching the given archive name. If ftindex is true, the tags include
+// _ftindex:yes so fulltext search is allowed.
+func catalogForArchive(name string, ftindex bool) string {
+	tags := "test"
+	if ftindex {
+		tags = "test;_ftindex:yes"
+	}
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>urn:uuid:test-001</id>
+    <title>Test Archive</title>
+    <name>%s</name>
+    <tags>%s</tags>
+    <articleCount>100</articleCount>
+    <mediaCount>0</mediaCount>
+    <size>1024</size>
+  </entry>
+</feed>`, name, tags)
+}
+
 // sampleOPDSCatalog returns a valid OPDS XML catalog with two entries for use
 // in tests. The XML exercises Name, Tags, Creator, Links, and all metadata.
 func sampleOPDSCatalog() string {
@@ -312,14 +334,19 @@ func TestFetchCatalog(t *testing.T) {
 func TestSearch(t *testing.T) {
 	t.Run("suggest search sends correct query params", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/catalog/root.xml" {
+				w.Header().Set("Content-Type", "application/xml")
+				_, _ = fmt.Fprint(w, catalogForArchive("devdocs-go", false))
+				return
+			}
 			if r.URL.Path != "/suggest" {
 				t.Errorf("path = %q, want /suggest", r.URL.Path)
 			}
 			if r.URL.Query().Get("term") != "golang" {
 				t.Errorf("term = %q, want golang", r.URL.Query().Get("term"))
 			}
-			if r.URL.Query().Get("limit") != "5" {
-				t.Errorf("limit = %q, want 5", r.URL.Query().Get("limit"))
+			if r.URL.Query().Get("count") != "5" {
+				t.Errorf("count = %q, want 5", r.URL.Query().Get("count"))
 			}
 			if r.URL.Query().Get("content") != "devdocs-go" {
 				t.Errorf("content = %q, want devdocs-go", r.URL.Query().Get("content"))
@@ -342,19 +369,24 @@ func TestSearch(t *testing.T) {
 		if len(results) != 2 {
 			t.Fatalf("expected 2 results, got %d", len(results))
 		}
-		if results[0].Title != "Go Tutorial" {
-			t.Errorf("Title = %q, want %q", results[0].Title, "Go Tutorial")
+		if results[0].Title != "go-tutorial" {
+			t.Errorf("Title = %q, want %q", results[0].Title, "go-tutorial")
 		}
 		if results[0].Path != "A/Go_Tutorial" {
 			t.Errorf("Path = %q, want %q", results[0].Path, "A/Go_Tutorial")
 		}
-		if results[1].Title != "Go Modules" {
-			t.Errorf("Title = %q, want %q", results[1].Title, "Go Modules")
+		if results[1].Title != "go-modules" {
+			t.Errorf("Title = %q, want %q", results[1].Title, "go-modules")
 		}
 	})
 
 	t.Run("fulltext search sends correct query params", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/catalog/root.xml" {
+				w.Header().Set("Content-Type", "application/xml")
+				_, _ = fmt.Fprint(w, catalogForArchive("devdocs-go", true))
+				return
+			}
 			if r.URL.Path != "/search" {
 				t.Errorf("path = %q, want /search", r.URL.Path)
 			}
@@ -364,15 +396,15 @@ func TestSearch(t *testing.T) {
 			if r.URL.Query().Get("pageLength") != "3" {
 				t.Errorf("pageLength = %q, want 3", r.URL.Query().Get("pageLength"))
 			}
-			if r.URL.Query().Get("books") != "name:devdocs-go" {
-				t.Errorf("books = %q, want name:devdocs-go", r.URL.Query().Get("books"))
+			if r.URL.Query().Get("content") != "devdocs-go" {
+				t.Errorf("content = %q, want devdocs-go", r.URL.Query().Get("content"))
 			}
 
-			// Return HTML like Kiwix fulltext search does.
+			// Return HTML like Kiwix fulltext search does (hrefs prefixed with /content/{archive}/).
 			_, _ = fmt.Fprint(w, `<html><body>
-				<a href="/devdocs-go/A/Goroutines">Goroutines</a>
+				<a href="/content/devdocs-go/A/Goroutines">Goroutines</a>
 				<cite>Concurrency primitives in Go</cite>
-				<a href="/devdocs-go/A/Channels">Channels</a>
+				<a href="/content/devdocs-go/A/Channels">Channels</a>
 				<cite>Channel communication</cite>
 			</body></html>`)
 		}))
@@ -390,8 +422,8 @@ func TestSearch(t *testing.T) {
 		if results[0].Title != "Goroutines" {
 			t.Errorf("Title = %q, want %q", results[0].Title, "Goroutines")
 		}
-		if results[0].Path != "/devdocs-go/A/Goroutines" {
-			t.Errorf("Path = %q, want %q", results[0].Path, "/devdocs-go/A/Goroutines")
+		if results[0].Path != "A/Goroutines" {
+			t.Errorf("Path = %q, want %q", results[0].Path, "A/Goroutines")
 		}
 		if results[0].Snippet != "Concurrency primitives in Go" {
 			t.Errorf("Snippet = %q, want %q", results[0].Snippet, "Concurrency primitives in Go")
@@ -400,8 +432,13 @@ func TestSearch(t *testing.T) {
 
 	t.Run("default limit is 10 when zero or negative", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Query().Get("limit") != "10" {
-				t.Errorf("limit = %q, want 10", r.URL.Query().Get("limit"))
+			if r.URL.Path == "/catalog/root.xml" {
+				w.Header().Set("Content-Type", "application/xml")
+				_, _ = fmt.Fprint(w, catalogForArchive("archive", false))
+				return
+			}
+			if r.URL.Query().Get("count") != "10" {
+				t.Errorf("count = %q, want 10", r.URL.Query().Get("count"))
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprint(w, `[]`)
@@ -434,6 +471,11 @@ func TestSearch(t *testing.T) {
 
 	t.Run("returns error on server error", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/catalog/root.xml" {
+				w.Header().Set("Content-Type", "application/xml")
+				_, _ = fmt.Fprint(w, catalogForArchive("archive", false))
+				return
+			}
 			w.WriteHeader(http.StatusInternalServerError)
 		}))
 		defer srv.Close()
@@ -450,6 +492,11 @@ func TestSearch(t *testing.T) {
 
 	t.Run("returns error on malformed suggest JSON", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/catalog/root.xml" {
+				w.Header().Set("Content-Type", "application/xml")
+				_, _ = fmt.Fprint(w, catalogForArchive("archive", false))
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprint(w, `{not valid json]`)
 		}))
@@ -467,6 +514,11 @@ func TestSearch(t *testing.T) {
 
 	t.Run("fulltext returns empty slice for HTML with no results", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/catalog/root.xml" {
+				w.Header().Set("Content-Type", "application/xml")
+				_, _ = fmt.Fprint(w, catalogForArchive("archive", true))
+				return
+			}
 			_, _ = fmt.Fprint(w, `<html><body><p>No results found</p></body></html>`)
 		}))
 		defer srv.Close()
@@ -483,6 +535,11 @@ func TestSearch(t *testing.T) {
 
 	t.Run("suggest returns empty slice for empty JSON array", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/catalog/root.xml" {
+				w.Header().Set("Content-Type", "application/xml")
+				_, _ = fmt.Fprint(w, catalogForArchive("archive", false))
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprint(w, `[]`)
 		}))
@@ -514,6 +571,11 @@ func TestReadArticle(t *testing.T) {
 </html>`
 
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/catalog/root.xml" {
+				w.Header().Set("Content-Type", "application/xml")
+				_, _ = fmt.Fprint(w, catalogForArchive("devdocs-go", false))
+				return
+			}
 			if r.URL.Path != "/devdocs-go/A/Goroutines" {
 				t.Errorf("path = %q, want /devdocs-go/A/Goroutines", r.URL.Path)
 			}
@@ -545,6 +607,11 @@ func TestReadArticle(t *testing.T) {
 
 	t.Run("falls back to path segment when no title tag", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/catalog/root.xml" {
+				w.Header().Set("Content-Type", "application/xml")
+				_, _ = fmt.Fprint(w, catalogForArchive("archive", false))
+				return
+			}
 			w.Header().Set("Content-Type", "text/html")
 			_, _ = fmt.Fprint(w, `<html><body><p>No title here.</p></body></html>`)
 		}))
@@ -571,6 +638,11 @@ func TestReadArticle(t *testing.T) {
 </html>`
 
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/catalog/root.xml" {
+				w.Header().Set("Content-Type", "application/xml")
+				_, _ = fmt.Fprint(w, catalogForArchive("archive", false))
+				return
+			}
 			w.Header().Set("Content-Type", "text/html")
 			_, _ = fmt.Fprint(w, htmlWithScripts)
 		}))
@@ -595,6 +667,11 @@ func TestReadArticle(t *testing.T) {
 
 	t.Run("returns error on server error", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/catalog/root.xml" {
+				w.Header().Set("Content-Type", "application/xml")
+				_, _ = fmt.Fprint(w, catalogForArchive("archive", false))
+				return
+			}
 			w.WriteHeader(http.StatusNotFound)
 		}))
 		defer srv.Close()
@@ -865,11 +942,12 @@ func TestHTMLToPlainText(t *testing.T) {
 
 func TestParseFulltextResponse(t *testing.T) {
 	t.Run("parses links and snippets from HTML", func(t *testing.T) {
+		// Kiwix fulltext search returns hrefs prefixed with /content/{archive}/.
 		body := `<html>
 <body>
-<a href="/archive/A/First_Article">First Article</a>
+<a href="/content/archive_2025-01/A/First_Article">First Article</a>
 <cite>This is the first snippet</cite>
-<a href="/archive/A/Second_Article">Second Article</a>
+<a href="/content/archive_2025-01/A/Second_Article">Second Article</a>
 <cite>This is the second snippet</cite>
 </body>
 </html>`
@@ -882,8 +960,8 @@ func TestParseFulltextResponse(t *testing.T) {
 		if results[0].Title != "First Article" {
 			t.Errorf("Title[0] = %q, want %q", results[0].Title, "First Article")
 		}
-		if results[0].Path != "/archive/A/First_Article" {
-			t.Errorf("Path[0] = %q, want %q", results[0].Path, "/archive/A/First_Article")
+		if results[0].Path != "A/First_Article" {
+			t.Errorf("Path[0] = %q, want %q", results[0].Path, "A/First_Article")
 		}
 		if results[0].Snippet != "This is the first snippet" {
 			t.Errorf("Snippet[0] = %q, want %q", results[0].Snippet, "This is the first snippet")
@@ -894,8 +972,8 @@ func TestParseFulltextResponse(t *testing.T) {
 	})
 
 	t.Run("handles more links than snippets", func(t *testing.T) {
-		body := `<a href="/a/One">One</a>
-<a href="/a/Two">Two</a>
+		body := `<a href="/content/arc_2025-01/One">One</a>
+<a href="/content/arc_2025-01/Two">Two</a>
 <cite>Only one snippet</cite>`
 
 		results := parseFulltextResponse([]byte(body))
@@ -921,7 +999,7 @@ func TestParseFulltextResponse(t *testing.T) {
 	})
 
 	t.Run("decodes HTML entities in titles", func(t *testing.T) {
-		body := `<a href="/a/Test">Tom &amp; Jerry</a>`
+		body := `<a href="/content/arc_2025-01/Test">Tom &amp; Jerry</a>`
 		results := parseFulltextResponse([]byte(body))
 		if len(results) != 1 {
 			t.Fatalf("expected 1 result, got %d", len(results))
@@ -946,8 +1024,8 @@ func TestParseSuggestResponse(t *testing.T) {
 		if len(results) != 2 {
 			t.Fatalf("expected 2 results, got %d", len(results))
 		}
-		if results[0].Title != "Go Functions" {
-			t.Errorf("Title = %q, want %q", results[0].Title, "Go Functions")
+		if results[0].Title != "go-functions" {
+			t.Errorf("Title = %q, want %q", results[0].Title, "go-functions")
 		}
 		if results[0].Path != "A/Go_Functions" {
 			t.Errorf("Path = %q, want %q", results[0].Path, "A/Go_Functions")
