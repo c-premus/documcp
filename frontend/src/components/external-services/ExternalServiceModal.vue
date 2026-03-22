@@ -32,7 +32,6 @@ const error = ref<string | null>(null)
 const isEditMode = computed(() => props.service !== null && props.service !== undefined)
 const dialogTitle = computed(() => isEditMode.value ? 'Edit Service' : 'Add Service')
 const submitLabel = computed(() => isEditMode.value ? 'Save' : 'Create')
-const showApiKeyHint = computed(() => serviceType.value === 'confluence')
 
 watch(() => props.open, (isOpen) => {
   if (isOpen) {
@@ -150,7 +149,6 @@ async function handleSubmit(): Promise<void> {
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 >
                   <option value="kiwix">Kiwix</option>
-                  <option value="confluence">Confluence</option>
                 </select>
               </div>
 
@@ -178,9 +176,6 @@ async function handleSubmit(): Promise<void> {
                   :placeholder="isEditMode ? '********' : ''"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
-                <p v-if="showApiKeyHint" class="mt-1 text-xs text-text-muted">
-                  Use email:token format for Confluence API key
-                </p>
               </div>
 
               <div>

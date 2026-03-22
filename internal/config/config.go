@@ -32,7 +32,6 @@ type Config struct {
 type SchedulerConfig struct {
 	Enabled                 bool   `mapstructure:"scheduler_enabled"`
 	KiwixSchedule           string `mapstructure:"scheduler_kiwix_schedule"`
-	ConfluenceSchedule      string `mapstructure:"scheduler_confluence_schedule"`
 	GitSchedule             string `mapstructure:"scheduler_git_schedule"`
 	OAuthCleanupSchedule    string `mapstructure:"scheduler_oauth_cleanup_schedule"`
 	OrphanedFilesSchedule   string `mapstructure:"scheduler_orphaned_files_schedule"`
@@ -217,7 +216,6 @@ func setDefaults(v *viper.Viper) {
 	// Scheduler
 	v.SetDefault("scheduler_enabled", false)
 	v.SetDefault("scheduler_kiwix_schedule", "0 */6 * * *")           // every 6 hours
-	v.SetDefault("scheduler_confluence_schedule", "0 */4 * * *")      // every 4 hours
 	v.SetDefault("scheduler_git_schedule", "0 * * * *")               // every hour
 	v.SetDefault("scheduler_oauth_cleanup_schedule", "0 * * * *")     // hourly
 	v.SetDefault("scheduler_orphaned_files_schedule", "0 2 * * *")    // daily 2 AM
@@ -349,7 +347,6 @@ func Load() (*Config, error) {
 	cfg.Scheduler = SchedulerConfig{
 		Enabled:                 v.GetBool("scheduler_enabled"),
 		KiwixSchedule:           v.GetString("scheduler_kiwix_schedule"),
-		ConfluenceSchedule:      v.GetString("scheduler_confluence_schedule"),
 		GitSchedule:             v.GetString("scheduler_git_schedule"),
 		OAuthCleanupSchedule:    v.GetString("scheduler_oauth_cleanup_schedule"),
 		OrphanedFilesSchedule:   v.GetString("scheduler_orphaned_files_schedule"),

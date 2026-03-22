@@ -226,65 +226,6 @@ func (ix *Indexer) IndexZimArchiveBatch(ctx context.Context, recs []ZimArchiveRe
 }
 
 //nolint:godot // ---------------------------------------------------------------------------
-// Confluence space indexing.
-//nolint:godot // ---------------------------------------------------------------------------
-
-// ConfluenceSpaceRecord represents a Confluence space to be indexed.
-type ConfluenceSpaceRecord struct {
-	UUID              string `json:"uuid"`
-	ConfluenceID      string `json:"confluence_id"`
-	Key               string `json:"key"`
-	Name              string `json:"name"`
-	Description       string `json:"description,omitempty"`
-	Type              string `json:"type"`
-	Status            string `json:"status,omitempty"`
-	ExternalServiceID int64  `json:"external_service_id"`
-	IsEnabled         bool   `json:"is_enabled"`
-	SoftDeleted       bool   `json:"__soft_deleted"`
-}
-
-// IndexConfluenceSpace adds or updates a Confluence space in the confluence_spaces index.
-func (ix *Indexer) IndexConfluenceSpace(ctx context.Context, rec ConfluenceSpaceRecord) error {
-	idx := ix.client.ms.Index(IndexConfluenceSpaces)
-	task, err := idx.AddDocumentsWithContext(ctx, []ConfluenceSpaceRecord{rec}, nil)
-	if err != nil {
-		return fmt.Errorf("indexing Confluence space %s: %w", rec.UUID, err)
-	}
-
-	ix.logger.Debug("Confluence space indexed", "uuid", rec.UUID, "task_uid", task.TaskUID)
-	return nil
-}
-
-// DeleteConfluenceSpace removes a Confluence space from the index by UUID.
-func (ix *Indexer) DeleteConfluenceSpace(ctx context.Context, uuid string) error {
-	idx := ix.client.ms.Index(IndexConfluenceSpaces)
-	task, err := idx.DeleteDocumentWithContext(ctx, uuid, nil)
-	if err != nil {
-		return fmt.Errorf("deleting Confluence space %s from index: %w", uuid, err)
-	}
-
-	ix.logger.Debug("Confluence space removed from index", "uuid", uuid, "task_uid", task.TaskUID)
-	return nil
-}
-
-// SoftDeleteConfluenceSpace marks a Confluence space as soft-deleted in the index
-// rather than removing it. Soft-deleted records are filtered out via __soft_deleted=false.
-func (ix *Indexer) SoftDeleteConfluenceSpace(ctx context.Context, uuid string) error {
-	idx := ix.client.ms.Index(IndexConfluenceSpaces)
-	record := map[string]any{
-		"uuid":           uuid,
-		"__soft_deleted": true,
-	}
-	task, err := idx.AddDocumentsWithContext(ctx, []map[string]any{record}, nil)
-	if err != nil {
-		return fmt.Errorf("soft-deleting Confluence space %s in index: %w", uuid, err)
-	}
-
-	ix.logger.Debug("Confluence space soft-deleted in index", "uuid", uuid, "task_uid", task.TaskUID)
-	return nil
-}
-
-//nolint:godot // ---------------------------------------------------------------------------
 // Git template indexing.
 //nolint:godot // ---------------------------------------------------------------------------
 

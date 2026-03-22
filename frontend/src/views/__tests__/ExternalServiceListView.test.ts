@@ -119,7 +119,6 @@ describe('ExternalServiceListView', () => {
     const optionTexts = options.map((o) => o.text())
     expect(optionTexts).toContain('All Types')
     expect(optionTexts).toContain('Kiwix')
-    expect(optionTexts).toContain('Confluence')
   })
 
   it('shows empty state action button that says "Add Service"', async () => {

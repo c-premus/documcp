@@ -13,7 +13,6 @@ const (
 	DocumentsWrite = "documents:write"
 	SearchRead     = "search:read"
 	ZIMRead        = "zim:read"
-	ConfluenceRead = "confluence:read"
 	TemplatesRead  = "templates:read"
 	TemplatesWrite = "templates:write"
 	ServicesRead   = "services:read"
@@ -30,7 +29,6 @@ var All = map[string]bool{
 	DocumentsWrite: true,
 	SearchRead:     true,
 	ZIMRead:        true,
-	ConfluenceRead: true,
 	TemplatesRead:  true,
 	TemplatesWrite: true,
 	ServicesRead:   true,
@@ -91,7 +89,6 @@ func DefaultScopes() string {
 		DocumentsRead,
 		SearchRead,
 		ZIMRead,
-		ConfluenceRead,
 		TemplatesRead,
 		ServicesRead,
 	}, " ")

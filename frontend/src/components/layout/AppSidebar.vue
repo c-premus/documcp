@@ -5,7 +5,6 @@ import {
   HomeIcon,
   DocumentTextIcon,
   ArchiveBoxIcon,
-  GlobeAltIcon,
   CodeBracketIcon,
   UserGroupIcon,
   KeyIcon,
@@ -34,7 +33,6 @@ const documentNavItems: readonly NavItem[] = [
 
 const contentNavItems: readonly NavItem[] = [
   { name: 'ZIM Archives', to: '/zim-archives', icon: ArchiveBoxIcon },
-  { name: 'Confluence Spaces', to: '/confluence-spaces', icon: GlobeAltIcon },
   { name: 'Git Templates', to: '/git-templates', icon: CodeBracketIcon },
 ]
 

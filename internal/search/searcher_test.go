@@ -565,7 +565,6 @@ func TestSearchIndexConstants(t *testing.T) {
 	}{
 		{"IndexDocuments", search.IndexDocuments, "documents"},
 		{"IndexZimArchives", search.IndexZimArchives, "zim_archives"},
-		{"IndexConfluenceSpaces", search.IndexConfluenceSpaces, "confluence_spaces"},
 		{"IndexGitTemplates", search.IndexGitTemplates, "git_templates"},
 	}
 

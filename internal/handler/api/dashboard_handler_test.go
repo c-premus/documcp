@@ -44,7 +44,6 @@ func TestDashboardHandler_Stats_AllCounters(t *testing.T) {
 		&mockCounter{count: 3},
 		&mockCounter{count: 2},
 		&mockCounter{count: 7},
-		&mockCounter{count: 4},
 		&mockCounter{count: 6},
 		nil, // no river client
 		discardLogger(),
@@ -75,8 +74,7 @@ func TestDashboardHandler_Stats_AllCounters(t *testing.T) {
 		"oauth_clients":     3,
 		"external_services": 2,
 		"zim_archives":      7,
-		"confluence_spaces": 4,
-		"git_templates":     6,
+		"git_templates": 6,
 	}
 
 	for key, want := range expected {
@@ -99,7 +97,7 @@ func TestDashboardHandler_Stats_AllCounters(t *testing.T) {
 func TestDashboardHandler_Stats_NilCounters(t *testing.T) {
 	t.Parallel()
 
-	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil, nil, nil, discardLogger())
+	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil, nil, discardLogger())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -133,8 +131,8 @@ func TestDashboardHandler_Stats_CounterError(t *testing.T) {
 	h := NewDashboardHandler(
 		&mockCounter{err: errors.New("db down")},
 		&mockCounter{count: 5},
-		nil, nil, nil, nil, nil,
-		nil,
+		nil, nil, nil, nil,
+		nil, // no river client
 		discardLogger(),
 	)
 
@@ -171,7 +169,7 @@ func TestDashboardHandler_Stats_CounterError(t *testing.T) {
 func TestDashboardHandler_Stats_ContentType(t *testing.T) {
 	t.Parallel()
 
-	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil, nil, nil, discardLogger())
+	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil, nil, discardLogger())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -187,7 +185,7 @@ func TestDashboardHandler_Stats_ContentType(t *testing.T) {
 func TestNewDashboardHandler(t *testing.T) {
 	t.Parallel()
 
-	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil, nil, nil, discardLogger())
+	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil, nil, discardLogger())
 	if h == nil {
 		t.Fatal("expected non-nil handler")
 	}

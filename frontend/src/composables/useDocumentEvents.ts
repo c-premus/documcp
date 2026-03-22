@@ -5,7 +5,6 @@ import { toast } from 'vue-sonner'
 
 const schedulerMessages: Record<string, string> = {
   'sync_kiwix': 'Kiwix sync completed',
-  'sync_confluence': 'Confluence sync completed',
   'sync_git_templates': 'Git template sync completed',
   'cleanup_oauth_tokens': 'OAuth token cleanup completed',
   'health_check_services': 'Service health checks completed',

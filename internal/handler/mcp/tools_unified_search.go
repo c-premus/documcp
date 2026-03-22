@@ -38,15 +38,14 @@ func (h *Handler) registerUnifiedSearchTool() {
 	mcp.AddTool(h.server, &mcp.Tool{
 		Name: "unified_search",
 		Description: "Search across ALL content types in a single request: Documents, Git Templates, " +
-			"ZIM Archives, and Confluence Spaces.\n\n" +
+			"and ZIM Archives.\n\n" +
 			"Returns results ranked by relevance with a `source` field indicating the content type. " +
 			"Use for discovery -- then use type-specific tools (search_documents, search_zim, " +
-			"search_confluence, search_git_templates) for deep content search with full filter options.\n\n" +
+			"search_git_templates) for deep content search with full filter options.\n\n" +
 			"**Sources** (filter with `types` param):\n" +
 			"- `document` -- Uploaded documents (PDF, DOCX, XLSX, HTML, Markdown)\n" +
 			"- `git_template` -- Git template README and metadata\n" +
-			"- `zim_archive` -- ZIM archive metadata (DevDocs, Wikipedia, Stack Exchange)\n" +
-			"- `confluence_space` -- Confluence space metadata",
+			"- `zim_archive` -- ZIM archive metadata (DevDocs, Wikipedia, Stack Exchange)",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:   true,
 			IdempotentHint: true,
@@ -84,10 +83,9 @@ func (h *Handler) handleUnifiedSearch(
 	var indexes []string
 	if len(input.Types) > 0 {
 		typeMap := map[string]string{
-			"document":         search.IndexDocuments,
-			"git_template":     search.IndexGitTemplates,
-			"zim_archive":      search.IndexZimArchives,
-			"confluence_space": search.IndexConfluenceSpaces,
+			"document":     search.IndexDocuments,
+			"git_template": search.IndexGitTemplates,
+			"zim_archive":  search.IndexZimArchives,
 		}
 		for _, t := range input.Types {
 			if idx, ok := typeMap[t]; ok {
@@ -135,8 +133,6 @@ func (h *Handler) handleUnifiedSearch(
 				source = "zim_archive"
 			} else if _, ok := m["readme_content"]; ok {
 				source = "git_template"
-			} else if _, ok := m["key"]; ok {
-				source = "confluence_space"
 			}
 		}
 
@@ -187,8 +183,6 @@ func indexToSource(indexUID string) string {
 		return "git_template"
 	case search.IndexZimArchives:
 		return "zim_archive"
-	case search.IndexConfluenceSpaces:
-		return "confluence_space"
 	default:
 		return indexUID
 	}

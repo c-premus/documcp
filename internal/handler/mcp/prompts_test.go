@@ -227,13 +227,13 @@ func TestRegisterPrompts(t *testing.T) {
 	t.Run("all features enabled does not panic", func(t *testing.T) {
 		h := newTestHandler()
 		// Should not panic.
-		h.registerPrompts(true, true, true)
+		h.registerPrompts(true, true)
 	})
 
 	t.Run("all features disabled does not panic", func(t *testing.T) {
 		h := newTestHandler()
 		// Should not panic.
-		h.registerPrompts(false, false, false)
+		h.registerPrompts(false, false)
 	})
 }
 
@@ -430,44 +430,6 @@ func TestHandleZimResearch(t *testing.T) {
 	}
 }
 
-func TestHandleConfluenceResearch(t *testing.T) {
-	h := newTestHandler()
-
-	tests := []struct {
-		name string
-		args map[string]string
-	}{
-		{
-			name: "with all arguments",
-			args: map[string]string{
-				"topic": "deployment pipeline",
-				"space": "ENG",
-				"depth": "deep",
-			},
-		},
-		{
-			name: "with topic only",
-			args: map[string]string{
-				"topic": "incident response",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := makePromptRequest("confluence_research", tt.args)
-			result, err := h.handleConfluenceResearch(context.Background(), req)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			assertPromptResult(t, result)
-			assertMessageRole(t, result.Messages[0], "assistant")
-			assertMessageRole(t, result.Messages[1], "user")
-			assertMessageContains(t, result.Messages[1], tt.args["topic"])
-		})
-	}
-}
-
 func TestHandleCrossSourceResearch(t *testing.T) {
 	h := newTestHandler()
 
@@ -514,17 +476,6 @@ func TestZimDepthGuidance(t *testing.T) {
 			got := zimDepthGuidance(depth)
 			if got == "" {
 				t.Errorf("zimDepthGuidance(%q) returned empty string", depth)
-			}
-		})
-	}
-}
-
-func TestConfluenceDepthGuidance(t *testing.T) {
-	for _, depth := range []string{"quick", "standard", "deep"} {
-		t.Run(depth, func(t *testing.T) {
-			got := confluenceDepthGuidance(depth)
-			if got == "" {
-				t.Errorf("confluenceDepthGuidance(%q) returned empty string", depth)
 			}
 		})
 	}

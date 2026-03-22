@@ -34,7 +34,7 @@ type HealthChecker interface {
 // CreateExternalServiceParams holds the input for creating an external service.
 type CreateExternalServiceParams struct {
 	Name     string
-	Type     string // kiwix, confluence
+	Type     string // kiwix
 	BaseURL  string
 	APIKey   string
 	Config   string // JSON string
@@ -51,11 +51,6 @@ type UpdateExternalServiceParams struct {
 	IsEnabled *bool
 }
 
-// confluenceSpaceFinder finds Confluence space UUIDs for an external service.
-type confluenceSpaceFinder interface {
-	FindUUIDsByExternalServiceID(ctx context.Context, serviceID int64) ([]string, error)
-}
-
 // zimArchiveFinder finds ZIM archive UUIDs for an external service.
 type zimArchiveFinder interface {
 	FindUUIDsByExternalServiceID(ctx context.Context, serviceID int64) ([]string, error)
@@ -63,33 +58,29 @@ type zimArchiveFinder interface {
 
 // ExternalServiceIndexCleaner removes indexed entries on service deletion.
 type ExternalServiceIndexCleaner interface {
-	DeleteConfluenceSpace(ctx context.Context, uuid string) error
 	DeleteZimArchive(ctx context.Context, uuid string) error
 }
 
 // ExternalServiceService handles CRUD and health check orchestration for external services.
 type ExternalServiceService struct {
-	repo           ExternalServiceRepo
-	confluenceRepo confluenceSpaceFinder
-	zimRepo        zimArchiveFinder
-	indexCleaner   ExternalServiceIndexCleaner
-	logger         *slog.Logger
+	repo         ExternalServiceRepo
+	zimRepo      zimArchiveFinder
+	indexCleaner ExternalServiceIndexCleaner
+	logger       *slog.Logger
 }
 
 // NewExternalServiceService creates a new ExternalServiceService.
 func NewExternalServiceService(
 	repo ExternalServiceRepo,
-	confluenceRepo confluenceSpaceFinder,
 	zimRepo zimArchiveFinder,
 	indexCleaner ExternalServiceIndexCleaner,
 	logger *slog.Logger,
 ) *ExternalServiceService {
 	return &ExternalServiceService{
-		repo:           repo,
-		confluenceRepo: confluenceRepo,
-		zimRepo:        zimRepo,
-		indexCleaner:   indexCleaner,
-		logger:         logger,
+		repo:         repo,
+		zimRepo:      zimRepo,
+		indexCleaner: indexCleaner,
+		logger:       logger,
 	}
 }
 
@@ -220,45 +211,26 @@ func (s *ExternalServiceService) Delete(ctx context.Context, svcUUID string) err
 // cleanupServiceIndex removes indexed entries for the given service from Meilisearch.
 // Errors are logged but do not block deletion.
 func (s *ExternalServiceService) cleanupServiceIndex(ctx context.Context, serviceID int64, serviceType string) {
-	switch serviceType {
-	case "confluence":
-		if s.confluenceRepo == nil {
-			return
-		}
-		uuids, err := s.confluenceRepo.FindUUIDsByExternalServiceID(ctx, serviceID)
-		if err != nil {
-			s.logger.Warn("failed to find Confluence space UUIDs for index cleanup",
-				"service_id", serviceID, "error", err)
-			return
-		}
-		for _, uuid := range uuids {
-			if err := s.indexCleaner.DeleteConfluenceSpace(ctx, uuid); err != nil {
-				s.logger.Warn("failed to delete Confluence space from search index",
-					"uuid", uuid, "error", err)
-			}
-		}
-		s.logger.Info("cleaned up Confluence spaces from search index",
-			"service_id", serviceID, "count", len(uuids))
-
-	case "kiwix":
-		if s.zimRepo == nil {
-			return
-		}
-		uuids, err := s.zimRepo.FindUUIDsByExternalServiceID(ctx, serviceID)
-		if err != nil {
-			s.logger.Warn("failed to find ZIM archive UUIDs for index cleanup",
-				"service_id", serviceID, "error", err)
-			return
-		}
-		for _, uuid := range uuids {
-			if err := s.indexCleaner.DeleteZimArchive(ctx, uuid); err != nil {
-				s.logger.Warn("failed to delete ZIM archive from search index",
-					"uuid", uuid, "error", err)
-			}
-		}
-		s.logger.Info("cleaned up ZIM archives from search index",
-			"service_id", serviceID, "count", len(uuids))
+	if serviceType != "kiwix" {
+		return
 	}
+	if s.zimRepo == nil {
+		return
+	}
+	uuids, err := s.zimRepo.FindUUIDsByExternalServiceID(ctx, serviceID)
+	if err != nil {
+		s.logger.Warn("failed to find ZIM archive UUIDs for index cleanup",
+			"service_id", serviceID, "error", err)
+		return
+	}
+	for _, uuid := range uuids {
+		if err := s.indexCleaner.DeleteZimArchive(ctx, uuid); err != nil {
+			s.logger.Warn("failed to delete ZIM archive from search index",
+				"uuid", uuid, "error", err)
+		}
+	}
+	s.logger.Info("cleaned up ZIM archives from search index",
+		"service_id", serviceID, "count", len(uuids))
 }
 
 // CheckHealth performs a health check on the external service identified by UUID,

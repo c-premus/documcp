@@ -95,31 +95,6 @@ func (SyncKiwixArgs) InsertOpts() river.InsertOpts {
 	}
 }
 
-// SyncConfluenceArgs dispatches Confluence space synchronization.
-type SyncConfluenceArgs struct{}
-
-// Kind returns the job kind identifier for SyncConfluenceArgs.
-func (SyncConfluenceArgs) Kind() string { return "sync_confluence" }
-
-// InsertOpts returns the River insert options for SyncConfluenceArgs.
-func (SyncConfluenceArgs) InsertOpts() river.InsertOpts {
-	return river.InsertOpts{
-		Queue:       "low",
-		Priority:    4,
-		MaxAttempts: 2,
-		UniqueOpts: river.UniqueOpts{
-			ByQueue: true,
-			ByState: []rivertype.JobState{
-				rivertype.JobStatePending,
-				rivertype.JobStateAvailable,
-				rivertype.JobStateRunning,
-				rivertype.JobStateRetryable,
-				rivertype.JobStateScheduled,
-			},
-		},
-	}
-}
-
 // SyncGitTemplatesArgs dispatches Git template repository synchronization.
 type SyncGitTemplatesArgs struct{}
 

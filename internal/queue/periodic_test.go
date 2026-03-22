@@ -13,7 +13,6 @@ func TestBuildPeriodicJobs_allSchedulesConfigured(t *testing.T) {
 
 	cfg := config.SchedulerConfig{
 		KiwixSchedule:           "0 */6 * * *",
-		ConfluenceSchedule:      "0 */4 * * *",
 		GitSchedule:             "0 * * * *",
 		OAuthCleanupSchedule:    "0 * * * *",
 		OrphanedFilesSchedule:   "0 2 * * *",
@@ -25,7 +24,7 @@ func TestBuildPeriodicJobs_allSchedulesConfigured(t *testing.T) {
 
 	jobs := BuildPeriodicJobs(cfg, discardLogger())
 
-	assert.Len(t, jobs, 9, "all 9 periodic jobs should be registered")
+	assert.Len(t, jobs, 8, "all 8 periodic jobs should be registered")
 }
 
 func TestBuildPeriodicJobs_emptySchedulesSkipped(t *testing.T) {
@@ -33,7 +32,6 @@ func TestBuildPeriodicJobs_emptySchedulesSkipped(t *testing.T) {
 
 	cfg := config.SchedulerConfig{
 		KiwixSchedule:           "0 */6 * * *",
-		ConfluenceSchedule:      "", // disabled
 		GitSchedule:             "", // disabled
 		OAuthCleanupSchedule:    "0 * * * *",
 		OrphanedFilesSchedule:   "", // disabled
@@ -63,7 +61,6 @@ func TestBuildPeriodicJobs_invalidCronSkipped(t *testing.T) {
 
 	cfg := config.SchedulerConfig{
 		KiwixSchedule:           "not-a-cron",
-		ConfluenceSchedule:      "0 */4 * * *",
 		GitSchedule:             "invalid expression here",
 		OAuthCleanupSchedule:    "0 * * * *",
 		OrphanedFilesSchedule:   "***",
@@ -75,17 +72,16 @@ func TestBuildPeriodicJobs_invalidCronSkipped(t *testing.T) {
 
 	jobs := BuildPeriodicJobs(cfg, discardLogger())
 
-	// 3 invalid + 1 empty = 4 skipped, so 5 valid jobs.
-	assert.Len(t, jobs, 5, "invalid cron expressions should be skipped")
+	// 2 invalid + 1 empty = 3 skipped, so 4 valid jobs.
+	assert.Len(t, jobs, 4, "invalid cron expressions should be skipped")
 }
 
 func TestBuildPeriodicJobs_nilLogger(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.SchedulerConfig{
-		KiwixSchedule:      "0 */6 * * *",
-		ConfluenceSchedule: "",        // triggers skip log
-		GitSchedule:        "invalid", // triggers error log
+		KiwixSchedule: "0 */6 * * *",
+		GitSchedule:   "invalid", // triggers error log
 	}
 
 	// Should not panic with nil logger.
@@ -106,11 +102,6 @@ func TestBuildPeriodicJobs_singleValidSchedule(t *testing.T) {
 		{
 			name:      "only_kiwix",
 			cfg:       config.SchedulerConfig{KiwixSchedule: "0 */6 * * *"},
-			wantCount: 1,
-		},
-		{
-			name:      "only_confluence",
-			cfg:       config.SchedulerConfig{ConfluenceSchedule: "0 */4 * * *"},
 			wantCount: 1,
 		},
 		{
@@ -165,7 +156,6 @@ func TestBuildPeriodicJobs_mixedValidAndInvalid(t *testing.T) {
 
 	cfg := config.SchedulerConfig{
 		KiwixSchedule:           "0 */6 * * *", // valid
-		ConfluenceSchedule:      "bad",         // invalid
 		GitSchedule:             "",            // empty (disabled)
 		OAuthCleanupSchedule:    "0 * * * *",   // valid
 		OrphanedFilesSchedule:   "also bad",    // invalid
@@ -177,7 +167,7 @@ func TestBuildPeriodicJobs_mixedValidAndInvalid(t *testing.T) {
 
 	jobs := BuildPeriodicJobs(cfg, discardLogger())
 
-	// 4 valid, 2 invalid, 3 empty = 4 jobs.
+	// 4 valid, 1 invalid, 3 empty = 4 jobs.
 	assert.Len(t, jobs, 4)
 }
 
@@ -196,7 +186,6 @@ func TestBuildPeriodicJobs_allInvalidCron(t *testing.T) {
 
 	cfg := config.SchedulerConfig{
 		KiwixSchedule:           "bad",
-		ConfluenceSchedule:      "worse",
 		GitSchedule:             "nope",
 		OAuthCleanupSchedule:    "!!!",
 		OrphanedFilesSchedule:   "abc def",

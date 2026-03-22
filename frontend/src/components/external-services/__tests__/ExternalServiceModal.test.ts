@@ -126,29 +126,6 @@ describe('ExternalServiceModal', () => {
     expect(document.body.textContent).toContain('Base URL is required')
   })
 
-  it('shows API key hint when service type is confluence', async () => {
-    mountModal({ open: true, service: null })
-    await flushPromises()
-
-    // Change type to confluence
-    const typeSelect = document.querySelector<HTMLSelectElement>('#service-type')!
-    typeSelect.value = 'confluence'
-    typeSelect.dispatchEvent(new Event('change', { bubbles: true }))
-    // Also set via input event for v-model
-    typeSelect.dispatchEvent(new Event('input', { bubbles: true }))
-    await flushPromises()
-
-    expect(document.body.textContent).toContain('email:token format for Confluence API key')
-  })
-
-  it('does not show API key hint when service type is kiwix', async () => {
-    mountModal({ open: true, service: null })
-    await flushPromises()
-
-    // Default type is kiwix
-    expect(document.body.textContent).not.toContain('email:token format for Confluence API key')
-  })
-
   it('emits close when cancel button is clicked', async () => {
     const wrapper = mountModal({ open: true })
     await flushPromises()

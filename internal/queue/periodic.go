@@ -20,7 +20,6 @@ func BuildPeriodicJobs(cfg config.SchedulerConfig, logger *slog.Logger) []*river
 
 	entries := []entry{
 		{"kiwix", cfg.KiwixSchedule, SyncKiwixArgs{}},
-		{"confluence", cfg.ConfluenceSchedule, SyncConfluenceArgs{}},
 		{"git", cfg.GitSchedule, SyncGitTemplatesArgs{}},
 		{"oauth-cleanup", cfg.OAuthCleanupSchedule, CleanupOAuthTokensArgs{}},
 		{"orphaned-files", cfg.OrphanedFilesSchedule, CleanupOrphanedFilesArgs{}},

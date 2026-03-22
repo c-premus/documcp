@@ -72,29 +72,6 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 		assert.Error(t, repo.Create(ctx, sq))
 	})
 
-	t.Run("ConfluenceSpaceRepository", func(t *testing.T) {
-		repo := NewConfluenceSpaceRepository(testDB, logger)
-
-		assert.Error(t, repo.UpsertFromAPI(ctx, 1, ConfluenceSpaceUpsert{Key: "X", Name: "X", ConfluenceID: "1"}))
-		assert.Error(t, repo.ToggleEnabled(ctx, 1))
-		assert.Error(t, repo.ToggleSearchable(ctx, 1))
-
-		_, err := repo.FindByKey(ctx, "x")
-		assert.Error(t, err)
-		_, err = repo.FindByUUID(ctx, "x")
-		assert.Error(t, err)
-		_, err = repo.List(ctx, "", "", 10)
-		assert.Error(t, err)
-		_, err = repo.ListAll(ctx, "", 10)
-		assert.Error(t, err)
-		_, err = repo.Count(ctx)
-		assert.Error(t, err)
-		_, err = repo.DisableOrphaned(ctx, 1, nil)
-		assert.Error(t, err)
-		_, err = repo.DisableOrphaned(ctx, 1, []string{"a"})
-		assert.Error(t, err)
-	})
-
 	t.Run("ZimArchiveRepository", func(t *testing.T) {
 		repo := NewZimArchiveRepository(testDB, logger)
 
