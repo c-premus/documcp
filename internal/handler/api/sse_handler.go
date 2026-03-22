@@ -44,7 +44,15 @@ func (h *SSEHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	events := h.eventBus.Subscribe(subID)
 	defer h.eventBus.Unsubscribe(subID)
 
-	heartbeat := time.NewTicker(30 * time.Second)
+	// Flush headers immediately so the browser's EventSource fires onopen now,
+	// not 30 s later when the first heartbeat is sent. Without this flush the
+	// HTTP 200 response is not committed until the first body write, causing
+	// the browser to see a "pending" request and delaying connection-pool slots.
+	// retry: 5000 tells EventSource to wait 5 s before reconnecting on error.
+	_, _ = fmt.Fprint(w, "retry: 5000\n\n")
+	flusher.Flush()
+
+	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 
 	for {

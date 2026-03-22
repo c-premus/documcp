@@ -3,10 +3,16 @@ import { onMounted } from 'vue'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
 import AppNotifications from './AppNotifications.vue'
+import { useSSEStore } from '@/stores/sse'
 import { useDocumentEvents } from '@/composables/useDocumentEvents'
 
+const sseStore = useSSEStore()
 const { start } = useDocumentEvents()
-onMounted(() => { start() })
+
+onMounted(() => {
+  sseStore.connect()
+  start()
+})
 </script>
 
 <template>
