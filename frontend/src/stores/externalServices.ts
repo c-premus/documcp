@@ -152,6 +152,18 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
     }
   }
 
+  async function syncService(uuid: string): Promise<MessageResponse> {
+    try {
+      const response = await apiFetch<MessageResponse>(`/api/external-services/${uuid}/sync`, {
+        method: 'POST',
+      })
+      return response
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to enqueue sync'
+      throw e
+    }
+  }
+
   async function checkHealth(uuid: string): Promise<MessageResponse> {
     try {
       const response = await apiFetch<MessageResponse>(`/api/external-services/${uuid}/health-check`, {
@@ -193,6 +205,7 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
     createService,
     updateService,
     deleteService,
+    syncService,
     checkHealth,
     reorderServices,
   }
