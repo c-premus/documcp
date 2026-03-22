@@ -28,6 +28,7 @@ type mockOAuthRepo struct {
 	createClientFn         func(ctx context.Context, client *model.OAuthClient) error
 	findClientByClientIDFn func(ctx context.Context, clientID string) (*model.OAuthClient, error)
 	findClientByIDFn       func(ctx context.Context, id int64) (*model.OAuthClient, error)
+	touchClientLastUsedFn  func(ctx context.Context, clientID int64) error
 	// Auth Codes
 	createAuthorizationCodeFn     func(ctx context.Context, code *model.OAuthAuthorizationCode) error
 	findAuthorizationCodeByCodeFn func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
@@ -71,6 +72,13 @@ func (m *mockOAuthRepo) FindClientByID(ctx context.Context, id int64) (*model.OA
 		return m.findClientByIDFn(ctx, id)
 	}
 	return nil, sql.ErrNoRows
+}
+
+func (m *mockOAuthRepo) TouchClientLastUsed(ctx context.Context, clientID int64) error {
+	if m.touchClientLastUsedFn != nil {
+		return m.touchClientLastUsedFn(ctx, clientID)
+	}
+	return nil
 }
 
 func (m *mockOAuthRepo) CreateAuthorizationCode(ctx context.Context, code *model.OAuthAuthorizationCode) error {

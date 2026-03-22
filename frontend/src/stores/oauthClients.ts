@@ -12,6 +12,7 @@ export interface OAuthClient {
   readonly token_endpoint_auth_method: string
   readonly scope: string
   readonly is_active: boolean
+  readonly last_used_at: string | null
   readonly created_at: string
   readonly updated_at: string
 }

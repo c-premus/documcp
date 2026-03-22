@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/gorilla/sessions"
 
@@ -58,6 +59,14 @@ func BearerToken(oauthService *oauth.Service) func(http.Handler) http.Handler {
 				return
 			}
 
+			go func(id int64) {
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				if err := oauthService.TouchClientLastUsed(ctx, id); err != nil {
+					slog.Warn("updating oauth client last_used_at", "client_id", id, "error", err)
+				}
+			}(token.ClientID)
+
 			ctx := context.WithValue(r.Context(), AccessTokenContextKey, token)
 
 			// Optionally load user
@@ -96,6 +105,14 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store) func(htt
 					jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
 					return
 				}
+
+				go func(id int64) {
+					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+					defer cancel()
+					if err := oauthService.TouchClientLastUsed(ctx, id); err != nil {
+						slog.Warn("updating oauth client last_used_at", "client_id", id, "error", err)
+					}
+				}(token.ClientID)
 
 				ctx := context.WithValue(r.Context(), AccessTokenContextKey, token)
 				if token.UserID.Valid {

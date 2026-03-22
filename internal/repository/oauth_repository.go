@@ -480,6 +480,16 @@ func (r *OAuthRepository) DeactivateClient(ctx context.Context, clientID int64) 
 	return nil
 }
 
+// TouchClientLastUsed updates last_used_at to NOW() for the given client.
+func (r *OAuthRepository) TouchClientLastUsed(ctx context.Context, clientID int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE oauth_clients SET last_used_at = NOW() WHERE id = $1`, clientID)
+	if err != nil {
+		return fmt.Errorf("touching last_used_at for oauth client %d: %w", clientID, err)
+	}
+	return nil
+}
+
 // CountUsers returns the total number of users.
 func (r *OAuthRepository) CountUsers(ctx context.Context) (int, error) {
 	var count int
