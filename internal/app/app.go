@@ -512,20 +512,28 @@ func (a *App) Start(ctx context.Context) error {
 		a.Logger.Info("shutdown signal received")
 	}
 
-	// Close the EventBus first so all SSE connections exit immediately,
-	// allowing http.Server.Shutdown to drain quickly.
+	// Close the EventBus first so all admin SSE connections exit immediately
+	// (EventBus.Close() triggers ok=false on all subscriber channels).
 	if a.EventBus != nil {
 		a.EventBus.Close()
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	// Stage 1: graceful shutdown — give in-flight requests up to 5s to finish.
+	// MCP stateful SSE streams (GET /documcp) will not go idle on their own,
+	// so we don't wait long for them here.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := a.Server.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("graceful shutdown: %w", err)
+		// Stage 2: force-close any remaining connections (lingering MCP SSE sessions,
+		// idle keep-alive connections, etc.).
+		a.Logger.Warn("graceful shutdown timed out, forcing connection close")
+		if closeErr := a.Server.Close(); closeErr != nil {
+			a.Logger.Error("force-closing server", "error", closeErr)
+		}
 	}
 
-	a.Logger.Info("server stopped gracefully")
+	a.Logger.Info("server stopped")
 	return nil
 }
 
