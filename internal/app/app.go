@@ -512,6 +512,12 @@ func (a *App) Start(ctx context.Context) error {
 		a.Logger.Info("shutdown signal received")
 	}
 
+	// Close the EventBus first so all SSE connections exit immediately,
+	// allowing http.Server.Shutdown to drain quickly.
+	if a.EventBus != nil {
+		a.EventBus.Close()
+	}
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 

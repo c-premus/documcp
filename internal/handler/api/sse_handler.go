@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -28,6 +29,12 @@ func (h *SSEHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Disable the server's write deadline for this connection so the SSE stream
+	// can stay open indefinitely. Without this, http.Server.WriteTimeout kills
+	// the connection after the configured duration (default 10 s).
+	rc := http.NewResponseController(w)
+	_ = rc.SetWriteDeadline(time.Time{})
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -37,10 +44,16 @@ func (h *SSEHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	events := h.eventBus.Subscribe(subID)
 	defer h.eventBus.Unsubscribe(subID)
 
+	heartbeat := time.NewTicker(30 * time.Second)
+	defer heartbeat.Stop()
+
 	for {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-heartbeat.C:
+			_, _ = fmt.Fprint(w, ": heartbeat\n\n")
+			flusher.Flush()
 		case event, ok := <-events:
 			if !ok {
 				return
