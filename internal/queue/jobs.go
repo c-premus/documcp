@@ -58,6 +58,7 @@ func (ReindexAllArgs) InsertOpts() river.InsertOpts {
 		UniqueOpts: river.UniqueOpts{
 			ByQueue: true,
 			ByState: []rivertype.JobState{
+				rivertype.JobStatePending,
 				rivertype.JobStateAvailable,
 				rivertype.JobStateRunning,
 				rivertype.JobStateRetryable,
@@ -84,6 +85,7 @@ func (SyncKiwixArgs) InsertOpts() river.InsertOpts {
 		UniqueOpts: river.UniqueOpts{
 			ByQueue: true,
 			ByState: []rivertype.JobState{
+				rivertype.JobStatePending,
 				rivertype.JobStateAvailable,
 				rivertype.JobStateRunning,
 				rivertype.JobStateRetryable,
@@ -108,6 +110,7 @@ func (SyncConfluenceArgs) InsertOpts() river.InsertOpts {
 		UniqueOpts: river.UniqueOpts{
 			ByQueue: true,
 			ByState: []rivertype.JobState{
+				rivertype.JobStatePending,
 				rivertype.JobStateAvailable,
 				rivertype.JobStateRunning,
 				rivertype.JobStateRetryable,
@@ -132,6 +135,7 @@ func (SyncGitTemplatesArgs) InsertOpts() river.InsertOpts {
 		UniqueOpts: river.UniqueOpts{
 			ByQueue: true,
 			ByState: []rivertype.JobState{
+				rivertype.JobStatePending,
 				rivertype.JobStateAvailable,
 				rivertype.JobStateRunning,
 				rivertype.JobStateRetryable,
@@ -156,6 +160,7 @@ func (CleanupOAuthTokensArgs) InsertOpts() river.InsertOpts {
 		UniqueOpts: river.UniqueOpts{
 			ByQueue: true,
 			ByState: []rivertype.JobState{
+				rivertype.JobStatePending,
 				rivertype.JobStateAvailable,
 				rivertype.JobStateRunning,
 				rivertype.JobStateRetryable,
@@ -180,6 +185,7 @@ func (CleanupOrphanedFilesArgs) InsertOpts() river.InsertOpts {
 		UniqueOpts: river.UniqueOpts{
 			ByQueue: true,
 			ByState: []rivertype.JobState{
+				rivertype.JobStatePending,
 				rivertype.JobStateAvailable,
 				rivertype.JobStateRunning,
 				rivertype.JobStateRetryable,
@@ -204,6 +210,7 @@ func (VerifySearchIndexArgs) InsertOpts() river.InsertOpts {
 		UniqueOpts: river.UniqueOpts{
 			ByQueue: true,
 			ByState: []rivertype.JobState{
+				rivertype.JobStatePending,
 				rivertype.JobStateAvailable,
 				rivertype.JobStateRunning,
 				rivertype.JobStateRetryable,
@@ -228,6 +235,7 @@ func (PurgeSoftDeletedArgs) InsertOpts() river.InsertOpts {
 		UniqueOpts: river.UniqueOpts{
 			ByQueue: true,
 			ByState: []rivertype.JobState{
+				rivertype.JobStatePending,
 				rivertype.JobStateAvailable,
 				rivertype.JobStateRunning,
 				rivertype.JobStateRetryable,
@@ -252,6 +260,7 @@ func (CleanupDisabledZimArgs) InsertOpts() river.InsertOpts {
 		UniqueOpts: river.UniqueOpts{
 			ByQueue: true,
 			ByState: []rivertype.JobState{
+				rivertype.JobStatePending,
 				rivertype.JobStateAvailable,
 				rivertype.JobStateRunning,
 				rivertype.JobStateRetryable,
@@ -276,6 +285,7 @@ func (HealthCheckServicesArgs) InsertOpts() river.InsertOpts {
 		UniqueOpts: river.UniqueOpts{
 			ByQueue: true,
 			ByState: []rivertype.JobState{
+				rivertype.JobStatePending,
 				rivertype.JobStateAvailable,
 				rivertype.JobStateRunning,
 				rivertype.JobStateRetryable,

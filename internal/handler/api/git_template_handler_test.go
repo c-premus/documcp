@@ -1211,7 +1211,7 @@ func TestNewGitTemplateHandler(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.New(slog.DiscardHandler)
-	h := NewGitTemplateHandler(nil, logger)
+	h := NewGitTemplateHandler(nil, nil, logger)
 
 	if h == nil {
 		t.Fatal("expected non-nil handler")
