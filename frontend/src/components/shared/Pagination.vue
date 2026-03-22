@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useId } from 'vue'
 
 const props = defineProps<{
   readonly page: number
@@ -14,7 +14,9 @@ const emit = defineEmits<{
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
 
+const pageSizeId = useId()
 const totalPages = computed(() => Math.max(1, Math.ceil(props.total / props.perPage)))
+const showPerPage = computed(() => props.total > PAGE_SIZE_OPTIONS[0])
 
 const rangeStart = computed(() => {
   if (props.total === 0) {
@@ -57,10 +59,10 @@ function handlePerPageChange(event: Event): void {
           <span class="font-medium">{{ rangeEnd }}</span> of
           <span class="font-medium">{{ total }}</span> results
         </p>
-        <div class="flex items-center gap-2">
-          <label for="page-size" class="text-sm text-text-secondary">Per page:</label>
+        <div v-if="showPerPage" class="flex items-center gap-2">
+          <label :for="pageSizeId" class="text-sm text-text-secondary">Per page:</label>
           <select
-            id="page-size"
+            :id="pageSizeId"
             :value="perPage"
             class="rounded-md border border-border-input bg-bg-surface py-1 pl-2 pr-8 text-sm text-text-secondary focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
             @change="handlePerPageChange"

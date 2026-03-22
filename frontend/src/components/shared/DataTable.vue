@@ -7,6 +7,7 @@ const props = defineProps<{
   readonly data: T[]
   readonly columns: ColumnDef<T, unknown>[]
   readonly loading?: boolean
+  readonly clickable?: boolean
 }>()
 
 defineEmits<{
@@ -55,7 +56,8 @@ const table = useVueTable({
         <tr
           v-for="row in table.getRowModel().rows"
           :key="row.id"
-          class="hover:bg-bg-hover cursor-pointer"
+          class="hover:bg-bg-hover"
+          :class="{ 'cursor-pointer': clickable }"
           @click="$emit('row-click', row.original)"
         >
           <td

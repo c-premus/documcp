@@ -301,6 +301,7 @@ const columns: ColumnDef<User, unknown>[] = [
         :data="users"
         :columns="columns"
         :loading="loading"
+        :clickable="true"
         @row-click="handleRowClick"
       />
 

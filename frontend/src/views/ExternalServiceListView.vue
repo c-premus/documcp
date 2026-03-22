@@ -432,6 +432,7 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
         :data="store.services"
         :columns="columns"
         :loading="store.loading"
+        :clickable="true"
         @row-click="handleRowClick"
       />
 

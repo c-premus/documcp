@@ -225,9 +225,9 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
         'button',
         {
           type: 'button',
-          class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
-          title: 'Revoke client',
-          'aria-label': 'Revoke client',
+          class: 'cursor-pointer text-text-muted hover:text-red-600 dark:hover:text-red-400',
+          title: `Revoke client ${client.client_name}`,
+          'aria-label': `Revoke client ${client.client_name}`,
           onClick: (event: MouseEvent) => {
             event.stopPropagation()
             revokeTarget.value = client

@@ -241,6 +241,7 @@ function handleDeleteCancel(): void {
         :data="store.documents"
         :columns="columns"
         :loading="store.loading"
+        :clickable="true"
         @row-click="handleRowClick"
       />
 

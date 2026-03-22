@@ -23,9 +23,9 @@ onMounted(() => {
     >
       Skip to content
     </a>
+    <AppHeader />
     <AppSidebar />
-    <div class="lg:pl-64">
-      <AppHeader />
+    <div class="lg:pl-64 pt-16">
       <main id="main-content" class="px-4 py-6 sm:px-6 lg:px-8">
         <router-view />
       </main>

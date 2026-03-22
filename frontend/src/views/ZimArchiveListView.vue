@@ -104,6 +104,7 @@ function fetchData(): void {
     category: categoryFilter.value !== 'All' ? categoryFilter.value : undefined,
     language: languageFilter.value !== 'All' ? languageFilter.value : undefined,
     per_page: perPage.value,
+    offset: (page.value - 1) * perPage.value,
   }).catch(() => {
     toast.error('Failed to load ZIM archives')
   })
@@ -135,7 +136,9 @@ function handleRowClick(row: ZimArchive): void {
         class="flex-1 max-w-sm"
       />
 
+      <label for="zim-category-filter" class="sr-only">Category</label>
       <select
+        id="zim-category-filter"
         v-model="categoryFilter"
         class="rounded-md border border-border-input bg-bg-surface py-1.5 pl-3 pr-8 text-sm text-text-secondary focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
       >
@@ -144,7 +147,9 @@ function handleRowClick(row: ZimArchive): void {
         </option>
       </select>
 
+      <label for="zim-language-filter" class="sr-only">Language</label>
       <select
+        id="zim-language-filter"
         v-model="languageFilter"
         class="rounded-md border border-border-input bg-bg-surface py-1.5 pl-3 pr-8 text-sm text-text-secondary focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
       >
@@ -174,6 +179,7 @@ function handleRowClick(row: ZimArchive): void {
         :data="store.archives"
         :columns="columns"
         :loading="store.loading"
+        :clickable="true"
         @row-click="handleRowClick"
       />
 
