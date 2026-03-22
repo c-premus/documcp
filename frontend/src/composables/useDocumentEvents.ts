@@ -1,4 +1,5 @@
-import { useSSE } from '@/composables/useSSE'
+import { onUnmounted } from 'vue'
+import { useSSEStore } from '@/stores/sse'
 import { useDocumentsStore } from '@/stores/documents'
 import { useNotificationsStore } from '@/stores/notifications'
 import { toast } from 'vue-sonner'
@@ -15,43 +16,52 @@ const schedulerMessages: Record<string, string> = {
 }
 
 export function useDocumentEvents() {
-  const { connect, on, connected } = useSSE()
+  const sseStore = useSSEStore()
   const documents = useDocumentsStore()
   const notifications = useNotificationsStore()
+  const cleanups: Array<() => void> = []
 
   function start() {
-    connect()
+    cleanups.push(
+      sseStore.on('job.completed', (event) => {
+        notifications.addEvent(event)
 
-    on('job.completed', (event) => {
-      notifications.addEvent(event)
+        if (event.job_kind === 'document_extract') {
+          toast.success('Document extracted successfully')
+          documents.refreshCurrent()
+        }
+        if (event.job_kind === 'document_index') {
+          toast.success('Document indexed successfully')
+          documents.refreshCurrent()
+        }
 
-      if (event.job_kind === 'document_extract') {
-        toast.success('Document extracted successfully')
-        documents.refreshCurrent()
-      }
-      if (event.job_kind === 'document_index') {
-        toast.success('Document indexed successfully')
-        documents.refreshCurrent()
-      }
+        const schedulerMsg = schedulerMessages[event.job_kind]
+        if (schedulerMsg) {
+          toast.info(schedulerMsg)
+        }
+      }),
+    )
 
-      const schedulerMsg = schedulerMessages[event.job_kind]
-      if (schedulerMsg) {
-        toast.info(schedulerMsg)
-      }
-    })
+    cleanups.push(
+      sseStore.on('job.failed', (event) => {
+        notifications.addEvent(event)
 
-    on('job.failed', (event) => {
-      notifications.addEvent(event)
+        if (event.job_kind.startsWith('document_')) {
+          toast.error(`Document processing failed: ${event.error ?? 'Unknown error'}`)
+        }
+      }),
+    )
 
-      if (event.job_kind.startsWith('document_')) {
-        toast.error(`Document processing failed: ${event.error ?? 'Unknown error'}`)
-      }
-    })
-
-    on('job.snoozed', (event) => {
-      notifications.addEvent(event)
-    })
+    cleanups.push(
+      sseStore.on('job.snoozed', (event) => {
+        notifications.addEvent(event)
+      }),
+    )
   }
 
-  return { start, connected }
+  onUnmounted(() => {
+    cleanups.forEach((cleanup) => cleanup())
+  })
+
+  return { start, connected: sseStore.connected }
 }

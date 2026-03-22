@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
-import { useSSE } from '@/composables/useSSE'
+import { useSSEStore } from '@/stores/sse'
 import ThemeToggle from './ThemeToggle.vue'
 
 const auth = useAuthStore()
-const { connected, connect } = useSSE()
-
-connect()
+const sse = useSSEStore()
 </script>
 
 <template>
@@ -20,11 +18,11 @@ connect()
       >
         <span
           class="inline-block h-2 w-2 rounded-full"
-          :class="connected ? 'bg-green-500' : 'bg-red-500'"
+          :class="sse.connected ? 'bg-green-500' : 'bg-red-500'"
           aria-hidden="true"
         />
         <span class="text-xs text-text-muted">
-          {{ connected ? 'Live' : 'Offline' }}
+          {{ sse.connected ? 'Live' : 'Offline' }}
         </span>
       </div>
 
