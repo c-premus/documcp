@@ -134,7 +134,7 @@ func TestExternalServiceService_FindByUUID(t *testing.T) {
 			t.Parallel()
 
 			repo := &mockExternalServiceRepo{findByUUIDFn: tt.repoFn}
-			svc := NewExternalServiceService(repo, discardLogger())
+			svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 			result, err := svc.FindByUUID(context.Background(), "svc-123")
 
@@ -213,7 +213,7 @@ func TestExternalServiceService_List(t *testing.T) {
 			t.Parallel()
 
 			repo := &mockExternalServiceRepo{listFn: tt.repoFn}
-			svc := NewExternalServiceService(repo, discardLogger())
+			svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 			services, total, err := svc.List(context.Background(), "kiwix", "healthy", 10, 0)
 
@@ -264,7 +264,7 @@ func TestExternalServiceService_Create(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		result, err := svc.Create(context.Background(), CreateExternalServiceParams{
 			Name:     "My Kiwix",
@@ -319,7 +319,7 @@ func TestExternalServiceService_Create(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		result, err := svc.Create(context.Background(), CreateExternalServiceParams{
 			Name:    "Confluence",
@@ -357,7 +357,7 @@ func TestExternalServiceService_Create(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		result, err := svc.Create(context.Background(), CreateExternalServiceParams{
 			Name:    "Plain",
@@ -384,7 +384,7 @@ func TestExternalServiceService_Create(t *testing.T) {
 				return errors.New("unique constraint")
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		_, err := svc.Create(context.Background(), CreateExternalServiceParams{
 			Name:    "Fail",
@@ -411,7 +411,7 @@ func TestExternalServiceService_Create(t *testing.T) {
 				return nil, errors.New("gone")
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		_, err := svc.Create(context.Background(), CreateExternalServiceParams{
 			Name:    "Refetch Fail",
@@ -434,19 +434,48 @@ func TestExternalServiceService_Create(t *testing.T) {
 func TestExternalServiceService_Create_SSRF(t *testing.T) {
 	t.Parallel()
 
-	t.Run("rejects private IP URL", func(t *testing.T) {
+	t.Run("allows private IP URL for internal services", func(t *testing.T) {
+		t.Parallel()
+
+		var createdSvc *model.ExternalService
+		repo := &mockExternalServiceRepo{
+			createFn: func(_ context.Context, svc *model.ExternalService) error {
+				createdSvc = svc
+				svc.ID = 99
+				return nil
+			},
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.ExternalService, error) {
+				if createdSvc != nil && createdSvc.UUID == uuid {
+					return createdSvc, nil
+				}
+				return nil, sql.ErrNoRows
+			},
+		}
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
+
+		_, err := svc.Create(context.Background(), CreateExternalServiceParams{
+			Name:    "Internal Kiwix",
+			Type:    "kiwix",
+			BaseURL: "http://192.168.1.2/api",
+		})
+		if err != nil {
+			t.Fatalf("expected no error for private IP, got: %v", err)
+		}
+	})
+
+	t.Run("rejects loopback URL", func(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockExternalServiceRepo{}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		_, err := svc.Create(context.Background(), CreateExternalServiceParams{
-			Name:    "Evil",
+			Name:    "Loopback",
 			Type:    "kiwix",
-			BaseURL: "http://10.0.0.1/api",
+			BaseURL: "http://127.0.0.1/api",
 		})
 		if err == nil {
-			t.Fatal("expected error, got nil")
+			t.Fatal("expected error for loopback, got nil")
 		}
 		if !strings.Contains(err.Error(), "base URL validation") {
 			t.Errorf("error %q does not contain %q", err.Error(), "base URL validation")
@@ -470,7 +499,7 @@ func TestExternalServiceService_Create_SSRF(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		result, err := svc.Create(context.Background(), CreateExternalServiceParams{
 			Name:    "Public",
@@ -506,7 +535,30 @@ func TestExternalServiceService_Update_SSRF(t *testing.T) {
 		}
 	}
 
-	t.Run("rejects private IP URL", func(t *testing.T) {
+	t.Run("allows private IP URL for internal services", func(t *testing.T) {
+		t.Parallel()
+
+		updated := existingSvc()
+		repo := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
+				return updated, nil
+			},
+			updateFn: func(_ context.Context, svc *model.ExternalService) error {
+				*updated = *svc
+				return nil
+			},
+		}
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
+
+		_, err := svc.Update(context.Background(), "ssrf-upd-uuid", UpdateExternalServiceParams{
+			BaseURL: "http://192.168.1.2/api",
+		})
+		if err != nil {
+			t.Fatalf("expected no error for private IP, got: %v", err)
+		}
+	})
+
+	t.Run("rejects loopback URL", func(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockExternalServiceRepo{
@@ -514,13 +566,13 @@ func TestExternalServiceService_Update_SSRF(t *testing.T) {
 				return existingSvc(), nil
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		_, err := svc.Update(context.Background(), "ssrf-upd-uuid", UpdateExternalServiceParams{
-			BaseURL: "http://10.0.0.1/api",
+			BaseURL: "http://127.0.0.1/api",
 		})
 		if err == nil {
-			t.Fatal("expected error, got nil")
+			t.Fatal("expected error for loopback, got nil")
 		}
 		if !strings.Contains(err.Error(), "base URL validation") {
 			t.Errorf("error %q does not contain %q", err.Error(), "base URL validation")
@@ -543,7 +595,7 @@ func TestExternalServiceService_Update_SSRF(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		result, err := svc.Update(context.Background(), "ssrf-upd-uuid", UpdateExternalServiceParams{
 			BaseURL: "https://93.184.216.34/api",
@@ -572,7 +624,7 @@ func TestExternalServiceService_Update_SSRF(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		result, err := svc.Update(context.Background(), "ssrf-upd-uuid", UpdateExternalServiceParams{
 			Name: "Renamed Only",
@@ -623,7 +675,7 @@ func TestExternalServiceService_Update(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		result, err := svc.Update(context.Background(), "upd-uuid", UpdateExternalServiceParams{
 			Name: "New Name",
@@ -655,7 +707,7 @@ func TestExternalServiceService_Update(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		result, err := svc.Update(context.Background(), "upd-uuid", UpdateExternalServiceParams{
 			BaseURL: "http://93.184.216.34",
@@ -688,7 +740,7 @@ func TestExternalServiceService_Update(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		result, err := svc.Update(context.Background(), "upd-uuid", UpdateExternalServiceParams{
 			Priority:  ptrInt(10),
@@ -721,7 +773,7 @@ func TestExternalServiceService_Update(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		result, err := svc.Update(context.Background(), "upd-uuid", UpdateExternalServiceParams{
 			APIKey: "new-secret",
@@ -746,7 +798,7 @@ func TestExternalServiceService_Update(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		_, err := svc.Update(context.Background(), "missing-uuid", UpdateExternalServiceParams{
 			Name: "Nope",
@@ -770,7 +822,7 @@ func TestExternalServiceService_Update(t *testing.T) {
 				return errors.New("db write failed")
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		_, err := svc.Update(context.Background(), "upd-uuid", UpdateExternalServiceParams{
 			Name: "Boom",
@@ -799,7 +851,7 @@ func TestExternalServiceService_Update(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		_, err := svc.Update(context.Background(), "upd-uuid", UpdateExternalServiceParams{
 			Name: "Whatever",
@@ -840,7 +892,7 @@ func TestExternalServiceService_Delete(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		err := svc.Delete(context.Background(), "del-uuid")
 		if err != nil {
@@ -859,7 +911,7 @@ func TestExternalServiceService_Delete(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		err := svc.Delete(context.Background(), "ghost-uuid")
 		if err == nil {
@@ -882,7 +934,7 @@ func TestExternalServiceService_Delete(t *testing.T) {
 				}, nil
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		err := svc.Delete(context.Background(), "env-uuid")
 		if err == nil {
@@ -908,7 +960,7 @@ func TestExternalServiceService_Delete(t *testing.T) {
 				return errors.New("foreign key")
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		err := svc.Delete(context.Background(), "err-del-uuid")
 		if err == nil {
@@ -927,7 +979,7 @@ func TestExternalServiceService_Delete(t *testing.T) {
 				return nil, errors.New("connection reset")
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		err := svc.Delete(context.Background(), "err-uuid")
 		if err == nil {
@@ -984,7 +1036,7 @@ func TestExternalServiceService_CheckHealth(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		checker := &mockHealthChecker{err: nil}
 		result, err := svc.CheckHealth(context.Background(), "health-uuid", checker)
@@ -1040,7 +1092,7 @@ func TestExternalServiceService_CheckHealth(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		checker := &mockHealthChecker{err: errors.New("connection refused")}
 		result, err := svc.CheckHealth(context.Background(), "unhealthy-uuid", checker)
@@ -1067,7 +1119,7 @@ func TestExternalServiceService_CheckHealth(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		_, err := svc.CheckHealth(context.Background(), "ghost-uuid", &mockHealthChecker{})
 		if err == nil {
@@ -1089,7 +1141,7 @@ func TestExternalServiceService_CheckHealth(t *testing.T) {
 				return errors.New("write failed")
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		_, err := svc.CheckHealth(context.Background(), "upd-health-err", &mockHealthChecker{})
 		if err == nil {
@@ -1116,7 +1168,7 @@ func TestExternalServiceService_CheckHealth(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		_, err := svc.CheckHealth(context.Background(), "refetch-health-err", &mockHealthChecker{})
 		if err == nil {
@@ -1135,7 +1187,7 @@ func TestExternalServiceService_CheckHealth(t *testing.T) {
 				return nil, errors.New("timeout")
 			},
 		}
-		svc := NewExternalServiceService(repo, discardLogger())
+		svc := NewExternalServiceService(repo, nil, nil, nil, discardLogger())
 
 		_, err := svc.CheckHealth(context.Background(), "timeout-uuid", &mockHealthChecker{})
 		if err == nil {

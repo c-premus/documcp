@@ -1250,10 +1250,10 @@ func TestNewClient_Validation(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects private IP URL", func(t *testing.T) {
+	t.Run("allows private IP URL for internal services", func(t *testing.T) {
 		_, err := NewClient("http://192.168.1.1:8080", "user", "token", slog.Default())
-		if err == nil {
-			t.Fatal("expected error for private IP URL")
+		if err != nil {
+			t.Fatalf("expected no error for private IP URL, got: %v", err)
 		}
 	})
 

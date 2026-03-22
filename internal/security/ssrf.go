@@ -39,10 +39,10 @@ func init() {
 }
 
 // ValidateExternalURL checks that a URL is safe to make requests to. It blocks
-// localhost, loopback, link-local, and private/internal IP ranges to prevent
-// SSRF attacks. Both HTTP and HTTPS schemes are allowed (unlike git which
-// requires HTTPS only).
-func ValidateExternalURL(rawURL string) error {
+// localhost, loopback, and link-local addresses. Private RFC-1918 ranges are
+// also blocked unless allowPrivate is true — use that for admin-configured
+// services on internal networks (e.g. self-hosted Kiwix or Confluence).
+func ValidateExternalURL(rawURL string, allowPrivate ...bool) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("parsing URL: %w", err)
@@ -62,9 +62,11 @@ func ValidateExternalURL(rawURL string) error {
 		return errors.New("URL must not target localhost")
 	}
 
+	privateOK := len(allowPrivate) > 0 && allowPrivate[0]
+
 	// Check if hostname is a literal IP.
 	if ip := net.ParseIP(hostname); ip != nil {
-		return checkIP(ip)
+		return checkIP(ip, privateOK)
 	}
 
 	// Resolve hostname and verify all resolved IPs.
@@ -78,7 +80,7 @@ func ValidateExternalURL(rawURL string) error {
 		if ip == nil {
 			continue
 		}
-		if err := checkIP(ip); err != nil {
+		if err := checkIP(ip, privateOK); err != nil {
 			return fmt.Errorf("hostname %q resolves to blocked address: %w", hostname, err)
 		}
 	}
@@ -87,11 +89,21 @@ func ValidateExternalURL(rawURL string) error {
 }
 
 // SafeTransport returns an *http.Transport whose DialContext hook re-validates
-// every resolved IP against the SSRF block-list at connection time. This
-// prevents DNS rebinding attacks where the initial ValidateExternalURL check
-// passes but the hostname resolves to a private IP by the time the connection
-// is actually established.
+// every resolved IP against the SSRF block-list at connection time, preventing
+// DNS rebinding attacks. Private RFC-1918 ranges are blocked.
 func SafeTransport() *http.Transport {
+	return newSafeTransport(false)
+}
+
+// SafeTransportAllowPrivate is like SafeTransport but permits connections to
+// private RFC-1918 addresses. Use for admin-configured services on internal
+// networks (e.g. self-hosted Kiwix or Confluence). Loopback and link-local
+// addresses remain blocked.
+func SafeTransportAllowPrivate() *http.Transport {
+	return newSafeTransport(true)
+}
+
+func newSafeTransport(allowPrivate bool) *http.Transport {
 	transport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		transport = &http.Transport{}
@@ -111,7 +123,7 @@ func SafeTransport() *http.Transport {
 		}
 
 		for _, ipAddr := range ips {
-			if err := checkIP(ipAddr.IP); err != nil {
+			if err := checkIP(ipAddr.IP, allowPrivate); err != nil {
 				return nil, fmt.Errorf("connection to %s blocked: %w", addr, err)
 			}
 		}
@@ -122,8 +134,10 @@ func SafeTransport() *http.Transport {
 	return base
 }
 
-// checkIP returns an error if the given IP falls within a private or blocked range.
-func checkIP(ip net.IP) error {
+// checkIP returns an error if the given IP falls within a blocked range.
+// Loopback, unspecified, and link-local addresses are always blocked.
+// Private RFC-1918 ranges are only blocked when allowPrivate is false.
+func checkIP(ip net.IP, allowPrivate bool) error {
 	if ip.IsLoopback() {
 		return fmt.Errorf("URL must not target loopback address %s", ip)
 	}
@@ -136,9 +150,11 @@ func checkIP(ip net.IP) error {
 		return fmt.Errorf("URL must not target link-local address %s", ip)
 	}
 
-	for _, network := range parsedPrivateRanges {
-		if network.Contains(ip) {
-			return fmt.Errorf("URL must not target private address %s (%s)", ip, network)
+	if !allowPrivate {
+		for _, network := range parsedPrivateRanges {
+			if network.Contains(ip) {
+				return fmt.Errorf("URL must not target private address %s (%s)", ip, network)
+			}
 		}
 	}
 

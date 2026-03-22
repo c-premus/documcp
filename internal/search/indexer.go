@@ -83,6 +83,23 @@ func (ix *Indexer) SoftDeleteDocument(ctx context.Context, uuid string) error {
 	return nil
 }
 
+// UndeleteDocument clears the soft-delete flag on a document in the index.
+// Called when a soft-deleted document is restored.
+func (ix *Indexer) UndeleteDocument(ctx context.Context, uuid string) error {
+	idx := ix.client.ms.Index(IndexDocuments)
+	record := map[string]any{
+		"uuid":           uuid,
+		"__soft_deleted": false,
+	}
+	task, err := idx.AddDocumentsWithContext(ctx, []map[string]any{record}, nil)
+	if err != nil {
+		return fmt.Errorf("undeleting document %s in index: %w", uuid, err)
+	}
+
+	ix.logger.Debug("document undeleted in index", "uuid", uuid, "task_uid", task.TaskUID)
+	return nil
+}
+
 // IndexBatch adds or updates multiple documents in the documents index.
 func (ix *Indexer) IndexBatch(ctx context.Context, docs []DocumentRecord) error {
 	if len(docs) == 0 {

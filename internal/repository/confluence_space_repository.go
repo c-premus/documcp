@@ -223,6 +223,18 @@ func (r *ConfluenceSpaceRepository) DisableOrphaned(ctx context.Context, service
 	return int(n), nil
 }
 
+// FindUUIDsByExternalServiceID returns the UUIDs of all Confluence spaces
+// associated with the given external service, for index cleanup on service deletion.
+func (r *ConfluenceSpaceRepository) FindUUIDsByExternalServiceID(ctx context.Context, serviceID int64) ([]string, error) {
+	var uuids []string
+	err := r.db.SelectContext(ctx, &uuids,
+		`SELECT uuid FROM confluence_spaces WHERE external_service_id = $1`, serviceID)
+	if err != nil {
+		return nil, fmt.Errorf("finding confluence space UUIDs for service %d: %w", serviceID, err)
+	}
+	return uuids, nil
+}
+
 // nullableStr returns a pointer to s if non-empty, nil otherwise. Used for nullable columns.
 func nullableStr(s string) *string {
 	if s == "" {
