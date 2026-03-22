@@ -120,11 +120,39 @@ func (c *Client) FetchCatalog(ctx context.Context) ([]CatalogEntry, error) {
 	return entries, nil
 }
 
+// resolveContentID looks up the versioned content ID for an archive name.
+// It fetches the catalog (from cache) and returns the ContentID for the
+// matching entry. Falls back to archiveName if not found.
+func (c *Client) resolveContentID(ctx context.Context, archiveName string) (string, bool) {
+	entries, err := c.FetchCatalog(ctx)
+	if err != nil {
+		return archiveName, false
+	}
+	for i := range entries {
+		if entries[i].Name == archiveName {
+			return entries[i].ContentID, entries[i].HasFulltextIndex
+		}
+	}
+	return archiveName, false
+}
+
 // Search queries the Kiwix Serve instance for articles matching the given
 // query. The searchType must be "suggest" or "fulltext".
 func (c *Client) Search(ctx context.Context, archiveName, query, searchType string, limit int) ([]SearchResult, error) {
+	if searchType != "suggest" && searchType != "fulltext" {
+		return nil, fmt.Errorf("unsupported search type %q (must be suggest or fulltext)", searchType)
+	}
+
 	if limit <= 0 {
 		limit = 10
+	}
+
+	contentID, hasFTIndex := c.resolveContentID(ctx, archiveName)
+
+	// Fulltext search requires a fulltext index; return empty without error if unavailable.
+	if searchType == "fulltext" && !hasFTIndex {
+		c.logger.Debug("fulltext search not available for archive, no ftindex", "archive", archiveName)
+		return []SearchResult{}, nil
 	}
 
 	var reqURL string
@@ -132,19 +160,17 @@ func (c *Client) Search(ctx context.Context, archiveName, query, searchType stri
 	case "suggest":
 		params := url.Values{
 			"term":    {query},
-			"limit":   {strconv.Itoa(limit)},
-			"content": {archiveName},
+			"count":   {strconv.Itoa(limit)},
+			"content": {contentID},
 		}
 		reqURL = c.baseURL + "/suggest?" + params.Encode()
 	case "fulltext":
 		params := url.Values{
 			"pattern":    {query},
 			"pageLength": {strconv.Itoa(limit)},
-			"books":      {"name:" + archiveName},
+			"content":    {contentID},
 		}
 		reqURL = c.baseURL + "/search?" + params.Encode()
-	default:
-		return nil, fmt.Errorf("unsupported search type %q (must be suggest or fulltext)", searchType)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
@@ -170,10 +196,8 @@ func (c *Client) Search(ctx context.Context, archiveName, query, searchType stri
 	switch searchType {
 	case "suggest":
 		return parseSuggestResponse(body)
-	case "fulltext":
+	default: // fulltext (validated above)
 		return parseFulltextResponse(body), nil
-	default:
-		return nil, nil
 	}
 }
 
@@ -187,7 +211,8 @@ func (c *Client) ReadArticle(ctx context.Context, archiveName, articlePath strin
 		return nil, fmt.Errorf("invalid article path: %w", err)
 	}
 
-	reqURL := c.baseURL + "/" + archiveName + "/" + articlePath
+	contentID, _ := c.resolveContentID(ctx, archiveName)
+	reqURL := c.baseURL + "/" + contentID + "/" + articlePath
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
 	if err != nil {
@@ -301,20 +326,36 @@ func parseCatalog(data []byte) ([]CatalogEntry, error) {
 			}
 		}
 
+		// Extract versioned content ID from the text/html link.
+		var contentID string
+		for _, link := range e.Links {
+			if link.Type == "text/html" && strings.HasPrefix(link.Href, "/content/") {
+				contentID = strings.TrimPrefix(link.Href, "/content/")
+				break
+			}
+		}
+		if contentID == "" {
+			contentID = name // fallback to base name
+		}
+
+		hasFTIndex := strings.Contains(strings.ToLower(e.Tags), "_ftindex:yes")
+
 		entries = append(entries, CatalogEntry{
-			ID:           e.ID,
-			Title:        e.Title,
-			Description:  e.Summary,
-			Language:     e.Language,
-			Category:     category,
-			Creator:      e.Creator,
-			Publisher:    "Kiwix",
-			Favicon:      favicon,
-			ArticleCount: e.ArticleCount,
-			MediaCount:   e.MediaCount,
-			FileSize:     e.Size,
-			Tags:         tags,
-			Name:         name,
+			ID:               e.ID,
+			Title:            e.Title,
+			Description:      e.Summary,
+			Language:         e.Language,
+			Category:         category,
+			Creator:          e.Creator,
+			Publisher:        "Kiwix",
+			Favicon:          favicon,
+			ArticleCount:     e.ArticleCount,
+			MediaCount:       e.MediaCount,
+			FileSize:         e.Size,
+			Tags:             tags,
+			Name:             name,
+			ContentID:        contentID,
+			HasFulltextIndex: hasFTIndex,
 		})
 	}
 
@@ -357,8 +398,11 @@ func parseSuggestResponse(data []byte) ([]SearchResult, error) {
 
 	results := make([]SearchResult, 0, len(suggestions))
 	for _, s := range suggestions {
+		if s.Path == "" {
+			continue // skip pattern suggestions (no article path)
+		}
 		results = append(results, SearchResult{
-			Title: s.Label,
+			Title: html.UnescapeString(s.Value),
 			Path:  s.Path,
 		})
 	}
@@ -386,9 +430,24 @@ func parseFulltextResponse(data []byte) []SearchResult {
 			continue
 		}
 
+		// Strip the /content/{archive}/ prefix from fulltext search result hrefs.
+		// Kiwix returns hrefs like /content/archive_2025-11/path/to/article
+		// We want just path/to/article for use in ReadArticle.
+		href := match[1]
+		if rest, ok := strings.CutPrefix(href, "/content/"); ok {
+			if _, after, found := strings.Cut(rest, "/"); found {
+				href = after
+			}
+		}
+
+		// Skip pagination links and other non-article hrefs.
+		if strings.HasPrefix(href, "/") || strings.HasPrefix(href, "?") {
+			continue
+		}
+
 		result := SearchResult{
-			Title: html.UnescapeString(match[2]),
-			Path:  match[1],
+			Title: strings.TrimSpace(html.UnescapeString(match[2])),
+			Path:  href,
 		}
 		if i < len(snippets) && len(snippets[i]) >= 2 {
 			result.Snippet = html.UnescapeString(snippets[i][1])
