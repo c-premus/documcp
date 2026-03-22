@@ -78,7 +78,8 @@ func (s *Server) Start() error {
 }
 
 // Shutdown gracefully stops the server using the provided context for the
-// deadline.
+// deadline. In-flight requests are given time to complete; idle connections
+// are closed immediately.
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.Info("shutting down HTTP server")
 
@@ -87,6 +88,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// Close immediately closes all active connections without waiting for them to
+// finish. Use after Shutdown times out to force-close lingering long-lived
+// connections (e.g. MCP SSE streams, admin event streams).
+func (s *Server) Close() error {
+	return s.httpServer.Close()
 }
 
 // Router returns the chi router so that external packages can register routes.
