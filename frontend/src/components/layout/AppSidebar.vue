@@ -52,18 +52,14 @@ function isActive(path: string): boolean {
 </script>
 
 <template>
-  <nav aria-label="Main navigation" class="hidden lg:flex w-64 fixed inset-y-0 left-0 bg-bg-surface border-r border-border-default flex-col">
-    <div class="flex items-center h-16 px-6 border-b border-border-default">
-      <span class="text-lg font-semibold text-text-primary">DocuMCP</span>
-    </div>
-
+  <nav aria-label="Main navigation" class="hidden lg:flex w-64 fixed top-16 bottom-0 left-0 bg-bg-surface border-r border-border-default flex-col">
     <div class="flex-1 overflow-y-auto py-4">
       <!-- Main -->
       <ul class="space-y-1 px-3">
         <li v-for="item in mainNavItems" :key="item.to">
           <router-link
             :to="item.to"
-            class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
+            class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
             :class="
               isActive(item.to)
                 ? 'bg-bg-active text-text-primary'
@@ -84,7 +80,7 @@ function isActive(path: string): boolean {
         <li v-for="item in documentNavItems" :key="item.to">
           <router-link
             :to="item.to"
-            class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
+            class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
             :class="
               isActive(item.to)
                 ? 'bg-bg-active text-text-primary'
@@ -105,7 +101,7 @@ function isActive(path: string): boolean {
         <li v-for="item in contentNavItems" :key="item.to">
           <router-link
             :to="item.to"
-            class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
+            class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
             :class="
               isActive(item.to)
                 ? 'bg-bg-active text-text-primary'
@@ -127,7 +123,7 @@ function isActive(path: string): boolean {
           <li v-for="item in adminNavItems" :key="item.to">
             <router-link
               :to="item.to"
-              class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
+              class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
               :class="
                 isActive(item.to)
                   ? 'bg-bg-active text-text-primary'

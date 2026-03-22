@@ -257,6 +257,7 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
       :data="templates"
       :columns="columns"
       :loading="loading"
+      :clickable="true"
       @row-click="handleRowClick"
     />
 

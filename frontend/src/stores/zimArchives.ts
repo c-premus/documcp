@@ -39,6 +39,7 @@ interface ListParams {
   readonly category?: string
   readonly language?: string
   readonly per_page?: number
+  readonly offset?: number
 }
 
 interface ListResponse {
@@ -81,6 +82,7 @@ export const useZimArchivesStore = defineStore('zimArchives', () => {
         category: params?.category,
         language: params?.language,
         per_page: params?.per_page,
+        offset: params?.offset,
       })
       const response = await apiFetch<ListResponse>(`/api/zim/archives${query}`)
       archives.value = response.data
