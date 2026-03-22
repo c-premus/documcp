@@ -189,6 +189,7 @@ watch(
           <!-- Actions -->
           <div class="mt-6 space-y-3">
             <a
+              v-if="store.currentDocument?.has_file || store.currentDocument?.content"
               :href="`/api/documents/${uuid}/download`"
               class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             >
@@ -216,7 +217,7 @@ watch(
               :file-type="store.currentDocument.file_type"
             />
             <p v-else class="text-sm text-text-muted">
-              Content not available for preview. Download the file to view.
+              Content not available for preview.
             </p>
           </div>
         </div>

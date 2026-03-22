@@ -11,6 +11,7 @@ export interface Document {
   readonly mime_type: string
   readonly word_count: number
   readonly is_public: boolean
+  readonly has_file: boolean
   readonly status: string
   readonly content_hash: string
   readonly tags: string[]
@@ -113,7 +114,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await apiFetch<SingleResponse>(`/api/documents/${uuid}`)
+      const response = await apiFetch<SingleResponse>(`/api/documents/${uuid}?include_content=true`)
       currentDocument.value = response.data
       return response.data
     } catch (e) {
