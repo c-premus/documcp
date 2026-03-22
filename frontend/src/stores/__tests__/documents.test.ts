@@ -135,7 +135,7 @@ describe('documents store', () => {
       const store = useDocumentsStore()
       const result = await store.fetchDocument('abc-123')
 
-      expect(fetch).toHaveBeenCalledWith('/api/documents/abc-123', undefined)
+      expect(fetch).toHaveBeenCalledWith('/api/documents/abc-123?include_content=true', undefined)
       expect(store.currentDocument).toEqual(doc)
       expect(result).toEqual(doc)
     })
@@ -279,7 +279,7 @@ describe('documents store', () => {
 
       const result = await store.refreshCurrent()
 
-      expect(fetch).toHaveBeenCalledWith('/api/documents/doc-1', undefined)
+      expect(fetch).toHaveBeenCalledWith('/api/documents/doc-1?include_content=true', undefined)
       expect(result).toEqual(doc)
       expect(store.currentDocument).toEqual(doc)
     })

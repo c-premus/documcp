@@ -7,6 +7,7 @@ import {
   ArrowUpIcon,
   ArrowDownIcon,
   HeartIcon,
+  ArrowPathIcon,
 } from '@heroicons/vue/24/outline'
 import { Switch } from '@headlessui/vue'
 import type { ColumnDef } from '@tanstack/vue-table'
@@ -25,6 +26,8 @@ const store = useExternalServicesStore()
 const page = ref(1)
 const perPage = ref(20)
 const typeFilter = ref('')
+
+const syncingUUIDs = ref<Set<string>>(new Set())
 
 const showModal = ref(false)
 const editTarget = ref<ExternalService | null>(null)
@@ -107,6 +110,20 @@ async function handleToggleEnabled(service: ExternalService): Promise<void> {
     fetchServices()
   } catch {
     toast.error(`Failed to toggle "${service.name}"`)
+  }
+}
+
+async function handleSync(service: ExternalService): Promise<void> {
+  syncingUUIDs.value = new Set([...syncingUUIDs.value, service.uuid])
+  try {
+    await store.syncService(service.uuid)
+    toast.success(`Sync queued for "${service.name}"`)
+  } catch {
+    toast.error(`Failed to queue sync for "${service.name}"`)
+  } finally {
+    const next = new Set(syncingUUIDs.value)
+    next.delete(service.uuid)
+    syncingUUIDs.value = next
   }
 }
 
@@ -301,7 +318,26 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
     enableSorting: false,
     cell: ({ row }) => {
       const service = row.original
+      const isSyncing = syncingUUIDs.value.has(service.uuid)
+      const canSync = service.type === 'kiwix' || service.type === 'confluence'
       return h('div', { class: 'flex items-center gap-2' }, [
+        canSync
+          ? h(
+              'button',
+              {
+                type: 'button',
+                class: `text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400 ${isSyncing ? 'opacity-50 cursor-not-allowed' : ''}`,
+                title: 'Sync now',
+                'aria-label': 'Sync now',
+                disabled: isSyncing,
+                onClick: (event: MouseEvent) => {
+                  event.stopPropagation()
+                  if (!isSyncing) handleSync(service)
+                },
+              },
+              [h(ArrowPathIcon, { class: `h-5 w-5 ${isSyncing ? 'animate-spin' : ''}` })],
+            )
+          : null,
         h(
           'button',
           {
