@@ -255,6 +255,18 @@ func (r *ZimArchiveRepository) DisableOrphaned(ctx context.Context, serviceID in
 	return int(n), nil
 }
 
+// FindUUIDsByExternalServiceID returns the UUIDs of all ZIM archives
+// associated with the given external service, for index cleanup on service deletion.
+func (r *ZimArchiveRepository) FindUUIDsByExternalServiceID(ctx context.Context, serviceID int64) ([]string, error) {
+	var uuids []string
+	err := r.db.SelectContext(ctx, &uuids,
+		`SELECT uuid FROM zim_archives WHERE external_service_id = $1`, serviceID)
+	if err != nil {
+		return nil, fmt.Errorf("finding ZIM archive UUIDs for service %d: %w", serviceID, err)
+	}
+	return uuids, nil
+}
+
 // nullStr returns a pointer to s if non-empty, nil otherwise. Used for nullable columns.
 func nullStr(s string) *string {
 	if s == "" {

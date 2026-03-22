@@ -41,7 +41,7 @@ type Client struct {
 // NewClient creates a new Kiwix HTTP client targeting the given base URL.
 // It validates the base URL against SSRF attacks.
 func NewClient(baseURL string, logger *slog.Logger) (*Client, error) {
-	if err := security.ValidateExternalURL(baseURL); err != nil {
+	if err := security.ValidateExternalURL(baseURL, true); err != nil {
 		return nil, fmt.Errorf("invalid kiwix base URL: %w", err)
 	}
 
@@ -49,7 +49,7 @@ func NewClient(baseURL string, logger *slog.Logger) (*Client, error) {
 		baseURL: strings.TrimRight(baseURL, "/"),
 		httpClient: &http.Client{
 			Timeout:   10 * time.Second,
-			Transport: security.SafeTransport(),
+			Transport: security.SafeTransportAllowPrivate(),
 		},
 		cache:  newCache(),
 		logger: logger,

@@ -41,7 +41,7 @@ type Client struct {
 // All requests use Basic Auth with the provided email and API token.
 // It validates the base URL against SSRF attacks.
 func NewClient(baseURL, email, apiToken string, logger *slog.Logger) (*Client, error) {
-	if err := security.ValidateExternalURL(baseURL); err != nil {
+	if err := security.ValidateExternalURL(baseURL, true); err != nil {
 		return nil, fmt.Errorf("invalid confluence base URL: %w", err)
 	}
 
@@ -51,7 +51,7 @@ func NewClient(baseURL, email, apiToken string, logger *slog.Logger) (*Client, e
 		apiToken: apiToken,
 		httpClient: &http.Client{
 			Timeout:   15 * time.Second,
-			Transport: security.SafeTransport(),
+			Transport: security.SafeTransportAllowPrivate(),
 		},
 		cache:  newCache(),
 		logger: logger,

@@ -81,6 +81,23 @@ func NewDocumentPipeline(
 	}
 }
 
+// Delete soft-deletes a document by UUID and marks it as soft-deleted in the search index.
+// Index update failure is non-fatal: the document is excluded by query-time filtering regardless.
+func (p *DocumentPipeline) Delete(ctx context.Context, docUUID string) error {
+	if err := p.DocumentService.Delete(ctx, docUUID); err != nil {
+		return err
+	}
+
+	if p.indexer != nil {
+		if err := p.indexer.SoftDeleteDocument(ctx, docUUID); err != nil {
+			p.logger.Warn("failed to soft-delete document in search index",
+				"uuid", docUUID, "error", err)
+		}
+	}
+
+	return nil
+}
+
 // StoragePath returns the base storage directory for uploaded documents.
 func (p *DocumentPipeline) StoragePath() string {
 	return p.storagePath

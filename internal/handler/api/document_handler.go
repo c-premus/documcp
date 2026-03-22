@@ -47,10 +47,17 @@ type documentRepo interface {
 	ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
 }
 
+// DocumentIndexer handles search index operations for documents.
+type DocumentIndexer interface {
+	DeleteDocument(ctx context.Context, uuid string) error
+	UndeleteDocument(ctx context.Context, uuid string) error
+}
+
 // DocumentHandler handles REST API endpoints for documents.
 type DocumentHandler struct {
 	pipeline documentPipeline
 	repo     documentRepo
+	indexer  DocumentIndexer // nil when search is not configured
 	logger   *slog.Logger
 }
 
@@ -58,11 +65,13 @@ type DocumentHandler struct {
 func NewDocumentHandler(
 	pipeline documentPipeline,
 	repo documentRepo,
+	indexer DocumentIndexer,
 	logger *slog.Logger,
 ) *DocumentHandler {
 	return &DocumentHandler{
 		pipeline: pipeline,
 		repo:     repo,
+		indexer:  indexer,
 		logger:   logger,
 	}
 }
@@ -77,8 +86,10 @@ type documentResponse struct {
 	MIMEType    string   `json:"mime_type"`
 	WordCount   int64    `json:"word_count,omitempty"`
 	IsPublic    bool     `json:"is_public"`
+	HasFile     bool     `json:"has_file"`
 	Status      string   `json:"status"`
 	ContentHash string   `json:"content_hash,omitempty"`
+	Content     string   `json:"content,omitempty"`
 	Tags        []string `json:"tags"`
 	CreatedAt   string   `json:"created_at"`
 	UpdatedAt   string   `json:"updated_at"`
@@ -158,8 +169,9 @@ func (h *DocumentHandler) Show(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tags, _ := h.repo.TagsForDocument(r.Context(), doc.ID)
+	includeContent := r.URL.Query().Get("include_content") == "true"
 	jsonResponse(w, http.StatusOK, map[string]any{
-		"data": toDocumentResponse(doc, tags),
+		"data": toDocumentResponse(doc, tags, includeContent),
 	})
 }
 
@@ -290,13 +302,14 @@ func (h *DocumentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // toDocumentResponse converts a model.Document and its tags to a response DTO.
-func toDocumentResponse(doc *model.Document, tags []model.DocumentTag) documentResponse {
+// Pass includeContent=true to populate the Content field (omitted by default — can be large).
+func toDocumentResponse(doc *model.Document, tags []model.DocumentTag, includeContent ...bool) documentResponse {
 	tagNames := make([]string, len(tags))
 	for i, t := range tags {
 		tagNames[i] = t.Tag
 	}
 
-	return documentResponse{
+	resp := documentResponse{
 		UUID:        doc.UUID,
 		Title:       doc.Title,
 		Description: doc.Description.String,
@@ -305,6 +318,7 @@ func toDocumentResponse(doc *model.Document, tags []model.DocumentTag) documentR
 		MIMEType:    doc.MIMEType,
 		WordCount:   doc.WordCount.Int64,
 		IsPublic:    doc.IsPublic,
+		HasFile:     doc.FilePath != "",
 		Status:      doc.Status,
 		ContentHash: doc.ContentHash.String,
 		Tags:        tagNames,
@@ -312,6 +326,12 @@ func toDocumentResponse(doc *model.Document, tags []model.DocumentTag) documentR
 		UpdatedAt:   formatTime(doc.UpdatedAt),
 		ProcessedAt: formatTime(doc.ProcessedAt),
 	}
+
+	if len(includeContent) > 0 && includeContent[0] && doc.Content.Valid {
+		resp.Content = doc.Content.String
+	}
+
+	return resp
 }
 
 func formatTime(t sql.NullTime) string {
@@ -346,7 +366,16 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if doc.FilePath == "" {
-		errorResponse(w, http.StatusNotFound, "document has no associated file")
+		// No file on disk — serve content from DB if available (e.g. markdown/html created via API).
+		if !doc.Content.Valid || doc.Content.String == "" {
+			errorResponse(w, http.StatusNotFound, "document has no associated file")
+			return
+		}
+		filename := sanitizeFilename(doc.Title) + "." + doc.FileType
+		w.Header().Set("Content-Type", doc.MIMEType)
+		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+		w.Header().Set("Content-Length", strconv.Itoa(len(doc.Content.String)))
+		_, _ = w.Write([]byte(doc.Content.String))
 		return
 	}
 
@@ -653,6 +682,12 @@ func (h *DocumentHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.indexer != nil {
+		if idxErr := h.indexer.UndeleteDocument(r.Context(), docUUID); idxErr != nil {
+			h.logger.Warn("failed to undelete document in search index", "uuid", docUUID, "error", idxErr)
+		}
+	}
+
 	// Re-fetch to get updated timestamps.
 	doc, err = h.repo.FindByUUID(r.Context(), docUUID)
 	if err != nil {
@@ -690,6 +725,12 @@ func (h *DocumentHandler) Purge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.indexer != nil {
+		if err := h.indexer.DeleteDocument(r.Context(), docUUID); err != nil {
+			h.logger.Warn("failed to delete document from search index", "uuid", docUUID, "error", err)
+		}
+	}
+
 	if filePath != "" {
 		fullPath := filepath.Join(h.pipeline.StoragePath(), filePath)
 		if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
@@ -721,6 +762,15 @@ func (h *DocumentHandler) BulkPurge(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("bulk purging documents", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to purge documents")
 		return
+	}
+
+	if h.indexer != nil {
+		for _, p := range paths {
+			if err := h.indexer.DeleteDocument(r.Context(), p.UUID); err != nil {
+				h.logger.Warn("failed to delete document from search index during bulk purge",
+					"uuid", p.UUID, "error", err)
+			}
+		}
 	}
 
 	for _, p := range paths {

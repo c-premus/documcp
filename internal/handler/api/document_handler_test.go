@@ -1635,11 +1635,12 @@ func TestNewDocumentHandler(t *testing.T) {
 		r := &mockHandlerRepo{}
 		l := testLogger()
 
-		h := NewDocumentHandler(p, r, l)
+		h := NewDocumentHandler(p, r, nil, l)
 
 		assert.NotNil(t, h)
 		assert.Equal(t, p, h.pipeline)
 		assert.Equal(t, r, h.repo)
+		assert.Nil(t, h.indexer)
 		assert.Equal(t, l, h.logger)
 	})
 }

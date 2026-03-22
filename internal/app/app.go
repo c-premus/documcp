@@ -329,7 +329,17 @@ func New(cfg *config.Config) (*App, error) {
 	reindexWorker.Logger = logger
 
 	oauthService := oauth.NewService(oauthRepo, cfg.OAuth, cfg.App.URL, logger)
-	externalServiceSvc := service.NewExternalServiceService(externalServiceRepo, logger)
+	var extSvcIndexCleaner service.ExternalServiceIndexCleaner
+	if searchIndexer != nil {
+		extSvcIndexCleaner = searchIndexer
+	}
+	externalServiceSvc := service.NewExternalServiceService(
+		externalServiceRepo,
+		confluenceSpaceRepo,
+		zimArchiveRepo,
+		extSvcIndexCleaner,
+		logger,
+	)
 
 	// --- OAuth Handler ---
 	oauthH := oauthhandler.New(oauthhandler.Config{
@@ -354,7 +364,11 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	// --- API Handlers ---
-	documentH := apihandler.NewDocumentHandler(documentPipeline, documentRepo, logger)
+	var docIndexer apihandler.DocumentIndexer
+	if searchIndexer != nil {
+		docIndexer = searchIndexer
+	}
+	documentH := apihandler.NewDocumentHandler(documentPipeline, documentRepo, docIndexer, logger)
 	var searchH *apihandler.SearchHandler
 	if searcher != nil {
 		searchH = apihandler.NewSearchHandler(searcher, searchQueryRepo, documentRepo, logger)
@@ -388,7 +402,10 @@ func New(cfg *config.Config) (*App, error) {
 	queueH := apihandler.NewQueueHandler(riverClient, logger)
 
 	// --- MCP Handler ---
-	mcpH := mcphandler.New(mcphandler.Config{
+	// Assign interface fields conditionally to avoid the Go nil-interface trap:
+	// assigning a nil *T to an interface yields a non-nil interface (has type, nil value),
+	// which bypasses nil checks inside the handler and causes a nil pointer dereference.
+	mcpCfg := mcphandler.Config{
 		ServerName:          cfg.DocuMCP.ServerName,
 		ServerVersion:       cfg.DocuMCP.ServerVersion,
 		Logger:              logger,
@@ -399,13 +416,20 @@ func New(cfg *config.Config) (*App, error) {
 		ZimArchiveRepo:      zimArchiveRepo,
 		ConfluenceSpaceRepo: confluenceSpaceRepo,
 		GitTemplateRepo:     gitTemplateRepo,
-		KiwixClient:         kiwixClient,
-		ConfluenceClient:    confluenceClient,
-		Searcher:            searcher,
 		ZimEnabled:          true,
 		ConfluenceEnabled:   true,
 		GitTemplatesEnabled: true,
-	})
+	}
+	if kiwixClient != nil {
+		mcpCfg.KiwixClient = kiwixClient
+	}
+	if confluenceClient != nil {
+		mcpCfg.ConfluenceClient = confluenceClient
+	}
+	if searcher != nil {
+		mcpCfg.Searcher = searcher
+	}
+	mcpH := mcphandler.New(mcpCfg)
 
 	// --- Observability ---
 	tracerShutdown, err := observability.InitTracer(context.Background(), cfg.OTEL)
