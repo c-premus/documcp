@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, h } from 'vue'
+import { ref, computed, watch, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { formatDistanceToNow } from 'date-fns'
@@ -7,6 +7,7 @@ import { TrashIcon, ArrowPathIcon } from '@heroicons/vue/24/outline'
 import type { ColumnDef } from '@tanstack/vue-table'
 
 import DataTable from '../components/shared/DataTable.vue'
+import Pagination from '../components/shared/Pagination.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
 import GitTemplateCreateModal from '../components/git-templates/GitTemplateCreateModal.vue'
@@ -16,29 +17,26 @@ import type { GitTemplate } from '../stores/gitTemplates'
 const router = useRouter()
 const store = useGitTemplatesStore()
 
-const templates = ref<GitTemplate[]>([])
-const total = ref(0)
-const loading = ref(false)
+const page = ref(1)
+const perPage = ref(50)
 
 const showCreateModal = ref(false)
 const deleteTarget = ref<GitTemplate | null>(null)
 const showDeleteDialog = computed(() => deleteTarget.value !== null)
 const syncingUuids = ref<Set<string>>(new Set())
 
-async function fetchTemplates(): Promise<void> {
-  loading.value = true
-  try {
-    const response = await store.fetchTemplates()
-    templates.value = response.data
-    total.value = response.meta.total
-  } catch {
+function fetchData(): void {
+  store.fetchTemplates({
+    per_page: perPage.value,
+    offset: (page.value - 1) * perPage.value,
+  }).catch(() => {
     toast.error('Failed to load git templates')
-  } finally {
-    loading.value = false
-  }
+  })
 }
 
-fetchTemplates()
+watch([page, perPage], () => {
+  fetchData()
+}, { immediate: true })
 
 function handleRowClick(row: GitTemplate): void {
   router.push(`/git-templates/${row.uuid}/files`)
@@ -49,7 +47,7 @@ async function handleSync(template: GitTemplate): Promise<void> {
   try {
     await store.syncTemplate(template.uuid)
     toast.success(`Sync started for "${template.name}"`)
-    await fetchTemplates()
+    await fetchData()
   } catch {
     toast.error(`Failed to sync "${template.name}"`)
   } finally {
@@ -66,7 +64,7 @@ async function handleDeleteConfirm(): Promise<void> {
     await store.deleteTemplate(deleteTarget.value.uuid)
     toast.success(`Template "${name}" deleted`)
     deleteTarget.value = null
-    await fetchTemplates()
+    await fetchData()
   } catch {
     toast.error(`Failed to delete "${name}"`)
   }
@@ -82,7 +80,7 @@ function handleCreateClose(): void {
 
 function handleCreateSaved(): void {
   showCreateModal.value = false
-  fetchTemplates()
+  fetchData()
 }
 
 function truncate(value: string, maxLength: number): string {
@@ -236,7 +234,7 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
 
     <!-- Empty State -->
     <EmptyState
-      v-if="!loading && templates.length === 0"
+      v-if="!store.loading && store.templates.length === 0"
       title="No git templates"
       description="Add your first git template to get started."
     >
@@ -252,14 +250,23 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
     </EmptyState>
 
     <!-- Data Table -->
-    <DataTable
-      v-else
-      :data="templates"
-      :columns="columns"
-      :loading="loading"
-      :clickable="true"
-      @row-click="handleRowClick"
-    />
+    <template v-else>
+      <DataTable
+        :data="store.templates"
+        :columns="columns"
+        :loading="store.loading"
+        :clickable="true"
+        @row-click="handleRowClick"
+      />
+
+      <Pagination
+        :page="page"
+        :per-page="perPage"
+        :total="store.total"
+        @update:page="page = $event"
+        @update:per-page="perPage = $event"
+      />
+    </template>
 
     <!-- Delete Confirmation Dialog -->
     <ConfirmDialog

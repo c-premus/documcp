@@ -29,12 +29,12 @@ type documentServicer interface {
 
 // zimArchiveLister abstracts the ZIM archive repository methods.
 type zimArchiveLister interface {
-	List(ctx context.Context, category, language, query string, limit int) ([]model.ZimArchive, error)
+	List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error)
 }
 
 // gitTemplateStore abstracts the git template repository methods.
 type gitTemplateStore interface {
-	List(ctx context.Context, category string, limit int) ([]model.GitTemplate, error)
+	List(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error)
 	Search(ctx context.Context, query, category string, limit int) ([]model.GitTemplate, error)
 	FindByUUID(ctx context.Context, uuid string) (*model.GitTemplate, error)
 	FilesForTemplate(ctx context.Context, templateID int64) ([]model.GitTemplateFile, error)

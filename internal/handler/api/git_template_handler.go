@@ -30,7 +30,8 @@ import (
 
 // gitTemplateRepo defines the methods used by GitTemplateHandler -- defined where consumed.
 type gitTemplateRepo interface {
-	List(ctx context.Context, category string, limit int) ([]model.GitTemplate, error)
+	List(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error)
+	CountFiltered(ctx context.Context, category string) (int, error)
 	Search(ctx context.Context, query, category string, limit int) ([]model.GitTemplate, error)
 	FindByUUID(ctx context.Context, uuid string) (*model.GitTemplate, error)
 	Create(ctx context.Context, tmpl *model.GitTemplate) error
@@ -103,12 +104,24 @@ var templateVariablePattern = regexp.MustCompile(`\{\{(\w+)\}\}`)
 func (h *GitTemplateHandler) List(w http.ResponseWriter, r *http.Request) {
 	category := r.URL.Query().Get("category")
 
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit <= 0 {
-		limit = 50
+	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+	if perPage <= 0 {
+		perPage = 50
 	}
 
-	templates, err := h.repo.List(r.Context(), category, limit)
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	if offset < 0 {
+		offset = 0
+	}
+
+	total, err := h.repo.CountFiltered(r.Context(), category)
+	if err != nil {
+		h.logger.Error("counting git templates", "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to count git templates")
+		return
+	}
+
+	templates, err := h.repo.List(r.Context(), category, perPage, offset)
 	if err != nil {
 		h.logger.Error("listing git templates", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to list git templates")
@@ -123,7 +136,9 @@ func (h *GitTemplateHandler) List(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"data": items,
 		"meta": map[string]any{
-			"total": len(items),
+			"total":  total,
+			"limit":  perPage,
+			"offset": offset,
 		},
 	})
 }

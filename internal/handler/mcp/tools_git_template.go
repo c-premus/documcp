@@ -306,7 +306,7 @@ func (h *Handler) handleListGitTemplates(
 		limit = 100
 	}
 
-	templates, err := h.gitTemplateRepo.List(ctx, input.Category, limit)
+	templates, err := h.gitTemplateRepo.List(ctx, input.Category, limit, 0)
 	if err != nil {
 		return nil, listGitTemplatesResponse{}, fmt.Errorf("listing git templates: %w", err)
 	}

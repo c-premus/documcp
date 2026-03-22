@@ -38,9 +38,15 @@ export interface TreeItem {
   children?: TreeItem[]
 }
 
+interface ListParams {
+  readonly category?: string
+  readonly per_page?: number
+  readonly offset?: number
+}
+
 interface ListResponse {
   readonly data: GitTemplate[]
-  readonly meta: { readonly total: number }
+  readonly meta: { readonly total: number; readonly limit: number; readonly offset: number }
 }
 
 interface SingleResponse {
@@ -163,11 +169,15 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  async function fetchTemplates(category?: string): Promise<ListResponse> {
+  async function fetchTemplates(params?: ListParams): Promise<ListResponse> {
     loading.value = true
     error.value = null
     try {
-      const query = buildQuery({ category })
+      const query = buildQuery({
+        category: params?.category,
+        per_page: params?.per_page,
+        offset: params?.offset,
+      })
       const response = await apiFetch<ListResponse>(`/api/git-templates${query}`)
       templates.value = response.data
       total.value = response.meta.total

@@ -63,27 +63,27 @@ func (m *mockDocumentService) Delete(ctx context.Context, uuid string) error {
 }
 
 type mockZimArchiveRepo struct {
-	listFn func(ctx context.Context, category, language, query string, limit int) ([]model.ZimArchive, error)
+	listFn func(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error)
 }
 
-func (m *mockZimArchiveRepo) List(ctx context.Context, category, language, query string, limit int) ([]model.ZimArchive, error) {
+func (m *mockZimArchiveRepo) List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error) {
 	if m.listFn != nil {
-		return m.listFn(ctx, category, language, query, limit)
+		return m.listFn(ctx, category, language, query, limit, offset)
 	}
 	return nil, nil
 }
 
 type mockGitTemplateRepo struct {
-	listFn           func(ctx context.Context, category string, limit int) ([]model.GitTemplate, error)
+	listFn           func(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error)
 	searchFn         func(ctx context.Context, query, category string, limit int) ([]model.GitTemplate, error)
 	findByUUIDFn     func(ctx context.Context, uuid string) (*model.GitTemplate, error)
 	filesForTmplFn   func(ctx context.Context, templateID int64) ([]model.GitTemplateFile, error)
 	findFileByPathFn func(ctx context.Context, templateID int64, path string) (*model.GitTemplateFile, error)
 }
 
-func (m *mockGitTemplateRepo) List(ctx context.Context, category string, limit int) ([]model.GitTemplate, error) {
+func (m *mockGitTemplateRepo) List(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error) {
 	if m.listFn != nil {
-		return m.listFn(ctx, category, limit)
+		return m.listFn(ctx, category, limit, offset)
 	}
 	return nil, nil
 }
@@ -696,7 +696,7 @@ func TestHandleListZimArchives(t *testing.T) {
 
 	t.Run("returns archives successfully", func(t *testing.T) {
 		repo := &mockZimArchiveRepo{
-			listFn: func(_ context.Context, _, _, _ string, _ int) ([]model.ZimArchive, error) {
+			listFn: func(_ context.Context, _, _, _ string, _, _ int) ([]model.ZimArchive, error) {
 				return []model.ZimArchive{
 					{
 						Name:         "devdocs_en_go",
@@ -742,7 +742,7 @@ func TestHandleListZimArchives(t *testing.T) {
 	t.Run("clamps limit", func(t *testing.T) {
 		var capturedLimit int
 		repo := &mockZimArchiveRepo{
-			listFn: func(_ context.Context, _, _, _ string, limit int) ([]model.ZimArchive, error) {
+			listFn: func(_ context.Context, _, _, _ string, limit, _ int) ([]model.ZimArchive, error) {
 				capturedLimit = limit
 				return nil, nil
 			},
@@ -768,7 +768,7 @@ func TestHandleListZimArchives(t *testing.T) {
 
 	t.Run("returns error when repo fails", func(t *testing.T) {
 		repo := &mockZimArchiveRepo{
-			listFn: func(_ context.Context, _, _, _ string, _ int) ([]model.ZimArchive, error) {
+			listFn: func(_ context.Context, _, _, _ string, _, _ int) ([]model.ZimArchive, error) {
 				return nil, errors.New("db error")
 			},
 		}
@@ -1023,7 +1023,7 @@ func TestHandleListGitTemplates(t *testing.T) {
 
 	t.Run("returns templates successfully", func(t *testing.T) {
 		repo := &mockGitTemplateRepo{
-			listFn: func(_ context.Context, _ string, _ int) ([]model.GitTemplate, error) {
+			listFn: func(_ context.Context, _ string, _, _ int) ([]model.GitTemplate, error) {
 				return []model.GitTemplate{
 					{
 						UUID:           "t1",
@@ -1073,7 +1073,7 @@ func TestHandleListGitTemplates(t *testing.T) {
 	t.Run("clamps limit", func(t *testing.T) {
 		var capturedLimit int
 		repo := &mockGitTemplateRepo{
-			listFn: func(_ context.Context, _ string, limit int) ([]model.GitTemplate, error) {
+			listFn: func(_ context.Context, _ string, limit, _ int) ([]model.GitTemplate, error) {
 				capturedLimit = limit
 				return nil, nil
 			},
@@ -1099,7 +1099,7 @@ func TestHandleListGitTemplates(t *testing.T) {
 
 	t.Run("returns error when repo fails", func(t *testing.T) {
 		repo := &mockGitTemplateRepo{
-			listFn: func(_ context.Context, _ string, _ int) ([]model.GitTemplate, error) {
+			listFn: func(_ context.Context, _ string, _, _ int) ([]model.GitTemplate, error) {
 				return nil, errors.New("db error")
 			},
 		}
