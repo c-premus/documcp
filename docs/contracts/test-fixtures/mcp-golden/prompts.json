@@ -3,7 +3,7 @@
     "protocol": "MCP (Model Context Protocol)",
     "endpoint": "POST /documcp",
     "transport": "JSON-RPC 2.0",
-    "total_prompts": 7,
+    "total_prompts": 6,
     "generated_from": "app/Mcp/Prompts/"
   },
   "prompts": {
@@ -204,57 +204,14 @@
         }
       ]
     },
-    "confluence_research": {
-      "class": "App\\Mcp\\Prompts\\ConfluenceResearchPrompt",
-      "title": "confluence_research",
-      "description": "Research Confluence spaces and pages with CQL search. Args: topic*, space, depth",
-      "conditional_registration": "Requires Confluence enabled and service configured",
-      "schema": {
-        "topic": {"type": "string", "required": true, "max": 500},
-        "space": {"type": "string", "default": "", "max": 50},
-        "depth": {"type": "string", "enum": ["quick", "standard", "deep"], "default": "standard"}
-      },
-      "examples": [
-        {
-          "name": "research in specific space",
-          "input": {
-            "topic": "deployment procedures",
-            "space": "DEV",
-            "depth": "deep"
-          },
-          "output_messages": [
-            {
-              "role": "assistant",
-              "content_contains": [
-                "Confluence Research Assistant",
-                "list_confluence_spaces",
-                "search_confluence",
-                "read_confluence_page",
-                "CQL Reference",
-                "text ~ \"term\"",
-                "space = \"KEY\""
-              ]
-            },
-            {
-              "role": "user",
-              "content_contains": [
-                "Research Request: deployment procedures",
-                "Limit search to space `DEV`",
-                "Deep Investigation"
-              ]
-            }
-          ]
-        }
-      ]
-    },
     "cross_source_research": {
       "class": "App\\Mcp\\Prompts\\CrossSourceResearchPrompt",
       "title": "cross_source_research",
-      "description": "Research across all sources (Documents, ZIM, Confluence, Git Templates). Args: topic*, sources, depth",
+      "description": "Research across all sources (Documents, ZIM, Git Templates). Args: topic*, sources, depth",
       "conditional_registration": "Always registered (works with any available sources)",
       "schema": {
         "topic": {"type": "string", "required": true, "max": 500},
-        "sources": {"type": "array", "items": {"type": "string", "enum": ["documents", "zim", "confluence", "git_templates"]}, "default": []},
+        "sources": {"type": "array", "items": {"type": "string", "enum": ["documents", "zim", "git_templates"]}, "default": []},
         "depth": {"type": "string", "enum": ["quick", "standard", "deep"], "default": "standard"}
       },
       "examples": [
@@ -274,8 +231,6 @@
                 "read_document",
                 "list_zim_archives",
                 "search_zim",
-                "list_confluence_spaces",
-                "search_confluence",
                 "search_git_templates",
                 "Synthesis Guidance"
               ]

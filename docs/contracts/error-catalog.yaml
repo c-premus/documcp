@@ -450,37 +450,6 @@ mcp_errors:
           trigger: "Any other Throwable"
           catch_type: "error"
 
-    # --- Confluence (3) ---
-    - tool: "list_confluence_spaces"
-      source_package: "internal/handler/mcp"
-      errors:
-        - message: "Failed to list spaces. Please try again later."
-          trigger: "Any Throwable during space listing"
-          catch_type: "error"
-
-    - tool: "search_confluence"
-      source_package: "internal/handler/mcp"
-      errors:
-        - message: "Either \"cql\" or \"query\" parameter is required"
-          trigger: "Neither cql nor query parameter provided"
-          catch_type: "validation check"
-        - message: "Search failed. Please try again later."
-          trigger: "Any Throwable during Confluence search"
-          catch_type: "error"
-
-    - tool: "read_confluence_page"
-      source_package: "internal/handler/mcp"
-      errors:
-        - message: "Either \"page_id\" or both \"space_key\" and \"title\" must be provided"
-          trigger: "Missing required page identification parameters"
-          catch_type: "validation check"
-        - message: "Invalid page request. Provide page_id or space_key with title."
-          trigger: "Invalid argument error from Confluence page reader"
-          catch_type: "invalid argument error"
-        - message: "Failed to read page. Please try again later."
-          trigger: "Any other Throwable"
-          catch_type: "error"
-
     # --- Git Template (6) ---
     - tool: "list_git_templates"
       source_package: "internal/handler/mcp"

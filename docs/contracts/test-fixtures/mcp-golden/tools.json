@@ -4,18 +4,18 @@
     "endpoint": "POST /documcp",
     "transport": "JSON-RPC 2.0",
     "auth": "OIDC Bearer token",
-    "total_tools": 18,
+    "total_tools": 15,
     "generated_from": "app/Mcp/Tools/"
   },
   "tools": {
     "unified_search": {
       "class": "App\\Mcp\\Tools\\UnifiedSearchTool",
       "title": "Unified Search",
-      "description": "Search across ALL content types in a single request: Documents, Git Templates, ZIM Archives, and Confluence Spaces.",
+      "description": "Search across ALL content types in a single request: Documents, Git Templates, and ZIM Archives.",
       "annotations": {"is_read_only": true, "is_idempotent": true},
       "schema": {
         "query": {"type": "string", "required": true, "description": "Search text (1-255 characters)"},
-        "types": {"type": "array", "items": "string", "enum": ["document", "git_template", "zim_archive", "confluence_space"], "required": false},
+        "types": {"type": "array", "items": "string", "enum": ["document", "git_template", "zim_archive"], "required": false},
         "limit": {"type": "integer", "default": 20, "min": 1, "max": 100, "required": false},
         "offset": {"type": "integer", "default": 0, "min": 0, "required": false}
       },
@@ -39,7 +39,7 @@
               }
             ],
             "total": 1,
-            "sources_searched": ["document", "git_template", "zim_archive", "confluence_space"],
+            "sources_searched": ["document", "git_template", "zim_archive"],
             "processing_time_ms": 25,
             "hint": "Use type-specific search tools for deeper content search within a source."
           }
@@ -399,120 +399,6 @@
           "input": {"archive": "devdocs_en_laravel_11", "path": "nonexistent.html"},
           "output_type": "error",
           "output_shape": {"error": "Article not found or unavailable."}
-        }
-      ]
-    },
-    "list_confluence_spaces": {
-      "class": "App\\Mcp\\Tools\\ListConfluenceSpacesTool",
-      "title": "List Confluence Spaces",
-      "description": "List available Confluence spaces with optional filtering by query and type.",
-      "annotations": {"is_read_only": true, "is_idempotent": true},
-      "schema": {
-        "query": {"type": "string", "required": false},
-        "type": {"type": "string", "enum": ["global", "personal", "knowledge_base"], "required": false},
-        "limit": {"type": "integer", "default": 50, "min": 1, "max": 100, "required": false}
-      },
-      "examples": [
-        {
-          "name": "list all spaces",
-          "input": {},
-          "output_type": "text",
-          "output_content_type": "application/json",
-          "output_shape": {
-            "success": true,
-            "spaces": [
-              {"key": "DEV", "name": "Development Documentation", "description": "Technical docs", "type": "global"}
-            ],
-            "count": 1
-          }
-        }
-      ]
-    },
-    "search_confluence": {
-      "class": "App\\Mcp\\Tools\\SearchConfluenceTool",
-      "title": "Search Confluence",
-      "description": "Search Confluence pages using CQL or simple text queries.",
-      "annotations": {"is_read_only": true, "is_idempotent": true},
-      "schema": {
-        "cql": {"type": "string", "required": false, "description": "CQL query (takes precedence over simple query)"},
-        "query": {"type": "string", "required": false, "description": "Simple full-text search query"},
-        "space": {"type": "string", "required": false, "description": "Filter by space key"},
-        "limit": {"type": "integer", "default": 25, "min": 1, "max": 50, "required": false}
-      },
-      "examples": [
-        {
-          "name": "simple query search",
-          "input": {"query": "middleware", "space": "DEV"},
-          "output_type": "text",
-          "output_content_type": "application/json",
-          "output_shape": {
-            "success": true,
-            "cql": "type = page AND text ~ \"middleware\" AND space = \"DEV\"",
-            "results": [
-              {
-                "id": "123456",
-                "title": "Middleware Guide",
-                "space_key": "DEV",
-                "web_url": "https://confluence.example.com/display/DEV/Middleware+Guide",
-                "excerpt": "HTTP middleware provide a convenient mechanism...",
-                "labels": ["documentation", "middleware"],
-                "content_length": 5000
-              }
-            ],
-            "count": 1,
-            "total_size": 1,
-            "has_more": false
-          }
-        },
-        {
-          "name": "missing query parameter",
-          "input": {},
-          "output_type": "error",
-          "output_shape": {"error": "Either \"cql\" or \"query\" parameter is required"}
-        }
-      ]
-    },
-    "read_confluence_page": {
-      "class": "App\\Mcp\\Tools\\ReadConfluencePageTool",
-      "title": "Read Confluence Page",
-      "description": "Read the full content of a Confluence page as markdown. Identify by page_id or space_key+title.",
-      "annotations": {"is_read_only": true, "is_idempotent": true},
-      "schema": {
-        "page_id": {"type": "string", "required": false, "description": "Confluence page ID"},
-        "space_key": {"type": "string", "required": false, "description": "Space key (use with title)"},
-        "title": {"type": "string", "required": false, "description": "Exact page title (use with space_key)"},
-        "summary_only": {"type": "boolean", "default": false, "required": false},
-        "max_paragraphs": {"type": "integer", "min": 1, "max": 100, "required": false}
-      },
-      "examples": [
-        {
-          "name": "read by page_id",
-          "input": {"page_id": "123456"},
-          "output_type": "text",
-          "output_content_type": "application/json",
-          "output_shape": {
-            "success": true,
-            "page": {
-              "id": "123456",
-              "title": "Middleware Guide",
-              "space_key": "DEV",
-              "web_url": "https://confluence.example.com/display/DEV/Middleware+Guide",
-              "version": "5",
-              "created_at": "2025-06-15T10:30:00+00:00",
-              "updated_at": "2026-01-20T14:00:00+00:00",
-              "labels": ["documentation", "middleware"],
-              "ancestors": [{"id": "123000", "title": "Development Docs"}]
-            },
-            "content": "# Middleware Guide\n\nHTTP middleware provide...",
-            "truncated": false,
-            "original_length": 5000
-          }
-        },
-        {
-          "name": "missing parameters",
-          "input": {},
-          "output_type": "error",
-          "output_shape": {"error": "Either \"page_id\" or both \"space_key\" and \"title\" must be provided"}
         }
       ]
     },

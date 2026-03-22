@@ -1,7 +1,7 @@
 {
   "metadata": {
     "generated_from": "database/factories/",
-    "total_factories": 15,
+    "total_factories": 14,
     "generated_at": "2026-02-24"
   },
   "factories": {
@@ -203,8 +203,7 @@
         "unhealthy": {"status": "unhealthy", "last_error": "Connection refused", "error_count": "1-10", "consecutive_failures": "1-5"},
         "disabled": {"is_enabled": false},
         "kiwix": {"type": "kiwix", "base_url": "https://library.example.com"},
-        "meilisearch": {"type": "meilisearch", "base_url": "http://localhost:7700", "api_key": "sha256"},
-        "confluence": {"type": "confluence", "base_url": "https://example.atlassian.net/wiki", "api_key": "sha256", "config": {"email": "safeEmail"}}
+        "meilisearch": {"type": "meilisearch", "base_url": "http://localhost:7700", "api_key": "sha256"}
       }
     },
     "ZimArchive": {
@@ -240,33 +239,6 @@
         "disabled": {"is_enabled": false},
         "notSearchable": {"is_searchable": false},
         "indexed": {"meilisearch_indexed_at": "now()"}
-      }
-    },
-    "ConfluenceSpace": {
-      "model": "App\\Models\\ConfluenceSpace",
-      "table": "confluence_spaces",
-      "definition": {
-        "uuid": {"type": "string", "faker": "Str::uuid()"},
-        "confluence_id": {"type": "string", "faker": "fake()->numberBetween(100000, 999999)"},
-        "key": {"type": "string", "faker": "fake()->unique()->regexify('[A-Z]{2,6}')"},
-        "name": {"type": "string", "faker": "ucwords(fake()->words(3, true))"},
-        "description": {"type": "string", "faker": "fake()->sentence()"},
-        "type": {"type": "string", "value": "global"},
-        "status": {"type": "string", "value": "current"},
-        "homepage_id": {"type": "string", "faker": "fake()->numberBetween(100000, 999999)"},
-        "icon_url": {"type": "string|null", "value": null},
-        "external_service_id": {"type": "integer|null", "value": null},
-        "is_enabled": {"type": "boolean", "value": true},
-        "is_searchable": {"type": "boolean", "value": true},
-        "last_synced_at": {"type": "datetime", "faker": "now()"}
-      },
-      "states": {
-        "global": {"type": "global"},
-        "personal": {"type": "personal", "key": "~username", "name": "Username's Space"},
-        "archived": {"status": "archived"},
-        "withService": {"external_service_id": "ExternalService::factory()->confluence()->healthy()"},
-        "disabled": {"is_enabled": false},
-        "notSearchable": {"is_searchable": false}
       }
     },
     "GitTemplate": {
