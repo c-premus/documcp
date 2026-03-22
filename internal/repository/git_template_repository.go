@@ -242,7 +242,7 @@ func (r *GitTemplateRepository) ReplaceFiles(ctx context.Context, templateID int
 	if err != nil {
 		return fmt.Errorf("beginning transaction for replacing files on template %d: %w", templateID, err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer tx.Rollback() //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
 
 	_, err = tx.ExecContext(ctx,
 		`DELETE FROM git_template_files WHERE git_template_id = $1`, templateID)
@@ -363,4 +363,3 @@ func (r *GitTemplateRepository) decryptTokens(templates []model.GitTemplate) {
 		r.decryptToken(&templates[i])
 	}
 }
-

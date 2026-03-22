@@ -16,8 +16,8 @@ import (
 
 	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
-	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oidc"
+	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
 	"git.999.haus/chris/DocuMCP-go/internal/handler"
 	apihandler "git.999.haus/chris/DocuMCP-go/internal/handler/api"
 	oauthhandler "git.999.haus/chris/DocuMCP-go/internal/handler/oauth"
@@ -54,14 +54,14 @@ type Deps struct {
 
 	// Vue SPA
 	AuthHandler *apihandler.AuthHandler // nil if not configured
-	SPAHandler  http.Handler           // nil if not configured
+	SPAHandler  http.Handler            // nil if not configured
 
 	// Search health
 	SearchClient interface{ Healthy() bool } // for readiness checks (nil disables Meilisearch check)
 
 	// Observability
-	Metrics      *observability.Metrics // nil disables Prometheus metrics
-	OTELEnabled  bool                   // enables tracing middleware
+	Metrics     *observability.Metrics // nil disables Prometheus metrics
+	OTELEnabled bool                   // enables tracing middleware
 
 	// Security
 	CSRFKey  []byte // 32-byte key for CSRF token generation (nil disables CSRF)

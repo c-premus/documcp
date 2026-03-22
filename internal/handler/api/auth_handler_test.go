@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,7 +25,7 @@ func (m *mockAuthUserFinder) FindUserByID(ctx context.Context, id int64) (*model
 	if m.findUserByIDFn != nil {
 		return m.findUserByIDFn(ctx, id)
 	}
-	return nil, fmt.Errorf("user not found")
+	return nil, errors.New("user not found")
 }
 
 // ---------------------------------------------------------------------------
@@ -45,7 +45,7 @@ func TestAuthHandler_Me_ValidSession(t *testing.T) {
 	h := NewAuthHandler(store, finder, discardLogger())
 
 	// Create a request with a valid session cookie.
-	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	// Pre-set the session via the store.
@@ -57,7 +57,7 @@ func TestAuthHandler_Me_ValidSession(t *testing.T) {
 
 	// Copy the Set-Cookie to a new request.
 	cookies := rec.Result().Cookies()
-	req2 := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	req2 := httptest.NewRequest(http.MethodGet, "/api/auth/me", http.NoBody)
 	for _, c := range cookies {
 		req2.AddCookie(c)
 	}
@@ -96,7 +96,7 @@ func TestAuthHandler_Me_NoSession(t *testing.T) {
 	finder := &mockAuthUserFinder{}
 	h := NewAuthHandler(store, finder, discardLogger())
 
-	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.Me(rec, req)
@@ -112,14 +112,14 @@ func TestAuthHandler_Me_UserNotFound(t *testing.T) {
 	store := sessions.NewCookieStore([]byte("test-secret-32-bytes-long!!!!!!!"))
 	finder := &mockAuthUserFinder{
 		findUserByIDFn: func(_ context.Context, _ int64) (*model.User, error) {
-			return nil, fmt.Errorf("no rows")
+			return nil, errors.New("no rows")
 		},
 	}
 
 	h := NewAuthHandler(store, finder, discardLogger())
 
 	// Build request with a valid session containing user_id.
-	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", http.NoBody)
 	rec := httptest.NewRecorder()
 	session, _ := store.Get(req, "documcp_session")
 	session.Values["user_id"] = int64(999)
@@ -128,7 +128,7 @@ func TestAuthHandler_Me_UserNotFound(t *testing.T) {
 	}
 
 	cookies := rec.Result().Cookies()
-	req2 := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	req2 := httptest.NewRequest(http.MethodGet, "/api/auth/me", http.NoBody)
 	for _, c := range cookies {
 		req2.AddCookie(c)
 	}

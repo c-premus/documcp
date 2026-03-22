@@ -216,15 +216,15 @@ func setDefaults(v *viper.Viper) {
 
 	// Scheduler
 	v.SetDefault("scheduler_enabled", false)
-	v.SetDefault("scheduler_kiwix_schedule", "0 */6 * * *")              // every 6 hours
-	v.SetDefault("scheduler_confluence_schedule", "0 */4 * * *")          // every 4 hours
-	v.SetDefault("scheduler_git_schedule", "0 * * * *")                   // every hour
-	v.SetDefault("scheduler_oauth_cleanup_schedule", "0 * * * *")         // hourly
-	v.SetDefault("scheduler_orphaned_files_schedule", "0 2 * * *")        // daily 2 AM
-	v.SetDefault("scheduler_search_verify_schedule", "0 3 * * *")         // daily 3 AM
-	v.SetDefault("scheduler_soft_delete_purge_schedule", "0 4 * * *")     // daily 4 AM
-	v.SetDefault("scheduler_zim_cleanup_schedule", "0 5 * * *")           // daily 5 AM
-	v.SetDefault("scheduler_health_check_schedule", "*/15 * * * *")       // every 15 min
+	v.SetDefault("scheduler_kiwix_schedule", "0 */6 * * *")           // every 6 hours
+	v.SetDefault("scheduler_confluence_schedule", "0 */4 * * *")      // every 4 hours
+	v.SetDefault("scheduler_git_schedule", "0 * * * *")               // every hour
+	v.SetDefault("scheduler_oauth_cleanup_schedule", "0 * * * *")     // hourly
+	v.SetDefault("scheduler_orphaned_files_schedule", "0 2 * * *")    // daily 2 AM
+	v.SetDefault("scheduler_search_verify_schedule", "0 3 * * *")     // daily 3 AM
+	v.SetDefault("scheduler_soft_delete_purge_schedule", "0 4 * * *") // daily 4 AM
+	v.SetDefault("scheduler_zim_cleanup_schedule", "0 5 * * *")       // daily 5 AM
+	v.SetDefault("scheduler_health_check_schedule", "*/15 * * * *")   // every 15 min
 }
 
 // Load reads configuration from environment variables and an optional YAML

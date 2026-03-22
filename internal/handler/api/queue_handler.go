@@ -38,7 +38,7 @@ func (h *QueueHandler) Stats(w http.ResponseWriter, r *http.Request) {
 			"running":   counts["running"],
 			"retryable": counts["retryable"],
 			"discarded": counts["discarded"],
-			"cancelled": counts["cancelled"], //nolint:misspell
+			"cancelled": counts["cancelled"], //nolint:misspell // "cancelled" is the River queue state name
 		},
 	})
 }
@@ -66,13 +66,13 @@ func (h *QueueHandler) ListFailed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type failedJob struct {
-		ID          int64                   `json:"id"`
-		Kind        string                  `json:"kind"`
-		Queue       string                  `json:"queue"`
-		State       rivertype.JobState      `json:"state"`
-		Attempt     int                     `json:"attempt"`
-		MaxAttempts int                     `json:"max_attempts"`
-		CreatedAt   string                  `json:"created_at"`
+		ID          int64                    `json:"id"`
+		Kind        string                   `json:"kind"`
+		Queue       string                   `json:"queue"`
+		State       rivertype.JobState       `json:"state"`
+		Attempt     int                      `json:"attempt"`
+		MaxAttempts int                      `json:"max_attempts"`
+		CreatedAt   string                   `json:"created_at"`
 		Errors      []rivertype.AttemptError `json:"errors,omitempty"`
 	}
 

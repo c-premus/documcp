@@ -255,4 +255,3 @@ func toOAuthClientResponse(c *model.OAuthClient) oauthClientResponse {
 
 	return resp
 }
-

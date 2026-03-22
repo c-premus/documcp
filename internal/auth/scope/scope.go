@@ -47,7 +47,7 @@ func Valid(s string) bool {
 // scope tokens.
 func ParseScopes(s string) []string {
 	var out []string
-	for _, tok := range strings.Split(s, " ") {
+	for tok := range strings.SplitSeq(s, " ") {
 		if tok != "" {
 			out = append(out, tok)
 		}

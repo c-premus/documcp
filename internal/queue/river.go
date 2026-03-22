@@ -115,7 +115,7 @@ func (rc *RiverClient) Client() *river.Client[pgx.Tx] {
 func (rc *RiverClient) QueueStats(ctx context.Context) (map[string]int, error) {
 	rows, err := rc.pool.Query(ctx,
 		`SELECT state, count(*) FROM river_job WHERE state = ANY($1) GROUP BY state`,
-		[]string{"available", "running", "retryable", "discarded", "cancelled"}, //nolint:misspell
+		[]string{"available", "running", "retryable", "discarded", "cancelled"}, //nolint:misspell // "cancelled" is the River queue state name
 	)
 	if err != nil {
 		return nil, fmt.Errorf("querying queue stats: %w", err)

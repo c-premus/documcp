@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -75,10 +76,10 @@ func setupMockOIDCProvider(t *testing.T) (*httptest.Server, *rsa.PrivateKey) {
 
 	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		discovery := map[string]any{
-			"issuer":                 serverURL,
-			"authorization_endpoint": serverURL + "/authorize",
-			"token_endpoint":         serverURL + "/token",
-			"jwks_uri":               serverURL + "/certs",
+			"issuer":                                serverURL,
+			"authorization_endpoint":                serverURL + "/authorize",
+			"token_endpoint":                        serverURL + "/token",
+			"jwks_uri":                              serverURL + "/certs",
 			"id_token_signing_alg_values_supported": []string{"RS256"},
 			"subject_types_supported":               []string{"public"},
 			"response_types_supported":              []string{"code"},
@@ -266,7 +267,7 @@ func TestLogin(t *testing.T) {
 	defer server.Close()
 
 	t.Run("redirects to OIDC provider", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+		req := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
 		w := httptest.NewRecorder()
 
 		h.Login(w, req)
@@ -285,7 +286,7 @@ func TestLogin(t *testing.T) {
 	})
 
 	t.Run("preserves safe redirect param", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/auth/login?redirect=/admin/documents", nil)
+		req := httptest.NewRequest(http.MethodGet, "/auth/login?redirect=/admin/documents", http.NoBody)
 		w := httptest.NewRecorder()
 
 		h.Login(w, req)
@@ -302,7 +303,7 @@ func TestLogin(t *testing.T) {
 	})
 
 	t.Run("ignores unsafe redirect with double slash", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/auth/login?redirect=//evil.com", nil)
+		req := httptest.NewRequest(http.MethodGet, "/auth/login?redirect=//evil.com", http.NoBody)
 		w := httptest.NewRecorder()
 
 		h.Login(w, req)
@@ -313,7 +314,7 @@ func TestLogin(t *testing.T) {
 	})
 
 	t.Run("ignores unsafe redirect with backslash", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/auth/login?redirect=\\\\evil.com", nil)
+		req := httptest.NewRequest(http.MethodGet, "/auth/login?redirect=\\\\evil.com", http.NoBody)
 		w := httptest.NewRecorder()
 
 		h.Login(w, req)
@@ -330,7 +331,7 @@ func TestCallback(t *testing.T) {
 		h, server := newTestHandler(t, repo)
 		defer server.Close()
 
-		req := httptest.NewRequest(http.MethodGet, "/auth/callback?code=VALID", nil)
+		req := httptest.NewRequest(http.MethodGet, "/auth/callback?code=VALID", http.NoBody)
 		w := httptest.NewRecorder()
 
 		h.Callback(w, req)
@@ -346,12 +347,12 @@ func TestCallback(t *testing.T) {
 		defer server.Close()
 
 		// First do a login to set the state in session.
-		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
 		loginW := httptest.NewRecorder()
 		h.Login(loginW, loginReq)
 
 		// Use the session cookie from login but with wrong state.
-		req := httptest.NewRequest(http.MethodGet, "/auth/callback?code=VALID&state=WRONG", nil)
+		req := httptest.NewRequest(http.MethodGet, "/auth/callback?code=VALID&state=WRONG", http.NoBody)
 		for _, c := range loginW.Result().Cookies() {
 			req.AddCookie(c)
 		}
@@ -377,7 +378,7 @@ func TestCallback(t *testing.T) {
 		defer server.Close()
 
 		// Step 1: Login to get state.
-		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
 		loginW := httptest.NewRecorder()
 		h.Login(loginW, loginReq)
 
@@ -390,8 +391,8 @@ func TestCallback(t *testing.T) {
 		}
 
 		// Step 2: Callback with the correct state and a valid code.
-		callbackURL := fmt.Sprintf("/auth/callback?code=test-auth-code&state=%s", state)
-		req := httptest.NewRequest(http.MethodGet, callbackURL, nil)
+		callbackURL := "/auth/callback?code=test-auth-code&state=" + state
+		req := httptest.NewRequest(http.MethodGet, callbackURL, http.NoBody)
 		for _, c := range loginW.Result().Cookies() {
 			req.AddCookie(c)
 		}
@@ -446,7 +447,7 @@ func TestCallback(t *testing.T) {
 		defer server.Close()
 
 		// Login to get state.
-		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
 		loginW := httptest.NewRecorder()
 		h.Login(loginW, loginReq)
 
@@ -454,8 +455,8 @@ func TestCallback(t *testing.T) {
 		parsed, _ := parseRedirectURL(location)
 		state := parsed.Query().Get("state")
 
-		callbackURL := fmt.Sprintf("/auth/callback?code=test-auth-code&state=%s", state)
-		req := httptest.NewRequest(http.MethodGet, callbackURL, nil)
+		callbackURL := "/auth/callback?code=test-auth-code&state=" + state
+		req := httptest.NewRequest(http.MethodGet, callbackURL, http.NoBody)
 		for _, c := range loginW.Result().Cookies() {
 			req.AddCookie(c)
 		}
@@ -491,7 +492,7 @@ func TestCallback(t *testing.T) {
 		defer server.Close()
 
 		// Login to get state.
-		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
 		loginW := httptest.NewRecorder()
 		h.Login(loginW, loginReq)
 
@@ -499,8 +500,8 @@ func TestCallback(t *testing.T) {
 		parsed, _ := parseRedirectURL(location)
 		state := parsed.Query().Get("state")
 
-		callbackURL := fmt.Sprintf("/auth/callback?code=test-auth-code&state=%s", state)
-		req := httptest.NewRequest(http.MethodGet, callbackURL, nil)
+		callbackURL := "/auth/callback?code=test-auth-code&state=" + state
+		req := httptest.NewRequest(http.MethodGet, callbackURL, http.NoBody)
 		for _, c := range loginW.Result().Cookies() {
 			req.AddCookie(c)
 		}
@@ -531,7 +532,7 @@ func TestCallback(t *testing.T) {
 		defer server.Close()
 
 		// Login with redirect param.
-		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login?redirect=/admin/documents", nil)
+		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login?redirect=/admin/documents", http.NoBody)
 		loginW := httptest.NewRecorder()
 		h.Login(loginW, loginReq)
 
@@ -539,8 +540,8 @@ func TestCallback(t *testing.T) {
 		parsed, _ := parseRedirectURL(location)
 		state := parsed.Query().Get("state")
 
-		callbackURL := fmt.Sprintf("/auth/callback?code=test-auth-code&state=%s", state)
-		req := httptest.NewRequest(http.MethodGet, callbackURL, nil)
+		callbackURL := "/auth/callback?code=test-auth-code&state=" + state
+		req := httptest.NewRequest(http.MethodGet, callbackURL, http.NoBody)
 		for _, c := range loginW.Result().Cookies() {
 			req.AddCookie(c)
 		}
@@ -569,10 +570,10 @@ func TestCallback(t *testing.T) {
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 			discovery := map[string]any{
-				"issuer":                 serverURL,
-				"authorization_endpoint": serverURL + "/authorize",
-				"token_endpoint":         serverURL + "/token",
-				"jwks_uri":               serverURL + "/certs",
+				"issuer":                                serverURL,
+				"authorization_endpoint":                serverURL + "/authorize",
+				"token_endpoint":                        serverURL + "/token",
+				"jwks_uri":                              serverURL + "/certs",
 				"id_token_signing_alg_values_supported": []string{"RS256"},
 				"subject_types_supported":               []string{"public"},
 				"response_types_supported":              []string{"code"},
@@ -639,7 +640,7 @@ func TestCallback(t *testing.T) {
 		}
 
 		// Login to get state.
-		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
 		loginW := httptest.NewRecorder()
 		h.Login(loginW, loginReq)
 
@@ -647,8 +648,8 @@ func TestCallback(t *testing.T) {
 		parsed, _ := parseRedirectURL(location)
 		state := parsed.Query().Get("state")
 
-		callbackURL := fmt.Sprintf("/auth/callback?code=test-auth-code&state=%s", state)
-		req := httptest.NewRequest(http.MethodGet, callbackURL, nil)
+		callbackURL := "/auth/callback?code=test-auth-code&state=" + state
+		req := httptest.NewRequest(http.MethodGet, callbackURL, http.NoBody)
 		for _, c := range loginW.Result().Cookies() {
 			req.AddCookie(c)
 		}
@@ -674,7 +675,7 @@ func TestCallback(t *testing.T) {
 		})
 		defer server.Close()
 
-		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
 		loginW := httptest.NewRecorder()
 		h.Login(loginW, loginReq)
 
@@ -682,8 +683,8 @@ func TestCallback(t *testing.T) {
 		parsed, _ := parseRedirectURL(location)
 		state := parsed.Query().Get("state")
 
-		callbackURL := fmt.Sprintf("/auth/callback?code=test-auth-code&state=%s", state)
-		req := httptest.NewRequest(http.MethodGet, callbackURL, nil)
+		callbackURL := "/auth/callback?code=test-auth-code&state=" + state
+		req := httptest.NewRequest(http.MethodGet, callbackURL, http.NoBody)
 		for _, c := range loginW.Result().Cookies() {
 			req.AddCookie(c)
 		}
@@ -702,7 +703,7 @@ func TestCallback(t *testing.T) {
 		})
 		defer server.Close()
 
-		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
 		loginW := httptest.NewRecorder()
 		h.Login(loginW, loginReq)
 
@@ -710,8 +711,8 @@ func TestCallback(t *testing.T) {
 		parsed, _ := parseRedirectURL(location)
 		state := parsed.Query().Get("state")
 
-		callbackURL := fmt.Sprintf("/auth/callback?code=test-auth-code&state=%s", state)
-		req := httptest.NewRequest(http.MethodGet, callbackURL, nil)
+		callbackURL := "/auth/callback?code=test-auth-code&state=" + state
+		req := httptest.NewRequest(http.MethodGet, callbackURL, http.NoBody)
 		for _, c := range loginW.Result().Cookies() {
 			req.AddCookie(c)
 		}
@@ -738,7 +739,7 @@ func TestCallback(t *testing.T) {
 		})
 		defer server.Close()
 
-		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
 		loginW := httptest.NewRecorder()
 		h.Login(loginW, loginReq)
 
@@ -746,8 +747,8 @@ func TestCallback(t *testing.T) {
 		parsed, _ := parseRedirectURL(location)
 		state := parsed.Query().Get("state")
 
-		callbackURL := fmt.Sprintf("/auth/callback?code=test-auth-code&state=%s", state)
-		req := httptest.NewRequest(http.MethodGet, callbackURL, nil)
+		callbackURL := "/auth/callback?code=test-auth-code&state=" + state
+		req := httptest.NewRequest(http.MethodGet, callbackURL, http.NoBody)
 		for _, c := range loginW.Result().Cookies() {
 			req.AddCookie(c)
 		}
@@ -763,13 +764,13 @@ func TestCallback(t *testing.T) {
 	t.Run("returns 500 when user creation fails", func(t *testing.T) {
 		repo := &mockUserRepo{
 			createFn: func(ctx context.Context, user *model.User) error {
-				return fmt.Errorf("database error")
+				return errors.New("database error")
 			},
 		}
 		h, server := newTestHandler(t, repo)
 		defer server.Close()
 
-		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
 		loginW := httptest.NewRecorder()
 		h.Login(loginW, loginReq)
 
@@ -777,8 +778,8 @@ func TestCallback(t *testing.T) {
 		parsed, _ := parseRedirectURL(location)
 		state := parsed.Query().Get("state")
 
-		callbackURL := fmt.Sprintf("/auth/callback?code=test-auth-code&state=%s", state)
-		req := httptest.NewRequest(http.MethodGet, callbackURL, nil)
+		callbackURL := "/auth/callback?code=test-auth-code&state=" + state
+		req := httptest.NewRequest(http.MethodGet, callbackURL, http.NoBody)
 		for _, c := range loginW.Result().Cookies() {
 			req.AddCookie(c)
 		}
@@ -798,7 +799,7 @@ func TestLogout(t *testing.T) {
 		h, server := newTestHandler(t, repo)
 		defer server.Close()
 
-		req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+		req := httptest.NewRequest(http.MethodPost, "/auth/logout", http.NoBody)
 		w := httptest.NewRecorder()
 
 		h.Logout(w, req)
@@ -940,7 +941,7 @@ func TestFindOrCreateUser(t *testing.T) {
 	t.Run("returns error on sub lookup failure", func(t *testing.T) {
 		repo := &mockUserRepo{
 			findBySubFn: func(ctx context.Context, sub string) (*model.User, error) {
-				return nil, fmt.Errorf("database error")
+				return nil, errors.New("database error")
 			},
 		}
 		h, server := newTestHandler(t, repo)
@@ -955,7 +956,7 @@ func TestFindOrCreateUser(t *testing.T) {
 	t.Run("returns error on email lookup failure", func(t *testing.T) {
 		repo := &mockUserRepo{
 			findByEmailFn: func(ctx context.Context, email string) (*model.User, error) {
-				return nil, fmt.Errorf("database error")
+				return nil, errors.New("database error")
 			},
 		}
 		h, server := newTestHandler(t, repo)
@@ -1202,10 +1203,10 @@ func newCustomTokenHandler(t *testing.T, repo UserRepo, tokenHandler func(http.R
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		discovery := map[string]any{
-			"issuer":                 serverURL,
-			"authorization_endpoint": serverURL + "/authorize",
-			"token_endpoint":         serverURL + "/token",
-			"jwks_uri":               serverURL + "/certs",
+			"issuer":                                serverURL,
+			"authorization_endpoint":                serverURL + "/authorize",
+			"token_endpoint":                        serverURL + "/token",
+			"jwks_uri":                              serverURL + "/certs",
 			"id_token_signing_alg_values_supported": []string{"RS256"},
 			"subject_types_supported":               []string{"public"},
 			"response_types_supported":              []string{"code"},

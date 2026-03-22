@@ -16,7 +16,7 @@ import (
 func newTestHandler(appURL string) *Handler {
 	return &Handler{
 		appURL: appURL,
-		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		logger: slog.New(slog.DiscardHandler),
 	}
 }
 
@@ -42,7 +42,7 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 	t.Run("returns 200 with correct content type", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.AuthorizationServerMetadata(rr, req)
@@ -58,7 +58,7 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 	t.Run("issuer matches app URL", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.AuthorizationServerMetadata(rr, req)
 
@@ -71,7 +71,7 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 	t.Run("authorization endpoint is correct", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.AuthorizationServerMetadata(rr, req)
 
@@ -85,7 +85,7 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 	t.Run("token endpoint is correct", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.AuthorizationServerMetadata(rr, req)
 
@@ -99,7 +99,7 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 	t.Run("revocation endpoint is correct", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.AuthorizationServerMetadata(rr, req)
 
@@ -113,7 +113,7 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 	t.Run("registration endpoint is correct", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.AuthorizationServerMetadata(rr, req)
 
@@ -127,7 +127,7 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 	t.Run("device authorization endpoint is correct", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.AuthorizationServerMetadata(rr, req)
 
@@ -141,7 +141,7 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 	t.Run("response types supported contains code", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.AuthorizationServerMetadata(rr, req)
 
@@ -165,7 +165,7 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 	t.Run("grant types supported includes required grants", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.AuthorizationServerMetadata(rr, req)
 
@@ -193,7 +193,7 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 	t.Run("code challenge methods supported contains S256", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.AuthorizationServerMetadata(rr, req)
 
@@ -210,7 +210,7 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 	t.Run("scopes supported includes mcp scopes", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.AuthorizationServerMetadata(rr, req)
 
@@ -233,7 +233,7 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 	t.Run("protected resources includes issuer", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.AuthorizationServerMetadata(rr, req)
 
@@ -250,7 +250,7 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 	t.Run("token endpoint auth methods supported", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.AuthorizationServerMetadata(rr, req)
 
@@ -274,7 +274,7 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 		t.Parallel()
 
 		h2 := newTestHandler("https://other.example.org")
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
 		rr := httptest.NewRecorder()
 		h2.AuthorizationServerMetadata(rr, req)
 
@@ -302,7 +302,7 @@ func TestHandler_ProtectedResourceMetadata(t *testing.T) {
 	t.Run("returns 200 with correct content type", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.ProtectedResourceMetadata(rr, req)
@@ -318,7 +318,7 @@ func TestHandler_ProtectedResourceMetadata(t *testing.T) {
 	t.Run("resource defaults to app URL for root path", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.ProtectedResourceMetadata(rr, req)
 
@@ -331,7 +331,7 @@ func TestHandler_ProtectedResourceMetadata(t *testing.T) {
 	t.Run("resource defaults to app URL for trailing slash", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource/", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.ProtectedResourceMetadata(rr, req)
 
@@ -344,7 +344,7 @@ func TestHandler_ProtectedResourceMetadata(t *testing.T) {
 	t.Run("resource includes path suffix", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource/api/docs", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource/api/docs", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.ProtectedResourceMetadata(rr, req)
 
@@ -358,7 +358,7 @@ func TestHandler_ProtectedResourceMetadata(t *testing.T) {
 	t.Run("authorization servers includes issuer", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.ProtectedResourceMetadata(rr, req)
 
@@ -375,7 +375,7 @@ func TestHandler_ProtectedResourceMetadata(t *testing.T) {
 	t.Run("scopes supported includes mcp scopes", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.ProtectedResourceMetadata(rr, req)
 
@@ -398,7 +398,7 @@ func TestHandler_ProtectedResourceMetadata(t *testing.T) {
 	t.Run("bearer methods supported contains header", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.ProtectedResourceMetadata(rr, req)
 
@@ -416,7 +416,7 @@ func TestHandler_ProtectedResourceMetadata(t *testing.T) {
 		t.Parallel()
 
 		h2 := newTestHandler("https://mcp.example.io")
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", http.NoBody)
 		rr := httptest.NewRecorder()
 		h2.ProtectedResourceMetadata(rr, req)
 
@@ -429,7 +429,7 @@ func TestHandler_ProtectedResourceMetadata(t *testing.T) {
 	t.Run("path suffix with nested path", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource/mcp/v1/tools", nil)
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource/mcp/v1/tools", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.ProtectedResourceMetadata(rr, req)
 

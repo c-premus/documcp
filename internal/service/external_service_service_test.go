@@ -86,8 +86,8 @@ func (m *mockHealthChecker) Health(_ context.Context) error {
 // Helpers
 // ---------------------------------------------------------------------------
 
-func ptrInt(i int) *int       { return &i }
-func ptrBoolES(b bool) *bool  { return &b }
+func ptrInt(i int) *int      { return &i }
+func ptrBoolES(b bool) *bool { return &b }
 
 // ---------------------------------------------------------------------------
 // TestExternalServiceService_FindByUUID
@@ -115,8 +115,8 @@ func TestExternalServiceService_FindByUUID(t *testing.T) {
 			repoFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
 				return nil, sql.ErrNoRows
 			},
-			wantSvc: false,
-			wantErr: true,
+			wantSvc:   false,
+			wantErr:   true,
 			errSubstr: "not found",
 		},
 		{

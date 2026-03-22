@@ -181,7 +181,7 @@ func (r *ExternalServiceRepository) ReorderPriorities(ctx context.Context, servi
 	if err != nil {
 		return fmt.Errorf("beginning reorder transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer tx.Rollback() //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
 
 	for priority, id := range serviceIDs {
 		if _, err := tx.ExecContext(ctx,

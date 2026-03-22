@@ -232,14 +232,14 @@ func (s *Service) GenerateAuthorizationCode(ctx context.Context, params Generate
 			return "", fmt.Errorf("looking up client: %w", err)
 		}
 		if client == nil {
-			return "", fmt.Errorf("client not found")
+			return "", errors.New("client not found")
 		}
 		clientScope := ""
 		if client.Scope.Valid {
 			clientScope = client.Scope.String
 		}
 		if clientScope != "" && !authscope.IsSubset(params.Scope, clientScope) {
-			return "", fmt.Errorf("requested scope exceeds client's allowed scope")
+			return "", errors.New("requested scope exceeds client's allowed scope")
 		}
 	}
 
@@ -301,13 +301,13 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 	// Parse the authorization code
 	codeID, codeHash, err := ParseToken(params.Code)
 	if err != nil {
-		return nil, fmt.Errorf("invalid authorization code")
+		return nil, errors.New("invalid authorization code")
 	}
 
 	// Look up the client
 	client, err := s.repo.FindClientByClientID(ctx, params.ClientID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid client credentials")
+		return nil, errors.New("invalid client credentials")
 	}
 
 	// Verify client secret for confidential clients
@@ -319,35 +319,35 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 	// Look up the authorization code by hash
 	authCode, err := s.repo.FindAuthorizationCodeByCode(ctx, codeHash)
 	if err != nil {
-		return nil, fmt.Errorf("invalid authorization code")
+		return nil, errors.New("invalid authorization code")
 	}
 
 	// Verify code belongs to this client and matches the ID
 	if authCode.ClientID != client.ID || authCode.ID != codeID {
-		return nil, fmt.Errorf("invalid authorization code")
+		return nil, errors.New("invalid authorization code")
 	}
 
 	// Check expiry
 	if time.Now().After(authCode.ExpiresAt) {
-		return nil, fmt.Errorf("authorization code is expired or revoked")
+		return nil, errors.New("authorization code is expired or revoked")
 	}
 
 	// Verify redirect URI
 	if authCode.RedirectURI != params.RedirectURI {
-		return nil, fmt.Errorf("redirect URI mismatch")
+		return nil, errors.New("redirect URI mismatch")
 	}
 
 	// PKCE verification
 	if authCode.CodeChallenge.Valid && authCode.CodeChallenge.String != "" {
 		if params.CodeVerifier == "" {
-			return nil, fmt.Errorf("code verifier required for PKCE")
+			return nil, errors.New("code verifier required for PKCE")
 		}
 		if !VerifyPKCE(authCode.CodeChallenge.String, params.CodeVerifier) {
-			return nil, fmt.Errorf("invalid PKCE code verifier")
+			return nil, errors.New("invalid PKCE code verifier")
 		}
 	} else if params.CodeVerifier != "" {
 		// RFC 9700: reject code_verifier when no code_challenge was used
-		return nil, fmt.Errorf("unexpected code_verifier - authorization request did not include code_challenge")
+		return nil, errors.New("unexpected code_verifier - authorization request did not include code_challenge")
 	}
 
 	// Revoke the authorization code (one-time use)
@@ -368,7 +368,7 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 			clientScope = client.Scope.String
 		}
 		if clientScope != "" && !authscope.IsSubset(scope, clientScope) {
-			return nil, fmt.Errorf("authorization code scope exceeds client's allowed scope")
+			return nil, errors.New("authorization code scope exceeds client's allowed scope")
 		}
 	}
 
@@ -392,13 +392,13 @@ func (s *Service) RefreshAccessToken(ctx context.Context, params RefreshTokenPar
 	// Parse the refresh token
 	_, tokenHash, err := ParseToken(params.RefreshToken)
 	if err != nil {
-		return nil, fmt.Errorf("refresh token not found")
+		return nil, errors.New("refresh token not found")
 	}
 
 	// Look up the client
 	client, err := s.repo.FindClientByClientID(ctx, params.ClientID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid client credentials")
+		return nil, errors.New("invalid client credentials")
 	}
 
 	// Verify client secret
@@ -410,16 +410,16 @@ func (s *Service) RefreshAccessToken(ctx context.Context, params RefreshTokenPar
 	// Look up the refresh token
 	refreshToken, err := s.repo.FindRefreshTokenByToken(ctx, tokenHash)
 	if err != nil {
-		return nil, fmt.Errorf("refresh token not found")
+		return nil, errors.New("refresh token not found")
 	}
 
 	// Verify the refresh token's access token belongs to this client
 	accessToken, err := s.repo.FindAccessTokenByID(ctx, refreshToken.AccessTokenID)
 	if err != nil {
-		return nil, fmt.Errorf("associated access token not found")
+		return nil, errors.New("associated access token not found")
 	}
 	if accessToken.ClientID != client.ID {
-		return nil, fmt.Errorf("refresh token does not belong to this client")
+		return nil, errors.New("refresh token does not belong to this client")
 	}
 
 	// Revoke old tokens (rotation)
@@ -440,7 +440,7 @@ func (s *Service) RefreshAccessToken(ctx context.Context, params RefreshTokenPar
 	scope := originalScope
 	if params.Scope != "" {
 		if !authscope.IsSubset(params.Scope, originalScope) {
-			return nil, fmt.Errorf("requested scope exceeds original grant")
+			return nil, errors.New("requested scope exceeds original grant")
 		}
 		scope = params.Scope
 	}
@@ -465,17 +465,16 @@ func (s *Service) RevokeToken(ctx context.Context, params RevokeTokenParams) err
 	// Verify client
 	client, err := s.repo.FindClientByClientID(ctx, params.ClientID)
 	if err != nil {
-		return fmt.Errorf("invalid client credentials")
+		return errors.New("invalid client credentials")
 	}
 	err = s.verifyClientAuth(client, params.ClientSecret)
 	if err != nil {
 		return err
 	}
 
-	// Parse the token
-	id, tokenHash, err := ParseToken(params.Token)
-	if err != nil {
-		// Per RFC 7009, return success even for invalid tokens
+	// Parse the token. Per RFC 7009, return success even for invalid tokens.
+	id, tokenHash, ok := parseTokenOrZero(params.Token)
+	if !ok {
 		return nil
 	}
 
@@ -540,18 +539,18 @@ func (s *Service) GenerateDeviceCode(ctx context.Context, params DeviceAuthoriza
 	client, err := s.repo.FindClientByClientID(ctx, params.ClientID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("invalid or inactive client")
+			return nil, errors.New("invalid or inactive client")
 		}
-		return nil, fmt.Errorf("invalid or inactive client")
+		return nil, errors.New("invalid or inactive client")
 	}
 
 	// Check client supports device_code grant
 	grantTypes, err := client.ParseGrantTypes()
 	if err != nil {
-		return nil, fmt.Errorf("client does not support device_code grant type")
+		return nil, errors.New("client does not support device_code grant type")
 	}
 	if !slices.Contains(grantTypes, "urn:ietf:params:oauth:grant-type:device_code") {
-		return nil, fmt.Errorf("client does not support device_code grant type")
+		return nil, errors.New("client does not support device_code grant type")
 	}
 
 	// Validate requested scopes
@@ -565,7 +564,7 @@ func (s *Service) GenerateDeviceCode(ctx context.Context, params DeviceAuthoriza
 			clientScope = client.Scope.String
 		}
 		if clientScope != "" && !authscope.IsSubset(params.Scope, clientScope) {
-			return nil, fmt.Errorf("requested scope exceeds client's allowed scope")
+			return nil, errors.New("requested scope exceeds client's allowed scope")
 		}
 	}
 
@@ -618,15 +617,15 @@ func (s *Service) GenerateDeviceCode(ctx context.Context, params DeviceAuthoriza
 func (s *Service) AuthorizeDeviceCode(ctx context.Context, userCode string, userID int64, approved bool) error {
 	dc, err := s.repo.FindDeviceCodeByUserCode(ctx, userCode)
 	if err != nil {
-		return fmt.Errorf("invalid or expired user code")
+		return errors.New("invalid or expired user code")
 	}
 
 	if time.Now().After(dc.ExpiresAt) {
-		return fmt.Errorf("device code has expired")
+		return errors.New("device code has expired")
 	}
 
 	if dc.Status != "pending" {
-		return fmt.Errorf("device code is not in valid state for authorization")
+		return errors.New("device code is not in valid state for authorization")
 	}
 
 	status := "authorized"
@@ -736,16 +735,16 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceC
 func (s *Service) ValidateAccessToken(ctx context.Context, bearerToken string) (*model.OAuthAccessToken, error) {
 	id, tokenHash, err := ParseToken(bearerToken)
 	if err != nil {
-		return nil, fmt.Errorf("invalid token format")
+		return nil, errors.New("invalid token format")
 	}
 
 	token, err := s.repo.FindAccessTokenByToken(ctx, tokenHash)
 	if err != nil {
-		return nil, fmt.Errorf("invalid or expired token")
+		return nil, errors.New("invalid or expired token")
 	}
 
 	if token.ID != id {
-		return nil, fmt.Errorf("invalid or expired token")
+		return nil, errors.New("invalid or expired token")
 	}
 
 	return token, nil
@@ -767,17 +766,16 @@ func ValidateState(state string) bool {
 // Internal helpers.
 //nolint:godot // ---------------------------------------------------------------------------
 
-
 // verifyClientAuth checks client secret for confidential clients.
 func (s *Service) verifyClientAuth(client *model.OAuthClient, secret string) error {
 	if client.TokenEndpointAuthMethod == "none" {
 		return nil
 	}
 	if !client.ClientSecret.Valid || client.ClientSecret.String == "" {
-		return fmt.Errorf("invalid client credentials")
+		return errors.New("invalid client credentials")
 	}
 	if !VerifySecret(client.ClientSecret.String, secret) {
-		return fmt.Errorf("invalid client credentials")
+		return errors.New("invalid client credentials")
 	}
 	return nil
 }
@@ -836,4 +834,11 @@ func (s *Service) issueTokenPair(ctx context.Context, clientID int64, userID sql
 		RefreshToken: refreshTokenPair.Plaintext,
 		Scope:        scope,
 	}, nil
+}
+
+// parseTokenOrZero attempts to parse a token string into its ID and hash.
+// Returns false if the token is malformed.
+func parseTokenOrZero(plaintext string) (id int64, hash string, ok bool) {
+	id, hash, err := ParseToken(plaintext)
+	return id, hash, err == nil
 }

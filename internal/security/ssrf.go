@@ -4,6 +4,7 @@ package security
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -53,12 +54,12 @@ func ValidateExternalURL(rawURL string) error {
 
 	hostname := parsed.Hostname()
 	if hostname == "" {
-		return fmt.Errorf("URL has no hostname")
+		return errors.New("URL has no hostname")
 	}
 
 	lower := strings.ToLower(hostname)
 	if lower == "localhost" {
-		return fmt.Errorf("URL must not target localhost")
+		return errors.New("URL must not target localhost")
 	}
 
 	// Check if hostname is a literal IP.

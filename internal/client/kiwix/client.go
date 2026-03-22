@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -61,7 +62,7 @@ func (c *Client) Health(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/catalog/root.xml", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/catalog/root.xml", http.NoBody)
 	if err != nil {
 		return fmt.Errorf("creating health request: %w", err)
 	}
@@ -88,7 +89,7 @@ func (c *Client) FetchCatalog(ctx context.Context) ([]CatalogEntry, error) {
 		return entries, nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/catalog/root.xml", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/catalog/root.xml", http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("creating catalog request: %w", err)
 	}
@@ -146,7 +147,7 @@ func (c *Client) Search(ctx context.Context, archiveName, query, searchType stri
 		return nil, fmt.Errorf("unsupported search type %q (must be suggest or fulltext)", searchType)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("creating search request: %w", err)
 	}
@@ -188,7 +189,7 @@ func (c *Client) ReadArticle(ctx context.Context, archiveName, articlePath strin
 
 	reqURL := c.baseURL + "/" + archiveName + "/" + articlePath
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("creating article request: %w", err)
 	}
@@ -233,13 +234,13 @@ func (c *Client) ReadArticle(ctx context.Context, archiveName, articlePath strin
 // contain unsafe characters.
 func validateArticlePath(path string) error {
 	if strings.HasPrefix(path, "/") {
-		return fmt.Errorf("path must not start with /")
+		return errors.New("path must not start with /")
 	}
 	if strings.Contains(path, "..") {
-		return fmt.Errorf("path must not contain dot-dot segments")
+		return errors.New("path must not contain dot-dot segments")
 	}
 	if strings.ContainsRune(path, 0) {
-		return fmt.Errorf("path must not contain null bytes")
+		return errors.New("path must not contain null bytes")
 	}
 	return nil
 }
@@ -247,16 +248,16 @@ func validateArticlePath(path string) error {
 // validateArchiveName rejects archive names that could be used for path traversal.
 func validateArchiveName(name string) error {
 	if name == "" {
-		return fmt.Errorf("archive name must not be empty")
+		return errors.New("archive name must not be empty")
 	}
 	if strings.Contains(name, "/") || strings.Contains(name, "\\") {
-		return fmt.Errorf("archive name must not contain path separators")
+		return errors.New("archive name must not contain path separators")
 	}
 	if strings.Contains(name, "..") {
-		return fmt.Errorf("archive name must not contain dot-dot segments")
+		return errors.New("archive name must not contain dot-dot segments")
 	}
 	if strings.ContainsRune(name, 0) {
-		return fmt.Errorf("archive name must not contain null bytes")
+		return errors.New("archive name must not contain null bytes")
 	}
 	return nil
 }
@@ -280,7 +281,7 @@ func parseCatalog(data []byte) ([]CatalogEntry, error) {
 
 		var tags []string
 		if e.Tags != "" {
-			for _, t := range strings.Split(e.Tags, ";") {
+			for t := range strings.SplitSeq(e.Tags, ";") {
 				t = strings.TrimSpace(t)
 				if t != "" {
 					tags = append(tags, t)

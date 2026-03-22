@@ -22,13 +22,13 @@ type unifiedSearchResult struct {
 }
 
 type unifiedSearchResponse struct {
-	Success          bool                 `json:"success"`
-	Message          string               `json:"message,omitempty"`
-	Query            string               `json:"query"`
+	Success          bool                  `json:"success"`
+	Message          string                `json:"message,omitempty"`
+	Query            string                `json:"query"`
 	Results          []unifiedSearchResult `json:"results"`
-	Total            int                  `json:"total"`
-	SourcesSearched  []string             `json:"sources_searched"`
-	ProcessingTimeMs int                  `json:"processing_time_ms"`
+	Total            int                   `json:"total"`
+	SourcesSearched  []string              `json:"sources_searched"`
+	ProcessingTimeMs int                   `json:"processing_time_ms"`
 }
 
 // --- Tool registration ---

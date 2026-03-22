@@ -92,7 +92,7 @@ func TestSearchQueryRepository_PopularQueries(t *testing.T) {
 		count int
 	}{
 		{"golang", 3},
-		{"Golang", 1},  // should merge with "golang" (case-insensitive)
+		{"Golang", 1}, // should merge with "golang" (case-insensitive)
 		{"docker", 2},
 		{"kubernetes", 1},
 	}

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -128,7 +129,7 @@ func TestExternalServiceHandler_List(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/external-services", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/external-services", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -175,7 +176,7 @@ func TestExternalServiceHandler_List(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/external-services", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/external-services", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -229,7 +230,7 @@ func TestExternalServiceHandler_List(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/external-services?type=kiwix&status=healthy&limit=10&offset=20", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/external-services?type=kiwix&status=healthy&limit=10&offset=20", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -263,7 +264,7 @@ func TestExternalServiceHandler_List(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/external-services", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/external-services", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -285,7 +286,7 @@ func TestExternalServiceHandler_List(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/external-services?limit=abc", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/external-services?limit=abc", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -307,7 +308,7 @@ func TestExternalServiceHandler_List(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/external-services?limit=0", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/external-services?limit=0", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -329,7 +330,7 @@ func TestExternalServiceHandler_List(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/external-services?limit=-5", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/external-services?limit=-5", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -344,12 +345,12 @@ func TestExternalServiceHandler_List(t *testing.T) {
 
 		mock := &mockExternalServiceRepo{
 			listFn: func(_ context.Context, _, _ string, _, _ int) ([]model.ExternalService, int, error) {
-				return nil, 0, fmt.Errorf("connection refused")
+				return nil, 0, errors.New("connection refused")
 			},
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/external-services", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/external-services", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -386,7 +387,7 @@ func TestExternalServiceHandler_Show(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/external-services/svc-uuid-1", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/external-services/svc-uuid-1", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "svc-uuid-1"})
 		rr := httptest.NewRecorder()
 
@@ -437,7 +438,7 @@ func TestExternalServiceHandler_Show(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/external-services/nonexistent", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/external-services/nonexistent", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "nonexistent"})
 		rr := httptest.NewRecorder()
 
@@ -458,12 +459,12 @@ func TestExternalServiceHandler_Show(t *testing.T) {
 
 		mock := &mockExternalServiceRepo{
 			findByUUIDFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
-				return nil, fmt.Errorf("database connection timeout")
+				return nil, errors.New("database connection timeout")
 			},
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/external-services/abc", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/external-services/abc", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "abc"})
 		rr := httptest.NewRecorder()
 
@@ -559,10 +560,10 @@ func TestExternalServiceHandler_Create(t *testing.T) {
 			createFn: func(_ context.Context, svc *model.ExternalService) error {
 				createdSvc = svc
 				if !svc.APIKey.Valid || svc.APIKey.String != "secret-key" {
-					return fmt.Errorf("api_key not set correctly")
+					return errors.New("api_key not set correctly")
 				}
 				if !svc.Config.Valid || svc.Config.String != `{"foo":"bar"}` {
-					return fmt.Errorf("config not set correctly")
+					return errors.New("config not set correctly")
 				}
 				return nil
 			},
@@ -678,7 +679,7 @@ func TestExternalServiceHandler_Create(t *testing.T) {
 
 		mock := &mockExternalServiceRepo{
 			createFn: func(_ context.Context, _ *model.ExternalService) error {
-				return fmt.Errorf("unique constraint violation")
+				return errors.New("unique constraint violation")
 			},
 		}
 		h := newExternalServiceHandler(mock)
@@ -894,7 +895,7 @@ func TestExternalServiceHandler_Update(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 			updateFn: func(_ context.Context, _ *model.ExternalService) error {
-				return fmt.Errorf("database write error")
+				return errors.New("database write error")
 			},
 		}
 		h := newExternalServiceHandler(mock)
@@ -944,7 +945,7 @@ func TestExternalServiceHandler_Delete(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/external-services/svc-uuid-1", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/external-services/svc-uuid-1", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "svc-uuid-1"})
 		rr := httptest.NewRecorder()
 
@@ -970,7 +971,7 @@ func TestExternalServiceHandler_Delete(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/external-services/nonexistent", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/external-services/nonexistent", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "nonexistent"})
 		rr := httptest.NewRecorder()
 
@@ -1001,7 +1002,7 @@ func TestExternalServiceHandler_Delete(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/external-services/svc-uuid-env", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/external-services/svc-uuid-env", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "svc-uuid-env"})
 		rr := httptest.NewRecorder()
 
@@ -1029,12 +1030,12 @@ func TestExternalServiceHandler_Delete(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 			deleteFn: func(_ context.Context, _ int64) error {
-				return fmt.Errorf("foreign key constraint")
+				return errors.New("foreign key constraint")
 			},
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/external-services/svc-uuid-del", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/external-services/svc-uuid-del", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "svc-uuid-del"})
 		rr := httptest.NewRecorder()
 
@@ -1072,7 +1073,7 @@ func TestExternalServiceHandler_HealthCheck(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/external-services/svc-uuid-1/health", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/external-services/svc-uuid-1/health", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "svc-uuid-1"})
 		rr := httptest.NewRecorder()
 
@@ -1089,7 +1090,7 @@ func TestExternalServiceHandler_HealthCheck(t *testing.T) {
 		mock := &mockExternalServiceRepo{}
 		h := newExternalServiceHandler(mock)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/external-services/unknown/health", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/external-services/unknown/health", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "unknown"})
 		rr := httptest.NewRecorder()
 

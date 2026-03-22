@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -419,7 +418,7 @@ func newTestZimHandler() *ZimHandler {
 	return &ZimHandler{
 		repo:        nil,
 		kiwixClient: nil,
-		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		logger:      slog.New(slog.DiscardHandler),
 	}
 }
 
@@ -427,7 +426,7 @@ func newZimHandlerWithMocks(repo *mockZimArchiveRepo, kc kiwixSearcher) *ZimHand
 	return &ZimHandler{
 		repo:        repo,
 		kiwixClient: kc,
-		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		logger:      slog.New(slog.DiscardHandler),
 	}
 }
 
@@ -438,7 +437,7 @@ func TestZimHandler_Search_NilClient(t *testing.T) {
 		t.Parallel()
 
 		h := newTestZimHandler()
-		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/test/search?q=hello", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/test/search?q=hello", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Search(rr, req)
@@ -464,7 +463,7 @@ func TestZimHandler_Suggest_NilClient(t *testing.T) {
 		t.Parallel()
 
 		h := newTestZimHandler()
-		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/test/suggest?q=hello", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/test/suggest?q=hello", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Suggest(rr, req)
@@ -490,7 +489,7 @@ func TestZimHandler_ReadArticle_NilClient(t *testing.T) {
 		t.Parallel()
 
 		h := newTestZimHandler()
-		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/test/articles/page", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/test/articles/page", http.NoBody)
 		req = chiContext(req, map[string]string{"archive": "test", "*": "page"})
 		rr := httptest.NewRecorder()
 
@@ -510,7 +509,7 @@ func TestZimHandler_ReadArticle_EmptyPath(t *testing.T) {
 
 		kc := &mockKiwixSearcher{}
 		h := newZimHandlerWithMocks(nil, kc)
-		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/test/articles/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/test/articles/", http.NoBody)
 		req = chiContext(req, map[string]string{"archive": "test", "*": ""})
 		rr := httptest.NewRecorder()
 
@@ -533,7 +532,7 @@ func TestZimHandler_ReadArticle_EmptyPath(t *testing.T) {
 func TestNewZimHandler(t *testing.T) {
 	t.Parallel()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	h := NewZimHandler(nil, nil, logger)
 
 	if h == nil {
@@ -572,7 +571,7 @@ func TestZimHandler_List(t *testing.T) {
 			},
 		}
 		h := newZimHandlerWithMocks(repo, nil)
-		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -617,7 +616,7 @@ func TestZimHandler_List(t *testing.T) {
 			},
 		}
 		h := newZimHandlerWithMocks(repo, nil)
-		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives?category=wikipedia&language=eng&query=science&per_page=5", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives?category=wikipedia&language=eng&query=science&per_page=5", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -636,7 +635,7 @@ func TestZimHandler_List(t *testing.T) {
 			},
 		}
 		h := newZimHandlerWithMocks(repo, nil)
-		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -663,7 +662,7 @@ func TestZimHandler_List(t *testing.T) {
 			},
 		}
 		h := newZimHandlerWithMocks(repo, nil)
-		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -694,7 +693,7 @@ func TestZimHandler_List(t *testing.T) {
 			},
 		}
 		h := newZimHandlerWithMocks(repo, nil)
-		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives?per_page=-10", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives?per_page=-10", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -731,7 +730,7 @@ func TestZimHandler_Show(t *testing.T) {
 			},
 		}
 		h := newZimHandlerWithMocks(repo, nil)
-		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/wikipedia_en", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/wikipedia_en", http.NoBody)
 		req = chiContext(req, map[string]string{"archive": "wikipedia_en"})
 		rr := httptest.NewRecorder()
 
@@ -766,7 +765,7 @@ func TestZimHandler_Show(t *testing.T) {
 			},
 		}
 		h := newZimHandlerWithMocks(repo, nil)
-		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/nonexistent", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/nonexistent", http.NoBody)
 		req = chiContext(req, map[string]string{"archive": "nonexistent"})
 		rr := httptest.NewRecorder()
 
@@ -794,7 +793,7 @@ func TestZimHandler_Show(t *testing.T) {
 			},
 		}
 		h := newZimHandlerWithMocks(repo, nil)
-		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/test", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/test", http.NoBody)
 		req = chiContext(req, map[string]string{"archive": "test"})
 		rr := httptest.NewRecorder()
 

@@ -50,7 +50,7 @@ func TestHealthHandler(t *testing.T) {
 
 			h := handler.NewHealthHandler(tt.version)
 
-			req := httptest.NewRequest(http.MethodGet, "/health", nil)
+			req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 			rec := httptest.NewRecorder()
 
 			h.ServeHTTP(rec, req)
@@ -80,7 +80,7 @@ func TestHealthHandler_ContentType(t *testing.T) {
 
 	h := handler.NewHealthHandler("1.0.0")
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -96,7 +96,7 @@ func TestHealthHandler_ResponseBody_IsValidJSON(t *testing.T) {
 
 	h := handler.NewHealthHandler("1.0.0")
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -137,7 +137,7 @@ func TestHealthHandler_HTTPMethods(t *testing.T) {
 			t.Parallel()
 
 			h := handler.NewHealthHandler("1.0.0")
-			req := httptest.NewRequest(method, "/health", nil)
+			req := httptest.NewRequest(method, "/health", http.NoBody)
 			rec := httptest.NewRecorder()
 
 			h.ServeHTTP(rec, req)

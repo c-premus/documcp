@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -20,8 +21,8 @@ import (
 // brute-force attacks if the database is compromised.
 // When nil, falls back to plain SHA-256 (still safe for high-entropy tokens).
 var (
-	tokenHMACKey []byte    //nolint:gochecknoglobals
-	hmacKeyOnce  sync.Once //nolint:gochecknoglobals
+	tokenHMACKey []byte    //nolint:gochecknoglobals // module-level singleton initialized once via sync.Once
+	hmacKeyOnce  sync.Once //nolint:gochecknoglobals // guards one-time initialization of tokenHMACKey
 )
 
 // SetTokenHMACKey configures the HMAC key used for token hashing.
@@ -66,7 +67,7 @@ func (t *TokenPair) SetID(id int64) {
 func ParseToken(plaintext string) (id int64, hash string, err error) {
 	parts := strings.SplitN(plaintext, "|", 2)
 	if len(parts) != 2 {
-		return 0, "", fmt.Errorf("invalid token format")
+		return 0, "", errors.New("invalid token format")
 	}
 	id, err = strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {

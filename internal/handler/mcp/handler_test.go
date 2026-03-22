@@ -21,11 +21,11 @@ import (
 // --- Mock implementations ---
 
 type mockDocumentService struct {
-	findByUUIDFn     func(ctx context.Context, uuid string) (*model.Document, error)
-	tagsForDocFn     func(ctx context.Context, docID int64) ([]model.DocumentTag, error)
-	createFn         func(ctx context.Context, params service.CreateDocumentParams) (*model.Document, error)
-	updateFn         func(ctx context.Context, uuid string, params service.UpdateDocumentParams) (*model.Document, error)
-	deleteFn         func(ctx context.Context, uuid string) error
+	findByUUIDFn func(ctx context.Context, uuid string) (*model.Document, error)
+	tagsForDocFn func(ctx context.Context, docID int64) ([]model.DocumentTag, error)
+	createFn     func(ctx context.Context, params service.CreateDocumentParams) (*model.Document, error)
+	updateFn     func(ctx context.Context, uuid string, params service.UpdateDocumentParams) (*model.Document, error)
+	deleteFn     func(ctx context.Context, uuid string) error
 }
 
 func (m *mockDocumentService) FindByUUID(ctx context.Context, uuid string) (*model.Document, error) {
@@ -284,10 +284,10 @@ func TestNew(t *testing.T) {
 
 	t.Run("conditionally registers confluence tools when enabled", func(t *testing.T) {
 		h := New(Config{
-			ServerName:        "test",
-			ServerVersion:     "v1",
-			Logger:            slog.Default(),
-			ConfluenceEnabled: true,
+			ServerName:          "test",
+			ServerVersion:       "v1",
+			Logger:              slog.Default(),
+			ConfluenceEnabled:   true,
 			ConfluenceSpaceRepo: &mockConfluenceSpaceRepo{},
 		})
 		if h == nil {
@@ -2399,7 +2399,7 @@ func TestHandleUnifiedSearch(t *testing.T) {
 // --- Test helper ---
 
 func containsStr(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
+	return len(s) >= len(substr) && (s == substr || s != "" && containsSubstring(s, substr))
 }
 
 func containsSubstring(s, sub string) bool {

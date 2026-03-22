@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -75,9 +76,8 @@ func (c *Client) Clone(ctx context.Context, params CloneParams) (string, error) 
 		}
 		defer cleanup()
 
-		cmd.Env = append(cmd.Env, "GIT_ASKPASS="+scriptPath)
 		// Prevent git from prompting interactively.
-		cmd.Env = append(cmd.Env, "GIT_TERMINAL_PROMPT=0")
+		cmd.Env = append(cmd.Env, "GIT_ASKPASS="+scriptPath, "GIT_TERMINAL_PROMPT=0")
 	}
 
 	var stderr bytes.Buffer
@@ -108,8 +108,7 @@ func (c *Client) Pull(ctx context.Context, repoDir, token string) error {
 		}
 		defer cleanup()
 
-		cmd.Env = append(cmd.Env, "GIT_ASKPASS="+scriptPath)
-		cmd.Env = append(cmd.Env, "GIT_TERMINAL_PROMPT=0")
+		cmd.Env = append(cmd.Env, "GIT_ASKPASS="+scriptPath, "GIT_TERMINAL_PROMPT=0")
 	}
 
 	var stderr bytes.Buffer
@@ -248,10 +247,10 @@ func (c *Client) LatestCommitSHA(ctx context.Context, repoDir string) (string, e
 // validateBranch rejects branch names that could be interpreted as git flags.
 func validateBranch(branch string) error {
 	if branch == "" {
-		return fmt.Errorf("branch name must not be empty")
+		return errors.New("branch name must not be empty")
 	}
 	if strings.HasPrefix(branch, "-") {
-		return fmt.Errorf("branch name must not start with a dash")
+		return errors.New("branch name must not start with a dash")
 	}
 	return nil
 }

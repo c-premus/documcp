@@ -60,7 +60,7 @@ var (
 	reLinkTag = regexp.MustCompile(`(?s)<a\s[^>]*href="([^"]*)"[^>]*>(.*?)</a>`)
 
 	// ConvertImages regexes.
-	reImgTag = regexp.MustCompile(`<img\s[^>]*src="([^"]*)"[^>]*/?>`)
+	reImgTag  = regexp.MustCompile(`<img\s[^>]*src="([^"]*)"[^>]*/?>`)
 	reAltAttr = regexp.MustCompile(`alt="([^"]*)"`)
 
 	// ConvertTables regexes.

@@ -20,19 +20,19 @@ func newTestMetrics() *observability.Metrics {
 	reg := prometheus.NewRegistry()
 	m := &observability.Metrics{
 		QueueJobsDispatched: prometheus.NewCounterVec(
-			prometheus.CounterOpts{Name: "test_queue_jobs_dispatched"},
+			prometheus.CounterOpts{Name: "test_queue_jobs_dispatched_total", Help: "Total jobs dispatched."},
 			[]string{"queue", "kind"},
 		),
 		QueueJobsCompleted: prometheus.NewCounterVec(
-			prometheus.CounterOpts{Name: "test_queue_jobs_completed"},
+			prometheus.CounterOpts{Name: "test_queue_jobs_completed_total", Help: "Total jobs completed."},
 			[]string{"queue", "kind"},
 		),
 		QueueJobsFailed: prometheus.NewCounterVec(
-			prometheus.CounterOpts{Name: "test_queue_jobs_failed"},
+			prometheus.CounterOpts{Name: "test_queue_jobs_failed_total", Help: "Total jobs failed."},
 			[]string{"queue", "kind"},
 		),
 		QueueJobDuration: prometheus.NewHistogramVec(
-			prometheus.HistogramOpts{Name: "test_queue_job_duration"},
+			prometheus.HistogramOpts{Name: "test_queue_job_duration", Help: "Duration of queue jobs in seconds."},
 			[]string{"queue", "kind"},
 		),
 	}

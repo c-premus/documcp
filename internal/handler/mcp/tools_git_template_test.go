@@ -336,8 +336,8 @@ func TestBuildTarGz(t *testing.T) {
 			if hdr.Size != int64(len(entries[idx].content)) {
 				t.Errorf("entry[%d].Size = %d, want %d", idx, hdr.Size, len(entries[idx].content))
 			}
-			if hdr.Mode != 0644 {
-				t.Errorf("entry[%d].Mode = %o, want %o", idx, hdr.Mode, 0644)
+			if hdr.Mode != 0o600 {
+				t.Errorf("entry[%d].Mode = %o, want %o", idx, hdr.Mode, 0o600)
 			}
 
 			data, err := io.ReadAll(tr)

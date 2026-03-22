@@ -30,7 +30,7 @@ func ValidateRepositoryURL(rawURL string) error {
 // sensitivePatterns matches URLs, bearer tokens, and base64-encoded credentials
 // that may appear in git error output.
 var sensitivePatterns = []*regexp.Regexp{
-	regexp.MustCompile(`https?://[^\s]+`),
+	regexp.MustCompile(`https?://\S+`),
 	regexp.MustCompile(`(?i)token\s*[=:]\s*\S+`),
 	regexp.MustCompile(`(?i)authorization:\s*\S+`),
 	regexp.MustCompile(`(?i)bearer\s+\S+`),

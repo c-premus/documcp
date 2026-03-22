@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -25,13 +25,13 @@ import (
 
 type mockOAuthRepo struct {
 	// Clients
-	createClientFn          func(ctx context.Context, client *model.OAuthClient) error
-	findClientByClientIDFn  func(ctx context.Context, clientID string) (*model.OAuthClient, error)
-	findClientByIDFn        func(ctx context.Context, id int64) (*model.OAuthClient, error)
+	createClientFn         func(ctx context.Context, client *model.OAuthClient) error
+	findClientByClientIDFn func(ctx context.Context, clientID string) (*model.OAuthClient, error)
+	findClientByIDFn       func(ctx context.Context, id int64) (*model.OAuthClient, error)
 	// Auth Codes
-	createAuthorizationCodeFn      func(ctx context.Context, code *model.OAuthAuthorizationCode) error
-	findAuthorizationCodeByCodeFn  func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
-	revokeAuthorizationCodeFn      func(ctx context.Context, id int64) error
+	createAuthorizationCodeFn     func(ctx context.Context, code *model.OAuthAuthorizationCode) error
+	findAuthorizationCodeByCodeFn func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
+	revokeAuthorizationCodeFn     func(ctx context.Context, id int64) error
 	// Access Tokens
 	createAccessTokenFn      func(ctx context.Context, token *model.OAuthAccessToken) error
 	findAccessTokenByIDFn    func(ctx context.Context, id int64) (*model.OAuthAccessToken, error)
@@ -43,11 +43,11 @@ type mockOAuthRepo struct {
 	revokeRefreshTokenFn                func(ctx context.Context, id int64) error
 	revokeRefreshTokenByAccessTokenIDFn func(ctx context.Context, accessTokenID int64) error
 	// Device Codes
-	createDeviceCodeFn             func(ctx context.Context, dc *model.OAuthDeviceCode) error
-	findDeviceCodeByDeviceCodeFn   func(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error)
-	findDeviceCodeByUserCodeFn     func(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
-	updateDeviceCodeStatusFn       func(ctx context.Context, id int64, status string, userID *int64) error
-	updateDeviceCodeLastPolledFn   func(ctx context.Context, id int64, interval int) error
+	createDeviceCodeFn           func(ctx context.Context, dc *model.OAuthDeviceCode) error
+	findDeviceCodeByDeviceCodeFn func(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error)
+	findDeviceCodeByUserCodeFn   func(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
+	updateDeviceCodeStatusFn     func(ctx context.Context, id int64, status string, userID *int64) error
+	updateDeviceCodeLastPolledFn func(ctx context.Context, id int64, interval int) error
 	// Users
 	findUserByIDFn func(ctx context.Context, id int64) (*model.User, error)
 }
@@ -239,7 +239,7 @@ func TestBearerToken(t *testing.T) {
 		middleware := BearerToken(svc)
 		handler := middleware(okHandler())
 
-		req := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/resource", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		handler.ServeHTTP(rr, req)
@@ -260,7 +260,7 @@ func TestBearerToken(t *testing.T) {
 		middleware := BearerToken(svc)
 		handler := middleware(okHandler())
 
-		req := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/resource", http.NoBody)
 		req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
 		rr := httptest.NewRecorder()
 
@@ -282,7 +282,7 @@ func TestBearerToken(t *testing.T) {
 		middleware := BearerToken(svc)
 		handler := middleware(okHandler())
 
-		req := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/resource", http.NoBody)
 		req.Header.Set("Authorization", "Bearer ")
 		rr := httptest.NewRecorder()
 
@@ -301,7 +301,7 @@ func TestBearerToken(t *testing.T) {
 		middleware := BearerToken(svc)
 		handler := middleware(okHandler())
 
-		req := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/resource", http.NoBody)
 		req.Header.Set("Authorization", "Bearer invalid-no-pipe-separator")
 		rr := httptest.NewRecorder()
 
@@ -317,14 +317,14 @@ func TestBearerToken(t *testing.T) {
 
 		repo := &mockOAuthRepo{
 			findAccessTokenByTokenFn: func(_ context.Context, _ string) (*model.OAuthAccessToken, error) {
-				return nil, fmt.Errorf("not found")
+				return nil, errors.New("not found")
 			},
 		}
 		svc := newTestOAuthService(repo)
 		middleware := BearerToken(svc)
 		handler := middleware(okHandler())
 
-		req := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/resource", http.NoBody)
 		req.Header.Set("Authorization", "Bearer 1|"+strings.Repeat("a", 64))
 		rr := httptest.NewRecorder()
 
@@ -357,7 +357,7 @@ func TestBearerToken(t *testing.T) {
 				if hash == tokenPair.Hash {
 					return accessToken, nil
 				}
-				return nil, fmt.Errorf("not found")
+				return nil, errors.New("not found")
 			},
 		}
 		svc := newTestOAuthService(repo)
@@ -372,7 +372,7 @@ func TestBearerToken(t *testing.T) {
 		})
 		handler := middleware(inner)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/resource", http.NoBody)
 		req.Header.Set("Authorization", "Bearer "+tokenPair.Plaintext)
 		rr := httptest.NewRecorder()
 
@@ -418,7 +418,7 @@ func TestBearerToken(t *testing.T) {
 				if hash == tokenPair.Hash {
 					return accessToken, nil
 				}
-				return nil, fmt.Errorf("not found")
+				return nil, errors.New("not found")
 			},
 			findUserByIDFn: func(_ context.Context, id int64) (*model.User, error) {
 				if id == 99 {
@@ -439,7 +439,7 @@ func TestBearerToken(t *testing.T) {
 		})
 		handler := middleware(inner)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/resource", http.NoBody)
 		req.Header.Set("Authorization", "Bearer "+tokenPair.Plaintext)
 		rr := httptest.NewRecorder()
 
@@ -466,7 +466,7 @@ func TestBearerToken(t *testing.T) {
 		middleware := BearerToken(svc)
 		handler := middleware(okHandler())
 
-		req := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/resource", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		handler.ServeHTTP(rr, req)
@@ -492,7 +492,7 @@ func TestSessionAuth(t *testing.T) {
 		middleware := SessionAuth(store, svc)
 		handler := middleware(okHandler())
 
-		req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+		req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		handler.ServeHTTP(rr, req)
@@ -515,7 +515,7 @@ func TestSessionAuth(t *testing.T) {
 		handler := middleware(okHandler())
 
 		// Create a request with a session that has no user_id
-		req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+		req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		// Set a session cookie with no user_id
@@ -524,7 +524,7 @@ func TestSessionAuth(t *testing.T) {
 		_ = session.Save(req, rr)
 
 		// Copy cookies from response to new request
-		req2 := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+		req2 := httptest.NewRequest(http.MethodGet, "/admin/dashboard", http.NoBody)
 		for _, cookie := range rr.Result().Cookies() {
 			req2.AddCookie(cookie)
 		}
@@ -545,7 +545,7 @@ func TestSessionAuth(t *testing.T) {
 		middleware := SessionAuth(store, svc)
 		handler := middleware(okHandler())
 
-		req := httptest.NewRequest(http.MethodGet, "/admin/settings?tab=oauth", nil)
+		req := httptest.NewRequest(http.MethodGet, "/admin/settings?tab=oauth", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		handler.ServeHTTP(rr, req)
@@ -583,14 +583,14 @@ func TestSessionAuth(t *testing.T) {
 		handler := middleware(inner)
 
 		// Create a valid session
-		req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+		req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", http.NoBody)
 		rr := httptest.NewRecorder()
 		session, _ := store.Get(req, "documcp_session")
 		session.Values["user_id"] = int64(5)
 		_ = session.Save(req, rr)
 
 		// Build request with session cookie
-		req2 := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+		req2 := httptest.NewRequest(http.MethodGet, "/admin/dashboard", http.NoBody)
 		for _, cookie := range rr.Result().Cookies() {
 			req2.AddCookie(cookie)
 		}
@@ -615,7 +615,7 @@ func TestSessionAuth(t *testing.T) {
 		store := sessions.NewCookieStore([]byte("test-secret-key-for-session"))
 		repo := &mockOAuthRepo{
 			findUserByIDFn: func(_ context.Context, _ int64) (*model.User, error) {
-				return nil, fmt.Errorf("user deleted")
+				return nil, errors.New("user deleted")
 			},
 		}
 		svc := newTestOAuthService(repo)
@@ -623,14 +623,14 @@ func TestSessionAuth(t *testing.T) {
 		handler := middleware(okHandler())
 
 		// Create a valid session with a user_id
-		req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+		req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", http.NoBody)
 		rr := httptest.NewRecorder()
 		session, _ := store.Get(req, "documcp_session")
 		session.Values["user_id"] = int64(999)
 		_ = session.Save(req, rr)
 
 		// Build request with session cookie
-		req2 := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+		req2 := httptest.NewRequest(http.MethodGet, "/admin/dashboard", http.NoBody)
 		for _, cookie := range rr.Result().Cookies() {
 			req2.AddCookie(cookie)
 		}
@@ -657,7 +657,7 @@ func TestRequireAdmin(t *testing.T) {
 		user := &model.User{ID: 1, Name: "Admin", IsAdmin: true}
 		ctx := context.WithValue(context.Background(), UserContextKey, user)
 
-		req := httptest.NewRequest(http.MethodGet, "/admin/resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/admin/resource", http.NoBody)
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
@@ -675,7 +675,7 @@ func TestRequireAdmin(t *testing.T) {
 		user := &model.User{ID: 2, Name: "Regular User", IsAdmin: false}
 		ctx := context.WithValue(context.Background(), UserContextKey, user)
 
-		req := httptest.NewRequest(http.MethodGet, "/admin/resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/admin/resource", http.NoBody)
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
@@ -705,7 +705,7 @@ func TestRequireAdmin(t *testing.T) {
 	t.Run("rejects request with no user in context", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/admin/resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/admin/resource", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		handler := RequireAdmin(okHandler())
@@ -723,7 +723,7 @@ func TestRequireAdmin(t *testing.T) {
 		// assertion fails and ok is false, so RequireAdmin should reject.
 		ctx := context.WithValue(context.Background(), UserContextKey, "not a user")
 
-		req := httptest.NewRequest(http.MethodGet, "/admin/resource", nil)
+		req := httptest.NewRequest(http.MethodGet, "/admin/resource", http.NoBody)
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
@@ -752,7 +752,7 @@ func TestRequireScope(t *testing.T) {
 		}
 		ctx := context.WithValue(context.Background(), AccessTokenContextKey, token)
 
-		req := httptest.NewRequest(http.MethodGet, "/documcp", nil)
+		req := httptest.NewRequest(http.MethodGet, "/documcp", http.NoBody)
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
@@ -773,7 +773,7 @@ func TestRequireScope(t *testing.T) {
 		}
 		ctx := context.WithValue(context.Background(), AccessTokenContextKey, token)
 
-		req := httptest.NewRequest(http.MethodGet, "/documcp", nil)
+		req := httptest.NewRequest(http.MethodGet, "/documcp", http.NoBody)
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
@@ -797,7 +797,7 @@ func TestRequireScope(t *testing.T) {
 		}
 		ctx := context.WithValue(context.Background(), AccessTokenContextKey, token)
 
-		req := httptest.NewRequest(http.MethodGet, "/documcp", nil)
+		req := httptest.NewRequest(http.MethodGet, "/documcp", http.NoBody)
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
@@ -821,7 +821,7 @@ func TestRequireScope(t *testing.T) {
 		}
 		ctx := context.WithValue(context.Background(), AccessTokenContextKey, token)
 
-		req := httptest.NewRequest(http.MethodGet, "/documcp", nil)
+		req := httptest.NewRequest(http.MethodGet, "/documcp", http.NoBody)
 		req = req.WithContext(ctx)
 		rr := httptest.NewRecorder()
 
@@ -839,7 +839,7 @@ func TestRequireScope(t *testing.T) {
 	t.Run("rejects request with no token in context", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/documcp", nil)
+		req := httptest.NewRequest(http.MethodGet, "/documcp", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		handler := RequireScope("mcp:access")(okHandler())
@@ -924,4 +924,3 @@ func TestAccessTokenContextKey(t *testing.T) {
 		}
 	})
 }
-

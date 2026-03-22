@@ -214,7 +214,7 @@ func TestExtractIP_TrustedProxies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := httptest.NewRequest("GET", "/", nil)
+			r := httptest.NewRequest("GET", "/", http.NoBody)
 			if tt.xRealIP != "" {
 				r.Header.Set("X-Real-Ip", tt.xRealIP)
 			}
@@ -241,7 +241,7 @@ func TestRealIP_Middleware_SetsRemoteAddr(t *testing.T) {
 
 	handler := RealIP(trusted)(inner)
 
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequest("GET", "/", http.NoBody)
 	r.RemoteAddr = "10.0.0.1:12345"
 	r.Header.Set("X-Real-Ip", "203.0.113.50")
 	w := httptest.NewRecorder()
@@ -261,7 +261,7 @@ func TestRealIP_Middleware_NoTrustedProxies(t *testing.T) {
 
 	handler := RealIP(nil)(inner)
 
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequest("GET", "/", http.NoBody)
 	r.RemoteAddr = "192.168.1.1:54321"
 	r.Header.Set("X-Real-Ip", "1.2.3.4")
 	w := httptest.NewRecorder()
@@ -326,7 +326,7 @@ func TestInternalTokenAuth_ValidToken(t *testing.T) {
 
 	handler := internalTokenAuth("my-secret-token")(inner)
 
-	r := httptest.NewRequest("GET", "/metrics", nil)
+	r := httptest.NewRequest("GET", "/metrics", http.NoBody)
 	r.Header.Set("Authorization", "Bearer my-secret-token")
 	w := httptest.NewRecorder()
 
@@ -349,7 +349,7 @@ func TestInternalTokenAuth_WrongToken(t *testing.T) {
 
 	handler := internalTokenAuth("correct-token")(inner)
 
-	r := httptest.NewRequest("GET", "/metrics", nil)
+	r := httptest.NewRequest("GET", "/metrics", http.NoBody)
 	r.Header.Set("Authorization", "Bearer wrong-token")
 	w := httptest.NewRecorder()
 
@@ -369,7 +369,7 @@ func TestInternalTokenAuth_NoHeader(t *testing.T) {
 
 	handler := internalTokenAuth("token")(inner)
 
-	r := httptest.NewRequest("GET", "/metrics", nil)
+	r := httptest.NewRequest("GET", "/metrics", http.NoBody)
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, r)
@@ -388,7 +388,7 @@ func TestInternalTokenAuth_NotBearerScheme(t *testing.T) {
 
 	handler := internalTokenAuth("token")(inner)
 
-	r := httptest.NewRequest("GET", "/metrics", nil)
+	r := httptest.NewRequest("GET", "/metrics", http.NoBody)
 	r.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
 	w := httptest.NewRecorder()
 
@@ -412,7 +412,7 @@ func TestSecurityHeaders_SetsAllHeaders(t *testing.T) {
 
 	h := SecurityHeaders(inner)
 
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequest("GET", "/", http.NoBody)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, r)
@@ -420,7 +420,7 @@ func TestSecurityHeaders_SetsAllHeaders(t *testing.T) {
 	want := map[string]string{
 		"X-Frame-Options":         "DENY",
 		"X-Content-Type-Options":  "nosniff",
-		"X-XSS-Protection":       "0",
+		"X-XSS-Protection":        "0",
 		"Referrer-Policy":         "strict-origin-when-cross-origin",
 		"Permissions-Policy":      "camera=(), microphone=(), geolocation=()",
 		"Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
@@ -442,7 +442,7 @@ func TestSecurityHeaders_HSTS_SetOverTLS(t *testing.T) {
 
 	h := SecurityHeaders(inner)
 
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequest("GET", "/", http.NoBody)
 	r.TLS = &tls.ConnectionState{} // simulate TLS connection
 	w := httptest.NewRecorder()
 
@@ -463,7 +463,7 @@ func TestSecurityHeaders_HSTS_SetViaXForwardedProto(t *testing.T) {
 
 	h := SecurityHeaders(inner)
 
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequest("GET", "/", http.NoBody)
 	r.Header.Set("X-Forwarded-Proto", "https")
 	w := httptest.NewRecorder()
 
@@ -484,7 +484,7 @@ func TestSecurityHeaders_HSTS_NotSetForPlainHTTP(t *testing.T) {
 
 	h := SecurityHeaders(inner)
 
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequest("GET", "/", http.NoBody)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, r)
@@ -504,7 +504,7 @@ func TestSecurityHeaders_CallsNext(t *testing.T) {
 	})
 
 	h := SecurityHeaders(inner)
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequest("GET", "/", http.NoBody)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, r)
@@ -634,7 +634,7 @@ func TestMaxBodySize_NoContentType(t *testing.T) {
 func TestRequestLogger_CallsNext(t *testing.T) {
 	t.Parallel()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	called := false
 	inner := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		called = true
@@ -642,7 +642,7 @@ func TestRequestLogger_CallsNext(t *testing.T) {
 
 	h := RequestLogger(logger)(inner)
 
-	r := httptest.NewRequest("GET", "/some/path", nil)
+	r := httptest.NewRequest("GET", "/some/path", http.NoBody)
 	w := httptest.NewRecorder()
 
 	h.ServeHTTP(w, r)
@@ -668,7 +668,7 @@ func TestRequestLogger_SuppressesHealthAndMetricsPaths(t *testing.T) {
 
 			h := RequestLogger(logger)(inner)
 
-			r := httptest.NewRequest("GET", path, nil)
+			r := httptest.NewRequest("GET", path, http.NoBody)
 			w := httptest.NewRecorder()
 			h.ServeHTTP(w, r)
 
@@ -689,7 +689,7 @@ func TestRequestLogger_LogsNonHealthPaths(t *testing.T) {
 
 	h := RequestLogger(logger)(inner)
 
-	r := httptest.NewRequest("GET", "/api/documents", nil)
+	r := httptest.NewRequest("GET", "/api/documents", http.NoBody)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 
@@ -710,7 +710,7 @@ func TestRequestLogger_LogsMethodAndPath(t *testing.T) {
 
 	h := RequestLogger(logger)(inner)
 
-	r := httptest.NewRequest("POST", "/api/things", nil)
+	r := httptest.NewRequest("POST", "/api/things", http.NoBody)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 
@@ -730,7 +730,7 @@ func TestRequestLogger_LogsMethodAndPath(t *testing.T) {
 func TestExtractIP_RemoteAddrWithoutPort(t *testing.T) {
 	t.Parallel()
 
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequest("GET", "/", http.NoBody)
 	r.RemoteAddr = "192.168.1.1" // no port -- triggers SplitHostPort error branch
 
 	got := extractIP(r, nil)
@@ -742,7 +742,7 @@ func TestExtractIP_RemoteAddrWithoutPort(t *testing.T) {
 func TestExtractIP_RemoteAddrUnparseable(t *testing.T) {
 	t.Parallel()
 
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequest("GET", "/", http.NoBody)
 	r.RemoteAddr = "not-an-ip-at-all" // no port, unparseable IP
 
 	got := extractIP(r, nil)
@@ -756,7 +756,7 @@ func TestExtractIP_TrustedProxyUnparseableRemoteAddr(t *testing.T) {
 
 	trusted := []*net.IPNet{mustParseCIDR("10.0.0.0/8")}
 
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequest("GET", "/", http.NoBody)
 	r.RemoteAddr = "not-an-ip" // unparseable, so trusted proxy check fails
 	r.Header.Set("X-Real-Ip", "203.0.113.1")
 
@@ -780,7 +780,7 @@ func TestInternalTokenAuth_EmptyBearerValue(t *testing.T) {
 
 	h := internalTokenAuth("token")(inner)
 
-	r := httptest.NewRequest("GET", "/metrics", nil)
+	r := httptest.NewRequest("GET", "/metrics", http.NoBody)
 	r.Header.Set("Authorization", "Bearer ")
 	w := httptest.NewRecorder()
 
@@ -813,7 +813,7 @@ func TestInternalTokenAuth_VariousWrongTokens(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			r := httptest.NewRequest("GET", "/metrics", nil)
+			r := httptest.NewRequest("GET", "/metrics", http.NoBody)
 			r.Header.Set("Authorization", "Bearer "+tt.token)
 			w := httptest.NewRecorder()
 

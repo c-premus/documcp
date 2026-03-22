@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -19,8 +19,8 @@ type mockCounter struct {
 	err   error
 }
 
-func (m *mockCounter) Count(ctx context.Context) (int, error)      { return m.count, m.err }
-func (m *mockCounter) CountUsers(ctx context.Context) (int, error)  { return m.count, m.err }
+func (m *mockCounter) Count(ctx context.Context) (int, error)        { return m.count, m.err }
+func (m *mockCounter) CountUsers(ctx context.Context) (int, error)   { return m.count, m.err }
 func (m *mockCounter) CountClients(ctx context.Context) (int, error) { return m.count, m.err }
 
 func discardLogger() *slog.Logger {
@@ -50,7 +50,7 @@ func TestDashboardHandler_Stats_AllCounters(t *testing.T) {
 		discardLogger(),
 	)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.Stats(rec, req)
@@ -101,7 +101,7 @@ func TestDashboardHandler_Stats_NilCounters(t *testing.T) {
 
 	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil, nil, nil, discardLogger())
 
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.Stats(rec, req)
@@ -131,14 +131,14 @@ func TestDashboardHandler_Stats_CounterError(t *testing.T) {
 	t.Parallel()
 
 	h := NewDashboardHandler(
-		&mockCounter{err: fmt.Errorf("db down")},
+		&mockCounter{err: errors.New("db down")},
 		&mockCounter{count: 5},
 		nil, nil, nil, nil, nil,
 		nil,
 		discardLogger(),
 	)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.Stats(rec, req)
@@ -173,7 +173,7 @@ func TestDashboardHandler_Stats_ContentType(t *testing.T) {
 
 	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil, nil, nil, discardLogger())
 
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.Stats(rec, req)

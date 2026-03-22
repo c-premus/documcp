@@ -509,7 +509,7 @@ func (r *OAuthRepository) PurgeExpiredTokens(ctx context.Context, retentionDays 
 	if err != nil {
 		return 0, fmt.Errorf("beginning purge expired tokens transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer tx.Rollback() //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
 
 	var totalAffected int64
 

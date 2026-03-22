@@ -91,13 +91,13 @@ func (s *ExternalServiceService) Create(ctx context.Context, params CreateExtern
 	}
 
 	svc := &model.ExternalService{
-		UUID:     uuid.New().String(),
-		Name:     params.Name,
-		Slug:     slugify(params.Name),
-		Type:     params.Type,
-		BaseURL:  params.BaseURL,
-		Priority: params.Priority,
-		Status:   "unknown",
+		UUID:      uuid.New().String(),
+		Name:      params.Name,
+		Slug:      slugify(params.Name),
+		Type:      params.Type,
+		BaseURL:   params.BaseURL,
+		Priority:  params.Priority,
+		Status:    "unknown",
 		IsEnabled: true,
 	}
 

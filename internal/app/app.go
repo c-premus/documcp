@@ -25,11 +25,11 @@ import (
 	"github.com/riverqueue/river"
 
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
-	"git.999.haus/chris/DocuMCP-go/internal/crypto"
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oidc"
 	"git.999.haus/chris/DocuMCP-go/internal/client/confluence"
 	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
 	"git.999.haus/chris/DocuMCP-go/internal/config"
+	"git.999.haus/chris/DocuMCP-go/internal/crypto"
 	"git.999.haus/chris/DocuMCP-go/internal/database"
 	"git.999.haus/chris/DocuMCP-go/internal/extractor"
 	docxext "git.999.haus/chris/DocuMCP-go/internal/extractor/docx"
@@ -225,12 +225,12 @@ func New(cfg *config.Config) (*App, error) {
 
 	// --- Storage ---
 	storagePath := filepath.Join(cfg.Storage.BasePath, cfg.Storage.DocumentPath)
-	if err = os.MkdirAll(storagePath, 0o755); err != nil {
+	if err = os.MkdirAll(storagePath, 0o750); err != nil {
 		return nil, fmt.Errorf("creating document storage path: %w", err)
 	}
 
 	gitTempDir := filepath.Join(cfg.Storage.BasePath, "git")
-	if err = os.MkdirAll(gitTempDir, 0o755); err != nil {
+	if err = os.MkdirAll(gitTempDir, 0o750); err != nil {
 		return nil, fmt.Errorf("creating git temp path: %w", err)
 	}
 

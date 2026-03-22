@@ -498,11 +498,11 @@ func (h *GitTemplateHandler) ReadFile(w http.ResponseWriter, r *http.Request) {
 
 	resp := map[string]any{
 		"data": map[string]any{
-			"path":      file.Path,
-			"filename":  file.Filename,
-			"size_bytes": file.SizeBytes,
+			"path":         file.Path,
+			"filename":     file.Filename,
+			"size_bytes":   file.SizeBytes,
 			"is_essential": file.IsEssential,
-			"content":   content,
+			"content":      content,
 		},
 	}
 	if len(unresolved) > 0 {
@@ -812,7 +812,7 @@ func buildTemplateArchiveTarGz(w *bytes.Buffer, entries []templateArchiveEntry) 
 	for _, e := range entries {
 		hdr := &tar.Header{
 			Name: e.path,
-			Mode: 0644,
+			Mode: 0o600,
 			Size: int64(len(e.content)),
 		}
 		if err := tw.WriteHeader(hdr); err != nil {

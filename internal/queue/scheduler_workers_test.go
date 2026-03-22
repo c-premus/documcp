@@ -31,8 +31,8 @@ func (m *mockExternalServiceFinder) FindEnabledByType(ctx context.Context, servi
 }
 
 type mockExternalServiceHealthChecker struct {
-	findAllEnabledFn    func(ctx context.Context) ([]model.ExternalService, error)
-	updateHealthFn      func(ctx context.Context, id int64, status string, latencyMs int, lastError string) error
+	findAllEnabledFn func(ctx context.Context) ([]model.ExternalService, error)
+	updateHealthFn   func(ctx context.Context, id int64, status string, latencyMs int, lastError string) error
 }
 
 func (m *mockExternalServiceHealthChecker) FindAllEnabled(ctx context.Context) ([]model.ExternalService, error) {
@@ -490,8 +490,8 @@ func TestCleanupOrphanedFiles_fileWalkLogic(t *testing.T) {
 	active := filepath.Join(dir, "active.txt")
 	orphan := filepath.Join(dir, "orphan.txt")
 
-	require.NoError(t, os.WriteFile(active, []byte("keep"), 0o644))
-	require.NoError(t, os.WriteFile(orphan, []byte("remove"), 0o644))
+	require.NoError(t, os.WriteFile(active, []byte("keep"), 0o600))
+	require.NoError(t, os.WriteFile(orphan, []byte("remove"), 0o600))
 
 	// Build active set.
 	activeSet := map[string]bool{active: true}

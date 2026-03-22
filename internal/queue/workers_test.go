@@ -90,9 +90,9 @@ func TestDocumentExtractWorker_NextRetry(t *testing.T) {
 	worker := &DocumentExtractWorker{}
 
 	tests := []struct {
-		name     string
-		attempt  int
-		wantDur  time.Duration
+		name      string
+		attempt   int
+		wantDur   time.Duration
 		tolerance time.Duration
 	}{
 		{"attempt_1_60s", 1, 60 * time.Second, 2 * time.Second},
@@ -177,9 +177,9 @@ func TestDocumentIndexWorker_NextRetry(t *testing.T) {
 	worker := &DocumentIndexWorker{}
 
 	tests := []struct {
-		name     string
-		attempt  int
-		wantDur  time.Duration
+		name      string
+		attempt   int
+		wantDur   time.Duration
 		tolerance time.Duration
 	}{
 		{"attempt_1_60s", 1, 60 * time.Second, 2 * time.Second},
@@ -266,7 +266,7 @@ func TestReindexAllWorker_Work(t *testing.T) {
 		indexer := &mockDocumentIndexer{}
 		lister := &mockDocumentLister{
 			docs: map[string][]model.Document{
-				"indexed": {{ID: 1}, {ID: 2}},
+				"indexed":   {{ID: 1}, {ID: 2}},
 				"processed": {{ID: 3}},
 			},
 		}

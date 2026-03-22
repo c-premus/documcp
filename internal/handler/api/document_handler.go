@@ -386,7 +386,7 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
 
 	http.ServeContent(w, r, filename, info.ModTime(), f)
@@ -444,7 +444,7 @@ func (h *DocumentHandler) Analyze(w http.ResponseWriter, r *http.Request) {
 
 	ext2, err := h.pipeline.ExtractorRegistry().ForMIMEType(mimeType)
 	if err != nil {
-		errorResponse(w, http.StatusUnprocessableEntity, fmt.Sprintf("no extractor for type: %s", mimeType))
+		errorResponse(w, http.StatusUnprocessableEntity, "no extractor for type: "+mimeType)
 		return
 	}
 
@@ -555,8 +555,7 @@ func extractHeadingTags(content string) []string {
 // firstParagraph returns the first non-empty, non-heading paragraph of content,
 // capped at 500 characters.
 func firstParagraph(content string) string {
-	paragraphs := strings.Split(content, "\n\n")
-	for _, p := range paragraphs {
+	for p := range strings.SplitSeq(content, "\n\n") {
 		trimmed := strings.TrimSpace(p)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
@@ -594,7 +593,7 @@ var stopWords = map[string]struct{}{
 // extractKeywords returns the top 5 most frequent non-stop words from content.
 func extractKeywords(content string) []string {
 	freq := make(map[string]int)
-	for _, word := range strings.Fields(content) {
+	for word := range strings.FieldsSeq(content) {
 		w := strings.ToLower(strings.Trim(word, ".,;:!?\"'()[]{}"))
 		if len(w) < 3 {
 			continue
@@ -622,7 +621,7 @@ func extractKeywords(content string) []string {
 
 	limit := min(5, len(ranked))
 	keywords := make([]string, limit)
-	for i := 0; i < limit; i++ {
+	for i := range limit {
 		keywords[i] = ranked[i].word
 	}
 	return keywords

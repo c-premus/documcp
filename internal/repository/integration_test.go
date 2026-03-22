@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"io"
 	"log"
 	"log/slog"
 	"os"
@@ -109,7 +108,7 @@ func truncateAll(t *testing.T) {
 }
 
 func discardLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 // testUUID generates a deterministic UUID v5-style string from a seed.

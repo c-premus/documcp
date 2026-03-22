@@ -883,8 +883,8 @@ func TestBuildTemplateArchiveTarGz(t *testing.T) {
 		if hdr.Name != "README.md" {
 			t.Errorf("file name = %q, want README.md", hdr.Name)
 		}
-		if hdr.Mode != 0644 {
-			t.Errorf("file mode = %o, want 0644", hdr.Mode)
+		if hdr.Mode != 0o600 {
+			t.Errorf("file mode = %o, want 0o600", hdr.Mode)
 		}
 		if hdr.Size != int64(len("# Hello")) {
 			t.Errorf("file size = %d, want %d", hdr.Size, len("# Hello"))
@@ -987,7 +987,7 @@ func TestBuildTemplateArchiveTarGz(t *testing.T) {
 		}
 	})
 
-	t.Run("all entries have mode 0644", func(t *testing.T) {
+	t.Run("all entries have mode 0o600", func(t *testing.T) {
 		t.Parallel()
 
 		entries := []templateArchiveEntry{
@@ -1014,8 +1014,8 @@ func TestBuildTemplateArchiveTarGz(t *testing.T) {
 			if err != nil {
 				t.Fatalf("reading tar header: %v", err)
 			}
-			if hdr.Mode != 0644 {
-				t.Errorf("entry %q mode = %o, want 0644", hdr.Name, hdr.Mode)
+			if hdr.Mode != 0o600 {
+				t.Errorf("entry %q mode = %o, want 0o600", hdr.Name, hdr.Mode)
 			}
 		}
 	})
@@ -1075,14 +1075,14 @@ func (m *mockGitTemplateRepo) FindFileByPath(ctx context.Context, templateID int
 func newTestGitTemplateHandler() *GitTemplateHandler {
 	return &GitTemplateHandler{
 		repo:   nil,
-		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		logger: slog.New(slog.DiscardHandler),
 	}
 }
 
 func newGitTemplateHandlerWithMock(repo *mockGitTemplateRepo) *GitTemplateHandler {
 	return &GitTemplateHandler{
 		repo:   repo,
-		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		logger: slog.New(slog.DiscardHandler),
 	}
 }
 
@@ -1093,7 +1093,7 @@ func TestGitTemplateHandler_ReadFile_EmptyPath(t *testing.T) {
 		t.Parallel()
 
 		h := newTestGitTemplateHandler()
-		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/uuid-1/files/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/uuid-1/files/", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "uuid-1", "*": ""})
 		rr := httptest.NewRecorder()
 
@@ -1210,7 +1210,7 @@ func TestGitTemplateHandler_Download_Validation(t *testing.T) {
 func TestNewGitTemplateHandler(t *testing.T) {
 	t.Parallel()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	h := NewGitTemplateHandler(nil, logger)
 
 	if h == nil {
@@ -1246,7 +1246,7 @@ func TestGitTemplateHandler_List(t *testing.T) {
 			},
 		}
 		h := newGitTemplateHandlerWithMock(repo)
-		req := httptest.NewRequest(http.MethodGet, "/api/git-templates", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -1288,7 +1288,7 @@ func TestGitTemplateHandler_List(t *testing.T) {
 			},
 		}
 		h := newGitTemplateHandlerWithMock(repo)
-		req := httptest.NewRequest(http.MethodGet, "/api/git-templates?category=devops&limit=10", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates?category=devops&limit=10", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -1307,7 +1307,7 @@ func TestGitTemplateHandler_List(t *testing.T) {
 			},
 		}
 		h := newGitTemplateHandlerWithMock(repo)
-		req := httptest.NewRequest(http.MethodGet, "/api/git-templates", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -1334,7 +1334,7 @@ func TestGitTemplateHandler_List(t *testing.T) {
 			},
 		}
 		h := newGitTemplateHandlerWithMock(repo)
-		req := httptest.NewRequest(http.MethodGet, "/api/git-templates", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -1365,7 +1365,7 @@ func TestGitTemplateHandler_List(t *testing.T) {
 			},
 		}
 		h := newGitTemplateHandlerWithMock(repo)
-		req := httptest.NewRequest(http.MethodGet, "/api/git-templates?limit=-5", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates?limit=-5", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.List(rr, req)
@@ -1403,7 +1403,7 @@ func TestGitTemplateHandler_Show(t *testing.T) {
 			},
 		}
 		h := newGitTemplateHandlerWithMock(repo)
-		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/tmpl-uuid-1", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/tmpl-uuid-1", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "tmpl-uuid-1"})
 		rr := httptest.NewRecorder()
 
@@ -1435,7 +1435,7 @@ func TestGitTemplateHandler_Show(t *testing.T) {
 			},
 		}
 		h := newGitTemplateHandlerWithMock(repo)
-		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/missing", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/missing", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "missing"})
 		rr := httptest.NewRecorder()
 
@@ -1455,7 +1455,7 @@ func TestGitTemplateHandler_Show(t *testing.T) {
 			},
 		}
 		h := newGitTemplateHandlerWithMock(repo)
-		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/uuid-1", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/uuid-1", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "uuid-1"})
 		rr := httptest.NewRecorder()
 
@@ -1488,7 +1488,7 @@ func TestGitTemplateHandler_Delete(t *testing.T) {
 			},
 		}
 		h := newGitTemplateHandlerWithMock(repo)
-		req := httptest.NewRequest(http.MethodDelete, "/api/git-templates/del-uuid", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/git-templates/del-uuid", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "del-uuid"})
 		rr := httptest.NewRecorder()
 
@@ -1519,7 +1519,7 @@ func TestGitTemplateHandler_Delete(t *testing.T) {
 			},
 		}
 		h := newGitTemplateHandlerWithMock(repo)
-		req := httptest.NewRequest(http.MethodDelete, "/api/git-templates/missing", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/git-templates/missing", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "missing"})
 		rr := httptest.NewRecorder()
 
@@ -1542,7 +1542,7 @@ func TestGitTemplateHandler_Delete(t *testing.T) {
 			},
 		}
 		h := newGitTemplateHandlerWithMock(repo)
-		req := httptest.NewRequest(http.MethodDelete, "/api/git-templates/uuid-1", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/git-templates/uuid-1", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "uuid-1"})
 		rr := httptest.NewRecorder()
 
@@ -1562,7 +1562,7 @@ func TestGitTemplateHandler_Delete(t *testing.T) {
 			},
 		}
 		h := newGitTemplateHandlerWithMock(repo)
-		req := httptest.NewRequest(http.MethodDelete, "/api/git-templates/uuid-1", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/git-templates/uuid-1", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "uuid-1"})
 		rr := httptest.NewRecorder()
 

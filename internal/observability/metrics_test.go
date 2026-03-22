@@ -49,7 +49,7 @@ func TestNewMetrics(t *testing.T) {
 
 	wantNames := map[string]bool{
 		"documcp_http_active_connections": false,
-		"documcp_document_count":          false,
+		"documcp_documents":               false,
 	}
 
 	for _, f := range families {
@@ -71,7 +71,7 @@ func TestMetricsHandler(t *testing.T) {
 		t.Fatal("MetricsHandler returned nil")
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req := httptest.NewRequest(http.MethodGet, "/metrics", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)

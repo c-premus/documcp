@@ -89,7 +89,7 @@ func TestQueueHandler_RetryFailed(t *testing.T) {
 
 			h := NewQueueHandler(nil, testLogger())
 			// Use a clean URL; the id param is injected via chiContext.
-			req := httptest.NewRequest(http.MethodPost, "/api/admin/queue/failed/0/retry", nil)
+			req := httptest.NewRequest(http.MethodPost, "/api/admin/queue/failed/0/retry", http.NoBody)
 			req = chiContext(req, map[string]string{"id": tt.idParam})
 			rr := httptest.NewRecorder()
 
@@ -158,7 +158,7 @@ func TestQueueHandler_DeleteFailed(t *testing.T) {
 
 			h := NewQueueHandler(nil, testLogger())
 			// Use a clean URL; the id param is injected via chiContext.
-			req := httptest.NewRequest(http.MethodDelete, "/api/admin/queue/failed/0", nil)
+			req := httptest.NewRequest(http.MethodDelete, "/api/admin/queue/failed/0", http.NoBody)
 			req = chiContext(req, map[string]string{"id": tt.idParam})
 			rr := httptest.NewRecorder()
 
@@ -190,7 +190,7 @@ func TestQueueHandler_Stats(t *testing.T) {
 		// This verifies the handler does not silently swallow the nil — it
 		// requires a properly initialized RiverClient.
 		h := NewQueueHandler(nil, testLogger())
-		req := httptest.NewRequest(http.MethodGet, "/api/admin/queue/stats", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/admin/queue/stats", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		assert.Panics(t, func() {
@@ -210,7 +210,7 @@ func TestQueueHandler_ListFailed(t *testing.T) {
 		t.Parallel()
 
 		h := NewQueueHandler(nil, testLogger())
-		req := httptest.NewRequest(http.MethodGet, "/api/admin/queue/failed", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/admin/queue/failed", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		assert.Panics(t, func() {
@@ -230,7 +230,7 @@ func TestQueueHandler_ErrorResponseFormat(t *testing.T) {
 		t.Parallel()
 
 		h := NewQueueHandler(nil, testLogger())
-		req := httptest.NewRequest(http.MethodPost, "/api/admin/queue/failed/bad/retry", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/admin/queue/failed/bad/retry", http.NoBody)
 		req = chiContext(req, map[string]string{"id": "bad"})
 		rr := httptest.NewRecorder()
 
@@ -250,7 +250,7 @@ func TestQueueHandler_ErrorResponseFormat(t *testing.T) {
 		t.Parallel()
 
 		h := NewQueueHandler(nil, testLogger())
-		req := httptest.NewRequest(http.MethodDelete, "/api/admin/queue/failed/notanumber", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/admin/queue/failed/notanumber", http.NoBody)
 		req = chiContext(req, map[string]string{"id": "notanumber"})
 		rr := httptest.NewRecorder()
 

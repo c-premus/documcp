@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -79,7 +80,7 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 
 		// JWKS URL is required for token verification in manual mode.
 		if cfg.OIDCCfg.JWKSURL == "" {
-			return nil, fmt.Errorf("OIDC_JWKS_URL is required when using manual OIDC endpoints")
+			return nil, errors.New("OIDC_JWKS_URL is required when using manual OIDC endpoints")
 		}
 		keySet := gooidc.NewRemoteKeySet(ctx, cfg.OIDCCfg.JWKSURL)
 		verifier = gooidc.NewVerifier(cfg.OIDCCfg.ProviderURL, keySet, &gooidc.Config{
@@ -321,10 +322,8 @@ func (h *Handler) resolveAdmin(groups []string) (isAdmin, shouldSync bool) {
 		return false, false
 	}
 	for _, g := range groups {
-		for _, ag := range h.adminGroups {
-			if g == ag {
-				return true, true
-			}
+		if slices.Contains(h.adminGroups, g) {
+			return true, true
 		}
 	}
 	return false, true

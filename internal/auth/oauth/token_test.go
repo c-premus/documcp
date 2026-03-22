@@ -134,8 +134,6 @@ func TestTokenPairSetID(t *testing.T) {
 				t.Errorf("ID = %d, want %d", tp.ID, tt.id)
 			}
 
-			wantPrefix := strings.Join([]string{strings.Repeat("", 0), ""}, "") // avoid import just for Sprintf
-			_ = wantPrefix
 			// Check the plaintext starts with "id|"
 			prefix := strings.SplitN(tp.Plaintext, "|", 2)
 			if len(prefix) != 2 {

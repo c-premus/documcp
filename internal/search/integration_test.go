@@ -5,7 +5,6 @@ package search
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"log/slog"
 	"os"
@@ -61,7 +60,7 @@ func TestMain(m *testing.M) {
 }
 
 func integrationLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 func integrationClient() *Client {

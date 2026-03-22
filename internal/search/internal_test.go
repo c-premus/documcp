@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -114,7 +113,7 @@ func TestConfigureIndexes_SettingsErrorMessageContainsIndexUID(t *testing.T) {
 
 	idx := &mockIndexManager{
 		updateSettingsWithContextFn: func(_ context.Context, _ *meilisearch.Settings) (*meilisearch.TaskInfo, error) {
-			return nil, fmt.Errorf("boom")
+			return nil, errors.New("boom")
 		},
 	}
 	sm := &mockServiceManager{
@@ -128,7 +127,7 @@ func TestConfigureIndexes_SettingsErrorMessageContainsIndexUID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if got := err.Error(); len(got) == 0 {
+	if got := err.Error(); got == "" {
 		t.Error("error message is empty")
 	}
 }
@@ -203,7 +202,7 @@ func TestIndexDocument_Success(t *testing.T) {
 
 	var capturedIndex string
 	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+		addDocumentsWithContextFn: func(_ context.Context, _ any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 			return &meilisearch.TaskInfo{TaskUID: 42}, nil
 		},
 	}
@@ -229,7 +228,7 @@ func TestIndexDocument_Error(t *testing.T) {
 
 	wantErr := errors.New("connection refused")
 	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+		addDocumentsWithContextFn: func(_ context.Context, _ any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 			return nil, wantErr
 		},
 	}
@@ -294,9 +293,9 @@ func TestDeleteDocument_Error(t *testing.T) {
 func TestSoftDeleteDocument_Success(t *testing.T) {
 	t.Parallel()
 
-	var capturedDocs interface{}
+	var capturedDocs any
 	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, docs interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+		addDocumentsWithContextFn: func(_ context.Context, docs any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 			capturedDocs = docs
 			return &meilisearch.TaskInfo{TaskUID: 7}, nil
 		},
@@ -328,7 +327,7 @@ func TestSoftDeleteDocument_Error(t *testing.T) {
 
 	wantErr := errors.New("fail")
 	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+		addDocumentsWithContextFn: func(_ context.Context, _ any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 			return nil, wantErr
 		},
 	}
@@ -348,7 +347,7 @@ func TestIndexBatch_EmptySlice_ReturnsNil(t *testing.T) {
 
 	addCalled := false
 	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+		addDocumentsWithContextFn: func(_ context.Context, _ any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 			addCalled = true
 			return &meilisearch.TaskInfo{}, nil
 		},
@@ -391,7 +390,7 @@ func TestIndexBatch_Error(t *testing.T) {
 
 	wantErr := errors.New("batch fail")
 	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+		addDocumentsWithContextFn: func(_ context.Context, _ any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 			return nil, wantErr
 		},
 	}
@@ -643,7 +642,7 @@ func TestIndexZimArchive_Error(t *testing.T) {
 
 	wantErr := errors.New("fail")
 	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+		addDocumentsWithContextFn: func(_ context.Context, _ any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 			return nil, wantErr
 		},
 	}
@@ -698,7 +697,7 @@ func TestIndexZimArchiveBatch_EmptySlice(t *testing.T) {
 
 	addCalled := false
 	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+		addDocumentsWithContextFn: func(_ context.Context, _ any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 			addCalled = true
 			return &meilisearch.TaskInfo{}, nil
 		},
@@ -737,7 +736,7 @@ func TestIndexZimArchiveBatch_Error(t *testing.T) {
 
 	wantErr := errors.New("batch fail")
 	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+		addDocumentsWithContextFn: func(_ context.Context, _ any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 			return nil, wantErr
 		},
 	}
@@ -783,7 +782,7 @@ func TestIndexConfluenceSpace_Error(t *testing.T) {
 
 	wantErr := errors.New("fail")
 	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+		addDocumentsWithContextFn: func(_ context.Context, _ any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 			return nil, wantErr
 		},
 	}
@@ -836,9 +835,9 @@ func TestDeleteConfluenceSpace_Error(t *testing.T) {
 func TestSoftDeleteConfluenceSpace_Success(t *testing.T) {
 	t.Parallel()
 
-	var capturedDocs interface{}
+	var capturedDocs any
 	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, docs interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+		addDocumentsWithContextFn: func(_ context.Context, docs any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 			capturedDocs = docs
 			return &meilisearch.TaskInfo{TaskUID: 1}, nil
 		},
@@ -867,7 +866,7 @@ func TestSoftDeleteConfluenceSpace_Error(t *testing.T) {
 
 	wantErr := errors.New("fail")
 	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+		addDocumentsWithContextFn: func(_ context.Context, _ any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 			return nil, wantErr
 		},
 	}
@@ -913,7 +912,7 @@ func TestIndexGitTemplate_Error(t *testing.T) {
 
 	wantErr := errors.New("fail")
 	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+		addDocumentsWithContextFn: func(_ context.Context, _ any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 			return nil, wantErr
 		},
 	}
@@ -966,9 +965,9 @@ func TestDeleteGitTemplate_Error(t *testing.T) {
 func TestSoftDeleteGitTemplate_Success(t *testing.T) {
 	t.Parallel()
 
-	var capturedDocs interface{}
+	var capturedDocs any
 	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, docs interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+		addDocumentsWithContextFn: func(_ context.Context, docs any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 			capturedDocs = docs
 			return &meilisearch.TaskInfo{TaskUID: 1}, nil
 		},
@@ -997,7 +996,7 @@ func TestSoftDeleteGitTemplate_Error(t *testing.T) {
 
 	wantErr := errors.New("fail")
 	idx := &mockIndexManager{
-		addDocumentsWithContextFn: func(_ context.Context, _ interface{}, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
+		addDocumentsWithContextFn: func(_ context.Context, _ any, _ *meilisearch.DocumentOptions) (*meilisearch.TaskInfo, error) {
 			return nil, wantErr
 		},
 	}
@@ -1291,7 +1290,7 @@ func TestFederatedSearch_SoftDeleteFilters(t *testing.T) {
 
 	wantFilters := []string{
 		"__soft_deleted = false", // documents
-		"",                      // zim_archives (no soft delete)
+		"",                       // zim_archives (no soft delete)
 		"__soft_deleted = false", // confluence_spaces
 		"__soft_deleted = false", // git_templates
 	}

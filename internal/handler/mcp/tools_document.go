@@ -3,6 +3,7 @@ package mcphandler
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -158,11 +159,11 @@ func (h *Handler) handleSearchDocuments(
 	var filters []string
 	filters = append(filters, "__soft_deleted = false")
 	if input.FileType != "" && isValidFileType(input.FileType) {
-		filters = append(filters, fmt.Sprintf(`file_type = "%s"`, sanitizeFilterValue(input.FileType)))
+		filters = append(filters, `file_type = "`+sanitizeFilterValue(input.FileType)+`"`)
 	}
 	if len(input.Tags) > 0 {
 		for _, tag := range input.Tags {
-			filters = append(filters, fmt.Sprintf(`tags = "%s"`, sanitizeFilterValue(tag)))
+			filters = append(filters, `tags = "`+sanitizeFilterValue(tag)+`"`)
 		}
 	}
 
@@ -241,7 +242,7 @@ func (h *Handler) handleReadDocument(
 	// Non-admin users can only read their own documents or public documents.
 	if user, _ := authmiddleware.UserFromContext(ctx); user != nil && !user.IsAdmin {
 		if !doc.IsPublic && (!doc.UserID.Valid || doc.UserID.Int64 != user.ID) {
-			return nil, readDocumentResponse{}, fmt.Errorf("document not found")
+			return nil, readDocumentResponse{}, errors.New("document not found")
 		}
 	}
 

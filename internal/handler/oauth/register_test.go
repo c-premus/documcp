@@ -2,7 +2,7 @@ package oauthhandler
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -55,7 +55,7 @@ func TestHandler_Register(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
 			FindUserByIDFunc: func(_ context.Context, _ int64) (*model.User, error) {
-				return nil, fmt.Errorf("not found")
+				return nil, errors.New("not found")
 			},
 		}
 		cfg := defaultOAuthConfig()
@@ -158,7 +158,7 @@ func TestHandler_Register(t *testing.T) {
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
 		longName := strings.Repeat("a", 256)
-		body := fmt.Sprintf(`{"client_name":"%s","redirect_uris":["https://example.com/cb"]}`, longName)
+		body := `{"client_name":"` + longName + `","redirect_uris":["https://example.com/cb"]}`
 		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
@@ -261,7 +261,7 @@ func TestHandler_Register(t *testing.T) {
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
 		longID := strings.Repeat("x", 256)
-		body := fmt.Sprintf(`{"client_name":"My App","redirect_uris":["https://example.com/cb"],"software_id":"%s"}`, longID)
+		body := `{"client_name":"My App","redirect_uris":["https://example.com/cb"],"software_id":"` + longID + `"}`
 		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
@@ -279,7 +279,7 @@ func TestHandler_Register(t *testing.T) {
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
 		longVersion := strings.Repeat("v", 101)
-		body := fmt.Sprintf(`{"client_name":"My App","redirect_uris":["https://example.com/cb"],"software_version":"%s"}`, longVersion)
+		body := `{"client_name":"My App","redirect_uris":["https://example.com/cb"],"software_version":"` + longVersion + `"}`
 		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
@@ -401,7 +401,7 @@ func TestHandler_Register(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
 			CreateClientFunc: func(_ context.Context, c *model.OAuthClient) error {
-				return fmt.Errorf("database error")
+				return errors.New("database error")
 			},
 		}
 		h, _ := newHandlerWithRepo(repo)

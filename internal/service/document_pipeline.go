@@ -117,7 +117,7 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 	relPath := filepath.Join(fileType, docUUID+ext)
 	absPath := filepath.Join(p.storagePath, relPath)
 
-	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o750); err != nil {
 		return nil, fmt.Errorf("creating storage directory: %w", err)
 	}
 

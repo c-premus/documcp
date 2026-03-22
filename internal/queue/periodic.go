@@ -3,8 +3,8 @@ package queue
 import (
 	"log/slog"
 
-	"github.com/robfig/cron/v3"
 	"github.com/riverqueue/river"
+	"github.com/robfig/cron/v3"
 
 	"git.999.haus/chris/DocuMCP-go/internal/config"
 )

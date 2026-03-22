@@ -13,21 +13,21 @@ func TestRoutePattern(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		setup   func() *http.Request
-		want    string
+		name  string
+		setup func() *http.Request
+		want  string
 	}{
 		{
 			name: "returns unmatched when no chi RouteContext exists",
 			setup: func() *http.Request {
-				return httptest.NewRequest(http.MethodGet, "/some/path", nil)
+				return httptest.NewRequest(http.MethodGet, "/some/path", http.NoBody)
 			},
 			want: "unmatched",
 		},
 		{
 			name: "returns unmatched when chi RouteContext has empty pattern",
 			setup: func() *http.Request {
-				req := httptest.NewRequest(http.MethodGet, "/some/path", nil)
+				req := httptest.NewRequest(http.MethodGet, "/some/path", http.NoBody)
 				rctx := chi.NewRouteContext()
 				// RoutePattern() returns "" by default on a fresh RouteContext.
 				ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
@@ -38,7 +38,7 @@ func TestRoutePattern(t *testing.T) {
 		{
 			name: "returns pattern when chi RouteContext has a pattern",
 			setup: func() *http.Request {
-				req := httptest.NewRequest(http.MethodGet, "/api/documents/abc-123", nil)
+				req := httptest.NewRequest(http.MethodGet, "/api/documents/abc-123", http.NoBody)
 				rctx := chi.NewRouteContext()
 				rctx.RoutePatterns = []string{"/api/documents/{uuid}"}
 				ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
@@ -49,7 +49,7 @@ func TestRoutePattern(t *testing.T) {
 		{
 			name: "returns concatenated pattern for nested routes",
 			setup: func() *http.Request {
-				req := httptest.NewRequest(http.MethodGet, "/api/v1/users/42", nil)
+				req := httptest.NewRequest(http.MethodGet, "/api/v1/users/42", http.NoBody)
 				rctx := chi.NewRouteContext()
 				rctx.RoutePatterns = []string{"/api/v1/*", "/users/{id}"}
 				ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)

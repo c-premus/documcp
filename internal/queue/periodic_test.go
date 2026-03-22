@@ -165,14 +165,14 @@ func TestBuildPeriodicJobs_mixedValidAndInvalid(t *testing.T) {
 
 	cfg := config.SchedulerConfig{
 		KiwixSchedule:           "0 */6 * * *", // valid
-		ConfluenceSchedule:      "bad",          // invalid
-		GitSchedule:             "",             // empty (disabled)
-		OAuthCleanupSchedule:    "0 * * * *",    // valid
-		OrphanedFilesSchedule:   "also bad",     // invalid
-		SearchVerifySchedule:    "0 3 * * *",    // valid
-		SoftDeletePurgeSchedule: "",             // empty (disabled)
-		ZimCleanupSchedule:      "0 5 * * *",    // valid
-		HealthCheckSchedule:     "",             // empty (disabled)
+		ConfluenceSchedule:      "bad",         // invalid
+		GitSchedule:             "",            // empty (disabled)
+		OAuthCleanupSchedule:    "0 * * * *",   // valid
+		OrphanedFilesSchedule:   "also bad",    // invalid
+		SearchVerifySchedule:    "0 3 * * *",   // valid
+		SoftDeletePurgeSchedule: "",            // empty (disabled)
+		ZimCleanupSchedule:      "0 5 * * *",   // valid
+		HealthCheckSchedule:     "",            // empty (disabled)
 	}
 
 	jobs := BuildPeriodicJobs(cfg, discardLogger())
