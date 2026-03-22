@@ -54,6 +54,7 @@ type oauthClientResponse struct {
 	TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
 	Scope                   string   `json:"scope,omitempty"`
 	IsActive                bool     `json:"is_active"`
+	LastUsedAt              *string  `json:"last_used_at,omitempty"`
 	CreatedAt               string   `json:"created_at,omitempty"`
 	UpdatedAt               string   `json:"updated_at,omitempty"`
 }
@@ -232,6 +233,12 @@ func toOAuthClientResponse(c *model.OAuthClient) oauthClientResponse {
 		responseTypes = []string{}
 	}
 
+	var lastUsedAt *string
+	if c.LastUsedAt.Valid {
+		s := c.LastUsedAt.Time.UTC().Format(time.RFC3339)
+		lastUsedAt = &s
+	}
+
 	resp := oauthClientResponse{
 		ID:                      c.ID,
 		ClientID:                c.ClientID,
@@ -241,6 +248,7 @@ func toOAuthClientResponse(c *model.OAuthClient) oauthClientResponse {
 		ResponseTypes:           responseTypes,
 		TokenEndpointAuthMethod: c.TokenEndpointAuthMethod,
 		IsActive:                c.IsActive,
+		LastUsedAt:              lastUsedAt,
 	}
 
 	if c.Scope.Valid {

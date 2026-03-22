@@ -199,6 +199,16 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     },
   },
   {
+    accessorKey: 'last_used_at',
+    header: 'Last Used',
+    enableSorting: true,
+    cell: ({ getValue }) => {
+      const value = getValue<string | null>()
+      if (value === null) return '—'
+      return formatDistanceToNow(new Date(value), { addSuffix: true })
+    },
+  },
+  {
     id: 'actions',
     header: 'Actions',
     enableSorting: false,

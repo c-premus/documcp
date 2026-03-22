@@ -14,6 +14,7 @@ CREATE TABLE oauth_clients (
     scope                      VARCHAR(500)  NULL,
     user_id                    BIGINT        NULL,
     is_active                  BOOLEAN       NOT NULL DEFAULT TRUE,
+    last_used_at               TIMESTAMPTZ   NULL,
     created_at                 TIMESTAMPTZ   NULL,
     updated_at                 TIMESTAMPTZ   NULL,
 

@@ -25,6 +25,7 @@ type OAuthRepo interface {
 	CreateClient(ctx context.Context, client *model.OAuthClient) error
 	FindClientByClientID(ctx context.Context, clientID string) (*model.OAuthClient, error)
 	FindClientByID(ctx context.Context, id int64) (*model.OAuthClient, error)
+	TouchClientLastUsed(ctx context.Context, clientID int64) error
 	// Authorization Codes
 	CreateAuthorizationCode(ctx context.Context, code *model.OAuthAuthorizationCode) error
 	FindAuthorizationCodeByCode(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
@@ -83,6 +84,11 @@ func (s *Service) FindUserByID(ctx context.Context, id int64) (*model.User, erro
 // FindClientByInternalID looks up a client by its database primary key.
 func (s *Service) FindClientByInternalID(ctx context.Context, id int64) (*model.OAuthClient, error) {
 	return s.repo.FindClientByID(ctx, id)
+}
+
+// TouchClientLastUsed records that a client's token was used.
+func (s *Service) TouchClientLastUsed(ctx context.Context, clientID int64) error {
+	return s.repo.TouchClientLastUsed(ctx, clientID)
 }
 
 // FindDeviceCodeByUserCode looks up a pending device code by user code.
