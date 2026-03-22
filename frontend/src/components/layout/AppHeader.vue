@@ -12,14 +12,19 @@ connect()
 <template>
   <header class="sticky top-0 z-10 bg-bg-surface border-b border-border-default px-4 py-3">
     <div class="flex items-center justify-between">
-      <div class="flex items-center gap-2" role="status" aria-live="polite">
+      <div
+        class="flex items-center gap-2"
+        role="status"
+        aria-live="polite"
+        title="Real-time queue event stream"
+      >
         <span
           class="inline-block h-2 w-2 rounded-full"
           :class="connected ? 'bg-green-500' : 'bg-red-500'"
           aria-hidden="true"
         />
         <span class="text-xs text-text-muted">
-          {{ connected ? 'Connected' : 'Disconnected' }}
+          {{ connected ? 'Live' : 'Offline' }}
         </span>
       </div>
 

@@ -115,7 +115,7 @@ onMounted(fetchStats)
 
     <!-- Stats grid -->
     <template v-else-if="stats !== null">
-      <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+      <div class="grid grid-cols-3 gap-4">
         <RouterLink
           v-for="card in cards"
           :key="card.key"
