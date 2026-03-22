@@ -10,8 +10,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
 
 	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"git.999.haus/chris/DocuMCP-go/internal/queue"
 	"git.999.haus/chris/DocuMCP-go/internal/service"
 )
 
@@ -20,10 +23,16 @@ type externalServiceReorderer interface {
 	ReorderPriorities(ctx context.Context, serviceIDs []int64) error
 }
 
+// externalServiceJobInserter enqueues background jobs. Defined where consumed.
+type externalServiceJobInserter interface {
+	Insert(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
+}
+
 // ExternalServiceHandler handles REST API endpoints for external services.
 type ExternalServiceHandler struct {
 	svc       *service.ExternalServiceService
 	reorderer externalServiceReorderer
+	inserter  externalServiceJobInserter
 	logger    *slog.Logger
 }
 
@@ -31,11 +40,13 @@ type ExternalServiceHandler struct {
 func NewExternalServiceHandler(
 	svc *service.ExternalServiceService,
 	reorderer externalServiceReorderer,
+	inserter externalServiceJobInserter,
 	logger *slog.Logger,
 ) *ExternalServiceHandler {
 	return &ExternalServiceHandler{
 		svc:       svc,
 		reorderer: reorderer,
+		inserter:  inserter,
 		logger:    logger,
 	}
 }
@@ -158,6 +169,19 @@ func (h *ExternalServiceHandler) Create(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if h.inserter != nil {
+		var jobErr error
+		switch created.Type {
+		case "kiwix":
+			_, jobErr = h.inserter.Insert(r.Context(), queue.SyncKiwixArgs{}, nil)
+		case "confluence":
+			_, jobErr = h.inserter.Insert(r.Context(), queue.SyncConfluenceArgs{}, nil)
+		}
+		if jobErr != nil {
+			h.logger.Warn("failed to enqueue sync after external service create", "type", created.Type, "error", jobErr)
+		}
+	}
+
 	jsonResponse(w, http.StatusCreated, map[string]any{
 		"data":    toExternalServiceResponse(created),
 		"message": "External service created successfully.",
@@ -249,6 +273,47 @@ func (h *ExternalServiceHandler) HealthCheck(w http.ResponseWriter, r *http.Requ
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"data":    toExternalServiceResponse(svc),
 		"message": "Health checks run automatically via the scheduler.",
+	})
+}
+
+// Sync handles POST /api/external-services/{uuid}/sync -- trigger an on-demand sync.
+func (h *ExternalServiceHandler) Sync(w http.ResponseWriter, r *http.Request) {
+	svcUUID := chi.URLParam(r, "uuid")
+
+	svc, err := h.svc.FindByUUID(r.Context(), svcUUID)
+	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			errorResponse(w, http.StatusNotFound, "external service not found")
+			return
+		}
+		h.logger.Error("finding external service for sync", "uuid", svcUUID, "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to find external service")
+		return
+	}
+
+	if h.inserter == nil {
+		errorResponse(w, http.StatusServiceUnavailable, "job queue not available")
+		return
+	}
+
+	var jobErr error
+	switch svc.Type {
+	case "kiwix":
+		_, jobErr = h.inserter.Insert(r.Context(), queue.SyncKiwixArgs{}, nil)
+	case "confluence":
+		_, jobErr = h.inserter.Insert(r.Context(), queue.SyncConfluenceArgs{}, nil)
+	default:
+		errorResponse(w, http.StatusBadRequest, "sync not supported for service type: "+svc.Type)
+		return
+	}
+	if jobErr != nil {
+		h.logger.Error("failed to enqueue sync job", "uuid", svcUUID, "type", svc.Type, "error", jobErr)
+		errorResponse(w, http.StatusInternalServerError, "failed to enqueue sync job")
+		return
+	}
+
+	jsonResponse(w, http.StatusAccepted, map[string]any{
+		"message": "Sync queued",
 	})
 }
 

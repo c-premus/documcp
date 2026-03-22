@@ -364,6 +364,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 					r.Put("/{uuid}", deps.ExternalServiceHandler.Update)
 					r.Delete("/{uuid}", deps.ExternalServiceHandler.Delete)
 					r.Post("/{uuid}/health-check", deps.ExternalServiceHandler.HealthCheck)
+				r.Post("/{uuid}/sync", deps.ExternalServiceHandler.Sync)
 				})
 			})
 			s.logger.Info("External service API endpoints registered")

@@ -43,6 +43,7 @@ func TestJobArgs_InsertOpts(t *testing.T) {
 
 	// expectedUniqueStates is the common set of states used by all scheduler/singleton jobs.
 	expectedUniqueStates := []rivertype.JobState{
+		rivertype.JobStatePending,
 		rivertype.JobStateAvailable,
 		rivertype.JobStateRunning,
 		rivertype.JobStateRetryable,

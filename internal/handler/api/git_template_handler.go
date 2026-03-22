@@ -20,8 +20,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
 
 	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"git.999.haus/chris/DocuMCP-go/internal/queue"
 	"git.999.haus/chris/DocuMCP-go/internal/security"
 )
 
@@ -37,20 +40,28 @@ type gitTemplateRepo interface {
 	FindFileByPath(ctx context.Context, templateID int64, path string) (*model.GitTemplateFile, error)
 }
 
+// gitTemplateJobInserter enqueues background jobs. Defined where consumed.
+type gitTemplateJobInserter interface {
+	Insert(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
+}
+
 // GitTemplateHandler handles REST API endpoints for git templates.
 type GitTemplateHandler struct {
-	repo   gitTemplateRepo
-	logger *slog.Logger
+	repo     gitTemplateRepo
+	inserter gitTemplateJobInserter
+	logger   *slog.Logger
 }
 
 // NewGitTemplateHandler creates a new GitTemplateHandler.
 func NewGitTemplateHandler(
 	repo gitTemplateRepo,
+	inserter gitTemplateJobInserter,
 	logger *slog.Logger,
 ) *GitTemplateHandler {
 	return &GitTemplateHandler{
-		repo:   repo,
-		logger: logger,
+		repo:     repo,
+		inserter: inserter,
+		logger:   logger,
 	}
 }
 
@@ -240,6 +251,12 @@ func (h *GitTemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.inserter != nil {
+		if _, err := h.inserter.Insert(r.Context(), queue.SyncGitTemplatesArgs{}, nil); err != nil {
+			h.logger.Warn("failed to enqueue git template sync after create", "error", err)
+		}
+	}
+
 	jsonResponse(w, http.StatusCreated, map[string]any{
 		"data":    toGitTemplateResponse(tmpl),
 		"message": "Git template created and queued for sync.",
@@ -366,6 +383,15 @@ func (h *GitTemplateHandler) Sync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.inserter == nil {
+		errorResponse(w, http.StatusServiceUnavailable, "job queue not available")
+		return
+	}
+	if _, err := h.inserter.Insert(r.Context(), queue.SyncGitTemplatesArgs{}, nil); err != nil {
+		h.logger.Error("failed to enqueue git template sync", "uuid", tmplUUID, "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to enqueue sync job")
+		return
+	}
 	jsonResponse(w, http.StatusAccepted, map[string]any{
 		"message": "Sync queued",
 	})

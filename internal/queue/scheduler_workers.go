@@ -89,6 +89,11 @@ func (w *SyncKiwixWorker) Work(ctx context.Context, _ *river.Job[SyncKiwixArgs])
 		entries, err := client.FetchCatalog(ctx)
 		if err != nil {
 			svcLogger.Error("fetching kiwix catalog", "error", err)
+			if w.Deps.HealthChecker != nil {
+				if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", 0, err.Error()); hErr != nil {
+					svcLogger.Error("updating health status", "error", hErr)
+				}
+			}
 			continue
 		}
 
@@ -105,9 +110,19 @@ func (w *SyncKiwixWorker) Work(ctx context.Context, _ *river.Job[SyncKiwixArgs])
 			Logger:    svcLogger,
 		}); err != nil {
 			svcLogger.Error(fmt.Sprintf("syncing kiwix service %d: %v", svc.ID, err))
+			if w.Deps.HealthChecker != nil {
+				if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", 0, err.Error()); hErr != nil {
+					svcLogger.Error("updating health status", "error", hErr)
+				}
+			}
 			continue
 		}
 
+		if w.Deps.HealthChecker != nil {
+			if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "healthy", 0, ""); hErr != nil {
+				svcLogger.Error("updating health status", "error", hErr)
+			}
+		}
 		svcLogger.Info("kiwix service sync completed", "entries", len(entries))
 	}
 	return nil
@@ -156,6 +171,11 @@ func (w *SyncConfluenceWorker) Work(ctx context.Context, _ *river.Job[SyncConflu
 		spaces, err := client.ListSpaces(ctx, "", "", 0)
 		if err != nil {
 			svcLogger.Error("listing confluence spaces", "error", err)
+			if w.Deps.HealthChecker != nil {
+				if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", 0, err.Error()); hErr != nil {
+					svcLogger.Error("updating health status", "error", hErr)
+				}
+			}
 			continue
 		}
 
@@ -172,9 +192,19 @@ func (w *SyncConfluenceWorker) Work(ctx context.Context, _ *river.Job[SyncConflu
 			Logger:    svcLogger,
 		}); err != nil {
 			svcLogger.Error(fmt.Sprintf("syncing confluence service %d: %v", svc.ID, err))
+			if w.Deps.HealthChecker != nil {
+				if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", 0, err.Error()); hErr != nil {
+					svcLogger.Error("updating health status", "error", hErr)
+				}
+			}
 			continue
 		}
 
+		if w.Deps.HealthChecker != nil {
+			if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "healthy", 0, ""); hErr != nil {
+				svcLogger.Error("updating health status", "error", hErr)
+			}
+		}
 		svcLogger.Info("confluence service sync completed", "spaces", len(spaces))
 	}
 	return nil
