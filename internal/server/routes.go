@@ -97,7 +97,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	// Global middleware applied to all routes (must be defined before any routes).
 	r.Use(BlockSensitiveFiles)
 	r.Use(MaxBodySize(1 * 1024 * 1024)) // 1 MB default body limit (excludes multipart)
-	r.Use(TimeoutExcept(60*time.Second, "/documcp"))
+	r.Use(TimeoutExcept(60*time.Second, "/documcp", "/api/admin/events/stream"))
 
 	// MCP endpoint — timeout excluded above (SSE streams must stay open indefinitely).
 	if deps.MCPHandler != nil {

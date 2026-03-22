@@ -61,6 +61,18 @@ func (eb *EventBus) Unsubscribe(id string) {
 	}
 }
 
+// Close unsubscribes all current subscribers by closing their channels.
+// SSE handlers watching those channels will exit cleanly, allowing
+// http.Server.Shutdown to complete without waiting for the full timeout.
+func (eb *EventBus) Close() {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+	for id, ch := range eb.subscribers {
+		close(ch)
+		delete(eb.subscribers, id)
+	}
+}
+
 // Publish sends an event to all subscribers. Non-blocking: drops the event
 // if a subscriber's buffer is full.
 func (eb *EventBus) Publish(event Event) {
