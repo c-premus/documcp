@@ -4,6 +4,7 @@ package oidc
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
 	"encoding/gob"
@@ -150,9 +151,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	session, _ := h.store.Get(r, sessionName)
 
-	// Verify state
+	// Verify state (timing-safe comparison to prevent timing attacks).
 	expectedState, _ := session.Values["oidc_state"].(string)
-	if r.URL.Query().Get("state") != expectedState || expectedState == "" {
+	actualState := r.URL.Query().Get("state")
+	if expectedState == "" || subtle.ConstantTimeCompare([]byte(actualState), []byte(expectedState)) != 1 {
 		http.Error(w, "Invalid state parameter", http.StatusBadRequest)
 		return
 	}

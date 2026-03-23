@@ -615,7 +615,7 @@ func (a *docStatusAdapter) FindByStatus(ctx context.Context, status string) ([]q
 // deriveKey uses HKDF-SHA256 to derive a subkey from a master secret.
 // This ensures different keys for different purposes (e.g. CSRF vs sessions).
 func deriveKey(secret []byte, info string, length int) ([]byte, error) {
-	r := hkdf.New(sha256.New, secret, nil, []byte(info))
+	r := hkdf.New(sha256.New, secret, []byte("DocuMCP-go-v1"), []byte(info))
 	key := make([]byte, length)
 	if _, err := io.ReadFull(r, key); err != nil {
 		return nil, fmt.Errorf("deriving key for %s: %w", info, err)

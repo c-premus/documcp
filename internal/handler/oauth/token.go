@@ -41,6 +41,7 @@ func (h *Handler) Token(w http.ResponseWriter, r *http.Request) {
 		req.Scope = r.FormValue("scope")
 		req.DeviceCode = r.FormValue("device_code")
 	} else {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			oauthError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
 			return
