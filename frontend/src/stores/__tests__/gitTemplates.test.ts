@@ -188,7 +188,7 @@ describe('gitTemplates store', () => {
       const result = await store.readFile('tpl-1', 'src/index.ts')
 
       expect(fetch).toHaveBeenCalledWith(
-        `/api/git-templates/tpl-1/files/${encodeURIComponent('src/index.ts')}`,
+        '/api/git-templates/tpl-1/files/src/index.ts',
         undefined,
       )
       expect(result).toEqual(fileData)
