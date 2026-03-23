@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -31,6 +32,32 @@ func SecurityHeaders(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// SafeRecoverer recovers from panics and returns a generic 500 response without
+// leaking stack traces or internal details to the client.
+func SafeRecoverer(logger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if rvr := recover(); rvr != nil {
+					reqID := middleware.GetReqID(r.Context())
+					logger.Error("panic recovered",
+						"error", rvr,
+						"stack", string(debug.Stack()),
+						"method", r.Method,
+						"path", r.URL.Path,
+						"request_id", reqID,
+					)
+					if r.Header.Get("Connection") == "Upgrade" {
+						return
+					}
+					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				}
+			}()
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // blockedFiles is the set of root-level filenames that must return 404.

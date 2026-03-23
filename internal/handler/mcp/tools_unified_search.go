@@ -7,6 +7,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
 	"github.com/c-premus/documcp/internal/dto"
 	"github.com/c-premus/documcp/internal/search"
 )
@@ -94,13 +95,22 @@ func (h *Handler) handleUnifiedSearch(
 		}
 	}
 
+	// Non-admin users can only see their own documents and public documents.
+	var indexFilters map[string]string
+	if user, _ := authmiddleware.UserFromContext(ctx); user != nil && !user.IsAdmin {
+		indexFilters = map[string]string{
+			search.IndexDocuments: fmt.Sprintf("(user_id = %d OR is_public = true)", user.ID),
+		}
+	}
+
 	start := time.Now()
 
 	resp, err := h.searcher.FederatedSearch(ctx, search.FederatedSearchParams{
-		Query:   input.Query,
-		Indexes: indexes,
-		Limit:   limit,
-		Offset:  int64(input.Offset),
+		Query:        input.Query,
+		Indexes:      indexes,
+		Limit:        limit,
+		Offset:       int64(input.Offset),
+		IndexFilters: indexFilters,
 	})
 	if err != nil {
 		return nil, unifiedSearchResponse{}, fmt.Errorf("unified search: %w", err)
