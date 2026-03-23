@@ -114,7 +114,25 @@ func New(cfg *config.Config) (*App, error) {
 		sessionSecret = hex.EncodeToString(b)
 		logger.Warn("no OAUTH_SESSION_SECRET configured, using random secret (sessions will not survive restarts)")
 	}
-	sessionStore := sessions.NewCookieStore([]byte(sessionSecret))
+	// Derive a separate encryption key for session cookies (AES-256).
+	// This ensures session data (user_id, is_admin, email) is not visible in base64.
+	sessionEncKey, err := deriveKey([]byte(sessionSecret), "session-cookie-encryption", 32)
+	if err != nil {
+		return nil, fmt.Errorf("deriving session encryption key: %w", err)
+	}
+
+	// Key rotation: gorilla CookieStore accepts alternating (auth, enc) key pairs.
+	// New keys are tried first for signing; old keys are tried as fallback for verification.
+	keyPairs := [][]byte{[]byte(sessionSecret), sessionEncKey}
+	if prev := cfg.OAuth.SessionSecretPrevious; prev != "" {
+		oldEncKey, encErr := deriveKey([]byte(prev), "session-cookie-encryption", 32)
+		if encErr != nil {
+			return nil, fmt.Errorf("deriving previous session encryption key: %w", encErr)
+		}
+		keyPairs = append(keyPairs, []byte(prev), oldEncKey)
+		logger.Info("session key rotation enabled (previous key configured)")
+	}
+	sessionStore := sessions.NewCookieStore(keyPairs...)
 	sessionStore.Options = &sessions.Options{
 		Path:     "/",
 		HttpOnly: true,

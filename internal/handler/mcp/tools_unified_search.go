@@ -2,12 +2,14 @@ package mcphandler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
+	authscope "github.com/c-premus/documcp/internal/auth/scope"
 	"github.com/c-premus/documcp/internal/dto"
 	"github.com/c-premus/documcp/internal/search"
 )
@@ -61,6 +63,9 @@ func (h *Handler) handleUnifiedSearch(
 	_ *mcp.CallToolRequest,
 	input dto.UnifiedSearchInput,
 ) (*mcp.CallToolResult, unifiedSearchResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
+		return nil, unifiedSearchResponse{}, errors.New("mcp:read scope required")
+	}
 	if h.searcher == nil {
 		return nil, unifiedSearchResponse{
 			Success:         false,

@@ -246,7 +246,7 @@ func validProdConfig() Config {
 		EncryptionKey:    "01234567890123456789012345678901", // 32 bytes
 	}
 	cfg.Database.Password = "secret"
-	cfg.OAuth.SessionSecret = "my-session-secret"
+	cfg.OAuth.SessionSecret = "my-session-secret-that-is-long-enough-for-production"
 	return cfg
 }
 

@@ -1572,6 +1572,12 @@ func TestRevokeToken(t *testing.T) {
 				}
 				return nil, sql.ErrNoRows
 			},
+			FindAccessTokenByIDFunc: func(_ context.Context, id int64) (*model.OAuthAccessToken, error) {
+				if id == 300 {
+					return &model.OAuthAccessToken{ID: 300, ClientID: testClientDBID}, nil
+				}
+				return nil, sql.ErrNoRows
+			},
 			RevokeRefreshTokenFunc: func(_ context.Context, id int64) error {
 				if id == 500 {
 					refreshRevoked = true

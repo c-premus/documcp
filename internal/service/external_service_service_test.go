@@ -86,8 +86,6 @@ func (m *mockHealthChecker) Health(_ context.Context) error {
 // Helpers
 // ---------------------------------------------------------------------------
 
-func ptrInt(i int) *int      { return &i }
-func ptrBoolES(b bool) *bool { return &b }
 
 // ---------------------------------------------------------------------------
 // TestExternalServiceService_FindByUUID
@@ -743,8 +741,8 @@ func TestExternalServiceService_Update(t *testing.T) {
 		svc := NewExternalServiceService(repo, nil, nil, discardLogger())
 
 		result, err := svc.Update(context.Background(), "upd-uuid", UpdateExternalServiceParams{
-			Priority:  ptrInt(10),
-			IsEnabled: ptrBoolES(false),
+			Priority:  new(10),
+			IsEnabled: new(false),
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

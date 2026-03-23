@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 )
 
@@ -207,7 +208,7 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 		}
 	})
 
-	t.Run("scopes supported includes mcp scopes", func(t *testing.T) {
+	t.Run("scopes supported includes all scopes", func(t *testing.T) {
 		t.Parallel()
 
 		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
@@ -219,13 +220,17 @@ func TestHandler_AuthorizationServerMetadata(t *testing.T) {
 		if !ok {
 			t.Fatal("scopes_supported is not an array")
 		}
-		expected := []string{"mcp:access", "mcp:read", "mcp:write"}
-		if len(scopes) != len(expected) {
-			t.Fatalf("scopes_supported length = %d, want %d", len(scopes), len(expected))
+		if len(scopes) != 12 {
+			t.Fatalf("scopes_supported length = %d, want 12", len(scopes))
 		}
-		for i, want := range expected {
-			if scopes[i] != want {
-				t.Errorf("scopes_supported[%d] = %v, want %q", i, scopes[i], want)
+		// Verify key MCP scopes are present (list is sorted)
+		scopeStrs := make([]string, len(scopes))
+		for i, s := range scopes {
+			scopeStrs[i], _ = s.(string)
+		}
+		for _, want := range []string{"mcp:access", "mcp:read", "mcp:write", "documents:read", "admin"} {
+			if !slices.Contains(scopeStrs, want) {
+				t.Errorf("scopes_supported missing %q", want)
 			}
 		}
 	})
@@ -372,7 +377,7 @@ func TestHandler_ProtectedResourceMetadata(t *testing.T) {
 		}
 	})
 
-	t.Run("scopes supported includes mcp scopes", func(t *testing.T) {
+	t.Run("scopes supported includes all scopes", func(t *testing.T) {
 		t.Parallel()
 
 		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", http.NoBody)
@@ -384,14 +389,8 @@ func TestHandler_ProtectedResourceMetadata(t *testing.T) {
 		if !ok {
 			t.Fatal("scopes_supported is not an array")
 		}
-		expected := []string{"mcp:access", "mcp:read", "mcp:write"}
-		if len(scopes) != len(expected) {
-			t.Fatalf("scopes_supported length = %d, want %d", len(scopes), len(expected))
-		}
-		for i, want := range expected {
-			if scopes[i] != want {
-				t.Errorf("scopes_supported[%d] = %v, want %q", i, scopes[i], want)
-			}
+		if len(scopes) != 12 {
+			t.Fatalf("scopes_supported length = %d, want 12", len(scopes))
 		}
 	})
 

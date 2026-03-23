@@ -92,7 +92,6 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.DiscardHandler)
 }
 
-func ptrBool(b bool) *bool { return &b }
 
 // ---------------------------------------------------------------------------
 // TestDocumentService_FindByUUID
@@ -413,7 +412,7 @@ func TestDocumentService_Update(t *testing.T) {
 		svc := NewDocumentService(repo, discardLogger())
 
 		doc, err := svc.Update(context.Background(), "update-uuid", UpdateDocumentParams{
-			IsPublic: ptrBool(true),
+			IsPublic: new(true),
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

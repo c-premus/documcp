@@ -56,8 +56,8 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	session, _ := h.store.Get(r, sessionName)
 	userID, ok := session.Values["user_id"].(int64)
 	if !ok || userID == 0 {
-		// Redirect to login with return URL
-		http.Redirect(w, r, "/auth/login?redirect="+r.URL.RequestURI(), http.StatusFound)
+		// Redirect to login with return URL (escape to prevent open redirect)
+		http.Redirect(w, r, "/auth/login?redirect="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
 		return
 	}
 

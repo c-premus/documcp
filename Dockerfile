@@ -1,5 +1,6 @@
 # Stage 1: Frontend build
-FROM node:22-alpine AS frontend
+# node:22-alpine — pinned for supply chain integrity
+FROM node:22-alpine@sha256:92d51e5f20b7ff58faa5a969af1a1cec6cbec3fbff7e0f523242b9b5c85ad887 AS frontend
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -8,7 +9,8 @@ COPY docs/contracts/openapi.yaml ../docs/contracts/openapi.yaml
 RUN npm run build
 
 # Stage 2: Go build
-FROM golang:1.26.1-alpine AS builder
+# golang:1.26.1-alpine — pinned for supply chain integrity
+FROM golang:1.26.1-alpine@sha256:d337ecb3075f0ec76d81652b3fa52af47c3eba6c8ba9f93b835752df7ce62946 AS builder
 
 # Install build dependencies.
 # - git: required for go mod download with private modules
@@ -37,7 +39,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o /bin/documcp ./cmd/server
 
 # Stage 3: Runtime — Alpine with poppler-utils for PDF extraction.
-FROM alpine:3.21
+# alpine:3.21 — pinned for supply chain integrity
+FROM alpine:3.21@sha256:22e0ec13c0db6b3e1ba3280e831fc50ba7bffe58e81f31670a64b1afede247bc
 
 # Install runtime dependencies for PDF text extraction and TLS.
 RUN apk add --no-cache poppler-utils ca-certificates \
