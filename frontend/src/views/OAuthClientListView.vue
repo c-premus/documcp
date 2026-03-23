@@ -207,7 +207,7 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     meta: { className: 'w-36 hidden md:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string | null>()
-      if (value === null) return '—'
+      if (!value) return '—'
       return formatDistanceToNow(new Date(value), { addSuffix: true })
     },
   },
