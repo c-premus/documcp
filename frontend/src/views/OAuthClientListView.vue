@@ -139,18 +139,17 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     accessorKey: 'client_id',
     header: 'Client ID',
     enableSorting: false,
+    meta: { className: 'hidden lg:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
-      if (value.length <= 24) {
-        return value
-      }
-      return `${value.slice(0, 24)}...`
+      return h('span', { class: 'block max-w-[12rem] truncate font-mono text-xs', title: value }, value)
     },
   },
   {
     accessorKey: 'grant_types',
     header: 'Grant Types',
     enableSorting: false,
+    meta: { className: 'hidden sm:table-cell' },
     cell: ({ getValue }) => {
       const types = getValue<string[]>()
       return h(
@@ -173,6 +172,7 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     accessorKey: 'is_active',
     header: 'Status',
     enableSorting: false,
+    meta: { className: 'w-28' },
     cell: ({ getValue }) => {
       const active = getValue<boolean>()
       return h(StatusBadge, {
@@ -184,6 +184,7 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     accessorKey: 'token_endpoint_auth_method',
     header: 'Auth Method',
     enableSorting: false,
+    meta: { className: 'hidden lg:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
       return value.replace(/_/g, ' ')
@@ -193,6 +194,7 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     accessorKey: 'created_at',
     header: 'Created',
     enableSorting: true,
+    meta: { className: 'w-36 hidden md:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
       return formatDistanceToNow(new Date(value), { addSuffix: true })
@@ -202,6 +204,7 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     accessorKey: 'last_used_at',
     header: 'Last Used',
     enableSorting: true,
+    meta: { className: 'w-36 hidden md:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string | null>()
       if (value === null) return '—'
@@ -212,6 +215,7 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     id: 'actions',
     header: 'Actions',
     enableSorting: false,
+    meta: { className: 'w-20' },
     cell: ({ row }) => {
       const client = row.original
       if (!client.is_active) {
@@ -243,13 +247,13 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
 <template>
   <div>
     <!-- Toolbar -->
-    <div class="flex items-center gap-4 mb-4">
+    <div class="flex flex-wrap items-center gap-2 sm:gap-4 mb-4">
       <h1 class="text-2xl font-bold text-text-primary">OAuth Clients</h1>
 
       <SearchInput
         v-model="searchQuery"
         placeholder="Search clients..."
-        class="flex-1 max-w-sm"
+        class="w-full sm:w-auto sm:max-w-sm"
       />
 
       <button

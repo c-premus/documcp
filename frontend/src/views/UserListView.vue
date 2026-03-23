@@ -153,13 +153,6 @@ function handleDeleteCancel(): void {
   deleteTarget.value = null
 }
 
-function truncate(value: string, maxLength: number): string {
-  if (value.length <= maxLength) {
-    return value
-  }
-  return `${value.slice(0, maxLength)}...`
-}
-
 const columns: ColumnDef<User, unknown>[] = [
   {
     accessorKey: 'name',
@@ -170,11 +163,13 @@ const columns: ColumnDef<User, unknown>[] = [
     accessorKey: 'email',
     header: 'Email',
     enableSorting: true,
+    meta: { className: 'hidden md:table-cell' },
   },
   {
     accessorKey: 'is_admin',
     header: 'Admin',
     enableSorting: false,
+    meta: { className: 'w-20' },
     cell: ({ row }) => {
       const user = row.original
       return h(Switch, {
@@ -203,15 +198,17 @@ const columns: ColumnDef<User, unknown>[] = [
     accessorKey: 'oidc_sub',
     header: 'OIDC Subject',
     enableSorting: false,
+    meta: { className: 'hidden lg:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
-      return truncate(value, 20)
+      return h('span', { class: 'block max-w-xs truncate', title: value }, value)
     },
   },
   {
     accessorKey: 'created_at',
     header: 'Created',
     enableSorting: true,
+    meta: { className: 'w-36 hidden md:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
       return formatDistanceToNow(new Date(value), { addSuffix: true })
@@ -221,6 +218,7 @@ const columns: ColumnDef<User, unknown>[] = [
     id: 'actions',
     header: 'Actions',
     enableSorting: false,
+    meta: { className: 'w-20' },
     cell: ({ row }) => {
       return h('div', { class: 'flex items-center gap-2' }, [
         h(
@@ -260,13 +258,13 @@ const columns: ColumnDef<User, unknown>[] = [
 <template>
   <div>
     <!-- Toolbar -->
-    <div class="flex items-center gap-4 mb-4">
+    <div class="flex flex-wrap items-center gap-2 sm:gap-4 mb-4">
       <h1 class="text-2xl font-bold text-text-primary">Users</h1>
 
       <SearchInput
         v-model="searchQuery"
         placeholder="Search users..."
-        class="flex-1 max-w-sm"
+        class="w-full sm:w-auto sm:max-w-sm"
       />
 
       <button

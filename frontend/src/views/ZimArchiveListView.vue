@@ -47,11 +47,13 @@ const columns: ColumnDef<ZimArchive, unknown>[] = [
     accessorKey: 'title',
     header: 'Title',
     enableSorting: true,
+    meta: { className: 'hidden lg:table-cell' },
   },
   {
     accessorKey: 'category',
     header: 'Category',
     enableSorting: true,
+    meta: { className: 'w-28' },
     cell: ({ getValue }) => {
       const value = getValue<string | undefined>()
       if (!value) {
@@ -63,8 +65,8 @@ const columns: ColumnDef<ZimArchive, unknown>[] = [
   {
     accessorKey: 'language',
     header: 'Language',
-    size: 80,
     enableSorting: true,
+    meta: { className: 'w-16 hidden sm:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
       return value.toUpperCase()
@@ -74,6 +76,7 @@ const columns: ColumnDef<ZimArchive, unknown>[] = [
     accessorKey: 'article_count',
     header: 'Articles',
     enableSorting: true,
+    meta: { className: 'w-24 hidden md:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<number>()
       return value.toLocaleString()
@@ -83,11 +86,13 @@ const columns: ColumnDef<ZimArchive, unknown>[] = [
     accessorKey: 'file_size_human',
     header: 'Size',
     enableSorting: false,
+    meta: { className: 'w-24 hidden md:table-cell' },
   },
   {
     accessorKey: 'last_synced_at',
     header: 'Last Synced',
     enableSorting: true,
+    meta: { className: 'w-36 hidden md:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string | undefined>()
       if (!value) {
@@ -127,13 +132,13 @@ function handleRowClick(row: ZimArchive): void {
 <template>
   <div>
     <!-- Toolbar -->
-    <div class="flex items-center gap-4 mb-4">
+    <div class="flex flex-wrap items-center gap-2 sm:gap-4 mb-4">
       <h1 class="text-2xl font-bold text-text-primary">ZIM Archives</h1>
 
       <SearchInput
         v-model="search"
         placeholder="Search archives..."
-        class="flex-1 max-w-sm"
+        class="w-full sm:w-auto sm:max-w-sm"
       />
 
       <label for="zim-category-filter" class="sr-only">Category</label>
