@@ -15,12 +15,15 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/queue"
@@ -1120,6 +1123,290 @@ func TestGitTemplateHandler_ReadFile_EmptyPath(t *testing.T) {
 		if msg := body["message"]; msg != "file path is required" {
 			t.Errorf("message = %v, want 'file path is required'", msg)
 		}
+	})
+}
+
+func TestGitTemplateHandler_ReadFile(t *testing.T) {
+	t.Parallel()
+
+	// Shared template returned by FindByUUID in the "success" cases.
+	validTemplate := &model.GitTemplate{ID: 42, UUID: "uuid-1", Name: "test-template"}
+
+	// Shared file returned by FindFileByPath in the "success" cases.
+	validFile := &model.GitTemplateFile{
+		ID:          1,
+		GitTemplateID: 42,
+		Path:        "src/main.go",
+		Filename:    "main.go",
+		Content:     sql.NullString{String: "package main", Valid: true},
+		SizeBytes:   12,
+		IsEssential: true,
+	}
+
+	t.Run("returns 404 when template not found", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return nil, sql.ErrNoRows
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/uuid-1/files/src/main.go", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1", "*": "src/main.go"})
+		rr := httptest.NewRecorder()
+
+		h.ReadFile(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rr.Body).Decode(&body))
+		assert.Equal(t, "git template not found", body["message"])
+	})
+
+	t.Run("returns 500 for unexpected FindByUUID error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/uuid-1/files/src/main.go", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1", "*": "src/main.go"})
+		rr := httptest.NewRecorder()
+
+		h.ReadFile(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+	})
+
+	t.Run("returns 404 when file not found in template", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return validTemplate, nil
+			},
+			FindFileByPathFn: func(_ context.Context, _ int64, _ string) (*model.GitTemplateFile, error) {
+				return nil, sql.ErrNoRows
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/uuid-1/files/missing.txt", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1", "*": "missing.txt"})
+		rr := httptest.NewRecorder()
+
+		h.ReadFile(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rr.Body).Decode(&body))
+		assert.Contains(t, body["message"], "not found in template")
+	})
+
+	t.Run("returns 500 for unexpected FindFileByPath error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return validTemplate, nil
+			},
+			FindFileByPathFn: func(_ context.Context, _ int64, _ string) (*model.GitTemplateFile, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/uuid-1/files/src/main.go", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1", "*": "src/main.go"})
+		rr := httptest.NewRecorder()
+
+		h.ReadFile(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+	})
+
+	t.Run("returns 200 with file content on success", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return validTemplate, nil
+			},
+			FindFileByPathFn: func(_ context.Context, _ int64, _ string) (*model.GitTemplateFile, error) {
+				return validFile, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/uuid-1/files/src/main.go", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1", "*": "src/main.go"})
+		rr := httptest.NewRecorder()
+
+		h.ReadFile(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rr.Body).Decode(&body))
+		data := body["data"].(map[string]any)
+		assert.Equal(t, "package main", data["content"])
+		assert.Equal(t, "src/main.go", data["path"])
+		assert.Equal(t, "main.go", data["filename"])
+	})
+
+	t.Run("returns 400 for invalid variables JSON", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return validTemplate, nil
+			},
+			FindFileByPathFn: func(_ context.Context, _ int64, _ string) (*model.GitTemplateFile, error) {
+				return validFile, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		reqURL := "/api/git-templates/uuid-1/files/src/main.go?variables=" + url.QueryEscape("notjson")
+		req := httptest.NewRequest(http.MethodGet, reqURL, http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1", "*": "src/main.go"})
+		rr := httptest.NewRecorder()
+
+		h.ReadFile(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rr.Body).Decode(&body))
+		assert.Equal(t, "invalid variables JSON", body["message"])
+	})
+
+	t.Run("returns 200 with substituted variables", func(t *testing.T) {
+		t.Parallel()
+
+		fileWithVar := &model.GitTemplateFile{
+			ID:          2,
+			GitTemplateID: 42,
+			Path:        "README.md",
+			Filename:    "README.md",
+			Content:     sql.NullString{String: "Hello, {{name}}!", Valid: true},
+			SizeBytes:   17,
+		}
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return validTemplate, nil
+			},
+			FindFileByPathFn: func(_ context.Context, _ int64, _ string) (*model.GitTemplateFile, error) {
+				return fileWithVar, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		reqURL := "/api/git-templates/uuid-1/files/README.md?variables=" + url.QueryEscape(`{"name":"World"}`)
+		req := httptest.NewRequest(http.MethodGet, reqURL, http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1", "*": "README.md"})
+		rr := httptest.NewRecorder()
+
+		h.ReadFile(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rr.Body).Decode(&body))
+		data := body["data"].(map[string]any)
+		assert.Equal(t, "Hello, World!", data["content"])
+	})
+
+	t.Run("response includes unresolved_variables when present", func(t *testing.T) {
+		t.Parallel()
+
+		fileWithVars := &model.GitTemplateFile{
+			ID:          3,
+			GitTemplateID: 42,
+			Path:        "config.yml",
+			Filename:    "config.yml",
+			Content:     sql.NullString{String: "{{found}} {{missing}}", Valid: true},
+			SizeBytes:   21,
+		}
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return validTemplate, nil
+			},
+			FindFileByPathFn: func(_ context.Context, _ int64, _ string) (*model.GitTemplateFile, error) {
+				return fileWithVars, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		reqURL := "/api/git-templates/uuid-1/files/config.yml?variables=" + url.QueryEscape(`{"found":"yes"}`)
+		req := httptest.NewRequest(http.MethodGet, reqURL, http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1", "*": "config.yml"})
+		rr := httptest.NewRecorder()
+
+		h.ReadFile(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rr.Body).Decode(&body))
+		unresolved, ok := body["unresolved_variables"].([]any)
+		require.True(t, ok, "unresolved_variables key should be present")
+		assert.Contains(t, unresolved, "missing")
+	})
+
+	t.Run("returns 200 without unresolved_variables key when all resolved", func(t *testing.T) {
+		t.Parallel()
+
+		fileWithVar := &model.GitTemplateFile{
+			ID:          4,
+			GitTemplateID: 42,
+			Path:        "greeting.txt",
+			Filename:    "greeting.txt",
+			Content:     sql.NullString{String: "Hi {{name}}", Valid: true},
+			SizeBytes:   11,
+		}
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return validTemplate, nil
+			},
+			FindFileByPathFn: func(_ context.Context, _ int64, _ string) (*model.GitTemplateFile, error) {
+				return fileWithVar, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		reqURL := "/api/git-templates/uuid-1/files/greeting.txt?variables=" + url.QueryEscape(`{"name":"Alice"}`)
+		req := httptest.NewRequest(http.MethodGet, reqURL, http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1", "*": "greeting.txt"})
+		rr := httptest.NewRecorder()
+
+		h.ReadFile(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(rr.Body).Decode(&body))
+		_, hasUnresolved := body["unresolved_variables"]
+		assert.False(t, hasUnresolved, "unresolved_variables key should not be present when all variables are resolved")
+	})
+
+	t.Run("passes file path to FindFileByPath", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedPath string
+		var capturedTemplateID int64
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return validTemplate, nil
+			},
+			FindFileByPathFn: func(_ context.Context, templateID int64, path string) (*model.GitTemplateFile, error) {
+				capturedTemplateID = templateID
+				capturedPath = path
+				return validFile, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/uuid-1/files/deep/nested/file.go", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1", "*": "deep/nested/file.go"})
+		rr := httptest.NewRecorder()
+
+		h.ReadFile(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "deep/nested/file.go", capturedPath)
+		assert.Equal(t, int64(42), capturedTemplateID)
 	})
 }
 

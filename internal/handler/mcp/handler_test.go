@@ -3,6 +3,7 @@ package mcphandler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"testing"
@@ -1863,4 +1864,459 @@ func containsSubstring(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// makeHit builds a meilisearch.Hit from a map of arbitrary values.
+func makeHit(m map[string]any) meilisearch.Hit {
+	hit := make(meilisearch.Hit, len(m))
+	for k, v := range m {
+		raw, _ := json.Marshal(v)
+		hit[k] = json.RawMessage(raw)
+	}
+	return hit
+}
+
+// ===== Search result-building tests =====
+
+func TestHandleSearchDocumentsResults(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	t.Run("returns populated results from hits", func(t *testing.T) {
+		t.Parallel()
+		s := &mockSearcher{
+			searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
+				return &meilisearch.SearchResponse{
+					Hits: meilisearch.Hits{
+						makeHit(map[string]any{
+							"uuid":        "aaa-bbb",
+							"title":       "First Doc",
+							"file_type":   "markdown",
+							"description": "desc one",
+							"word_count":  float64(500),
+						}),
+						makeHit(map[string]any{
+							"uuid":        "ccc-ddd",
+							"title":       "Second Doc",
+							"file_type":   "pdf",
+							"description": "desc two",
+							"word_count":  float64(1200),
+						}),
+					},
+				}, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{searcher: s})
+
+		_, resp, err := h.handleSearchDocuments(ctx, nil, dto.SearchDocumentsInput{Query: "test"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !resp.Success {
+			t.Fatal("expected Success=true")
+		}
+		if resp.Count != 2 {
+			t.Fatalf("Count = %d, want 2", resp.Count)
+		}
+		if resp.Results[0].UUID != "aaa-bbb" {
+			t.Errorf("Results[0].UUID = %q, want %q", resp.Results[0].UUID, "aaa-bbb")
+		}
+		if resp.Results[0].Title != "First Doc" {
+			t.Errorf("Results[0].Title = %q, want %q", resp.Results[0].Title, "First Doc")
+		}
+		if resp.Results[0].FileType != "markdown" {
+			t.Errorf("Results[0].FileType = %q, want %q", resp.Results[0].FileType, "markdown")
+		}
+		if resp.Results[0].Description != "desc one" {
+			t.Errorf("Results[0].Description = %q", resp.Results[0].Description)
+		}
+		if resp.Results[0].ContentLength != 500 {
+			t.Errorf("Results[0].ContentLength = %v, want 500", resp.Results[0].ContentLength)
+		}
+		if resp.Results[1].UUID != "ccc-ddd" {
+			t.Errorf("Results[1].UUID = %q, want %q", resp.Results[1].UUID, "ccc-ddd")
+		}
+	})
+
+	t.Run("result includes tags from hit", func(t *testing.T) {
+		t.Parallel()
+		s := &mockSearcher{
+			searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
+				return &meilisearch.SearchResponse{
+					Hits: meilisearch.Hits{
+						makeHit(map[string]any{
+							"uuid":  "tag-doc",
+							"title": "Tagged",
+							"tags":  []string{"go", "test"},
+						}),
+					},
+				}, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{searcher: s})
+
+		_, resp, err := h.handleSearchDocuments(ctx, nil, dto.SearchDocumentsInput{Query: "tagged"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(resp.Results) != 1 {
+			t.Fatalf("Results length = %d, want 1", len(resp.Results))
+		}
+		if len(resp.Results[0].Tags) != 2 {
+			t.Fatalf("Tags length = %d, want 2", len(resp.Results[0].Tags))
+		}
+		if resp.Results[0].Tags[0] != "go" || resp.Results[0].Tags[1] != "test" {
+			t.Errorf("Tags = %v, want [go test]", resp.Results[0].Tags)
+		}
+	})
+
+	t.Run("include_content=true populates content field", func(t *testing.T) {
+		t.Parallel()
+		s := &mockSearcher{
+			searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
+				return &meilisearch.SearchResponse{
+					Hits: meilisearch.Hits{
+						makeHit(map[string]any{
+							"uuid":    "content-doc",
+							"title":   "With Content",
+							"content": "full document content here",
+						}),
+					},
+				}, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{searcher: s})
+
+		_, resp, err := h.handleSearchDocuments(ctx, nil, dto.SearchDocumentsInput{
+			Query:          "content",
+			IncludeContent: true,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Results[0].Content != "full document content here" {
+			t.Errorf("Content = %q, want %q", resp.Results[0].Content, "full document content here")
+		}
+	})
+
+	t.Run("include_content=false omits content field", func(t *testing.T) {
+		t.Parallel()
+		s := &mockSearcher{
+			searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
+				return &meilisearch.SearchResponse{
+					Hits: meilisearch.Hits{
+						makeHit(map[string]any{
+							"uuid":    "no-content-doc",
+							"title":   "Without Content",
+							"content": "this should be omitted",
+						}),
+					},
+				}, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{searcher: s})
+
+		_, resp, err := h.handleSearchDocuments(ctx, nil, dto.SearchDocumentsInput{
+			Query:          "content",
+			IncludeContent: false,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Results[0].Content != "" {
+			t.Errorf("Content = %q, want empty string", resp.Results[0].Content)
+		}
+	})
+
+	t.Run("invalid file_type filter is silently ignored", func(t *testing.T) {
+		t.Parallel()
+		var capturedFilter string
+		s := &mockSearcher{
+			searchFn: func(_ context.Context, params search.SearchParams) (*meilisearch.SearchResponse, error) {
+				capturedFilter = params.Filters
+				return &meilisearch.SearchResponse{}, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{searcher: s})
+
+		_, _, err := h.handleSearchDocuments(ctx, nil, dto.SearchDocumentsInput{
+			Query:    "test",
+			FileType: "exe",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if containsStr(capturedFilter, "file_type") {
+			t.Errorf("filter should not contain file_type for invalid type, got %q", capturedFilter)
+		}
+	})
+}
+
+func TestHandleUnifiedSearchResults(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	t.Run("returns populated results from hits", func(t *testing.T) {
+		t.Parallel()
+		s := &mockSearcher{
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
+				return &meilisearch.MultiSearchResponse{
+					Hits: meilisearch.Hits{
+						makeHit(map[string]any{
+							"uuid":        "fed-aaa",
+							"title":       "Federated Doc",
+							"description": "a federated result",
+							"_federation": map[string]any{
+								"indexUid": search.IndexDocuments,
+							},
+							"_rankingScore": 0.95,
+						}),
+					},
+				}, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{searcher: s})
+
+		_, resp, err := h.handleUnifiedSearch(ctx, nil, dto.UnifiedSearchInput{Query: "test"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !resp.Success {
+			t.Fatal("expected Success=true")
+		}
+		if resp.Total != 1 {
+			t.Fatalf("Total = %d, want 1", resp.Total)
+		}
+		if resp.Results[0].Source != "document" {
+			t.Errorf("Source = %q, want %q", resp.Results[0].Source, "document")
+		}
+		if resp.Results[0].UUID != "fed-aaa" {
+			t.Errorf("UUID = %q, want %q", resp.Results[0].UUID, "fed-aaa")
+		}
+		if resp.Results[0].Title != "Federated Doc" {
+			t.Errorf("Title = %q, want %q", resp.Results[0].Title, "Federated Doc")
+		}
+		if resp.Results[0].Description != "a federated result" {
+			t.Errorf("Description = %q", resp.Results[0].Description)
+		}
+		if resp.Results[0].Score != 0.95 {
+			t.Errorf("Score = %v, want 0.95", resp.Results[0].Score)
+		}
+	})
+
+	t.Run("detects source from document fallback field", func(t *testing.T) {
+		t.Parallel()
+		s := &mockSearcher{
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
+				return &meilisearch.MultiSearchResponse{
+					Hits: meilisearch.Hits{
+						makeHit(map[string]any{
+							"uuid":      "fallback-doc",
+							"title":     "Fallback Doc",
+							"file_type": "markdown",
+						}),
+					},
+				}, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{searcher: s})
+
+		_, resp, err := h.handleUnifiedSearch(ctx, nil, dto.UnifiedSearchInput{Query: "test"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Results[0].Source != "document" {
+			t.Errorf("Source = %q, want %q", resp.Results[0].Source, "document")
+		}
+	})
+
+	t.Run("detects source from zim_archive fallback field", func(t *testing.T) {
+		t.Parallel()
+		s := &mockSearcher{
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
+				return &meilisearch.MultiSearchResponse{
+					Hits: meilisearch.Hits{
+						makeHit(map[string]any{
+							"uuid":          "fallback-zim",
+							"title":         "Fallback ZIM",
+							"article_count": float64(100),
+						}),
+					},
+				}, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{searcher: s})
+
+		_, resp, err := h.handleUnifiedSearch(ctx, nil, dto.UnifiedSearchInput{Query: "test"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Results[0].Source != "zim_archive" {
+			t.Errorf("Source = %q, want %q", resp.Results[0].Source, "zim_archive")
+		}
+	})
+
+	t.Run("detects source from git_template fallback field", func(t *testing.T) {
+		t.Parallel()
+		s := &mockSearcher{
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
+				return &meilisearch.MultiSearchResponse{
+					Hits: meilisearch.Hits{
+						makeHit(map[string]any{
+							"uuid":           "fallback-git",
+							"title":          "Fallback Git",
+							"readme_content": "# README",
+						}),
+					},
+				}, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{searcher: s})
+
+		_, resp, err := h.handleUnifiedSearch(ctx, nil, dto.UnifiedSearchInput{Query: "test"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Results[0].Source != "git_template" {
+			t.Errorf("Source = %q, want %q", resp.Results[0].Source, "git_template")
+		}
+	})
+
+	t.Run("uses title fallback from name field", func(t *testing.T) {
+		t.Parallel()
+		s := &mockSearcher{
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
+				return &meilisearch.MultiSearchResponse{
+					Hits: meilisearch.Hits{
+						makeHit(map[string]any{
+							"uuid":           "name-fallback",
+							"name":           "Template Name",
+							"readme_content": "readme",
+						}),
+					},
+				}, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{searcher: s})
+
+		_, resp, err := h.handleUnifiedSearch(ctx, nil, dto.UnifiedSearchInput{Query: "test"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Results[0].Title != "Template Name" {
+			t.Errorf("Title = %q, want %q", resp.Results[0].Title, "Template Name")
+		}
+	})
+
+	t.Run("sources_searched reflects hit sources", func(t *testing.T) {
+		t.Parallel()
+		s := &mockSearcher{
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
+				return &meilisearch.MultiSearchResponse{
+					Hits: meilisearch.Hits{
+						makeHit(map[string]any{
+							"uuid":      "src-doc",
+							"title":     "Doc",
+							"file_type": "markdown",
+						}),
+						makeHit(map[string]any{
+							"uuid":           "src-git",
+							"title":          "Git",
+							"readme_content": "readme",
+						}),
+					},
+				}, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{searcher: s})
+
+		_, resp, err := h.handleUnifiedSearch(ctx, nil, dto.UnifiedSearchInput{Query: "test"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(resp.SourcesSearched) != 2 {
+			t.Fatalf("SourcesSearched length = %d, want 2", len(resp.SourcesSearched))
+		}
+		foundDoc, foundGit := false, false
+		for _, s := range resp.SourcesSearched {
+			if s == "document" {
+				foundDoc = true
+			}
+			if s == "git_template" {
+				foundGit = true
+			}
+		}
+		if !foundDoc {
+			t.Error("SourcesSearched missing 'document'")
+		}
+		if !foundGit {
+			t.Error("SourcesSearched missing 'git_template'")
+		}
+	})
 }
