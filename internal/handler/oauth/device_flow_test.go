@@ -528,3 +528,267 @@ func TestHandler_DeviceApprove(t *testing.T) {
 		assert.Equal(t, "denied", deniedStatus)
 	})
 }
+
+func TestHandler_DeviceVerificationSubmit(t *testing.T) {
+	t.Parallel()
+
+	t.Run("redirects to login when not authenticated", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
+
+		formBody := "user_code=ABCD-EFGH"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/device", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.DeviceVerificationSubmit(rr, req)
+
+		assert.Equal(t, http.StatusFound, rr.Code)
+		assert.Contains(t, rr.Header().Get("Location"), "/auth/login")
+	})
+
+	t.Run("returns error HTML for empty user_code", func(t *testing.T) {
+		t.Parallel()
+		h, store := newHandlerWithRepo(&mockOAuthRepo{})
+		store.session.Values["user_id"] = int64(42)
+
+		formBody := "user_code="
+		req := httptest.NewRequest(http.MethodPost, "/oauth/device", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.DeviceVerificationSubmit(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Body.String(), "Invalid or expired")
+	})
+
+	t.Run("returns error HTML for user_code longer than 9 chars", func(t *testing.T) {
+		t.Parallel()
+		h, store := newHandlerWithRepo(&mockOAuthRepo{})
+		store.session.Values["user_id"] = int64(42)
+
+		formBody := "user_code=ABCDEFGHIJ"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/device", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.DeviceVerificationSubmit(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Body.String(), "Invalid or expired")
+	})
+
+	t.Run("returns error HTML when device code not found", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			FindDeviceCodeByUserCodeFunc: func(_ context.Context, _ string) (*model.OAuthDeviceCode, error) {
+				return nil, errors.New("not found")
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+
+		formBody := "user_code=ABCD-EFGH"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/device", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.DeviceVerificationSubmit(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Body.String(), "Invalid or expired")
+	})
+
+	t.Run("returns error HTML when device code is expired", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			FindDeviceCodeByUserCodeFunc: func(_ context.Context, userCode string) (*model.OAuthDeviceCode, error) {
+				return &model.OAuthDeviceCode{
+					ID:        1,
+					ClientID:  10,
+					UserCode:  userCode,
+					Status:    "pending",
+					ExpiresAt: time.Now().Add(-1 * time.Minute),
+				}, nil
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+
+		formBody := "user_code=ABCD-EFGH"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/device", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.DeviceVerificationSubmit(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Body.String(), "expired")
+	})
+
+	t.Run("returns error HTML when device code is not pending", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			FindDeviceCodeByUserCodeFunc: func(_ context.Context, userCode string) (*model.OAuthDeviceCode, error) {
+				return &model.OAuthDeviceCode{
+					ID:        1,
+					ClientID:  10,
+					UserCode:  userCode,
+					Status:    "authorized",
+					ExpiresAt: time.Now().Add(15 * time.Minute),
+				}, nil
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+
+		formBody := "user_code=ABCD-EFGH"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/device", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.DeviceVerificationSubmit(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Body.String(), "already been used")
+	})
+
+	t.Run("returns error HTML when client lookup fails", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			FindDeviceCodeByUserCodeFunc: func(_ context.Context, userCode string) (*model.OAuthDeviceCode, error) {
+				return &model.OAuthDeviceCode{
+					ID:        1,
+					ClientID:  10,
+					UserCode:  userCode,
+					Status:    "pending",
+					ExpiresAt: time.Now().Add(15 * time.Minute),
+				}, nil
+			},
+			FindClientByIDFunc: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
+				return nil, errors.New("client not found")
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+
+		formBody := "user_code=ABCD-EFGH"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/device", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.DeviceVerificationSubmit(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Body.String(), "error occurred")
+	})
+
+	t.Run("shows consent screen for valid pending device code", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			FindDeviceCodeByUserCodeFunc: func(_ context.Context, userCode string) (*model.OAuthDeviceCode, error) {
+				return &model.OAuthDeviceCode{
+					ID:        1,
+					ClientID:  10,
+					UserCode:  userCode,
+					Status:    "pending",
+					ExpiresAt: time.Now().Add(15 * time.Minute),
+				}, nil
+			},
+			FindClientByIDFunc: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:         10,
+					ClientID:   "test-client",
+					ClientName: "MyApp",
+					IsActive:   true,
+				}, nil
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+
+		formBody := "user_code=ABCD-EFGH"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/device", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.DeviceVerificationSubmit(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Header().Get("Content-Type"), "text/html")
+		assert.Contains(t, rr.Body.String(), "MyApp")
+	})
+
+	t.Run("consent screen includes scope when present", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			FindDeviceCodeByUserCodeFunc: func(_ context.Context, userCode string) (*model.OAuthDeviceCode, error) {
+				return &model.OAuthDeviceCode{
+					ID:        1,
+					ClientID:  10,
+					UserCode:  userCode,
+					Status:    "pending",
+					ExpiresAt: time.Now().Add(15 * time.Minute),
+					Scope:     sql.NullString{String: "mcp:access", Valid: true},
+				}, nil
+			},
+			FindClientByIDFunc: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:         10,
+					ClientID:   "test-client",
+					ClientName: "MyApp",
+					IsActive:   true,
+				}, nil
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+
+		formBody := "user_code=ABCD-EFGH"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/device", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.DeviceVerificationSubmit(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Body.String(), "mcp:access")
+	})
+
+	t.Run("consent screen works when scope is null", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			FindDeviceCodeByUserCodeFunc: func(_ context.Context, userCode string) (*model.OAuthDeviceCode, error) {
+				return &model.OAuthDeviceCode{
+					ID:        1,
+					ClientID:  10,
+					UserCode:  userCode,
+					Status:    "pending",
+					ExpiresAt: time.Now().Add(15 * time.Minute),
+					Scope:     sql.NullString{Valid: false},
+				}, nil
+			},
+			FindClientByIDFunc: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:         10,
+					ClientID:   "test-client",
+					ClientName: "MyApp",
+					IsActive:   true,
+				}, nil
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+
+		formBody := "user_code=ABCD-EFGH"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/device", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.DeviceVerificationSubmit(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Header().Get("Content-Type"), "text/html")
+	})
+}
