@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -497,6 +498,11 @@ func (h *GitTemplateHandler) ReadFile(w http.ResponseWriter, r *http.Request) {
 	if filePath == "" {
 		errorResponse(w, http.StatusBadRequest, "file path is required")
 		return
+	}
+
+	// Decode percent-encoded path segments (e.g. %2F -> /).
+	if decoded, err := url.PathUnescape(filePath); err == nil {
+		filePath = decoded
 	}
 
 	tmpl, err := h.repo.FindByUUID(r.Context(), tmplUUID)
