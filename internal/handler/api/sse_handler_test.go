@@ -26,7 +26,7 @@ import (
 
 func newTestSSEHandler() (*SSEHandler, *queue.EventBus) {
 	eb := queue.NewEventBus()
-	h := NewSSEHandler(eb)
+	h := NewSSEHandler(eb, 15*time.Second)
 	return h, eb
 }
 
@@ -146,7 +146,7 @@ func TestNewSSEHandler(t *testing.T) {
 	t.Parallel()
 
 	eb := queue.NewEventBus()
-	h := NewSSEHandler(eb)
+	h := NewSSEHandler(eb, 15*time.Second)
 
 	assert.NotNil(t, h, "NewSSEHandler should return a non-nil handler")
 }

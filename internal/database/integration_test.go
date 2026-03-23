@@ -77,7 +77,7 @@ func TestNew_InvalidDSN(t *testing.T) {
 func TestNewPgxPool_Success(t *testing.T) {
 	ctx := context.Background()
 
-	pool, err := database.NewPgxPool(ctx, testDSN, 5)
+	pool, err := database.NewPgxPool(ctx, testDSN, 5, 2, 30*time.Minute, 5*time.Minute)
 	require.NoError(t, err)
 	defer pool.Close()
 
@@ -87,7 +87,7 @@ func TestNewPgxPool_Success(t *testing.T) {
 func TestNewPgxPool_InvalidDSN(t *testing.T) {
 	ctx := context.Background()
 
-	_, err := database.NewPgxPool(ctx, "postgres://invalid:invalid@localhost:1/nope?sslmode=disable", 5)
+	_, err := database.NewPgxPool(ctx, "postgres://invalid:invalid@localhost:1/nope?sslmode=disable", 5, 2, 30*time.Minute, 5*time.Minute)
 	assert.Error(t, err)
 }
 
@@ -141,7 +141,7 @@ func TestRunRiverMigrations_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create pgxpool for River migrations.
-	pool, err := database.NewPgxPool(ctx, testDSN, 5)
+	pool, err := database.NewPgxPool(ctx, testDSN, 5, 2, 30*time.Minute, 5*time.Minute)
 	require.NoError(t, err)
 	defer pool.Close()
 

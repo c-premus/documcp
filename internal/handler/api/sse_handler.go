@@ -13,12 +13,13 @@ import (
 
 // SSEHandler streams real-time queue events via Server-Sent Events.
 type SSEHandler struct {
-	eventBus *queue.EventBus
+	eventBus          *queue.EventBus
+	heartbeatInterval time.Duration
 }
 
-// NewSSEHandler creates an SSEHandler.
-func NewSSEHandler(eventBus *queue.EventBus) *SSEHandler {
-	return &SSEHandler{eventBus: eventBus}
+// NewSSEHandler creates an SSEHandler with the given heartbeat interval.
+func NewSSEHandler(eventBus *queue.EventBus, heartbeatInterval time.Duration) *SSEHandler {
+	return &SSEHandler{eventBus: eventBus, heartbeatInterval: heartbeatInterval}
 }
 
 // Stream handles GET /api/events/stream — an SSE endpoint for queue events.
@@ -52,7 +53,7 @@ func (h *SSEHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprint(w, "retry: 5000\n\n")
 	flusher.Flush()
 
-	heartbeat := time.NewTicker(15 * time.Second)
+	heartbeat := time.NewTicker(h.heartbeatInterval)
 	defer heartbeat.Stop()
 
 	for {

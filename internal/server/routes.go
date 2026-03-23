@@ -66,6 +66,11 @@ type Deps struct {
 	// Infrastructure
 	DB               *sql.DB // for readiness checks (nil disables /health/ready)
 	InternalAPIToken string  // protects /metrics and /health/ready (empty = unrestricted)
+
+	// Server tuning (populated from config)
+	MaxBodySize    int64         // max request body size in bytes (excludes multipart)
+	RequestTimeout time.Duration // context timeout for non-streaming requests
+	HSTSMaxAge     int           // HSTS max-age in seconds (0 to disable)
 }
 
 // RegisterRoutes configures all middleware and route groups on the server.
@@ -76,7 +81,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	r.Use(middleware.RequestID)
 	r.Use(RealIP(s.trustedProxies))
 	r.Use(SafeRecoverer(s.logger))
-	r.Use(SecurityHeaders)
+	r.Use(SecurityHeaders(deps.HSTSMaxAge))
 	r.Use(RequestLogger(s.logger))
 
 	// OpenTelemetry tracing middleware
@@ -92,8 +97,8 @@ func (s *Server) RegisterRoutes(deps Deps) {
 
 	// Global middleware applied to all routes (must be defined before any routes).
 	r.Use(BlockSensitiveFiles)
-	r.Use(MaxBodySize(1 * 1024 * 1024)) // 1 MB default body limit (excludes multipart)
-	r.Use(TimeoutExcept(60*time.Second, "/documcp", "/api/admin/events/stream"))
+	r.Use(MaxBodySize(deps.MaxBodySize))
+	r.Use(TimeoutExcept(deps.RequestTimeout, "/documcp", "/api/admin/events/stream"))
 
 	// Cross-origin protection: blocks cross-origin POST/PUT/DELETE/PATCH using
 	// Sec-Fetch-Site (all modern browsers) with Origin fallback. GET/HEAD/OPTIONS

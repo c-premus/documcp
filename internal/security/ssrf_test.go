@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -112,7 +113,7 @@ func TestValidateExternalURL(t *testing.T) {
 
 func TestSafeTransport(t *testing.T) {
 	t.Run("returns a non-nil transport", func(t *testing.T) {
-		tr := security.SafeTransport()
+		tr := security.SafeTransport(10 * time.Second)
 		if tr == nil {
 			t.Fatal("SafeTransport() returned nil")
 		}
@@ -122,7 +123,7 @@ func TestSafeTransport(t *testing.T) {
 	})
 
 	t.Run("blocks connection to loopback", func(t *testing.T) {
-		client := &http.Client{Transport: security.SafeTransport()}
+		client := &http.Client{Transport: security.SafeTransport(10 * time.Second)}
 		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1:1/test", http.NoBody)
 		resp, err := client.Do(req)
 		if resp != nil {
@@ -134,7 +135,7 @@ func TestSafeTransport(t *testing.T) {
 	})
 
 	t.Run("blocks connection to private IP", func(t *testing.T) {
-		client := &http.Client{Transport: security.SafeTransport()}
+		client := &http.Client{Transport: security.SafeTransport(10 * time.Second)}
 		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://10.0.0.1:1/test", http.NoBody)
 		resp, err := client.Do(req)
 		if resp != nil {

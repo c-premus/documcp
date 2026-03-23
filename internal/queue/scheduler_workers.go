@@ -35,16 +35,20 @@ type ExternalServiceHealthChecker interface {
 
 // SchedulerDeps holds all dependencies needed by scheduler workers.
 type SchedulerDeps struct {
-	Services      ExternalServiceFinder
-	HealthChecker ExternalServiceHealthChecker
-	ZimRepo       *repository.ZimArchiveRepository
-	GitRepo       *repository.GitTemplateRepository
-	OAuthRepo     *repository.OAuthRepository
-	DocRepo       *repository.DocumentRepository
-	Indexer       *search.Indexer
-	GitTempDir    string
-	StoragePath   string
-	Logger        *slog.Logger
+	Services         ExternalServiceFinder
+	HealthChecker    ExternalServiceHealthChecker
+	ZimRepo          *repository.ZimArchiveRepository
+	GitRepo          *repository.GitTemplateRepository
+	OAuthRepo        *repository.OAuthRepository
+	DocRepo          *repository.DocumentRepository
+	Indexer          *search.Indexer
+	GitTempDir       string
+	StoragePath      string
+	Logger           *slog.Logger
+	GitMaxFileSize   int64
+	GitMaxTotalSize  int64
+	SSRFDialerTimeout time.Duration
+	KiwixConfig      kiwix.ClientConfig
 }
 
 // --- Sync Workers ---.
@@ -77,7 +81,9 @@ func (w *SyncKiwixWorker) Work(ctx context.Context, _ *river.Job[SyncKiwixArgs])
 		svc := &services[i]
 		svcLogger := logger.With("service_id", svc.ID, "base_url", svc.BaseURL)
 
-		client, clientErr := kiwix.NewClient(svc.BaseURL, svcLogger)
+		kiwixCfg := w.Deps.KiwixConfig
+		kiwixCfg.BaseURL = svc.BaseURL
+		client, clientErr := kiwix.NewClient(kiwixCfg, svcLogger)
 		if clientErr != nil {
 			svcLogger.Error("kiwix client URL rejected", "error", clientErr)
 			continue
@@ -149,7 +155,7 @@ func (w *SyncGitTemplatesWorker) Work(ctx context.Context, _ *river.Job[SyncGitT
 		return nil
 	}
 
-	client := git.NewClient(w.Deps.GitTempDir, logger)
+	client := git.NewClient(w.Deps.GitTempDir, w.Deps.GitMaxFileSize, w.Deps.GitMaxTotalSize, logger)
 
 	for i := range templates {
 		t := &templates[i]
@@ -429,7 +435,7 @@ func (w *HealthCheckServicesWorker) Work(ctx context.Context, _ *river.Job[Healt
 		return fmt.Errorf("finding enabled external services: %w", err)
 	}
 
-	httpClient := &http.Client{Timeout: 10 * time.Second, Transport: security.SafeTransport()}
+	httpClient := &http.Client{Timeout: 10 * time.Second, Transport: security.SafeTransport(w.Deps.SSRFDialerTimeout)}
 
 	var healthyCount, unhealthyCount int
 	for i := range services {

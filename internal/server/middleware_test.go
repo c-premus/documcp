@@ -410,7 +410,7 @@ func TestSecurityHeaders_SetsAllHeaders(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	h := SecurityHeaders(inner)
+	h := SecurityHeaders(63072000)(inner)
 
 	r := httptest.NewRequest("GET", "/", http.NoBody)
 	w := httptest.NewRecorder()
@@ -440,7 +440,7 @@ func TestSecurityHeaders_HSTS_SetOverTLS(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	h := SecurityHeaders(inner)
+	h := SecurityHeaders(63072000)(inner)
 
 	r := httptest.NewRequest("GET", "/", http.NoBody)
 	r.TLS = &tls.ConnectionState{} // simulate TLS connection
@@ -461,7 +461,7 @@ func TestSecurityHeaders_HSTS_SetViaXForwardedProto(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	h := SecurityHeaders(inner)
+	h := SecurityHeaders(63072000)(inner)
 
 	r := httptest.NewRequest("GET", "/", http.NoBody)
 	r.Header.Set("X-Forwarded-Proto", "https")
@@ -482,7 +482,7 @@ func TestSecurityHeaders_HSTS_NotSetForPlainHTTP(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	h := SecurityHeaders(inner)
+	h := SecurityHeaders(63072000)(inner)
 
 	r := httptest.NewRequest("GET", "/", http.NoBody)
 	w := httptest.NewRecorder()
@@ -503,7 +503,7 @@ func TestSecurityHeaders_CallsNext(t *testing.T) {
 		called = true
 	})
 
-	h := SecurityHeaders(inner)
+	h := SecurityHeaders(63072000)(inner)
 	r := httptest.NewRequest("GET", "/", http.NoBody)
 	w := httptest.NewRecorder()
 

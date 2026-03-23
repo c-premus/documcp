@@ -6,6 +6,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"strings"
 	"time"
@@ -25,6 +26,8 @@ type Config struct {
 	OTEL        OTELConfig
 	DocuMCP     DocuMCPConfig
 	Scheduler   SchedulerConfig
+	Kiwix       KiwixConfig
+	Git         GitConfig
 }
 
 // SchedulerConfig holds cron schedule expressions for background sync jobs.
@@ -43,37 +46,48 @@ type SchedulerConfig struct {
 
 // AppConfig holds general application settings.
 type AppConfig struct {
-	Name             string `mapstructure:"app_name"`
-	Env              string `mapstructure:"app_env"`
-	Debug            bool   `mapstructure:"app_debug"`
-	URL              string `mapstructure:"app_url"`
-	Timezone         string `mapstructure:"app_timezone"`
-	InternalAPIToken string `mapstructure:"internal_api_token"`
-	EncryptionKey    string `mapstructure:"encryption_key"`
+	Name              string        `mapstructure:"app_name"`
+	Env               string        `mapstructure:"app_env"`
+	Debug             bool          `mapstructure:"app_debug"`
+	URL               string        `mapstructure:"app_url"`
+	Timezone          string        `mapstructure:"app_timezone"`
+	InternalAPIToken  string        `mapstructure:"internal_api_token"`
+	EncryptionKey     string        `mapstructure:"encryption_key"`
+	QueueStopTimeout  time.Duration `mapstructure:"app_queue_stop_timeout"`
+	TracerStopTimeout time.Duration `mapstructure:"app_tracer_stop_timeout"`
+	SSRFDialerTimeout time.Duration `mapstructure:"ssrf_dialer_timeout"`
 }
 
 // ServerConfig holds HTTP server settings.
 type ServerConfig struct {
-	Host              string        `mapstructure:"server_host"`
-	Port              int           `mapstructure:"server_port"`
-	TrustedProxies    []string      `mapstructure:"trusted_proxies"`
-	ReadTimeout       time.Duration `mapstructure:"server_read_timeout"`
-	WriteTimeout      time.Duration `mapstructure:"server_write_timeout"`
-	IdleTimeout       time.Duration `mapstructure:"server_idle_timeout"`
-	ReadHeaderTimeout time.Duration `mapstructure:"server_read_header_timeout"`
+	Host                 string        `mapstructure:"server_host"`
+	Port                 int           `mapstructure:"server_port"`
+	TrustedProxies       []string      `mapstructure:"trusted_proxies"`
+	ReadTimeout          time.Duration `mapstructure:"server_read_timeout"`
+	WriteTimeout         time.Duration `mapstructure:"server_write_timeout"`
+	IdleTimeout          time.Duration `mapstructure:"server_idle_timeout"`
+	ReadHeaderTimeout    time.Duration `mapstructure:"server_read_header_timeout"`
+	ShutdownTimeout      time.Duration `mapstructure:"server_shutdown_timeout"`
+	RequestTimeout       time.Duration `mapstructure:"server_request_timeout"`
+	MaxBodySize          int64         `mapstructure:"server_max_body_size"`
+	HSTSMaxAge           int           `mapstructure:"server_hsts_max_age"`
+	SSEHeartbeatInterval time.Duration `mapstructure:"server_sse_heartbeat_interval"`
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
 type DatabaseConfig struct {
-	Host         string        `mapstructure:"db_host"`
-	Port         int           `mapstructure:"db_port"`
-	Database     string        `mapstructure:"db_database"`
-	Username     string        `mapstructure:"db_username"`
-	Password     string        `mapstructure:"db_password"`
-	SSLMode      string        `mapstructure:"db_sslmode"`
-	MaxOpenConns int           `mapstructure:"db_max_open_conns"`
-	MaxIdleConns int           `mapstructure:"db_max_idle_conns"`
-	MaxLifetime  time.Duration `mapstructure:"db_max_lifetime"`
+	Host               string        `mapstructure:"db_host"`
+	Port               int           `mapstructure:"db_port"`
+	Database           string        `mapstructure:"db_database"`
+	Username           string        `mapstructure:"db_username"`
+	Password           string        `mapstructure:"db_password"`
+	SSLMode            string        `mapstructure:"db_sslmode"`
+	MaxOpenConns       int           `mapstructure:"db_max_open_conns"`
+	MaxIdleConns       int           `mapstructure:"db_max_idle_conns"`
+	MaxLifetime        time.Duration `mapstructure:"db_max_lifetime"`
+	PgxMinConns        int32         `mapstructure:"db_pgx_min_conns"`
+	PgxMaxConnLifetime time.Duration `mapstructure:"db_pgx_max_conn_lifetime"`
+	PgxMaxConnIdleTime time.Duration `mapstructure:"db_pgx_max_conn_idle_time"`
 }
 
 // MeilisearchConfig holds Meilisearch connection settings.
@@ -117,6 +131,20 @@ type OAuthConfig struct {
 	HKDFSalt                string        `mapstructure:"hkdf_salt"`
 	RegistrationEnabled     bool          `mapstructure:"oauth_registration_enabled"`
 	RegistrationRequireAuth bool          `mapstructure:"oauth_registration_require_auth"`
+	ClientTouchTimeout      time.Duration `mapstructure:"oauth_client_touch_timeout"`
+}
+
+// KiwixConfig holds Kiwix external service client settings.
+type KiwixConfig struct {
+	CacheTTL           time.Duration `mapstructure:"kiwix_cache_ttl"`
+	HTTPTimeout        time.Duration `mapstructure:"kiwix_http_timeout"`
+	HealthCheckTimeout time.Duration `mapstructure:"kiwix_health_check_timeout"`
+}
+
+// GitConfig holds Git template client settings.
+type GitConfig struct {
+	MaxFileSize  int64 `mapstructure:"git_max_file_size"`
+	MaxTotalSize int64 `mapstructure:"git_max_total_size"`
 }
 
 // StorageConfig holds file storage settings.
@@ -151,6 +179,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("app_url", "http://localhost")
 	v.SetDefault("app_timezone", "UTC")
 	v.SetDefault("internal_api_token", "")
+	v.SetDefault("app_queue_stop_timeout", 10*time.Second)
+	v.SetDefault("app_tracer_stop_timeout", 5*time.Second)
+	v.SetDefault("ssrf_dialer_timeout", 10*time.Second)
 
 	// Server
 	v.SetDefault("server_host", "0.0.0.0")
@@ -160,6 +191,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server_write_timeout", 30*time.Second)
 	v.SetDefault("server_idle_timeout", 120*time.Second)
 	v.SetDefault("server_read_header_timeout", 5*time.Second)
+	v.SetDefault("server_shutdown_timeout", 5*time.Second)
+	v.SetDefault("server_request_timeout", 60*time.Second)
+	v.SetDefault("server_max_body_size", int64(1*1024*1024))
+	v.SetDefault("server_hsts_max_age", 63072000)
+	v.SetDefault("server_sse_heartbeat_interval", 15*time.Second)
 
 	// Database
 	v.SetDefault("db_host", "127.0.0.1")
@@ -171,6 +207,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("db_max_open_conns", 25)
 	v.SetDefault("db_max_idle_conns", 5)
 	v.SetDefault("db_max_lifetime", 5*time.Minute)
+	v.SetDefault("db_pgx_min_conns", int32(2))
+	v.SetDefault("db_pgx_max_conn_lifetime", 30*time.Minute)
+	v.SetDefault("db_pgx_max_conn_idle_time", 5*time.Minute)
 
 	// Meilisearch
 	v.SetDefault("meilisearch_host", "http://localhost:7700")
@@ -201,6 +240,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("hkdf_salt", "DocuMCP-go-v1")
 	v.SetDefault("oauth_registration_enabled", true)
 	v.SetDefault("oauth_registration_require_auth", true)
+	v.SetDefault("oauth_client_touch_timeout", 3*time.Second)
 
 	// Storage
 	v.SetDefault("storage_driver", "local")
@@ -218,6 +258,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("documcp_endpoint", "/documcp")
 	v.SetDefault("documcp_name", "DocuMCP")
 	v.SetDefault("documcp_version", "0.1.0")
+
+	// Kiwix
+	v.SetDefault("kiwix_cache_ttl", 1*time.Hour)
+	v.SetDefault("kiwix_http_timeout", 10*time.Second)
+	v.SetDefault("kiwix_health_check_timeout", 5*time.Second)
+
+	// Git
+	v.SetDefault("git_max_file_size", int64(1*1024*1024))
+	v.SetDefault("git_max_total_size", int64(10*1024*1024))
 
 	// Scheduler
 	v.SetDefault("scheduler_enabled", false)
@@ -269,35 +318,46 @@ func Load() (*Config, error) {
 
 	// Populate each section by binding env vars and unmarshalling.
 	cfg.App = AppConfig{
-		Name:             v.GetString("app_name"),
-		Env:              v.GetString("app_env"),
-		Debug:            v.GetBool("app_debug"),
-		URL:              v.GetString("app_url"),
-		Timezone:         v.GetString("app_timezone"),
-		InternalAPIToken: v.GetString("internal_api_token"),
-		EncryptionKey:    v.GetString("encryption_key"),
+		Name:              v.GetString("app_name"),
+		Env:               v.GetString("app_env"),
+		Debug:             v.GetBool("app_debug"),
+		URL:               v.GetString("app_url"),
+		Timezone:          v.GetString("app_timezone"),
+		InternalAPIToken:  v.GetString("internal_api_token"),
+		EncryptionKey:     v.GetString("encryption_key"),
+		QueueStopTimeout:  v.GetDuration("app_queue_stop_timeout"),
+		TracerStopTimeout: v.GetDuration("app_tracer_stop_timeout"),
+		SSRFDialerTimeout: v.GetDuration("ssrf_dialer_timeout"),
 	}
 
 	cfg.Server = ServerConfig{
-		Host:              v.GetString("server_host"),
-		Port:              v.GetInt("server_port"),
-		TrustedProxies:    v.GetStringSlice("trusted_proxies"),
-		ReadTimeout:       v.GetDuration("server_read_timeout"),
-		WriteTimeout:      v.GetDuration("server_write_timeout"),
-		IdleTimeout:       v.GetDuration("server_idle_timeout"),
-		ReadHeaderTimeout: v.GetDuration("server_read_header_timeout"),
+		Host:                 v.GetString("server_host"),
+		Port:                 v.GetInt("server_port"),
+		TrustedProxies:       v.GetStringSlice("trusted_proxies"),
+		ReadTimeout:          v.GetDuration("server_read_timeout"),
+		WriteTimeout:         v.GetDuration("server_write_timeout"),
+		IdleTimeout:          v.GetDuration("server_idle_timeout"),
+		ReadHeaderTimeout:    v.GetDuration("server_read_header_timeout"),
+		ShutdownTimeout:      v.GetDuration("server_shutdown_timeout"),
+		RequestTimeout:       v.GetDuration("server_request_timeout"),
+		MaxBodySize:          v.GetInt64("server_max_body_size"),
+		HSTSMaxAge:           v.GetInt("server_hsts_max_age"),
+		SSEHeartbeatInterval: v.GetDuration("server_sse_heartbeat_interval"),
 	}
 
 	cfg.Database = DatabaseConfig{
-		Host:         v.GetString("db_host"),
-		Port:         v.GetInt("db_port"),
-		Database:     v.GetString("db_database"),
-		Username:     v.GetString("db_username"),
-		Password:     v.GetString("db_password"),
-		SSLMode:      v.GetString("db_sslmode"),
-		MaxOpenConns: v.GetInt("db_max_open_conns"),
-		MaxIdleConns: v.GetInt("db_max_idle_conns"),
-		MaxLifetime:  v.GetDuration("db_max_lifetime"),
+		Host:               v.GetString("db_host"),
+		Port:               v.GetInt("db_port"),
+		Database:           v.GetString("db_database"),
+		Username:           v.GetString("db_username"),
+		Password:           v.GetString("db_password"),
+		SSLMode:            v.GetString("db_sslmode"),
+		MaxOpenConns:       v.GetInt("db_max_open_conns"),
+		MaxIdleConns:       v.GetInt("db_max_idle_conns"),
+		MaxLifetime:        v.GetDuration("db_max_lifetime"),
+		PgxMinConns:        clampInt32(v.GetInt("db_pgx_min_conns")),
+		PgxMaxConnLifetime: v.GetDuration("db_pgx_max_conn_lifetime"),
+		PgxMaxConnIdleTime: v.GetDuration("db_pgx_max_conn_idle_time"),
 	}
 
 	cfg.Meilisearch = MeilisearchConfig{
@@ -331,6 +391,7 @@ func Load() (*Config, error) {
 		HKDFSalt:                v.GetString("hkdf_salt"),
 		RegistrationEnabled:     v.GetBool("oauth_registration_enabled"),
 		RegistrationRequireAuth: v.GetBool("oauth_registration_require_auth"),
+		ClientTouchTimeout:      v.GetDuration("oauth_client_touch_timeout"),
 	}
 
 	cfg.Storage = StorageConfig{
@@ -351,6 +412,17 @@ func Load() (*Config, error) {
 		Endpoint:      v.GetString("documcp_endpoint"),
 		ServerName:    v.GetString("documcp_name"),
 		ServerVersion: v.GetString("documcp_version"),
+	}
+
+	cfg.Kiwix = KiwixConfig{
+		CacheTTL:           v.GetDuration("kiwix_cache_ttl"),
+		HTTPTimeout:        v.GetDuration("kiwix_http_timeout"),
+		HealthCheckTimeout: v.GetDuration("kiwix_health_check_timeout"),
+	}
+
+	cfg.Git = GitConfig{
+		MaxFileSize:  v.GetInt64("git_max_file_size"),
+		MaxTotalSize: v.GetInt64("git_max_total_size"),
 	}
 
 	cfg.Scheduler = SchedulerConfig{
@@ -461,6 +533,17 @@ func ParseCIDRs(cidrs []string) ([]*net.IPNet, error) {
 		nets = append(nets, cidr)
 	}
 	return nets, nil
+}
+
+// clampInt32 safely converts an int to int32, clamping to the int32 range.
+func clampInt32(v int) int32 {
+	if v > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if v < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(v) //nolint:gosec // clamped above
 }
 
 // DatabaseDSN builds a PostgreSQL connection string from the database config.

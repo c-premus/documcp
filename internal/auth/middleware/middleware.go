@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/gorilla/sessions"
 
@@ -60,9 +59,9 @@ func BearerToken(oauthService *oauth.Service) func(http.Handler) http.Handler {
 			}
 
 			go func(id int64) {
-				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				touchCtx, cancel := context.WithTimeout(context.Background(), oauthService.ClientTouchTimeout())
 				defer cancel()
-				if err := oauthService.TouchClientLastUsed(ctx, id); err != nil {
+				if err := oauthService.TouchClientLastUsed(touchCtx, id); err != nil {
 					slog.Warn("updating oauth client last_used_at", "client_id", id, "error", err)
 				}
 			}(token.ClientID)
@@ -107,9 +106,9 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store) func(htt
 				}
 
 				go func(id int64) {
-					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+					touchCtx, cancel := context.WithTimeout(context.Background(), oauthService.ClientTouchTimeout())
 					defer cancel()
-					if err := oauthService.TouchClientLastUsed(ctx, id); err != nil {
+					if err := oauthService.TouchClientLastUsed(touchCtx, id); err != nil {
 						slog.Warn("updating oauth client last_used_at", "client_id", id, "error", err)
 					}
 				}(token.ClientID)
