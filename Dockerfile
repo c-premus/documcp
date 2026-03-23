@@ -8,7 +8,7 @@ COPY docs/contracts/openapi.yaml ../docs/contracts/openapi.yaml
 RUN npm run build
 
 # Stage 2: Go build
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26.1-alpine AS builder
 
 # Install build dependencies.
 # - git: required for go mod download with private modules
