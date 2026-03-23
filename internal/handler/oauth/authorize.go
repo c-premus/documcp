@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/csrf"
 
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
 )
@@ -124,7 +123,6 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, consentHTML,
 		html.EscapeString(client.ClientName),
 		html.EscapeString(scope),
-		csrf.Token(r),
 		html.EscapeString(clientID),
 		html.EscapeString(redirectURI),
 		html.EscapeString(state),
@@ -286,7 +284,6 @@ button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:poin
 <p><span class="client-name">%s</span> is requesting access to your account.</p>
 <p>Scope: <span class="scope">%s</span></p>
 <form method="POST" action="/oauth/authorize/approve">
-<input type="hidden" name="gorilla.csrf.Token" value="%s">
 <input type="hidden" name="client_id" value="%s">
 <input type="hidden" name="redirect_uri" value="%s">
 <input type="hidden" name="state" value="%s">

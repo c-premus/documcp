@@ -4,14 +4,12 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httprate"
-	"github.com/gorilla/csrf"
 	"github.com/gorilla/sessions"
 
 	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
@@ -63,9 +61,7 @@ type Deps struct {
 	OTELEnabled bool                   // enables tracing middleware
 
 	// Security
-	CSRFKey  []byte // 32-byte key for CSRF token generation (nil disables CSRF)
-	IsSecure bool   // true when running behind TLS (sets Secure cookie flag)
-	AppURL   string // APP_URL — used as CSRF trusted origin (e.g. "http://localhost:8080")
+	IsSecure bool // true when running behind TLS (reserved for future use)
 
 	// Infrastructure
 	DB               *sql.DB // for readiness checks (nil disables /health/ready)
@@ -98,6 +94,12 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	r.Use(BlockSensitiveFiles)
 	r.Use(MaxBodySize(1 * 1024 * 1024)) // 1 MB default body limit (excludes multipart)
 	r.Use(TimeoutExcept(60*time.Second, "/documcp", "/api/admin/events/stream"))
+
+	// Cross-origin protection: blocks cross-origin POST/PUT/DELETE/PATCH using
+	// Sec-Fetch-Site (all modern browsers) with Origin fallback. GET/HEAD/OPTIONS
+	// are exempt. API clients (curl, OAuth M2M) pass through (no Origin header).
+	cop := http.NewCrossOriginProtection()
+	r.Use(cop.Handler)
 
 	// MCP endpoint — timeout excluded above (SSE streams must stay open indefinitely).
 	if deps.MCPHandler != nil {
@@ -144,29 +146,13 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	// OAuth endpoints
 	if deps.OAuthHandler != nil {
 		r.Route("/oauth", func(r chi.Router) {
-			// Browser-rendered form endpoints need CSRF protection.
-			r.Group(func(r chi.Router) {
-				if len(deps.CSRFKey) > 0 {
-					csrfOpts := []csrf.Option{
-						csrf.Secure(deps.IsSecure),
-						csrf.Path("/oauth"),
-						csrf.RequestHeader("X-CSRF-Token"),
-					}
-					if deps.AppURL != "" {
-						// gorilla/csrf v1.7.3 compares TrustedOrigins against
-						// parsedOrigin.Host (host:port), not the full URL.
-						if parsed, err := url.Parse(deps.AppURL); err == nil && parsed.Host != "" {
-							csrfOpts = append(csrfOpts, csrf.TrustedOrigins([]string{parsed.Host}))
-						}
-					}
-					r.Use(csrf.Protect(deps.CSRFKey, csrfOpts...))
-				}
-				r.Get("/authorize", deps.OAuthHandler.Authorize)
-				r.Post("/authorize/approve", deps.OAuthHandler.AuthorizeApprove)
-				r.Get("/device", deps.OAuthHandler.DeviceVerification)
-				r.Post("/device", deps.OAuthHandler.DeviceVerificationSubmit)
-				r.Post("/device/approve", deps.OAuthHandler.DeviceApprove)
-			})
+			// Browser-rendered form endpoints — protected by CrossOriginProtection
+			// (global middleware above) plus SameSite=Lax session cookies.
+			r.Get("/authorize", deps.OAuthHandler.Authorize)
+			r.Post("/authorize/approve", deps.OAuthHandler.AuthorizeApprove)
+			r.Get("/device", deps.OAuthHandler.DeviceVerification)
+			r.Post("/device", deps.OAuthHandler.DeviceVerificationSubmit)
+			r.Post("/device/approve", deps.OAuthHandler.DeviceApprove)
 
 			// Machine-to-machine endpoints — no CSRF (clients don't have browser cookies).
 			// Rate-limited token endpoint (30/min + 100/hr per IP)
