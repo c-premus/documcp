@@ -203,6 +203,7 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
     accessorKey: 'type',
     header: 'Type',
     enableSorting: false,
+    meta: { className: 'w-28 hidden sm:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
       const style = typeBadgeStyle(value)
@@ -219,18 +220,17 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
     accessorKey: 'base_url',
     header: 'Base URL',
     enableSorting: false,
+    meta: { className: 'hidden lg:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
-      if (value.length <= 40) {
-        return value
-      }
-      return `${value.slice(0, 40)}...`
+      return h('span', { class: 'block max-w-xs truncate font-mono text-xs', title: value }, value)
     },
   },
   {
     accessorKey: 'status',
     header: 'Health',
     enableSorting: false,
+    meta: { className: 'w-28' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
       const style = healthStatusStyle(value)
@@ -247,6 +247,7 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
     accessorKey: 'priority',
     header: 'Priority',
     enableSorting: true,
+    meta: { className: 'w-28 hidden md:table-cell' },
     cell: ({ row }) => {
       const service = row.original
       return h('div', { class: 'flex items-center gap-1' }, [
@@ -286,6 +287,7 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
     accessorKey: 'is_enabled',
     header: 'Enabled',
     enableSorting: false,
+    meta: { className: 'w-20 hidden sm:table-cell' },
     cell: ({ row }) => {
       const service = row.original
       return h(Switch, {
@@ -314,6 +316,7 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
     id: 'actions',
     header: 'Actions',
     enableSorting: false,
+    meta: { className: 'w-36' },
     cell: ({ row }) => {
       const service = row.original
       const isSyncing = syncingUUIDs.value.has(service.uuid)
@@ -387,7 +390,7 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
 <template>
   <div>
     <!-- Toolbar -->
-    <div class="flex items-center gap-4 mb-4">
+    <div class="flex flex-wrap items-center gap-2 sm:gap-4 mb-4">
       <h1 class="text-2xl font-bold text-text-primary">External Services</h1>
 
       <select

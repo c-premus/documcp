@@ -81,7 +81,7 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
   {
     accessorKey: 'id',
     header: 'ID',
-    size: 60,
+    meta: { className: 'w-16 hidden lg:table-cell' },
   },
   {
     accessorKey: 'kind',
@@ -90,11 +90,12 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
   {
     accessorKey: 'queue',
     header: 'Queue',
-    size: 80,
+    meta: { className: 'w-20 hidden sm:table-cell' },
   },
   {
     accessorKey: 'state',
     header: 'State',
+    meta: { className: 'w-28' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
       return h(StatusBadge, { status: value })
@@ -103,7 +104,7 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
   {
     accessorKey: 'attempt',
     header: 'Attempts',
-    size: 80,
+    meta: { className: 'w-20 hidden sm:table-cell' },
     cell: ({ row }) => {
       return `${row.original.attempt}/${row.original.max_attempts}`
     },
@@ -111,6 +112,7 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
   {
     id: 'error',
     header: 'Error',
+    meta: { className: 'hidden md:table-cell' },
     cell: ({ row }) => {
       const msg = truncateError(row.original)
       return h('span', { class: 'text-red-600 dark:text-red-400 text-xs', title: msg }, msg)
@@ -119,6 +121,7 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
   {
     accessorKey: 'created_at',
     header: 'Created',
+    meta: { className: 'w-36 hidden md:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
       return formatDistanceToNow(new Date(value), { addSuffix: true })
@@ -127,6 +130,7 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
   {
     id: 'actions',
     header: 'Actions',
+    meta: { className: 'w-20' },
     cell: ({ row }) => {
       return h('div', { class: 'flex items-center gap-2' }, [
         h(

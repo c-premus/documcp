@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
+import { TransitionRoot, TransitionChild, Dialog, DialogPanel } from '@headlessui/vue'
 import {
   HomeIcon,
   DocumentTextIcon,
@@ -11,7 +12,11 @@ import {
   ServerIcon,
   QueueListIcon,
   TrashIcon,
+  XMarkIcon,
 } from '@heroicons/vue/24/outline'
+import { useAuthStore } from '@/stores/auth'
+import { useSSEStore } from '@/stores/sse'
+import { useSidebar } from '@/composables/useSidebar'
 
 interface NavItem {
   readonly name: string
@@ -21,6 +26,9 @@ interface NavItem {
 
 const route = useRoute()
 const auth = useAuthStore()
+const sse = useSSEStore()
+const sidebar = useSidebar()
+const logoSrc = `${import.meta.env.BASE_URL}logo-concept-1-transparent.svg`
 
 const mainNavItems: readonly NavItem[] = [
   { name: 'Dashboard', to: '/dashboard', icon: HomeIcon },
@@ -49,9 +57,158 @@ function isActive(path: string): boolean {
   }
   return route.path.startsWith(path)
 }
+
+watch(() => route.path, () => sidebar.close())
 </script>
 
 <template>
+  <!-- Mobile Drawer -->
+  <TransitionRoot as="template" :show="sidebar.open.value">
+    <Dialog as="div" class="relative z-40 lg:hidden" @close="sidebar.close()">
+      <!-- Backdrop -->
+      <TransitionChild
+        as="template"
+        enter="transition-opacity ease-linear duration-300"
+        enter-from="opacity-0"
+        enter-to="opacity-100"
+        leave="transition-opacity ease-linear duration-300"
+        leave-from="opacity-100"
+        leave-to="opacity-0"
+      >
+        <div class="fixed inset-0 bg-black/40" aria-hidden="true" />
+      </TransitionChild>
+
+      <!-- Sliding panel -->
+      <div class="fixed inset-0 flex">
+        <TransitionChild
+          as="template"
+          enter="transition ease-in-out duration-300 transform"
+          enter-from="-translate-x-full"
+          enter-to="translate-x-0"
+          leave="transition ease-in-out duration-300 transform"
+          leave-from="translate-x-0"
+          leave-to="-translate-x-full"
+        >
+          <DialogPanel class="relative flex w-72 max-w-[85vw] flex-col bg-bg-surface border-r border-border-default">
+            <!-- Drawer header row -->
+            <div class="flex items-center justify-between px-4 py-4 border-b border-border-default">
+              <div class="flex items-center gap-3">
+                <img :src="logoSrc" alt="" aria-hidden="true" class="h-8 w-8 shrink-0" />
+                <span class="text-base font-semibold text-text-primary">DocuMCP</span>
+              </div>
+              <button
+                type="button"
+                class="-m-2 p-2 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
+                @click="sidebar.close()"
+                aria-label="Close navigation"
+              >
+                <XMarkIcon class="h-6 w-6" aria-hidden="true" />
+              </button>
+            </div>
+
+            <!-- Nav content -->
+            <div class="flex-1 overflow-y-auto py-4">
+              <!-- Main -->
+              <ul class="space-y-1 px-3">
+                <li v-for="item in mainNavItems" :key="item.to">
+                  <router-link
+                    :to="item.to"
+                    class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
+                    :class="
+                      isActive(item.to)
+                        ? 'bg-bg-active text-text-primary'
+                        : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
+                    "
+                    :aria-current="isActive(item.to) ? 'page' : undefined"
+                  >
+                    <component :is="item.icon" class="h-5 w-5 shrink-0" />
+                    {{ item.name }}
+                  </router-link>
+                </li>
+              </ul>
+
+              <!-- Documents -->
+              <div class="my-4 mx-3 border-t border-border-default" />
+              <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">Documents</p>
+              <ul class="space-y-1 px-3">
+                <li v-for="item in documentNavItems" :key="item.to">
+                  <router-link
+                    :to="item.to"
+                    class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
+                    :class="
+                      isActive(item.to)
+                        ? 'bg-bg-active text-text-primary'
+                        : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
+                    "
+                    :aria-current="isActive(item.to) ? 'page' : undefined"
+                  >
+                    <component :is="item.icon" class="h-5 w-5 shrink-0" />
+                    {{ item.name }}
+                  </router-link>
+                </li>
+              </ul>
+
+              <!-- Content Sources -->
+              <div class="my-4 mx-3 border-t border-border-default" />
+              <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">Content Sources</p>
+              <ul class="space-y-1 px-3">
+                <li v-for="item in contentNavItems" :key="item.to">
+                  <router-link
+                    :to="item.to"
+                    class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
+                    :class="
+                      isActive(item.to)
+                        ? 'bg-bg-active text-text-primary'
+                        : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
+                    "
+                    :aria-current="isActive(item.to) ? 'page' : undefined"
+                  >
+                    <component :is="item.icon" class="h-5 w-5 shrink-0" />
+                    {{ item.name }}
+                  </router-link>
+                </li>
+              </ul>
+
+              <!-- Administration -->
+              <template v-if="auth.isAdmin">
+                <div class="my-4 mx-3 border-t border-border-default" />
+                <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">Administration</p>
+                <ul class="space-y-1 px-3">
+                  <li v-for="item in adminNavItems" :key="item.to">
+                    <router-link
+                      :to="item.to"
+                      class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
+                      :class="
+                        isActive(item.to)
+                          ? 'bg-bg-active text-text-primary'
+                          : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
+                      "
+                      :aria-current="isActive(item.to) ? 'page' : undefined"
+                    >
+                      <component :is="item.icon" class="h-5 w-5 shrink-0" />
+                      {{ item.name }}
+                    </router-link>
+                  </li>
+                </ul>
+              </template>
+            </div>
+
+            <!-- SSE status footer -->
+            <div class="border-t border-border-default px-4 py-3 flex items-center gap-2 text-xs text-text-muted">
+              <span
+                class="inline-block h-2 w-2 rounded-full shrink-0"
+                :class="sse.connected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"
+                aria-hidden="true"
+              />
+              {{ sse.connected ? 'Live' : 'Offline' }}
+            </div>
+          </DialogPanel>
+        </TransitionChild>
+      </div>
+    </Dialog>
+  </TransitionRoot>
+
+  <!-- Desktop Sidebar -->
   <nav aria-label="Main navigation" class="hidden lg:flex w-64 fixed top-16 bottom-0 left-0 bg-bg-surface border-r border-border-default flex-col">
     <div class="flex-1 overflow-y-auto py-4">
       <!-- Main -->

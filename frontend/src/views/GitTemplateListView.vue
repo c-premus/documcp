@@ -83,13 +83,6 @@ function handleCreateSaved(): void {
   fetchData()
 }
 
-function truncate(value: string, maxLength: number): string {
-  if (value.length <= maxLength) {
-    return value
-  }
-  return `${value.slice(0, maxLength)}...`
-}
-
 function categoryBadgeClasses(category: string): string {
   const styles: Readonly<Record<string, string>> = {
     claude: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300',
@@ -109,6 +102,7 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
     accessorKey: 'category',
     header: 'Category',
     enableSorting: true,
+    meta: { className: 'w-28 hidden sm:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string | undefined>()
       if (value === undefined || value === '') {
@@ -130,19 +124,17 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
     accessorKey: 'repository_url',
     header: 'Repository',
     enableSorting: false,
+    meta: { className: 'hidden lg:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
-      return h(
-        'span',
-        { class: 'font-mono text-xs text-text-muted', title: value },
-        truncate(value, 40),
-      )
+      return h('span', { class: 'block max-w-xs truncate font-mono text-xs', title: value }, value)
     },
   },
   {
     accessorKey: 'branch',
     header: 'Branch',
     enableSorting: false,
+    meta: { className: 'w-24 hidden md:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
       return h(
@@ -156,6 +148,7 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
     accessorKey: 'last_synced_at',
     header: 'Last Sync',
     enableSorting: true,
+    meta: { className: 'w-36 hidden md:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string | undefined>()
       if (value === undefined || value === '') {
@@ -168,11 +161,13 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
     accessorKey: 'file_count',
     header: 'Files',
     enableSorting: true,
+    meta: { className: 'w-16 hidden sm:table-cell' },
   },
   {
     id: 'actions',
     header: 'Actions',
     enableSorting: false,
+    meta: { className: 'w-20' },
     cell: ({ row }) => {
       const template = row.original
       const isSyncing = syncingUuids.value.has(template.uuid)
@@ -218,7 +213,7 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
 <template>
   <div>
     <!-- Toolbar -->
-    <div class="flex items-center gap-4 mb-4">
+    <div class="flex flex-wrap items-center gap-2 sm:gap-4 mb-4">
       <h1 class="text-2xl font-bold text-text-primary">Git Templates</h1>
 
       <div class="flex-1" />

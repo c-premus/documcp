@@ -41,7 +41,7 @@ const table = useVueTable({
           <th
             v-for="header in table.getHeaderGroups()[0]?.headers"
             :key="header.id"
-            class="px-3 py-3.5 text-left text-sm font-semibold text-text-primary cursor-pointer select-none"
+            :class="['px-3 py-3.5 text-left text-sm font-semibold text-text-primary cursor-pointer select-none', header.column.columnDef.meta?.className]"
             @click="header.column.getToggleSortingHandler()?.($event)"
           >
             <div class="flex items-center gap-1">
@@ -63,7 +63,7 @@ const table = useVueTable({
           <td
             v-for="cell in row.getVisibleCells()"
             :key="cell.id"
-            class="whitespace-nowrap px-3 py-4 text-sm text-text-muted"
+            :class="['whitespace-nowrap px-3 py-4 text-sm text-text-muted', cell.column.columnDef.meta?.className]"
           >
             <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
           </td>

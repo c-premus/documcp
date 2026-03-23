@@ -5,9 +5,11 @@ import AppHeader from './AppHeader.vue'
 import AppNotifications from './AppNotifications.vue'
 import { useSSEStore } from '@/stores/sse'
 import { useDocumentEvents } from '@/composables/useDocumentEvents'
+import { useSidebar } from '@/composables/useSidebar'
 
 const sseStore = useSSEStore()
 const { start } = useDocumentEvents()
+useSidebar()
 
 onMounted(() => {
   sseStore.connect()

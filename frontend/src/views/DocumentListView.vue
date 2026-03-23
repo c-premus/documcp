@@ -54,8 +54,8 @@ const columns: ColumnDef<Document, unknown>[] = [
   {
     accessorKey: 'file_type',
     header: 'Type',
-    size: 80,
     enableSorting: true,
+    meta: { className: 'w-28 hidden sm:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
       return value.toUpperCase()
@@ -65,6 +65,7 @@ const columns: ColumnDef<Document, unknown>[] = [
     accessorKey: 'status',
     header: 'Status',
     enableSorting: true,
+    meta: { className: 'w-28' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
       return h(StatusBadge, { status: value })
@@ -74,6 +75,7 @@ const columns: ColumnDef<Document, unknown>[] = [
     accessorKey: 'file_size',
     header: 'Size',
     enableSorting: true,
+    meta: { className: 'w-24 hidden sm:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<number>()
       return formatFileSize(value)
@@ -83,6 +85,7 @@ const columns: ColumnDef<Document, unknown>[] = [
     accessorKey: 'created_at',
     header: 'Created',
     enableSorting: true,
+    meta: { className: 'w-36 hidden md:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
       return formatDistanceToNow(new Date(value), { addSuffix: true })
@@ -92,6 +95,7 @@ const columns: ColumnDef<Document, unknown>[] = [
     id: 'actions',
     header: 'Actions',
     enableSorting: false,
+    meta: { className: 'w-20' },
     cell: ({ row }) => {
       return h('div', { class: 'flex items-center gap-2' }, [
         h(
@@ -174,13 +178,13 @@ function handleDeleteCancel(): void {
 <template>
   <div>
     <!-- Toolbar -->
-    <div class="flex items-center gap-4 mb-4">
+    <div class="flex flex-wrap items-center gap-2 sm:gap-4 mb-4">
       <h1 class="text-2xl font-bold text-text-primary">Documents</h1>
 
       <SearchInput
         v-model="search"
         placeholder="Search documents..."
-        class="flex-1 max-w-sm"
+        class="w-full sm:w-auto sm:max-w-sm"
       />
 
       <select
