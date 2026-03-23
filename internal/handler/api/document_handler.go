@@ -433,6 +433,7 @@ type analyzeResponse struct {
 
 // Analyze handles POST /api/documents/analyze — extract and analyze an uploaded file.
 func (h *DocumentHandler) Analyze(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 50<<20)
 	if err := r.ParseMultipartForm(50 << 20); err != nil {
 		errorResponse(w, http.StatusBadRequest, "invalid multipart form")
 		return

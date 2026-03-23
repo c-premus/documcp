@@ -13,7 +13,7 @@ import (
 )
 
 // createTestExternalService inserts a minimal ExternalService for FK satisfaction.
-func createTestExternalService(t *testing.T, ctx context.Context) *model.ExternalService {
+func createTestExternalService(ctx context.Context, t *testing.T) *model.ExternalService {
 	t.Helper()
 
 	svcRepo := NewExternalServiceRepository(testDB, discardLogger())
@@ -34,7 +34,7 @@ func createTestExternalService(t *testing.T, ctx context.Context) *model.Externa
 func TestZimArchiveRepository_UpsertFromCatalog(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	svc := createTestExternalService(t, ctx)
+	svc := createTestExternalService(ctx, t)
 	repo := NewZimArchiveRepository(testDB, discardLogger())
 
 	entry := ZimArchiveUpsert{
@@ -149,7 +149,7 @@ func TestZimArchiveRepository_UpsertFromCatalog(t *testing.T) {
 func TestZimArchiveRepository_List(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	svc := createTestExternalService(t, ctx)
+	svc := createTestExternalService(ctx, t)
 	repo := NewZimArchiveRepository(testDB, discardLogger())
 
 	entries := []ZimArchiveUpsert{
@@ -169,27 +169,27 @@ func TestZimArchiveRepository_List(t *testing.T) {
 	require.NoError(t, repo.ToggleEnabled(ctx, disableID))
 
 	t.Run("all enabled", func(t *testing.T) {
-		results, err := repo.List(ctx, "", "", "", 0)
+		results, err := repo.List(ctx, "", "", "", 0, 0)
 		require.NoError(t, err)
 		assert.Len(t, results, 2)
 	})
 
 	t.Run("filter by category", func(t *testing.T) {
-		results, err := repo.List(ctx, "wikipedia", "", "", 0)
+		results, err := repo.List(ctx, "wikipedia", "", "", 0, 0)
 		require.NoError(t, err)
 		assert.Len(t, results, 1)
 		assert.Equal(t, "Wikipedia English", results[0].Name)
 	})
 
 	t.Run("filter by language", func(t *testing.T) {
-		results, err := repo.List(ctx, "", "en", "", 0)
+		results, err := repo.List(ctx, "", "en", "", 0, 0)
 		require.NoError(t, err)
 		assert.Len(t, results, 1)
 		assert.Equal(t, "Wikipedia English", results[0].Name)
 	})
 
 	t.Run("filter by search query", func(t *testing.T) {
-		results, err := repo.List(ctx, "", "", "Wikipedia", 0)
+		results, err := repo.List(ctx, "", "", "Wikipedia", 0, 0)
 		require.NoError(t, err)
 		// Only Wikipedia English is enabled; Wikipedia French was disabled.
 		assert.Len(t, results, 1)
@@ -197,14 +197,14 @@ func TestZimArchiveRepository_List(t *testing.T) {
 	})
 
 	t.Run("combined filters", func(t *testing.T) {
-		results, err := repo.List(ctx, "wikipedia", "en", "", 0)
+		results, err := repo.List(ctx, "wikipedia", "en", "", 0, 0)
 		require.NoError(t, err)
 		assert.Len(t, results, 1)
 		assert.Equal(t, "Wikipedia English", results[0].Name)
 	})
 
 	t.Run("limit", func(t *testing.T) {
-		results, err := repo.List(ctx, "", "", "", 1)
+		results, err := repo.List(ctx, "", "", "", 1, 0)
 		require.NoError(t, err)
 		assert.Len(t, results, 1)
 	})
@@ -213,7 +213,7 @@ func TestZimArchiveRepository_List(t *testing.T) {
 func TestZimArchiveRepository_FindByName(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	svc := createTestExternalService(t, ctx)
+	svc := createTestExternalService(ctx, t)
 	repo := NewZimArchiveRepository(testDB, discardLogger())
 
 	entry := ZimArchiveUpsert{
@@ -252,7 +252,7 @@ func TestZimArchiveRepository_FindByName(t *testing.T) {
 func TestZimArchiveRepository_FindByUUID(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	svc := createTestExternalService(t, ctx)
+	svc := createTestExternalService(ctx, t)
 	repo := NewZimArchiveRepository(testDB, discardLogger())
 
 	entry := ZimArchiveUpsert{
@@ -299,7 +299,7 @@ func TestZimArchiveRepository_FindByUUID(t *testing.T) {
 func TestZimArchiveRepository_FindDisabled(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	svc := createTestExternalService(t, ctx)
+	svc := createTestExternalService(ctx, t)
 	repo := NewZimArchiveRepository(testDB, discardLogger())
 
 	// Insert 3 archives: 2 enabled, 1 disabled.
@@ -363,7 +363,7 @@ func TestZimArchiveRepository_FindDisabled(t *testing.T) {
 func TestZimArchiveRepository_ListAllAndCount(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	svc := createTestExternalService(t, ctx)
+	svc := createTestExternalService(ctx, t)
 	repo := NewZimArchiveRepository(testDB, discardLogger())
 
 	entries := []ZimArchiveUpsert{
@@ -411,7 +411,7 @@ func TestZimArchiveRepository_ListAllAndCount(t *testing.T) {
 func TestZimArchiveRepository_ToggleEnabledAndSearchable(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	svc := createTestExternalService(t, ctx)
+	svc := createTestExternalService(ctx, t)
 	repo := NewZimArchiveRepository(testDB, discardLogger())
 
 	entry := ZimArchiveUpsert{
@@ -475,7 +475,7 @@ func TestZimArchiveRepository_ToggleEnabledAndSearchable(t *testing.T) {
 func TestZimArchiveRepository_DisableOrphaned(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	svc := createTestExternalService(t, ctx)
+	svc := createTestExternalService(ctx, t)
 	repo := NewZimArchiveRepository(testDB, discardLogger())
 
 	entries := []ZimArchiveUpsert{

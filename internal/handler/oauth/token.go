@@ -26,6 +26,7 @@ func (h *Handler) Token(w http.ResponseWriter, r *http.Request) {
 
 	contentType := r.Header.Get("Content-Type")
 	if strings.HasPrefix(contentType, "application/x-www-form-urlencoded") {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		if err := r.ParseForm(); err != nil {
 			oauthError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
 			return

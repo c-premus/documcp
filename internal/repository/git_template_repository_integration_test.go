@@ -256,13 +256,13 @@ func TestGitTemplateRepository_List(t *testing.T) {
 	require.NoError(t, repo.SoftDelete(ctx, deletedTmpl.ID))
 
 	t.Run("all enabled non-deleted", func(t *testing.T) {
-		results, err := repo.List(ctx, "", 0)
+		results, err := repo.List(ctx, "", 0, 0)
 		require.NoError(t, err)
 		assert.Len(t, results, 3, "should exclude disabled and soft-deleted")
 	})
 
 	t.Run("filter by category", func(t *testing.T) {
-		results, err := repo.List(ctx, "backend", 0)
+		results, err := repo.List(ctx, "backend", 0, 0)
 		require.NoError(t, err)
 		assert.Len(t, results, 2)
 		for _, r := range results {
@@ -271,7 +271,7 @@ func TestGitTemplateRepository_List(t *testing.T) {
 	})
 
 	t.Run("limit", func(t *testing.T) {
-		results, err := repo.List(ctx, "", 1)
+		results, err := repo.List(ctx, "", 1, 0)
 		require.NoError(t, err)
 		assert.Len(t, results, 1)
 	})
