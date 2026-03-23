@@ -113,6 +113,8 @@ type OAuthConfig struct {
 	RequirePKCE             bool          `mapstructure:"oauth_pkce_required"`
 	SessionSecret           string        `mapstructure:"oauth_session_secret"`
 	SessionSecretPrevious   string        `mapstructure:"oauth_session_secret_previous"`
+	SessionMaxAge           time.Duration `mapstructure:"oauth_session_max_age"`
+	HKDFSalt                string        `mapstructure:"hkdf_salt"`
 	RegistrationEnabled     bool          `mapstructure:"oauth_registration_enabled"`
 	RegistrationRequireAuth bool          `mapstructure:"oauth_registration_require_auth"`
 }
@@ -195,6 +197,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oauth_pkce_required", true)
 	v.SetDefault("oauth_session_secret", "")
 	v.SetDefault("oauth_session_secret_previous", "")
+	v.SetDefault("oauth_session_max_age", 30*24*time.Hour)
+	v.SetDefault("hkdf_salt", "DocuMCP-go-v1")
 	v.SetDefault("oauth_registration_enabled", true)
 	v.SetDefault("oauth_registration_require_auth", true)
 
@@ -323,6 +327,8 @@ func Load() (*Config, error) {
 		RequirePKCE:             v.GetBool("oauth_pkce_required"),
 		SessionSecret:           v.GetString("oauth_session_secret"),
 		SessionSecretPrevious:   v.GetString("oauth_session_secret_previous"),
+		SessionMaxAge:           v.GetDuration("oauth_session_max_age"),
+		HKDFSalt:                v.GetString("hkdf_salt"),
 		RegistrationEnabled:     v.GetBool("oauth_registration_enabled"),
 		RegistrationRequireAuth: v.GetBool("oauth_registration_require_auth"),
 	}
