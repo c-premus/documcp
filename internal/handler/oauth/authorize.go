@@ -172,6 +172,7 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 		reqCodeChallengeMethod = body.CodeChallengeMethod
 		reqNonce = body.Nonce
 	} else {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, "Bad request", http.StatusBadRequest)
 			return

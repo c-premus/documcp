@@ -266,6 +266,129 @@ linters:
         linters:
           - gocyclo
 
+      # govet shadow: Integration test setup functions use if-err shadowing in
+      # defer closures (container teardown) and in sequential error checks. This
+      # is idiomatic Go test code; the shadows are intentional short-lived names.
+      - path: _test\.go
+        linters:
+          - govet
+        text: "shadow"
+
+      # gocritic exitAfterDefer: TestMain-style setup functions register a defer
+      # for container teardown and then call log.Fatalf on startup errors.
+      # Fatalf calls os.Exit which bypasses defer — this is a known limitation of
+      # the TestMain + testcontainers pattern. The container is a throwaway CI
+      # resource; not terminating it on a startup failure is acceptable.
+      - path: _test\.go
+        linters:
+          - gocritic
+        text: "exitAfterDefer"
+
+      # noctx: httptest.NewRequest is the standard library's test utility for
+      # constructing mock HTTP requests. It implicitly uses context.Background(),
+      # which is functionally equivalent to httptest.NewRequestWithContext(context.Background(), ...).
+      # Migrating 400+ test helpers provides no safety benefit for request-mocking code.
+      - path: _test\.go
+        linters:
+          - noctx
+
+      # gosec G101: Test files legitimately contain hardcoded credentials (tokens,
+      # passwords) as test fixtures and golden values. These are not production
+      # secrets; they exist solely to verify authentication logic under test.
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G101"
+
+      # gosec G115: Integer overflow int -> rune in test helper. The value is
+      # always a small loop index ('A'+id where id < 26), making overflow impossible.
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G115"
+
+      # gosec G122: filepath.Walk in test cleanup code. Test helpers walk temp
+      # directories they created to clean up files after test runs. These paths
+      # are not user-supplied and cannot be redirected by symlink attacks in the
+      # test environment.
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G122"
+
+      # gosec G118: The fire-and-forget goroutine in BearerToken and BearerOrSession
+      # middleware intentionally uses context.Background() + a 3-second timeout.
+      # The request context (r.Context()) CANNOT be used here because the HTTP
+      # handler returns (and the request context is cancelled) before the goroutine
+      # completes. This is the correct pattern for background work that must outlive
+      # the request lifecycle.
+      - path: internal/auth/middleware/middleware\.go
+        linters:
+          - gosec
+        text: "G118"
+
+      # gosec G706: Log injection via taint analysis. The values logged here are
+      # integer IDs (int64) extracted from validated JWT tokens or database records,
+      # not user-supplied strings. Integer values cannot carry log-injection payloads.
+      # The rule fires because gosec's taint analysis conservatively traces the
+      # token struct from the HTTP request headers to the log call.
+      - path: internal/auth/middleware/middleware\.go
+        linters:
+          - gosec
+        text: "G706"
+
+      # gosec G705: XSS via taint analysis. All user-controlled values in HTML
+      # responses are escaped with html.EscapeString() before interpolation into
+      # the consent/device HTML templates. The taint analysis flags the Fprintf
+      # call because the template string itself originates in the same function,
+      # but the format arguments are all escaped.
+      - path: internal/handler/oauth/authorize\.go
+        linters:
+          - gosec
+        text: "G705"
+      - path: internal/handler/oauth/device_flow\.go
+        linters:
+          - gosec
+        text: "G705"
+
+      # gosec G705: The document download endpoint writes doc.Content.String
+      # (stored document content from the database) with a Content-Type and
+      # Content-Disposition header set from DB metadata. This endpoint is
+      # protected by admin authentication; only admins can upload documents.
+      # The false positive arises because gosec traces the content bytes to
+      # ResponseWriter.Write and assumes HTML output.
+      - path: internal/handler/api/document_handler\.go
+        linters:
+          - gosec
+        text: "G705"
+
+      # gosec G703: Path traversal via taint analysis. The path is validated
+      # against the storage root (absPath must have absStorage as prefix) before
+      # the os.Open call. The false positive arises because gosec does not model
+      # the filepath.Abs + strings.HasPrefix guard above the flagged line.
+      # The second instance (tmpFile.Name()) uses a path from os.CreateTemp,
+      # not from user input. The purge instance (line 736) uses a DB-stored path
+      # joined with the server-controlled storage directory.
+      - path: internal/handler/api/document_handler\.go
+        linters:
+          - gosec
+        text: "G703"
+
+      # gosec G122: filepath.Walk/WalkDir callback uses the path parameter
+      # provided by the Walk implementation itself. The git client walks a
+      # repository directory it cloned to a controlled temp path; the scheduler
+      # worker walks a local filesystem path from database configuration.
+      # Migrating to os.Root (Go 1.23+) would require a significant API rewrite
+      # for a theoretical TOCTOU attack on paths the application itself created.
+      - path: internal/client/git/client\.go
+        linters:
+          - gosec
+        text: "G122"
+      - path: internal/queue/scheduler_workers\.go
+        linters:
+          - gosec
+        text: "G122"
+
 issues:
   max-issues-per-linter: 0  # Report every issue; no per-linter cap
   max-same-issues: 0        # Report every unique instance; no duplicate cap

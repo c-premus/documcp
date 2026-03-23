@@ -91,7 +91,7 @@ func clearAllIndexes(t *testing.T, client *Client) {
 	ctx := context.Background()
 	sm := client.ServiceManager()
 
-	for _, uid := range []string{IndexDocuments, IndexZimArchives, IndexConfluenceSpaces, IndexGitTemplates} {
+	for _, uid := range []string{IndexDocuments, IndexZimArchives, IndexGitTemplates} {
 		idx := sm.Index(uid)
 		_, _ = idx.DeleteAllDocumentsWithContext(ctx, nil)
 	}
@@ -114,7 +114,7 @@ func TestConfigureIndexes_Integration(t *testing.T) {
 	sm := client.ServiceManager()
 
 	t.Run("all indexes exist", func(t *testing.T) {
-		for _, uid := range []string{IndexDocuments, IndexZimArchives, IndexConfluenceSpaces, IndexGitTemplates} {
+		for _, uid := range []string{IndexDocuments, IndexZimArchives, IndexGitTemplates} {
 			idx := sm.Index(uid)
 			info, err := idx.FetchInfoWithContext(ctx)
 			require.NoError(t, err, "index %s should exist", uid)
@@ -305,7 +305,7 @@ func TestFederatedSearch_Integration(t *testing.T) {
 	indexer := NewIndexer(client, integrationLogger())
 	searcher := NewSearcher(client, integrationLogger())
 
-	// Index one record in each of the 4 indexes.
+	// Index one record in each of the 3 indexes.
 	require.NoError(t, indexer.IndexDocument(ctx, DocumentRecord{
 		UUID: "fed-doc-001", Title: "Federated Document", Content: "federated test",
 		FileType: "pdf", Status: "indexed", IsPublic: true,
@@ -313,10 +313,6 @@ func TestFederatedSearch_Integration(t *testing.T) {
 	require.NoError(t, indexer.IndexZimArchive(ctx, ZimArchiveRecord{
 		UUID: "fed-zim-001", Name: "federated-zim", Title: "Federated ZIM Archive",
 		Language: "en", Category: "wikipedia",
-	}))
-	require.NoError(t, indexer.IndexConfluenceSpace(ctx, ConfluenceSpaceRecord{
-		UUID: "fed-conf-001", Key: "FED", Name: "Federated Confluence Space",
-		Type: "global", ExternalServiceID: 1, IsEnabled: true,
 	}))
 	require.NoError(t, indexer.IndexGitTemplate(ctx, GitTemplateRecord{
 		UUID: "fed-git-001", Name: "Federated Git Template", Slug: "federated-git",
@@ -330,8 +326,8 @@ func TestFederatedSearch_Integration(t *testing.T) {
 			Limit: 20,
 		})
 		require.NoError(t, err)
-		// All 4 records should match "Federated".
-		assert.GreaterOrEqual(t, int(resp.Hits.Len()), 4)
+		// All 3 records should match "Federated".
+		assert.GreaterOrEqual(t, resp.Hits.Len(), 3)
 	})
 
 	t.Run("searches specific indexes", func(t *testing.T) {
@@ -341,7 +337,7 @@ func TestFederatedSearch_Integration(t *testing.T) {
 			Limit:   20,
 		})
 		require.NoError(t, err)
-		assert.GreaterOrEqual(t, int(resp.Hits.Len()), 2)
+		assert.GreaterOrEqual(t, resp.Hits.Len(), 2)
 	})
 }
 
@@ -395,42 +391,6 @@ func TestIndexZimArchive_Integration(t *testing.T) {
 	assert.Equal(t, int64(1), resp.EstimatedTotalHits)
 }
 
-func TestIndexConfluenceSpace_Integration(t *testing.T) {
-	client := integrationClient()
-	ctx := context.Background()
-	require.NoError(t, client.ConfigureIndexes(ctx))
-	waitForAllTasks(t, client)
-	clearAllIndexes(t, client)
-
-	indexer := NewIndexer(client, integrationLogger())
-	searcher := NewSearcher(client, integrationLogger())
-
-	rec := ConfluenceSpaceRecord{
-		UUID: "conf-001", Key: "ENG", Name: "Engineering Space",
-		Type: "global", ExternalServiceID: 1, IsEnabled: true, SoftDeleted: false,
-	}
-	require.NoError(t, indexer.IndexConfluenceSpace(ctx, rec))
-	waitForAllTasks(t, client)
-
-	// Searchable.
-	resp, err := searcher.Search(ctx, SearchParams{
-		Query: "Engineering", IndexUID: IndexConfluenceSpaces,
-		Filters: "__soft_deleted = false",
-	})
-	require.NoError(t, err)
-	assert.Equal(t, int64(1), resp.EstimatedTotalHits)
-
-	// Soft-delete.
-	require.NoError(t, indexer.SoftDeleteConfluenceSpace(ctx, "conf-001"))
-	waitForAllTasks(t, client)
-
-	resp, err = searcher.Search(ctx, SearchParams{
-		Query: "Engineering", IndexUID: IndexConfluenceSpaces,
-		Filters: "__soft_deleted = false",
-	})
-	require.NoError(t, err)
-	assert.Equal(t, int64(0), resp.EstimatedTotalHits)
-}
 
 func TestIndexGitTemplate_Integration(t *testing.T) {
 	client := integrationClient()
