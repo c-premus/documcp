@@ -116,7 +116,7 @@ func New(cfg *config.Config) (*App, error) {
 	}
 	// Derive a separate encryption key for session cookies (AES-256).
 	// This ensures session data (user_id, is_admin, email) is not visible in base64.
-	sessionEncKey, err := deriveKey([]byte(sessionSecret), "session-cookie-encryption", 32)
+	sessionEncKey, err := deriveKey([]byte(sessionSecret), cfg.OAuth.HKDFSalt, "session-cookie-encryption", 32)
 	if err != nil {
 		return nil, fmt.Errorf("deriving session encryption key: %w", err)
 	}
@@ -125,7 +125,7 @@ func New(cfg *config.Config) (*App, error) {
 	// New keys are tried first for signing; old keys are tried as fallback for verification.
 	keyPairs := [][]byte{[]byte(sessionSecret), sessionEncKey}
 	if prev := cfg.OAuth.SessionSecretPrevious; prev != "" {
-		oldEncKey, encErr := deriveKey([]byte(prev), "session-cookie-encryption", 32)
+		oldEncKey, encErr := deriveKey([]byte(prev), cfg.OAuth.HKDFSalt, "session-cookie-encryption", 32)
 		if encErr != nil {
 			return nil, fmt.Errorf("deriving previous session encryption key: %w", encErr)
 		}
@@ -138,7 +138,7 @@ func New(cfg *config.Config) (*App, error) {
 		HttpOnly: true,
 		Secure:   cfg.App.Env == "production",
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   86400 * 30, // 30 days
+		MaxAge:   int(cfg.OAuth.SessionMaxAge.Seconds()),
 	}
 
 	// --- Encryption ---
@@ -155,7 +155,7 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	// --- Token HMAC key ---
-	hmacKey, err := deriveKey([]byte(sessionSecret), "oauth-token-hmac", 32)
+	hmacKey, err := deriveKey([]byte(sessionSecret), cfg.OAuth.HKDFSalt, "oauth-token-hmac", 32)
 	if err != nil {
 		return nil, fmt.Errorf("deriving HMAC key: %w", err)
 	}
@@ -614,8 +614,8 @@ func (a *docStatusAdapter) FindByStatus(ctx context.Context, status string) ([]q
 
 // deriveKey uses HKDF-SHA256 to derive a subkey from a master secret.
 // This ensures different keys for different purposes (e.g. CSRF vs sessions).
-func deriveKey(secret []byte, info string, length int) ([]byte, error) {
-	r := hkdf.New(sha256.New, secret, []byte("DocuMCP-go-v1"), []byte(info))
+func deriveKey(secret []byte, salt, info string, length int) ([]byte, error) {
+	r := hkdf.New(sha256.New, secret, []byte(salt), []byte(info))
 	key := make([]byte, length)
 	if _, err := io.ReadFull(r, key); err != nil {
 		return nil, fmt.Errorf("deriving key for %s: %w", info, err)
