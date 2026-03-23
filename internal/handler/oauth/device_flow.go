@@ -28,6 +28,7 @@ func (h *Handler) DeviceAuthorization(w http.ResponseWriter, r *http.Request) {
 		req.ClientID = r.FormValue("client_id")
 		req.Scope = r.FormValue("scope")
 	} else {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			oauthError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
 			return
@@ -91,8 +92,18 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Brute force protection: track failed verification attempts per session (RFC 8628 §3.5).
+	failedAttempts, _ := session.Values["device_failed_attempts"].(int)
+	if failedAttempts >= 5 {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprintf(w, deviceErrorHTML, "Too many failed attempts. Please log out and try again.")
+		return
+	}
+
 	userCode := r.FormValue("user_code")
 	if userCode == "" || len(userCode) > 9 {
+		session.Values["device_failed_attempts"] = failedAttempts + 1
+		_ = session.Save(r, w)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = fmt.Fprintf(w, deviceErrorHTML, "Invalid or expired user code. Please check the code and try again.")
 		return
@@ -101,6 +112,8 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 	// Look up the device code
 	dc, err := h.service.FindDeviceCodeByUserCode(r.Context(), userCode)
 	if err != nil {
+		session.Values["device_failed_attempts"] = failedAttempts + 1
+		_ = session.Save(r, w)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = fmt.Fprintf(w, deviceErrorHTML, "Invalid or expired user code. Please check the code and try again.")
 		return

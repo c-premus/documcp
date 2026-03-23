@@ -105,6 +105,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	// OAuth MUST be configured; without it, all MCP tools would be unauthenticated.
 	if deps.MCPHandler != nil && deps.OAuthService != nil {
 		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitByIP(60, time.Minute))
 			r.Use(authmiddleware.BearerToken(deps.OAuthService))
 			r.Use(authmiddleware.RequireScope("mcp:access"))
 			r.Handle("/documcp/*", deps.MCPHandler)
