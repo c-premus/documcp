@@ -23,43 +23,53 @@ import (
 )
 
 const (
-	// CatalogCacheKey is the cache key for the OPDS catalog.
+	// catalogCacheKey is the cache key for the OPDS catalog.
 	catalogCacheKey = "catalog"
-
-	// CatalogCacheTTL is how long the parsed catalog is cached.
-	catalogCacheTTL = 1 * time.Hour
 )
+
+// ClientConfig holds configuration for a Kiwix HTTP client.
+type ClientConfig struct {
+	BaseURL            string
+	HTTPTimeout        time.Duration
+	HealthCheckTimeout time.Duration
+	CacheTTL           time.Duration
+	SSRFDialerTimeout  time.Duration
+}
 
 // Client communicates with a Kiwix Serve instance over HTTP.
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
-	cache      *cache
-	logger     *slog.Logger
+	baseURL            string
+	httpClient         *http.Client
+	cache              *cache
+	logger             *slog.Logger
+	healthCheckTimeout time.Duration
+	cacheTTL           time.Duration
 }
 
 // NewClient creates a new Kiwix HTTP client targeting the given base URL.
 // It validates the base URL against SSRF attacks.
-func NewClient(baseURL string, logger *slog.Logger) (*Client, error) {
-	if err := security.ValidateExternalURL(baseURL, true); err != nil {
+func NewClient(cfg ClientConfig, logger *slog.Logger) (*Client, error) {
+	if err := security.ValidateExternalURL(cfg.BaseURL, true); err != nil {
 		return nil, fmt.Errorf("invalid kiwix base URL: %w", err)
 	}
 
 	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
+		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
 		httpClient: &http.Client{
-			Timeout:   10 * time.Second,
-			Transport: security.SafeTransportAllowPrivate(),
+			Timeout:   cfg.HTTPTimeout,
+			Transport: security.SafeTransportAllowPrivate(cfg.SSRFDialerTimeout),
 		},
-		cache:  newCache(),
-		logger: logger,
+		cache:              newCache(),
+		logger:             logger,
+		healthCheckTimeout: cfg.HealthCheckTimeout,
+		cacheTTL:           cfg.CacheTTL,
 	}, nil
 }
 
 // Health checks whether the Kiwix Serve instance is reachable by fetching
 // the OPDS catalog root. Returns nil on HTTP 200, an error otherwise.
 func (c *Client) Health(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, c.healthCheckTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/catalog/root.xml", http.NoBody)
@@ -114,7 +124,7 @@ func (c *Client) FetchCatalog(ctx context.Context) ([]CatalogEntry, error) {
 		return nil, fmt.Errorf("parsing catalog XML: %w", err)
 	}
 
-	c.cache.set(catalogCacheKey, entries, catalogCacheTTL)
+	c.cache.set(catalogCacheKey, entries, c.cacheTTL)
 	c.logger.Info("catalog fetched and cached", "count", len(entries))
 
 	return entries, nil

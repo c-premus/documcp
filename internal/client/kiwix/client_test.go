@@ -17,10 +17,12 @@ import (
 func newTestClient(t *testing.T, serverURL string) *Client {
 	t.Helper()
 	return &Client{
-		baseURL:    strings.TrimRight(serverURL, "/"),
-		httpClient: &http.Client{Timeout: 10 * time.Second},
-		cache:      newCache(),
-		logger:     slog.Default(),
+		baseURL:            strings.TrimRight(serverURL, "/"),
+		httpClient:         &http.Client{Timeout: 10 * time.Second},
+		cache:              newCache(),
+		logger:             slog.Default(),
+		healthCheckTimeout: 5 * time.Second,
+		cacheTTL:           1 * time.Hour,
 	}
 }
 
@@ -1052,9 +1054,20 @@ func TestParseSuggestResponse(t *testing.T) {
 
 // --- NewClient ---
 
+// defaultTestConfig returns a ClientConfig with default values for testing.
+func defaultTestConfig(baseURL string) ClientConfig {
+	return ClientConfig{
+		BaseURL:            baseURL,
+		HTTPTimeout:        10 * time.Second,
+		HealthCheckTimeout: 5 * time.Second,
+		CacheTTL:           1 * time.Hour,
+		SSRFDialerTimeout:  10 * time.Second,
+	}
+}
+
 func TestNewClient(t *testing.T) {
 	t.Run("trims trailing slash from base URL", func(t *testing.T) {
-		client, err := NewClient("http://example.com:8080/", slog.Default())
+		client, err := NewClient(defaultTestConfig("http://example.com:8080/"), slog.Default())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1064,7 +1077,7 @@ func TestNewClient(t *testing.T) {
 	})
 
 	t.Run("handles URL without trailing slash", func(t *testing.T) {
-		client, err := NewClient("http://example.com:8080", slog.Default())
+		client, err := NewClient(defaultTestConfig("http://example.com:8080"), slog.Default())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1074,7 +1087,7 @@ func TestNewClient(t *testing.T) {
 	})
 
 	t.Run("sets 10 second HTTP client timeout", func(t *testing.T) {
-		client, err := NewClient("http://example.com:8080", slog.Default())
+		client, err := NewClient(defaultTestConfig("http://example.com:8080"), slog.Default())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1084,7 +1097,7 @@ func TestNewClient(t *testing.T) {
 	})
 
 	t.Run("initializes cache", func(t *testing.T) {
-		client, err := NewClient("http://example.com:8080", slog.Default())
+		client, err := NewClient(defaultTestConfig("http://example.com:8080"), slog.Default())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1094,14 +1107,14 @@ func TestNewClient(t *testing.T) {
 	})
 
 	t.Run("rejects localhost URL", func(t *testing.T) {
-		_, err := NewClient("http://localhost:8080", slog.Default())
+		_, err := NewClient(defaultTestConfig("http://localhost:8080"), slog.Default())
 		if err == nil {
 			t.Fatal("expected error for localhost URL")
 		}
 	})
 
 	t.Run("allows private IP URL for internal services", func(t *testing.T) {
-		_, err := NewClient("http://192.168.1.1:8080", slog.Default())
+		_, err := NewClient(defaultTestConfig("http://192.168.1.1:8080"), slog.Default())
 		if err != nil {
 			t.Fatalf("expected no error for private IP URL, got: %v", err)
 		}

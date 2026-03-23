@@ -2,6 +2,7 @@
 package server
 
 import (
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -12,26 +13,31 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-// SecurityHeaders adds recommended security headers to every response.
-func SecurityHeaders(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-XSS-Protection", "0")
-		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
-		w.Header().Set("Cache-Control", "no-store")
+// SecurityHeaders returns middleware that adds recommended security headers to
+// every response. The hstsMaxAge parameter controls the HSTS max-age directive
+// in seconds; set to 0 to disable HSTS entirely.
+func SecurityHeaders(hstsMaxAge int) func(http.Handler) http.Handler {
+	hstsValue := fmt.Sprintf("max-age=%d; includeSubDomains", hstsMaxAge)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("X-XSS-Protection", "0")
+			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
+			w.Header().Set("Cache-Control", "no-store")
 
-		// HSTS: instruct browsers to only use HTTPS. Only set when the
-		// request arrived over TLS (or via a trusted proxy that sets
-		// X-Forwarded-Proto) to avoid breaking plain-HTTP dev setups.
-		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-			w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
-		}
+			// HSTS: instruct browsers to only use HTTPS. Only set when the
+			// request arrived over TLS (or via a trusted proxy that sets
+			// X-Forwarded-Proto) to avoid breaking plain-HTTP dev setups.
+			if hstsMaxAge > 0 && (r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https") {
+				w.Header().Set("Strict-Transport-Security", hstsValue)
+			}
 
-		next.ServeHTTP(w, r)
-	})
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // SafeRecoverer recovers from panics and returns a generic 500 response without

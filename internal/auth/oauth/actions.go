@@ -71,6 +71,12 @@ func NewService(repo OAuthRepo, oauthCfg config.OAuthConfig, appURL string, logg
 // safeStateRegexp allows only safe characters in the state parameter.
 var safeStateRegexp = regexp.MustCompile(`^[a-zA-Z0-9._~()'\-]+$`)
 
+// ClientTouchTimeout returns the configured timeout for background client
+// last_used_at updates. Used by auth middleware for fire-and-forget goroutines.
+func (s *Service) ClientTouchTimeout() time.Duration {
+	return s.config.ClientTouchTimeout
+}
+
 // FindClient looks up an active client by its public client_id.
 func (s *Service) FindClient(ctx context.Context, clientID string) (*model.OAuthClient, error) {
 	return s.repo.FindClientByClientID(ctx, clientID)

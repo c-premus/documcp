@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	"golang.org/x/crypto/hkdf"
 
@@ -89,7 +88,14 @@ func New(cfg *config.Config) (*App, error) {
 	logger.Info("database migrations applied")
 
 	// --- pgxpool for River ---
-	pgxPool, err := database.NewPgxPool(context.Background(), cfg.DatabaseDSN(), 10)
+	pgxPool, err := database.NewPgxPool(
+		context.Background(),
+		cfg.DatabaseDSN(),
+		10,
+		cfg.Database.PgxMinConns,
+		cfg.Database.PgxMaxConnLifetime,
+		cfg.Database.PgxMaxConnIdleTime,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("creating pgxpool for river: %w", err)
 	}
@@ -200,7 +206,13 @@ func New(cfg *config.Config) (*App, error) {
 	} else if len(kiwixServices) > 0 {
 		svc := kiwixServices[0]
 		var kiwixErr error
-		kiwixClient, kiwixErr = kiwix.NewClient(svc.BaseURL, logger)
+		kiwixClient, kiwixErr = kiwix.NewClient(kiwix.ClientConfig{
+			BaseURL:            svc.BaseURL,
+			HTTPTimeout:        cfg.Kiwix.HTTPTimeout,
+			HealthCheckTimeout: cfg.Kiwix.HealthCheckTimeout,
+			CacheTTL:           cfg.Kiwix.CacheTTL,
+			SSRFDialerTimeout:  cfg.App.SSRFDialerTimeout,
+		}, logger)
 		if kiwixErr != nil {
 			logger.Warn("kiwix client URL rejected", "base_url", svc.BaseURL, "error", kiwixErr)
 		} else {
@@ -241,16 +253,25 @@ func New(cfg *config.Config) (*App, error) {
 
 	// --- River Workers ---
 	schedulerDeps := queue.SchedulerDeps{
-		Services:      externalServiceRepo,
-		HealthChecker: externalServiceRepo,
-		ZimRepo:       zimArchiveRepo,
-		GitRepo:       gitTemplateRepo,
-		OAuthRepo:     oauthRepo,
-		DocRepo:       documentRepo,
-		Indexer:       searchIndexer,
-		GitTempDir:    gitTempDir,
-		StoragePath:   storagePath,
-		Logger:        logger,
+		Services:          externalServiceRepo,
+		HealthChecker:     externalServiceRepo,
+		ZimRepo:           zimArchiveRepo,
+		GitRepo:           gitTemplateRepo,
+		OAuthRepo:         oauthRepo,
+		DocRepo:           documentRepo,
+		Indexer:           searchIndexer,
+		GitTempDir:        gitTempDir,
+		StoragePath:       storagePath,
+		Logger:            logger,
+		GitMaxFileSize:    cfg.Git.MaxFileSize,
+		GitMaxTotalSize:   cfg.Git.MaxTotalSize,
+		SSRFDialerTimeout: cfg.App.SSRFDialerTimeout,
+		KiwixConfig: kiwix.ClientConfig{
+			HTTPTimeout:        cfg.Kiwix.HTTPTimeout,
+			HealthCheckTimeout: cfg.Kiwix.HealthCheckTimeout,
+			CacheTTL:           cfg.Kiwix.CacheTTL,
+			SSRFDialerTimeout:  cfg.App.SSRFDialerTimeout,
+		},
 	}
 
 	// Create document workers with nil dependencies (wired after pipeline creation).
@@ -386,7 +407,7 @@ func New(cfg *config.Config) (*App, error) {
 	)
 
 	// --- SSE & Queue Handlers ---
-	sseH := apihandler.NewSSEHandler(eventBus)
+	sseH := apihandler.NewSSEHandler(eventBus, cfg.Server.SSEHeartbeatInterval)
 	queueH := apihandler.NewQueueHandler(riverClient, logger)
 
 	// --- MCP Handler ---
@@ -473,6 +494,9 @@ func New(cfg *config.Config) (*App, error) {
 		SearchClient:           searchClient,
 		DB:                     db.DB,
 		InternalAPIToken:       cfg.App.InternalAPIToken,
+		MaxBodySize:            cfg.Server.MaxBodySize,
+		RequestTimeout:         cfg.Server.RequestTimeout,
+		HSTSMaxAge:             cfg.Server.HSTSMaxAge,
 	})
 
 	logger.Info("MCP server configured",
@@ -529,10 +553,10 @@ func (a *App) Start(ctx context.Context) error {
 		a.EventBus.Close()
 	}
 
-	// Stage 1: graceful shutdown — give in-flight requests up to 5s to finish.
+	// Stage 1: graceful shutdown — give in-flight requests time to finish.
 	// MCP stateful SSE streams (GET /documcp) will not go idle on their own,
 	// so we don't wait long for them here.
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), a.Config.Server.ShutdownTimeout)
 	defer cancel()
 
 	if err := a.Server.Shutdown(shutdownCtx); err != nil {
@@ -551,14 +575,14 @@ func (a *App) Start(ctx context.Context) error {
 // Close releases all resources held by the application.
 func (a *App) Close() error {
 	if a.RiverClient != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), a.Config.App.QueueStopTimeout)
 		defer cancel()
 		if err := a.RiverClient.Stop(ctx); err != nil {
 			a.Logger.Error("stopping river client", "error", err)
 		}
 	}
 	if a.tracerShutdown != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), a.Config.App.TracerStopTimeout)
 		defer cancel()
 		if err := a.tracerShutdown(ctx); err != nil {
 			a.Logger.Error("flushing tracer spans", "error", err)

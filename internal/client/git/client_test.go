@@ -47,7 +47,7 @@ func writeTestFile(t *testing.T, path, content string) {
 
 func newTestClient(t *testing.T) *Client {
 	t.Helper()
-	return NewClient(t.TempDir(), slog.Default())
+	return NewClient(t.TempDir(), DefaultMaxFileSize, DefaultMaxTotalSize, slog.Default())
 }
 
 // --- Clone ---

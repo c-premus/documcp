@@ -31,15 +31,27 @@ var variablePattern = regexp.MustCompile(`\{\{(\w+)\}\}`)
 
 // Client handles git operations for template repositories.
 type Client struct {
-	tempDir string
-	logger  *slog.Logger
+	tempDir      string
+	maxFileSize  int64
+	maxTotalSize int64
+	logger       *slog.Logger
 }
 
 // NewClient creates a Client that uses tempDir as the base directory for cloning repos.
-func NewClient(tempDir string, logger *slog.Logger) *Client {
+// The maxFileSize and maxTotalSize parameters set default limits for ExtractFiles;
+// pass 0 to use DefaultMaxFileSize and DefaultMaxTotalSize respectively.
+func NewClient(tempDir string, maxFileSize, maxTotalSize int64, logger *slog.Logger) *Client {
+	if maxFileSize <= 0 {
+		maxFileSize = DefaultMaxFileSize
+	}
+	if maxTotalSize <= 0 {
+		maxTotalSize = DefaultMaxTotalSize
+	}
 	return &Client{
-		tempDir: tempDir,
-		logger:  logger,
+		tempDir:      tempDir,
+		maxFileSize:  maxFileSize,
+		maxTotalSize: maxTotalSize,
+		logger:       logger,
 	}
 }
 
@@ -128,10 +140,10 @@ func (c *Client) Pull(ctx context.Context, repoDir, token string) error {
 // are skipped, and extraction stops if maxTotalSize is exceeded.
 func (c *Client) ExtractFiles(repoDir string, maxFileSize, maxTotalSize int64) ([]TemplateFile, error) {
 	if maxFileSize <= 0 {
-		maxFileSize = DefaultMaxFileSize
+		maxFileSize = c.maxFileSize
 	}
 	if maxTotalSize <= 0 {
-		maxTotalSize = DefaultMaxTotalSize
+		maxTotalSize = c.maxTotalSize
 	}
 
 	var files []TemplateFile
