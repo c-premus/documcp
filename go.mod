@@ -1,8 +1,6 @@
 module git.999.haus/chris/DocuMCP-go
 
-go 1.25.6
-
-toolchain go1.25.8
+go 1.26.1
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
