@@ -3,6 +3,9 @@
 .env
 .devcontainer/.env
 
+# Uploaded document storage
+storage/
+
 # Grafana dashboard generator
 grafana/node_modules/
 grafana/dist/

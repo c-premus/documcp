@@ -39,10 +39,11 @@ type SearchParams struct {
 
 // FederatedSearchParams holds parameters for searching across multiple indexes.
 type FederatedSearchParams struct {
-	Query   string
-	Indexes []string // Index UIDs to search. Empty = all 4 indexes.
-	Limit   int64
-	Offset  int64
+	Query         string
+	Indexes       []string          // Index UIDs to search. Empty = all 3 indexes.
+	Limit         int64
+	Offset        int64
+	IndexFilters  map[string]string // Additional per-index filters (appended to default soft-delete filter).
 }
 
 // Searcher performs search queries against Meilisearch indexes.
@@ -112,10 +113,18 @@ func (s *Searcher) FederatedSearch(ctx context.Context, params FederatedSearchPa
 
 	queries := make([]*meilisearch.SearchRequest, 0, len(indexes))
 	for _, idx := range indexes {
+		filter := softDeleteFilter(idx)
+		if extra, ok := params.IndexFilters[idx]; ok && extra != "" {
+			if filter != "" {
+				filter += " AND " + extra
+			} else {
+				filter = extra
+			}
+		}
 		queries = append(queries, &meilisearch.SearchRequest{
 			IndexUID: idx,
 			Query:    params.Query,
-			Filter:   softDeleteFilter(idx),
+			Filter:   filter,
 		})
 	}
 

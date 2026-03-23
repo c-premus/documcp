@@ -305,6 +305,11 @@ func (h *Handler) handleUpdateDocument(
 	_ *mcp.CallToolRequest,
 	input dto.UpdateDocumentInput,
 ) (*mcp.CallToolResult, updateDocumentResponse, error) {
+	// Non-admin users can only update their own documents.
+	if err := h.checkDocumentOwnership(ctx, input.UUID); err != nil {
+		return nil, updateDocumentResponse{}, err
+	}
+
 	doc, err := h.documentService.Update(ctx, input.UUID, service.UpdateDocumentParams{
 		Title:       input.Title,
 		Description: input.Description,
@@ -332,6 +337,11 @@ func (h *Handler) handleDeleteDocument(
 	_ *mcp.CallToolRequest,
 	input dto.DeleteDocumentInput,
 ) (*mcp.CallToolResult, deleteDocumentResponse, error) {
+	// Non-admin users can only delete their own documents.
+	if err := h.checkDocumentOwnership(ctx, input.UUID); err != nil {
+		return nil, deleteDocumentResponse{}, err
+	}
+
 	if err := h.documentService.Delete(ctx, input.UUID); err != nil {
 		return nil, deleteDocumentResponse{}, fmt.Errorf("deleting document: %w", err)
 	}
@@ -344,6 +354,27 @@ func (h *Handler) handleDeleteDocument(
 }
 
 // --- Helpers ---
+
+// checkDocumentOwnership verifies that the current user owns the document or is an admin.
+// Returns an error if the user is not authorized.
+func (h *Handler) checkDocumentOwnership(ctx context.Context, uuid string) error {
+	doc, err := h.documentService.FindByUUID(ctx, uuid)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, service.ErrNotFound) {
+			return errors.New("document not found")
+		}
+		return fmt.Errorf("finding document: %w", err)
+	}
+
+	user, _ := authmiddleware.UserFromContext(ctx)
+	if user != nil && !user.IsAdmin {
+		if !doc.UserID.Valid || doc.UserID.Int64 != user.ID {
+			return errors.New("document not found")
+		}
+	}
+
+	return nil
+}
 
 // buildDocumentMeta converts a model.Document and its tags into a documentMeta response.
 func buildDocumentMeta(doc *model.Document, tags []model.DocumentTag) *documentMeta {

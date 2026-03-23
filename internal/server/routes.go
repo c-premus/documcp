@@ -75,7 +75,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	// Built-in chi middleware (applied to all routes)
 	r.Use(middleware.RequestID)
 	r.Use(RealIP(s.trustedProxies))
-	r.Use(middleware.Recoverer)
+	r.Use(SafeRecoverer(s.logger))
 	r.Use(SecurityHeaders)
 	r.Use(RequestLogger(s.logger))
 
@@ -102,16 +102,17 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	r.Use(cop.Handler)
 
 	// MCP endpoint — timeout excluded above (SSE streams must stay open indefinitely).
-	if deps.MCPHandler != nil {
+	// OAuth MUST be configured; without it, all MCP tools would be unauthenticated.
+	if deps.MCPHandler != nil && deps.OAuthService != nil {
 		r.Group(func(r chi.Router) {
-			if deps.OAuthService != nil {
-				r.Use(authmiddleware.BearerToken(deps.OAuthService))
-				r.Use(authmiddleware.RequireScope("mcp:access"))
-			}
+			r.Use(authmiddleware.BearerToken(deps.OAuthService))
+			r.Use(authmiddleware.RequireScope("mcp:access"))
 			r.Handle("/documcp/*", deps.MCPHandler)
 			r.Handle("/documcp", deps.MCPHandler)
 		})
 		s.logger.Info("MCP endpoint registered", "path", "/documcp")
+	} else if deps.MCPHandler != nil {
+		s.logger.Warn("MCP endpoint NOT registered: OAuth service not configured")
 	}
 
 	// Health check (liveness — cheap, no I/O)

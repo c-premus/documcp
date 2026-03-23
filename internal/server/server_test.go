@@ -15,6 +15,8 @@ import (
 
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
+	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
+	"git.999.haus/chris/DocuMCP-go/internal/config"
 	"git.999.haus/chris/DocuMCP-go/internal/handler"
 	"git.999.haus/chris/DocuMCP-go/internal/server"
 )
@@ -545,55 +547,56 @@ func TestRegisterRoutes_AdminLoginRedirect(t *testing.T) {
 // RegisterRoutes: MCP handler registration
 // ---------------------------------------------------------------------------
 
+func stubOAuthService() *oauth.Service {
+	return oauth.NewService(nil, config.OAuthConfig{}, "http://localhost", slog.Default())
+}
+
 func TestRegisterRoutes_MCPHandler(t *testing.T) {
 	t.Parallel()
 
-	mcpCalled := false
 	mcpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		mcpCalled = true
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("mcp ok"))
 	})
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:    "test",
-		MCPHandler: mcpHandler,
+		Version:      "test",
+		MCPHandler:   mcpHandler,
+		OAuthService: stubOAuthService(),
 	})
 
+	// Without a valid bearer token, expect 401 (route is registered but auth required).
 	req := httptest.NewRequest(http.MethodGet, "/documcp/", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
 
-	if !mcpCalled {
-		t.Error("MCP handler was not called")
-	}
-	if rec.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	if rec.Code == http.StatusNotFound {
+		t.Error("MCP route should be registered when OAuthService is provided")
 	}
 }
 
 func TestRegisterRoutes_MCPHandlerSubpath(t *testing.T) {
 	t.Parallel()
 
-	mcpCalled := false
 	mcpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		mcpCalled = true
 		w.WriteHeader(http.StatusOK)
 	})
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:    "test",
-		MCPHandler: mcpHandler,
+		Version:      "test",
+		MCPHandler:   mcpHandler,
+		OAuthService: stubOAuthService(),
 	})
 
+	// Without a valid bearer token, expect non-404 (route registered).
 	req := httptest.NewRequest(http.MethodPost, "/documcp/some/path", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	srv.Router().ServeHTTP(rec, req)
 
-	if !mcpCalled {
-		t.Error("MCP handler was not called for subpath")
+	if rec.Code == http.StatusNotFound {
+		t.Error("MCP subpath route should be registered when OAuthService is provided")
 	}
 }
 
@@ -864,16 +867,14 @@ func TestRegisterRoutes_AdminWithoutSPA(t *testing.T) {
 func TestRegisterRoutes_MCPHandlerWithoutOAuth(t *testing.T) {
 	t.Parallel()
 
-	mcpCalled := false
 	mcpHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		mcpCalled = true
 		w.WriteHeader(http.StatusOK)
 	})
 
 	srv := newTestServerWithDeps(t, server.Deps{
 		Version:    "test",
 		MCPHandler: mcpHandler,
-		// OAuthService is nil -- no auth middleware on MCP
+		// OAuthService is nil -- MCP must NOT be registered (security: no unauthenticated access)
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/documcp/", http.NoBody)
@@ -881,11 +882,8 @@ func TestRegisterRoutes_MCPHandlerWithoutOAuth(t *testing.T) {
 
 	srv.Router().ServeHTTP(rec, req)
 
-	if !mcpCalled {
-		t.Error("MCP handler should be called without auth when OAuthService is nil")
-	}
-	if rec.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d (MCP should not be registered without OAuth)", rec.Code, http.StatusNotFound)
 	}
 }
 
