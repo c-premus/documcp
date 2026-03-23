@@ -112,6 +112,7 @@ type OAuthConfig struct {
 	DeviceCodeInterval      time.Duration `mapstructure:"oauth_device_polling_interval"`
 	RequirePKCE             bool          `mapstructure:"oauth_pkce_required"`
 	SessionSecret           string        `mapstructure:"oauth_session_secret"`
+	SessionSecretPrevious   string        `mapstructure:"oauth_session_secret_previous"`
 	RegistrationEnabled     bool          `mapstructure:"oauth_registration_enabled"`
 	RegistrationRequireAuth bool          `mapstructure:"oauth_registration_require_auth"`
 }
@@ -193,6 +194,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oauth_device_polling_interval", 5*time.Second)
 	v.SetDefault("oauth_pkce_required", true)
 	v.SetDefault("oauth_session_secret", "")
+	v.SetDefault("oauth_session_secret_previous", "")
 	v.SetDefault("oauth_registration_enabled", true)
 	v.SetDefault("oauth_registration_require_auth", true)
 
@@ -320,6 +322,7 @@ func Load() (*Config, error) {
 		DeviceCodeInterval:      v.GetDuration("oauth_device_polling_interval"),
 		RequirePKCE:             v.GetBool("oauth_pkce_required"),
 		SessionSecret:           v.GetString("oauth_session_secret"),
+		SessionSecretPrevious:   v.GetString("oauth_session_secret_previous"),
 		RegistrationEnabled:     v.GetBool("oauth_registration_enabled"),
 		RegistrationRequireAuth: v.GetBool("oauth_registration_require_auth"),
 	}
@@ -396,6 +399,8 @@ func (c *Config) Validate() error {
 
 	if isProd && c.OAuth.SessionSecret == "" {
 		errs = append(errs, "OAUTH_SESSION_SECRET is required in production")
+	} else if isProd && len(c.OAuth.SessionSecret) < 32 {
+		errs = append(errs, "OAUTH_SESSION_SECRET must be at least 32 characters in production")
 	}
 	if isProd && c.Database.Password == "" {
 		errs = append(errs, "DB_PASSWORD is required in production")

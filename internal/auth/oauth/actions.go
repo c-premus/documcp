@@ -356,9 +356,10 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 		return nil, errors.New("unexpected code_verifier - authorization request did not include code_challenge")
 	}
 
-	// Revoke the authorization code (one-time use)
+	// Atomically revoke the authorization code (one-time use).
+	// Returns sql.ErrNoRows if a concurrent request already consumed it.
 	if err := s.repo.RevokeAuthorizationCode(ctx, authCode.ID); err != nil {
-		return nil, fmt.Errorf("revoking authorization code: %w", err)
+		return nil, errors.New("authorization code has already been used")
 	}
 
 	// Issue tokens
@@ -479,29 +480,33 @@ func (s *Service) RevokeToken(ctx context.Context, params RevokeTokenParams) err
 	}
 
 	// Parse the token. Per RFC 7009, return success even for invalid tokens.
-	id, tokenHash, ok := parseTokenOrZero(params.Token)
+	_, tokenHash, ok := parseTokenOrZero(params.Token)
 	if !ok {
 		return nil
 	}
 
-	// Try to revoke based on hint
+	// Try to revoke based on hint (verify client ownership per RFC 7009 §2.1)
 	switch params.TokenTypeHint {
 	case "refresh_token":
-		s.tryRevokeRefreshToken(ctx, tokenHash, id)
+		s.tryRevokeRefreshToken(ctx, tokenHash, client.ID)
 	case "access_token":
-		s.tryRevokeAccessToken(ctx, tokenHash)
+		s.tryRevokeAccessToken(ctx, tokenHash, client.ID)
 	default:
 		// Try access token first, then refresh token
-		s.tryRevokeAccessToken(ctx, tokenHash)
-		s.tryRevokeRefreshToken(ctx, tokenHash, id)
+		s.tryRevokeAccessToken(ctx, tokenHash, client.ID)
+		s.tryRevokeRefreshToken(ctx, tokenHash, client.ID)
 	}
 
 	return nil
 }
 
-func (s *Service) tryRevokeAccessToken(ctx context.Context, tokenHash string) {
+func (s *Service) tryRevokeAccessToken(ctx context.Context, tokenHash string, clientID int64) {
 	token, err := s.repo.FindAccessTokenByToken(ctx, tokenHash)
 	if err != nil {
+		return
+	}
+	// Verify token belongs to the requesting client
+	if token.ClientID != clientID {
 		return
 	}
 	_ = s.repo.RevokeAccessToken(ctx, token.ID)
@@ -509,9 +514,14 @@ func (s *Service) tryRevokeAccessToken(ctx context.Context, tokenHash string) {
 	_ = s.repo.RevokeRefreshTokenByAccessTokenID(ctx, token.ID)
 }
 
-func (s *Service) tryRevokeRefreshToken(ctx context.Context, tokenHash string, _ int64) {
+func (s *Service) tryRevokeRefreshToken(ctx context.Context, tokenHash string, clientID int64) {
 	token, err := s.repo.FindRefreshTokenByToken(ctx, tokenHash)
 	if err != nil {
+		return
+	}
+	// Verify the refresh token's access token belongs to the requesting client
+	accessToken, err := s.repo.FindAccessTokenByID(ctx, token.AccessTokenID)
+	if err != nil || accessToken.ClientID != clientID {
 		return
 	}
 	_ = s.repo.RevokeRefreshToken(ctx, token.ID)

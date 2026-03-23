@@ -11,6 +11,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
+	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
 	"git.999.haus/chris/DocuMCP-go/internal/dto"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/search"
@@ -137,6 +138,9 @@ func (h *Handler) handleSearchDocuments(
 	_ *mcp.CallToolRequest,
 	input dto.SearchDocumentsInput,
 ) (*mcp.CallToolResult, searchDocumentsResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
+		return nil, searchDocumentsResponse{}, errors.New("mcp:read scope required for document search")
+	}
 	if h.searcher == nil {
 		return nil, searchDocumentsResponse{
 			Success: false,
@@ -234,6 +238,9 @@ func (h *Handler) handleReadDocument(
 	_ *mcp.CallToolRequest,
 	input dto.ReadDocumentInput,
 ) (*mcp.CallToolResult, readDocumentResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
+		return nil, readDocumentResponse{}, errors.New("mcp:read scope required for reading documents")
+	}
 	doc, err := h.documentService.FindByUUID(ctx, input.UUID)
 	if err != nil {
 		return nil, readDocumentResponse{}, fmt.Errorf("finding document: %w", err)
@@ -269,6 +276,9 @@ func (h *Handler) handleCreateDocument(
 	_ *mcp.CallToolRequest,
 	input dto.CreateDocumentInput,
 ) (*mcp.CallToolResult, createDocumentResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPWrite); err != nil {
+		return nil, createDocumentResponse{}, errors.New("mcp:write scope required for document creation")
+	}
 	// Set the owner from the authenticated user context.
 	var userID *int64
 	if user, _ := authmiddleware.UserFromContext(ctx); user != nil {
@@ -305,6 +315,9 @@ func (h *Handler) handleUpdateDocument(
 	_ *mcp.CallToolRequest,
 	input dto.UpdateDocumentInput,
 ) (*mcp.CallToolResult, updateDocumentResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPWrite); err != nil {
+		return nil, updateDocumentResponse{}, errors.New("mcp:write scope required for document updates")
+	}
 	// Non-admin users can only update their own documents.
 	if err := h.checkDocumentOwnership(ctx, input.UUID); err != nil {
 		return nil, updateDocumentResponse{}, err
@@ -337,6 +350,9 @@ func (h *Handler) handleDeleteDocument(
 	_ *mcp.CallToolRequest,
 	input dto.DeleteDocumentInput,
 ) (*mcp.CallToolResult, deleteDocumentResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPWrite); err != nil {
+		return nil, deleteDocumentResponse{}, errors.New("mcp:write scope required for document deletion")
+	}
 	// Non-admin users can only delete their own documents.
 	if err := h.checkDocumentOwnership(ctx, input.UUID); err != nil {
 		return nil, deleteDocumentResponse{}, err

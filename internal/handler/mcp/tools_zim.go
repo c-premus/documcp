@@ -2,10 +2,12 @@ package mcphandler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
 	"git.999.haus/chris/DocuMCP-go/internal/dto"
 )
 
@@ -117,6 +119,9 @@ func (h *Handler) registerReadZimArticle() {
 // --- Tool handlers ---
 
 func (h *Handler) handleListZimArchives(ctx context.Context, _ *mcp.CallToolRequest, input dto.ListZimArchivesInput) (*mcp.CallToolResult, listZimArchivesResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
+		return nil, listZimArchivesResponse{}, errors.New("mcp:read scope required")
+	}
 	limit := input.Limit
 	if limit <= 0 {
 		limit = 50
@@ -157,6 +162,9 @@ func (h *Handler) handleListZimArchives(ctx context.Context, _ *mcp.CallToolRequ
 }
 
 func (h *Handler) handleSearchZim(ctx context.Context, _ *mcp.CallToolRequest, input dto.SearchZimInput) (*mcp.CallToolResult, searchZimResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
+		return nil, searchZimResponse{}, errors.New("mcp:read scope required")
+	}
 	if h.kiwixClient == nil {
 		return nil, searchZimResponse{
 			Success: false,
@@ -206,6 +214,9 @@ func (h *Handler) handleSearchZim(ctx context.Context, _ *mcp.CallToolRequest, i
 }
 
 func (h *Handler) handleReadZimArticle(ctx context.Context, _ *mcp.CallToolRequest, input dto.ReadZimArticleInput) (*mcp.CallToolResult, readZimArticleResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
+		return nil, readZimArticleResponse{}, errors.New("mcp:read scope required")
+	}
 	if h.kiwixClient == nil {
 		return nil, readZimArticleResponse{
 			Success: false,

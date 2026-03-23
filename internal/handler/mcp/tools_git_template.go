@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
 	"git.999.haus/chris/DocuMCP-go/internal/dto"
 	"git.999.haus/chris/DocuMCP-go/internal/search"
 )
@@ -298,6 +300,9 @@ func (h *Handler) handleListGitTemplates(
 	_ *mcp.CallToolRequest,
 	input dto.ListGitTemplatesInput,
 ) (*mcp.CallToolResult, listGitTemplatesResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
+		return nil, listGitTemplatesResponse{}, errors.New("mcp:read scope required")
+	}
 	limit := input.Limit
 	if limit <= 0 {
 		limit = 50
@@ -360,6 +365,9 @@ func (h *Handler) handleSearchGitTemplates(
 	_ *mcp.CallToolRequest,
 	input dto.SearchGitTemplatesInput,
 ) (*mcp.CallToolResult, searchGitTemplatesResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
+		return nil, searchGitTemplatesResponse{}, errors.New("mcp:read scope required")
+	}
 	if h.searcher == nil {
 		// Fall back to DB search if searcher is not available
 		limit := input.Limit
@@ -466,6 +474,9 @@ func (h *Handler) handleGetTemplateStructure(
 	_ *mcp.CallToolRequest,
 	input dto.GetTemplateStructureInput,
 ) (*mcp.CallToolResult, getTemplateStructureResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
+		return nil, getTemplateStructureResponse{}, errors.New("mcp:read scope required")
+	}
 	tmpl, _ := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
 	if tmpl == nil {
 		return nil, getTemplateStructureResponse{
@@ -531,6 +542,9 @@ func (h *Handler) handleGetTemplateFile(
 	_ *mcp.CallToolRequest,
 	input dto.GetTemplateFileInput,
 ) (*mcp.CallToolResult, getTemplateFileResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
+		return nil, getTemplateFileResponse{}, errors.New("mcp:read scope required")
+	}
 	tmpl, _ := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
 	if tmpl == nil {
 		return nil, getTemplateFileResponse{
@@ -590,6 +604,9 @@ func (h *Handler) handleGetDeploymentGuide(
 	_ *mcp.CallToolRequest,
 	input dto.GetDeploymentGuideInput,
 ) (*mcp.CallToolResult, getDeploymentGuideResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
+		return nil, getDeploymentGuideResponse{}, errors.New("mcp:read scope required")
+	}
 	tmpl, _ := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
 	if tmpl == nil {
 		return nil, getDeploymentGuideResponse{
@@ -658,6 +675,9 @@ func (h *Handler) handleDownloadTemplate(
 	_ *mcp.CallToolRequest,
 	input dto.DownloadTemplateInput,
 ) (*mcp.CallToolResult, downloadTemplateResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
+		return nil, downloadTemplateResponse{}, errors.New("mcp:read scope required")
+	}
 	tmpl, _ := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
 	if tmpl == nil {
 		return nil, downloadTemplateResponse{

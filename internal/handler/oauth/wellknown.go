@@ -2,7 +2,10 @@ package oauthhandler
 
 import (
 	"net/http"
+	"sort"
 	"strings"
+
+	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
 )
 
 // AuthorizationServerMetadata handles GET /.well-known/oauth-authorization-server (RFC 8414).
@@ -28,7 +31,7 @@ func (h *Handler) AuthorizationServerMetadata(w http.ResponseWriter, r *http.Req
 			"client_secret_post",
 		},
 		"code_challenge_methods_supported": []string{"S256"},
-		"scopes_supported":                 []string{"mcp:access", "mcp:read", "mcp:write"},
+		"scopes_supported":                 allScopesSorted(),
 		"protected_resources":              []string{issuer},
 	}
 
@@ -50,9 +53,19 @@ func (h *Handler) ProtectedResourceMetadata(w http.ResponseWriter, r *http.Reque
 	metadata := map[string]any{
 		"resource":                 resource,
 		"authorization_servers":    []string{issuer},
-		"scopes_supported":         []string{"mcp:access", "mcp:read", "mcp:write"},
+		"scopes_supported":         allScopesSorted(),
 		"bearer_methods_supported": []string{"header"},
 	}
 
 	jsonResponse(w, http.StatusOK, metadata)
+}
+
+// allScopesSorted returns all registered OAuth scopes in sorted order.
+func allScopesSorted() []string {
+	scopes := make([]string, 0, len(authscope.All))
+	for s := range authscope.All {
+		scopes = append(scopes, s)
+	}
+	sort.Strings(scopes)
+	return scopes
 }

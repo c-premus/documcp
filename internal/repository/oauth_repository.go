@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"time"
@@ -109,12 +110,17 @@ func (r *OAuthRepository) FindAuthorizationCodeByCode(ctx context.Context, codeH
 	return &code, nil
 }
 
-// RevokeAuthorizationCode marks an authorization code as revoked.
+// RevokeAuthorizationCode atomically marks an authorization code as revoked.
+// Returns sql.ErrNoRows if the code was already revoked (prevents double-exchange).
 func (r *OAuthRepository) RevokeAuthorizationCode(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE oauth_authorization_codes SET revoked = true, updated_at = NOW() WHERE id = $1`, id)
+	result, err := r.db.ExecContext(ctx,
+		`UPDATE oauth_authorization_codes SET revoked = true, updated_at = NOW() WHERE id = $1 AND revoked = false`, id)
 	if err != nil {
 		return fmt.Errorf("revoking authorization code %d: %w", id, err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("authorization code %d already consumed: %w", id, sql.ErrNoRows)
 	}
 	return nil
 }
