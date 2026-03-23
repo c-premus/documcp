@@ -3,11 +3,13 @@ package api
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -406,4 +408,98 @@ func TestToOAuthClientResponse(t *testing.T) {
 	if !resp.IsActive {
 		t.Error("expected IsActive to be true")
 	}
+}
+
+func TestToOAuthClientResponse_AllBranches(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil redirect URIs and grant types fall back to empty slices", func(t *testing.T) {
+		t.Parallel()
+
+		// Invalid JSON causes ParseRedirectURIs / ParseGrantTypes to return nil.
+		client := &model.OAuthClient{
+			RedirectURIs:  "not-valid-json",
+			GrantTypes:    "also-not-valid",
+			ResponseTypes: `["code"]`,
+		}
+
+		resp := toOAuthClientResponse(client)
+
+		if resp.RedirectURIs == nil {
+			t.Error("RedirectURIs should be empty slice, not nil")
+		}
+		if len(resp.RedirectURIs) != 0 {
+			t.Errorf("RedirectURIs = %v, want []", resp.RedirectURIs)
+		}
+		if resp.GrantTypes == nil {
+			t.Error("GrantTypes should be empty slice, not nil")
+		}
+	})
+
+	t.Run("invalid ResponseTypes JSON falls back to empty slice", func(t *testing.T) {
+		t.Parallel()
+
+		client := &model.OAuthClient{
+			RedirectURIs:  `["https://example.com"]`,
+			GrantTypes:    `["authorization_code"]`,
+			ResponseTypes: "not-json",
+		}
+
+		resp := toOAuthClientResponse(client)
+
+		if resp.ResponseTypes == nil {
+			t.Error("ResponseTypes should be empty slice, not nil")
+		}
+		if len(resp.ResponseTypes) != 0 {
+			t.Errorf("ResponseTypes = %v, want []", resp.ResponseTypes)
+		}
+	})
+
+	t.Run("valid LastUsedAt is formatted as RFC3339", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Now().Truncate(time.Second).UTC()
+		client := &model.OAuthClient{
+			RedirectURIs:  `["https://example.com"]`,
+			GrantTypes:    `["authorization_code"]`,
+			ResponseTypes: `["code"]`,
+			LastUsedAt:    sql.NullTime{Time: now, Valid: true},
+		}
+
+		resp := toOAuthClientResponse(client)
+
+		if resp.LastUsedAt == nil {
+			t.Fatal("LastUsedAt should be non-nil when Valid=true")
+		}
+		if *resp.LastUsedAt != now.Format(time.RFC3339) {
+			t.Errorf("LastUsedAt = %q, want %q", *resp.LastUsedAt, now.Format(time.RFC3339))
+		}
+	})
+
+	t.Run("valid Scope, CreatedAt, UpdatedAt are populated", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Now().Truncate(time.Second)
+		client := &model.OAuthClient{
+			RedirectURIs:  `["https://example.com"]`,
+			GrantTypes:    `["authorization_code"]`,
+			ResponseTypes: `["code"]`,
+			Scope:         sql.NullString{String: "documents:read", Valid: true},
+			CreatedAt:     sql.NullTime{Time: now, Valid: true},
+			UpdatedAt:     sql.NullTime{Time: now, Valid: true},
+		}
+
+		resp := toOAuthClientResponse(client)
+
+		if resp.Scope != "documents:read" {
+			t.Errorf("Scope = %q, want %q", resp.Scope, "documents:read")
+		}
+		wantTime := now.Format(time.RFC3339)
+		if resp.CreatedAt != wantTime {
+			t.Errorf("CreatedAt = %q, want %q", resp.CreatedAt, wantTime)
+		}
+		if resp.UpdatedAt != wantTime {
+			t.Errorf("UpdatedAt = %q, want %q", resp.UpdatedAt, wantTime)
+		}
+	})
 }

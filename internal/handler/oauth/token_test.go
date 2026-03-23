@@ -514,4 +514,46 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 		assert.NotEmpty(t, result["refresh_token"])
 		require.NotNil(t, result["expires_in"])
 	})
+
+	t.Run("returns server_error when ExchangeDeviceCode returns non-DeviceCodeError", func(t *testing.T) {
+		t.Parallel()
+		// This covers the generic error path in tokenDeviceCode (not DeviceCodeError).
+		// ExchangeDeviceCode returns a non-DeviceCodeError when UpdateDeviceCodeStatus fails
+		// on an "authorized" device code (fmt.Errorf wraps the error, not &DeviceCodeError{}).
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:                      1,
+					ClientID:                "cid",
+					TokenEndpointAuthMethod: "none",
+					IsActive:                true,
+					GrantTypes:              `["urn:ietf:params:oauth:grant-type:device_code"]`,
+				}, nil
+			},
+			FindDeviceCodeByDeviceCodeFunc: func(_ context.Context, _ string) (*model.OAuthDeviceCode, error) {
+				return &model.OAuthDeviceCode{
+					ID:        1,
+					ClientID:  1,
+					UserID:    sql.NullInt64{Int64: 42, Valid: true},
+					Status:    "authorized",
+					ExpiresAt: time.Now().Add(15 * time.Minute),
+				}, nil
+			},
+			UpdateDeviceCodeStatusFunc: func(_ context.Context, _ int64, _ string, _ *int64) error {
+				return errors.New("disk full")
+			},
+		}
+		h, _ := newHandlerWithRepo(repo)
+
+		body := `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","client_id":"cid","device_code":"1|abcdefghijklmnopqrstuvwxyz012345678901234567890123456789abcdefgh"}`
+		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Token(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		result := decodeOAuthJSON(t, rr.Body)
+		assert.Equal(t, "server_error", result["error"])
+	})
 }

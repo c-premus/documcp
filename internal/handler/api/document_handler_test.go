@@ -2670,3 +2670,208 @@ func TestDocumentHandler_ListDeleted_OwnershipScoping(t *testing.T) {
 		assert.Nil(t, capturedUserID, "userID should be nil for admin")
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Tests: metadataString helper
+// ---------------------------------------------------------------------------
+
+func TestMetadataString(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		metadata map[string]any
+		keys     []string
+		want     string
+	}{
+		{
+			name:     "returns first matching key value",
+			metadata: map[string]any{"title": "Hello"},
+			keys:     []string{"title"},
+			want:     "Hello",
+		},
+		{
+			name:     "tries multiple keys and returns first non-empty match",
+			metadata: map[string]any{"Title": "From Title Key"},
+			keys:     []string{"title", "Title"},
+			want:     "From Title Key",
+		},
+		{
+			name:     "skips empty string values",
+			metadata: map[string]any{"title": "", "Title": "Fallback"},
+			keys:     []string{"title", "Title"},
+			want:     "Fallback",
+		},
+		{
+			name:     "returns empty when key not present",
+			metadata: map[string]any{"other": "value"},
+			keys:     []string{"title"},
+			want:     "",
+		},
+		{
+			name:     "returns empty for nil metadata",
+			metadata: nil,
+			keys:     []string{"title"},
+			want:     "",
+		},
+		{
+			name:     "skips non-string values",
+			metadata: map[string]any{"count": 42, "title": "Valid"},
+			keys:     []string{"count", "title"},
+			want:     "Valid",
+		},
+		{
+			name:     "returns empty when no keys provided",
+			metadata: map[string]any{"title": "Hello"},
+			keys:     []string{},
+			want:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := metadataString(tt.metadata, tt.keys...)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tests: firstHeading helper
+// ---------------------------------------------------------------------------
+
+func TestFirstHeading(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name:    "returns empty for empty content",
+			content: "",
+			want:    "",
+		},
+		{
+			name:    "extracts heading from first line",
+			content: "# Hello World\nSome paragraph.",
+			want:    "Hello World",
+		},
+		{
+			name:    "ignores non-heading lines before heading",
+			content: "Intro paragraph.\n# My Title\nBody text.",
+			want:    "My Title",
+		},
+		{
+			name:    "trims whitespace from heading text",
+			content: "#   Padded Title   \nBody.",
+			want:    "Padded Title",
+		},
+		{
+			name:    "returns empty when no ATX heading present",
+			content: "No heading here.\nJust paragraphs.",
+			want:    "",
+		},
+		{
+			name:    "does not match level-2 headings",
+			content: "## Not a match\n# Level One",
+			want:    "Level One",
+		},
+		{
+			name:    "returns empty for heading-only marker with no text",
+			content: "# \n## Second",
+			want:    "",
+		},
+		{
+			name:    "returns first heading when multiple h1s present",
+			content: "# First\n# Second",
+			want:    "First",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := firstHeading(tt.content)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tests: extractHeadingTags helper
+// ---------------------------------------------------------------------------
+
+func TestExtractHeadingTags(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		content string
+		want    []string
+	}{
+		{
+			name:    "returns nil for empty content",
+			content: "",
+			want:    nil,
+		},
+		{
+			name:    "extracts h2 headings as lowercase tags",
+			content: "## Installation\n## Usage\n## Contributing",
+			want:    []string{"installation", "usage", "contributing"},
+		},
+		{
+			name:    "extracts h3 headings",
+			content: "### Quick Start\n### Advanced Config",
+			want:    []string{"quick start", "advanced config"},
+		},
+		{
+			name:    "mixes h2 and h3 headings",
+			content: "## Setup\n### Details\n## Usage",
+			want:    []string{"setup", "details", "usage"},
+		},
+		{
+			name:    "deduplicates repeated headings",
+			content: "## Setup\n## Usage\n## Setup",
+			want:    []string{"setup", "usage"},
+		},
+		{
+			name:    "caps at 5 tags",
+			content: "## Alpha\n## Beta\n## Gamma\n## Delta\n## Epsilon\n## Zeta",
+			want:    []string{"alpha", "beta", "gamma", "delta", "epsilon"},
+		},
+		{
+			name:    "skips headings shorter than 3 chars",
+			content: "## ab\n## OK\n## Valid",
+			want:    []string{"valid"},
+		},
+		{
+			name:    "skips lines starting with # (markdown artifacts)",
+			content: "## #anchor\n## Normal",
+			want:    []string{"normal"},
+		},
+		{
+			name:    "returns nil when no h2/h3 headings",
+			content: "# Title\nBody text.\n#### Deep heading",
+			want:    nil,
+		},
+		{
+			name:    "trims whitespace from heading text",
+			content: "##   Spaced Out   \n### Also Trimmed  ",
+			want:    []string{"spaced out", "also trimmed"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := extractHeadingTags(tt.content)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

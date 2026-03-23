@@ -492,6 +492,49 @@ func TestHandler_DeviceApprove(t *testing.T) {
 		assert.True(t, approvedFlag)
 	})
 
+	t.Run("returns error when session pending value is wrong type", func(t *testing.T) {
+		t.Parallel()
+		h, store := newHandlerWithRepo(&mockOAuthRepo{})
+		store.session.Values["user_id"] = int64(42)
+		// pendingRaw is a string, not map[string]any — triggers the type assertion failure branch.
+		store.session.Values["device_code_pending"] = "not-a-map"
+
+		formBody := "user_code=ABCD-EFGH&approve=approve"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/device/approve", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.DeviceApprove(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Body.String(), "No pending device authorization")
+	})
+
+	t.Run("returns error when AuthorizeDeviceCode fails", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			FindDeviceCodeByUserCodeFunc: func(_ context.Context, _ string) (*model.OAuthDeviceCode, error) {
+				return nil, errors.New("device code not found")
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+		store.session.Values["device_code_pending"] = map[string]any{
+			"user_code": "ABCD-EFGH",
+			"timestamp": time.Now().Unix(),
+		}
+
+		formBody := "user_code=ABCD-EFGH&approve=approve"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/device/approve", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.DeviceApprove(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Body.String(), "error occurred")
+	})
+
 	t.Run("shows denied page when user denies", func(t *testing.T) {
 		t.Parallel()
 		var deniedStatus string

@@ -3,11 +3,13 @@ package api
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -472,29 +474,196 @@ func TestUserHandler_ToggleAdmin_SelfDemotion(t *testing.T) {
 func TestNewUserResponse(t *testing.T) {
 	t.Parallel()
 
-	user := &model.User{
-		ID:      1,
-		Name:    "Alice",
-		Email:   "alice@example.com",
-		IsAdmin: true,
+	t.Run("null optional fields are empty strings", func(t *testing.T) {
+		t.Parallel()
+
+		user := &model.User{
+			ID:      1,
+			Name:    "Alice",
+			Email:   "alice@example.com",
+			IsAdmin: true,
+		}
+
+		resp := newUserResponse(user)
+
+		if resp.ID != 1 {
+			t.Errorf("ID = %d, want 1", resp.ID)
+		}
+		if resp.Name != "Alice" {
+			t.Errorf("Name = %q, want %q", resp.Name, "Alice")
+		}
+		if resp.Email != "alice@example.com" {
+			t.Errorf("Email = %q, want %q", resp.Email, "alice@example.com")
+		}
+		if !resp.IsAdmin {
+			t.Error("IsAdmin should be true")
+		}
+		if resp.OIDCSub != "" {
+			t.Errorf("OIDCSub = %q, want empty", resp.OIDCSub)
+		}
+		if resp.OIDCProvider != "" {
+			t.Errorf("OIDCProvider = %q, want empty", resp.OIDCProvider)
+		}
+		if resp.EmailVerifiedAt != "" {
+			t.Errorf("EmailVerifiedAt = %q, want empty", resp.EmailVerifiedAt)
+		}
+		if resp.CreatedAt != "" {
+			t.Errorf("CreatedAt = %q, want empty", resp.CreatedAt)
+		}
+		if resp.UpdatedAt != "" {
+			t.Errorf("UpdatedAt = %q, want empty", resp.UpdatedAt)
+		}
+	})
+
+	t.Run("valid optional fields are populated", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Now().Truncate(time.Second)
+		user := &model.User{
+			ID:      2,
+			Name:    "Bob",
+			Email:   "bob@example.com",
+			IsAdmin: false,
+			OIDCSub: sql.NullString{String: "sub-123", Valid: true},
+			OIDCProvider: sql.NullString{String: "google", Valid: true},
+			EmailVerifiedAt: sql.NullTime{Time: now, Valid: true},
+			CreatedAt:       sql.NullTime{Time: now, Valid: true},
+			UpdatedAt:       sql.NullTime{Time: now, Valid: true},
+		}
+
+		resp := newUserResponse(user)
+
+		if resp.OIDCSub != "sub-123" {
+			t.Errorf("OIDCSub = %q, want %q", resp.OIDCSub, "sub-123")
+		}
+		if resp.OIDCProvider != "google" {
+			t.Errorf("OIDCProvider = %q, want %q", resp.OIDCProvider, "google")
+		}
+		wantTime := now.Format(time.RFC3339)
+		if resp.EmailVerifiedAt != wantTime {
+			t.Errorf("EmailVerifiedAt = %q, want %q", resp.EmailVerifiedAt, wantTime)
+		}
+		if resp.CreatedAt != wantTime {
+			t.Errorf("CreatedAt = %q, want %q", resp.CreatedAt, wantTime)
+		}
+		if resp.UpdatedAt != wantTime {
+			t.Errorf("UpdatedAt = %q, want %q", resp.UpdatedAt, wantTime)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Tests: Update — additional error paths
+// ---------------------------------------------------------------------------
+
+func TestUserHandler_Update_InvalidJSON(t *testing.T) {
+	t.Parallel()
+
+	h := NewUserHandler(&mockUserRepo{}, discardLogger())
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodPut, "/api/admin/users/1", bytes.NewBufferString("{bad")), "1")
+	rec := httptest.NewRecorder()
+
+	h.Update(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUserHandler_Update_RepoUpdateError(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockUserRepo{
+		findUserByIDFn: func(_ context.Context, id int64) (*model.User, error) {
+			return &model.User{ID: id, Name: "Alice"}, nil
+		},
+		updateUserFn: func(_ context.Context, _ *model.User) error {
+			return errors.New("constraint violation")
+		},
 	}
 
-	resp := newUserResponse(user)
+	h := NewUserHandler(repo, discardLogger())
+	body := `{"name":"Updated"}`
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodPut, "/api/admin/users/1", bytes.NewBufferString(body)), "1")
+	rec := httptest.NewRecorder()
 
-	if resp.ID != 1 {
-		t.Errorf("ID = %d, want 1", resp.ID)
+	h.Update(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
 	}
-	if resp.Name != "Alice" {
-		t.Errorf("Name = %q, want %q", resp.Name, "Alice")
+}
+
+func TestUserHandler_Update_ReFetchError(t *testing.T) {
+	t.Parallel()
+
+	callCount := 0
+	repo := &mockUserRepo{
+		findUserByIDFn: func(_ context.Context, id int64) (*model.User, error) {
+			callCount++
+			if callCount == 1 {
+				return &model.User{ID: id, Name: "Alice"}, nil
+			}
+			// Second call (re-fetch after update) fails.
+			return nil, errors.New("connection lost")
+		},
 	}
-	if resp.Email != "alice@example.com" {
-		t.Errorf("Email = %q, want %q", resp.Email, "alice@example.com")
+
+	h := NewUserHandler(repo, discardLogger())
+	body := `{"name":"Updated"}`
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodPut, "/api/admin/users/1", bytes.NewBufferString(body)), "1")
+	rec := httptest.NewRecorder()
+
+	h.Update(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
 	}
-	if !resp.IsAdmin {
-		t.Error("IsAdmin should be true")
+}
+
+// ---------------------------------------------------------------------------
+// Tests: ToggleAdmin — additional error paths
+// ---------------------------------------------------------------------------
+
+func TestUserHandler_ToggleAdmin_RepoError(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockUserRepo{
+		toggleAdminFn: func(_ context.Context, _ int64) error {
+			return errors.New("db error")
+		},
 	}
-	// Null optional fields should be empty strings.
-	if resp.OIDCSub != "" {
-		t.Errorf("OIDCSub = %q, want empty", resp.OIDCSub)
+
+	h := NewUserHandler(repo, discardLogger())
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/5/toggle-admin", http.NoBody), "5")
+	req = withAuthUser(req, &model.User{ID: 99})
+	rec := httptest.NewRecorder()
+
+	h.ToggleAdmin(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestUserHandler_ToggleAdmin_FindAfterToggleError(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockUserRepo{
+		toggleAdminFn: func(_ context.Context, _ int64) error { return nil },
+		findUserByIDFn: func(_ context.Context, _ int64) (*model.User, error) {
+			return nil, errors.New("not found")
+		},
+	}
+
+	h := NewUserHandler(repo, discardLogger())
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/5/toggle-admin", http.NoBody), "5")
+	req = withAuthUser(req, &model.User{ID: 99})
+	rec := httptest.NewRecorder()
+
+	h.ToggleAdmin(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }
