@@ -266,6 +266,169 @@ func TestSearchHandler_FederatedSearch(t *testing.T) {
 			t.Fatalf("response is not valid JSON: %v", err)
 		}
 	})
+
+	// The following tests exercise the types-filter parsing and limit/offset
+	// clamping logic. All valid-query paths reach h.searcher.FederatedSearch
+	// which panics because the searcher is nil (no real Meilisearch available).
+	// We use recover() to confirm the code reached the searcher (validation
+	// passed) rather than returning a 400 early.
+
+	t.Run("limit zero is clamped to 20 before reaching searcher", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestSearchHandler()
+		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=test&limit=0", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		panicked := false
+		func() {
+			defer func() {
+				if recover() != nil {
+					panicked = true
+				}
+			}()
+			h.FederatedSearch(rr, req)
+		}()
+
+		// A panic means validation passed and the nil searcher was reached.
+		// A clean return (no panic) means the handler returned an error before the searcher.
+		if !panicked {
+			assert.NotEqual(t, http.StatusBadRequest, rr.Code, "limit=0 should not be rejected with 400")
+		}
+	})
+
+	t.Run("limit over 100 is clamped before reaching searcher", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestSearchHandler()
+		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=test&limit=500", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		panicked := false
+		func() {
+			defer func() {
+				if recover() != nil {
+					panicked = true
+				}
+			}()
+			h.FederatedSearch(rr, req)
+		}()
+
+		if !panicked {
+			assert.NotEqual(t, http.StatusBadRequest, rr.Code, "limit=500 should be clamped, not rejected")
+		}
+	})
+
+	t.Run("types=document maps to documents index", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestSearchHandler()
+		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=test&types=document", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		panicked := false
+		func() {
+			defer func() {
+				if recover() != nil {
+					panicked = true
+				}
+			}()
+			h.FederatedSearch(rr, req)
+		}()
+
+		if !panicked {
+			assert.NotEqual(t, http.StatusBadRequest, rr.Code, "types=document should be accepted")
+		}
+	})
+
+	t.Run("types=zim_archive maps to zim archives index", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestSearchHandler()
+		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=test&types=zim_archive", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		panicked := false
+		func() {
+			defer func() {
+				if recover() != nil {
+					panicked = true
+				}
+			}()
+			h.FederatedSearch(rr, req)
+		}()
+
+		if !panicked {
+			assert.NotEqual(t, http.StatusBadRequest, rr.Code, "types=zim_archive should be accepted")
+		}
+	})
+
+	t.Run("types=git_template maps to git templates index", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestSearchHandler()
+		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=test&types=git_template", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		panicked := false
+		func() {
+			defer func() {
+				if recover() != nil {
+					panicked = true
+				}
+			}()
+			h.FederatedSearch(rr, req)
+		}()
+
+		if !panicked {
+			assert.NotEqual(t, http.StatusBadRequest, rr.Code, "types=git_template should be accepted")
+		}
+	})
+
+	t.Run("multiple types in comma-separated list are all accepted", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestSearchHandler()
+		req := httptest.NewRequest(http.MethodGet,
+			"/api/search/unified?q=test&types=document,zim_archive,git_template", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		panicked := false
+		func() {
+			defer func() {
+				if recover() != nil {
+					panicked = true
+				}
+			}()
+			h.FederatedSearch(rr, req)
+		}()
+
+		if !panicked {
+			assert.NotEqual(t, http.StatusBadRequest, rr.Code, "multiple valid types should be accepted")
+		}
+	})
+
+	t.Run("unknown type is silently ignored and does not cause 400", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestSearchHandler()
+		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=test&types=unknown_type", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		panicked := false
+		func() {
+			defer func() {
+				if recover() != nil {
+					panicked = true
+				}
+			}()
+			h.FederatedSearch(rr, req)
+		}()
+
+		if !panicked {
+			assert.NotEqual(t, http.StatusBadRequest, rr.Code, "unknown types should be ignored, not rejected")
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------

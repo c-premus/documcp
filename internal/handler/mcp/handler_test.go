@@ -18,6 +18,16 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/service"
 )
 
+// makeMCPHit builds a meilisearch.Hit from a plain map for test convenience.
+func makeMCPHit(m map[string]any) meilisearch.Hit {
+	hit := make(meilisearch.Hit, len(m))
+	for k, v := range m {
+		raw, _ := json.Marshal(v)
+		hit[k] = json.RawMessage(raw)
+	}
+	return hit
+}
+
 // --- Mock implementations ---
 
 type mockDocumentService struct {
@@ -1222,6 +1232,149 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		_, _, err := h.handleSearchGitTemplates(ctx, nil, dto.SearchGitTemplatesInput{Query: "x"})
 		if err == nil {
 			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("DB fallback with null description and category", func(t *testing.T) {
+		repo := &mockGitTemplateRepo{
+			searchFn: func(_ context.Context, _, _ string, _ int) ([]model.GitTemplate, error) {
+				return []model.GitTemplate{
+					{
+						UUID:        "t2",
+						Name:        "No Desc Template",
+						Description: sql.NullString{Valid: false},
+						Category:    sql.NullString{Valid: false},
+						FileCount:   1,
+						Status:      "synced",
+					},
+				}, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{gitRepo: repo})
+
+		_, resp, err := h.handleSearchGitTemplates(ctx, nil, dto.SearchGitTemplatesInput{Query: "x"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Total != 1 {
+			t.Errorf("Total = %d, want 1", resp.Total)
+		}
+		if resp.Results[0].Description != "" {
+			t.Errorf("Description = %q, want empty for null", resp.Results[0].Description)
+		}
+		if resp.Results[0].Category != "" {
+			t.Errorf("Category = %q, want empty for null", resp.Results[0].Category)
+		}
+	})
+
+	t.Run("meilisearch path builds results from hits", func(t *testing.T) {
+		s := &mockSearcher{
+			searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
+				hit := makeMCPHit(map[string]any{
+					"uuid":        "uuid-ms-1",
+					"name":        "Meilisearch Template",
+					"description": "A great template",
+					"category":    "backend",
+					"file_count":  float64(7),
+					"status":      "synced",
+				})
+				return &meilisearch.SearchResponse{
+					Hits:               meilisearch.Hits{hit},
+					EstimatedTotalHits: 1,
+				}, nil
+			},
+		}
+		repo := &mockGitTemplateRepo{}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{gitRepo: repo, searcher: s})
+
+		_, resp, err := h.handleSearchGitTemplates(ctx, nil, dto.SearchGitTemplatesInput{Query: "backend"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !resp.Success {
+			t.Error("expected Success=true")
+		}
+		if resp.Total != 1 {
+			t.Errorf("Total = %d, want 1", resp.Total)
+		}
+		r := resp.Results[0]
+		if r.UUID != "uuid-ms-1" {
+			t.Errorf("UUID = %q, want uuid-ms-1", r.UUID)
+		}
+		if r.Description != "A great template" {
+			t.Errorf("Description = %q, want 'A great template'", r.Description)
+		}
+		if r.Category != "backend" {
+			t.Errorf("Category = %q, want 'backend'", r.Category)
+		}
+		if r.FileCount != 7 {
+			t.Errorf("FileCount = %d, want 7", r.FileCount)
+		}
+	})
+
+	t.Run("meilisearch path clamps limit", func(t *testing.T) {
+		var capturedLimit int64
+		s := &mockSearcher{
+			searchFn: func(_ context.Context, params search.SearchParams) (*meilisearch.SearchResponse, error) {
+				capturedLimit = params.Limit
+				return &meilisearch.SearchResponse{}, nil
+			},
+		}
+		repo := &mockGitTemplateRepo{}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{gitRepo: repo, searcher: s})
+
+		_, _, _ = h.handleSearchGitTemplates(ctx, nil, dto.SearchGitTemplatesInput{Query: "x", Limit: 0})
+		if capturedLimit != 10 {
+			t.Errorf("default limit = %d, want 10", capturedLimit)
+		}
+
+		_, _, _ = h.handleSearchGitTemplates(ctx, nil, dto.SearchGitTemplatesInput{Query: "x", Limit: 100})
+		if capturedLimit != 50 {
+			t.Errorf("max limit = %d, want 50", capturedLimit)
+		}
+	})
+
+	t.Run("meilisearch path adds category filter when provided", func(t *testing.T) {
+		var capturedFilters string
+		s := &mockSearcher{
+			searchFn: func(_ context.Context, params search.SearchParams) (*meilisearch.SearchResponse, error) {
+				capturedFilters = params.Filters
+				return &meilisearch.SearchResponse{}, nil
+			},
+		}
+		repo := &mockGitTemplateRepo{}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{gitRepo: repo, searcher: s})
+
+		_, _, _ = h.handleSearchGitTemplates(ctx, nil, dto.SearchGitTemplatesInput{Query: "x", Category: "backend"})
+		if capturedFilters == "" {
+			t.Error("expected non-empty filters when category is provided")
+		}
+		if !containsStr(capturedFilters, "category") {
+			t.Errorf("filters %q should contain 'category'", capturedFilters)
 		}
 	})
 }

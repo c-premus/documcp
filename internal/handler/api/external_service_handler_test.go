@@ -1555,3 +1555,24 @@ func TestExternalServiceHandler_Reorder(t *testing.T) {
 		}
 	})
 }
+
+func TestExternalServiceHandler_HealthCheck_InternalError(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockExternalServiceRepo{
+		findByUUIDFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
+			return nil, errors.New("database connection timeout")
+		},
+	}
+	h := newExternalServiceHandler(mock)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/external-services/svc-uuid/health", http.NoBody)
+	req = chiContext(req, map[string]string{"uuid": "svc-uuid"})
+	rr := httptest.NewRecorder()
+
+	h.HealthCheck(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+	}
+}
