@@ -11,7 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
+
 	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"git.999.haus/chris/DocuMCP-go/internal/queue"
 	"git.999.haus/chris/DocuMCP-go/internal/service"
 )
 
@@ -1222,6 +1226,332 @@ func TestToExternalServiceResponse(t *testing.T) {
 		}
 		if resp.UpdatedAt != "" {
 			t.Errorf("UpdatedAt = %q, want empty for null", resp.UpdatedAt)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Mock inserter implementing externalServiceJobInserter
+// ---------------------------------------------------------------------------
+
+type mockJobInserter struct {
+	insertFn func(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
+}
+
+func (m *mockJobInserter) Insert(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error) {
+	if m.insertFn != nil {
+		return m.insertFn(ctx, args, opts)
+	}
+	return &rivertype.JobInsertResult{}, nil
+}
+
+// newExternalServiceHandlerWithInserter creates a handler with a non-nil inserter for sync tests.
+func newExternalServiceHandlerWithInserter(repo *mockExternalServiceRepo, ins externalServiceJobInserter) *ExternalServiceHandler {
+	svc := service.NewExternalServiceService(repo, nil, nil, testLogger())
+	return NewExternalServiceHandler(svc, repo, ins, testLogger())
+}
+
+// ---------------------------------------------------------------------------
+// Sync handler tests
+// ---------------------------------------------------------------------------
+
+func TestExternalServiceHandler_Sync(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns 202 and enqueues sync job for kiwix service", func(t *testing.T) {
+		t.Parallel()
+
+		var insertedKind string
+		repo := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.ExternalService, error) {
+				return newTestExternalService(uuid), nil // type is "kiwix"
+			},
+		}
+		ins := &mockJobInserter{
+			insertFn: func(_ context.Context, args river.JobArgs, _ *river.InsertOpts) (*rivertype.JobInsertResult, error) {
+				insertedKind = args.Kind()
+				return &rivertype.JobInsertResult{}, nil
+			},
+		}
+		h := newExternalServiceHandlerWithInserter(repo, ins)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/external-services/svc-1/sync", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "svc-1"})
+		rr := httptest.NewRecorder()
+
+		h.Sync(rr, req)
+
+		if rr.Code != http.StatusAccepted {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusAccepted)
+		}
+
+		body := decodeJSONBody(t, rr.Body)
+		if msg, _ := body["message"].(string); msg != "Sync queued" {
+			t.Errorf("message = %q, want %q", msg, "Sync queued")
+		}
+
+		wantKind := queue.SyncKiwixArgs{}.Kind()
+		if insertedKind != wantKind {
+			t.Errorf("inserted job kind = %q, want %q", insertedKind, wantKind)
+		}
+	})
+
+	t.Run("returns 404 when service UUID not found", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
+				return nil, service.ErrNotFound
+			},
+		}
+		ins := &mockJobInserter{}
+		h := newExternalServiceHandlerWithInserter(repo, ins)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/external-services/missing/sync", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "missing"})
+		rr := httptest.NewRecorder()
+
+		h.Sync(rr, req)
+
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("returns 500 when repo returns unexpected error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
+				return nil, errors.New("db down")
+			},
+		}
+		ins := &mockJobInserter{}
+		h := newExternalServiceHandlerWithInserter(repo, ins)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/external-services/svc-1/sync", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "svc-1"})
+		rr := httptest.NewRecorder()
+
+		h.Sync(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("returns 503 when inserter is nil", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.ExternalService, error) {
+				return newTestExternalService(uuid), nil
+			},
+		}
+		// Use the original helper which passes nil inserter.
+		h := newExternalServiceHandler(repo)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/external-services/svc-1/sync", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "svc-1"})
+		rr := httptest.NewRecorder()
+
+		h.Sync(rr, req)
+
+		if rr.Code != http.StatusServiceUnavailable {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusServiceUnavailable)
+		}
+
+		body := decodeJSONBody(t, rr.Body)
+		if msg, _ := body["message"].(string); msg != "job queue not available" {
+			t.Errorf("message = %q, want %q", msg, "job queue not available")
+		}
+	})
+
+	t.Run("returns 400 for unsupported service type", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.ExternalService, error) {
+				es := newTestExternalService(uuid)
+				es.Type = "git"
+				return es, nil
+			},
+		}
+		ins := &mockJobInserter{}
+		h := newExternalServiceHandlerWithInserter(repo, ins)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/external-services/svc-1/sync", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "svc-1"})
+		rr := httptest.NewRecorder()
+
+		h.Sync(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+
+		body := decodeJSONBody(t, rr.Body)
+		if msg, _ := body["message"].(string); msg != "sync not supported for service type: git" {
+			t.Errorf("message = %q, want %q", msg, "sync not supported for service type: git")
+		}
+	})
+
+	t.Run("returns 500 when job insert fails", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.ExternalService, error) {
+				return newTestExternalService(uuid), nil
+			},
+		}
+		ins := &mockJobInserter{
+			insertFn: func(_ context.Context, _ river.JobArgs, _ *river.InsertOpts) (*rivertype.JobInsertResult, error) {
+				return nil, errors.New("queue full")
+			},
+		}
+		h := newExternalServiceHandlerWithInserter(repo, ins)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/external-services/svc-1/sync", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "svc-1"})
+		rr := httptest.NewRecorder()
+
+		h.Sync(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+
+		body := decodeJSONBody(t, rr.Body)
+		if msg, _ := body["message"].(string); msg != "failed to enqueue sync job" {
+			t.Errorf("message = %q, want %q", msg, "failed to enqueue sync job")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Reorder handler tests
+// ---------------------------------------------------------------------------
+
+func TestExternalServiceHandler_Reorder(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns 200 on successful reorder", func(t *testing.T) {
+		t.Parallel()
+
+		var gotIDs []int64
+		repo := &mockExternalServiceRepo{
+			reorderFn: func(_ context.Context, ids []int64) error {
+				gotIDs = ids
+				return nil
+			},
+		}
+		h := newExternalServiceHandler(repo)
+
+		body := `{"service_ids": [3, 1, 2]}`
+		req := httptest.NewRequest(http.MethodPut, "/api/admin/external-services/reorder", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Reorder(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		respBody := decodeJSONBody(t, rr.Body)
+		if msg, _ := respBody["message"].(string); msg != "External services reordered successfully." {
+			t.Errorf("message = %q, want %q", msg, "External services reordered successfully.")
+		}
+
+		if len(gotIDs) != 3 || gotIDs[0] != 3 || gotIDs[1] != 1 || gotIDs[2] != 2 {
+			t.Errorf("reorder IDs = %v, want [3 1 2]", gotIDs)
+		}
+	})
+
+	t.Run("returns 400 for invalid JSON body", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockExternalServiceRepo{}
+		h := newExternalServiceHandler(repo)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/admin/external-services/reorder", strings.NewReader("not json"))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Reorder(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+
+		body := decodeJSONBody(t, rr.Body)
+		if msg, _ := body["message"].(string); msg != "invalid JSON body" {
+			t.Errorf("message = %q, want %q", msg, "invalid JSON body")
+		}
+	})
+
+	t.Run("returns 400 when service_ids is empty", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockExternalServiceRepo{}
+		h := newExternalServiceHandler(repo)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/admin/external-services/reorder", strings.NewReader(`{"service_ids": []}`))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Reorder(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+
+		body := decodeJSONBody(t, rr.Body)
+		if msg, _ := body["message"].(string); msg != "service_ids is required" {
+			t.Errorf("message = %q, want %q", msg, "service_ids is required")
+		}
+	})
+
+	t.Run("returns 400 when service_ids is missing", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockExternalServiceRepo{}
+		h := newExternalServiceHandler(repo)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/admin/external-services/reorder", strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Reorder(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+	})
+
+	t.Run("returns 500 when reorder repo fails", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockExternalServiceRepo{
+			reorderFn: func(_ context.Context, _ []int64) error {
+				return errors.New("constraint violation")
+			},
+		}
+		h := newExternalServiceHandler(repo)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/admin/external-services/reorder", strings.NewReader(`{"service_ids": [1, 2]}`))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Reorder(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+
+		body := decodeJSONBody(t, rr.Body)
+		if msg, _ := body["message"].(string); msg != "failed to reorder external services" {
+			t.Errorf("message = %q, want %q", msg, "failed to reorder external services")
 		}
 	})
 }

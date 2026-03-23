@@ -35,6 +35,26 @@ func newTestSearchHandler() *SearchHandler {
 }
 
 // ---------------------------------------------------------------------------
+// NewSearchHandler constructor test
+// ---------------------------------------------------------------------------
+
+func TestNewSearchHandler(t *testing.T) {
+	t.Parallel()
+
+	ql := &mockQueryLister{}
+	ts := &mockTitleSuggester{}
+	logger := slog.New(slog.DiscardHandler)
+
+	h := NewSearchHandler(nil, ql, ts, logger)
+
+	require.NotNil(t, h, "NewSearchHandler should return a non-nil handler")
+	assert.Nil(t, h.searcher, "searcher should be nil when passed nil")
+	assert.Equal(t, ql, h.queryLister, "queryLister should be set")
+	assert.Equal(t, ts, h.suggester, "suggester should be set")
+	assert.Equal(t, logger, h.logger, "logger should be set")
+}
+
+// ---------------------------------------------------------------------------
 // Search handler tests
 // ---------------------------------------------------------------------------
 
@@ -109,6 +129,45 @@ func TestSearchHandler_Search(t *testing.T) {
 		}
 	})
 
+	t.Run("accepts all valid file_type values without returning 400", func(t *testing.T) {
+		t.Parallel()
+
+		// Valid file_type values pass validation and proceed to the searcher call.
+		// Since searcher is nil, the handler will panic if it reaches that point.
+		// We use recover to confirm validation passed (no 400 returned).
+		validTypes := []string{"pdf", "docx", "xlsx", "html", "markdown"}
+		for _, ft := range validTypes {
+			t.Run(ft, func(t *testing.T) {
+				t.Parallel()
+
+				h := newTestSearchHandler()
+				req := httptest.NewRequest(http.MethodGet, "/api/search?q=test&file_type="+ft, http.NoBody)
+				rr := httptest.NewRecorder()
+
+				// The handler will panic on the nil searcher after passing validation.
+				// A panic means validation succeeded; a non-panic 400 means it failed.
+				panicked := true
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							panicked = true
+						}
+					}()
+					h.Search(rr, req)
+					panicked = false
+				}()
+
+				if !panicked {
+					// If no panic, then the handler returned without reaching the searcher,
+					// which means it returned an error response.
+					assert.NotEqual(t, http.StatusBadRequest, rr.Code,
+						"file_type %q should be accepted as valid", ft)
+				}
+				// If panicked, validation passed and the nil searcher was reached — success.
+			})
+		}
+	})
+
 	t.Run("returns 400 for invalid file_type filter", func(t *testing.T) {
 		t.Parallel()
 
@@ -172,6 +231,22 @@ func TestSearchHandler_FederatedSearch(t *testing.T) {
 		if rr.Code != http.StatusBadRequest {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
 		}
+	})
+
+	t.Run("response includes error and message fields", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestSearchHandler()
+		req := httptest.NewRequest(http.MethodGet, "/api/search/unified", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.FederatedSearch(rr, req)
+
+		var body map[string]any
+		err := json.NewDecoder(rr.Body).Decode(&body)
+		require.NoError(t, err)
+		assert.Contains(t, body, "error", "response should have 'error' key")
+		assert.Equal(t, "query parameter 'q' is required", body["message"])
 	})
 
 	t.Run("response format is JSON on error", func(t *testing.T) {
@@ -295,6 +370,29 @@ func TestSearchHandler_Popular(t *testing.T) {
 		assert.Equal(t, 25, capturedLimit, "custom limit should be respected")
 	})
 
+	t.Run("passes explicit limit=5 to query lister", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedLimit int
+		ql := &mockQueryLister{
+			popularQueriesFn: func(_ context.Context, limit int) ([]repository.PopularQuery, error) {
+				capturedLimit = limit
+				return []repository.PopularQuery{
+					{Query: "go", Count: 5},
+				}, nil
+			},
+		}
+		h := newSearchHandlerWithMocks(ql, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/search/popular?limit=5", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Popular(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, 5, capturedLimit, "explicit limit=5 should be passed through")
+	})
+
 	t.Run("caps limit at 50", func(t *testing.T) {
 		t.Parallel()
 
@@ -378,6 +476,45 @@ func TestSearchHandler_Popular(t *testing.T) {
 		err := json.NewDecoder(rr.Body).Decode(&body)
 		require.NoError(t, err)
 		assert.Equal(t, "failed to fetch popular queries", body["message"])
+	})
+
+	t.Run("uses default limit for non-numeric limit param", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedLimit int
+		ql := &mockQueryLister{
+			popularQueriesFn: func(_ context.Context, limit int) ([]repository.PopularQuery, error) {
+				capturedLimit = limit
+				return nil, nil
+			},
+		}
+		h := newSearchHandlerWithMocks(ql, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/search/popular?limit=abc", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Popular(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, 10, capturedLimit, "non-numeric limit should fall back to default 10")
+	})
+
+	t.Run("response content-type is application/json", func(t *testing.T) {
+		t.Parallel()
+
+		ql := &mockQueryLister{
+			popularQueriesFn: func(_ context.Context, _ int) ([]repository.PopularQuery, error) {
+				return []repository.PopularQuery{}, nil
+			},
+		}
+		h := newSearchHandlerWithMocks(ql, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/search/popular", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Popular(rr, req)
+
+		assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 	})
 
 	t.Run("returns empty array when no popular queries exist", func(t *testing.T) {
@@ -571,6 +708,45 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		assert.Equal(t, 5, capturedLimit, "default limit should be 5")
 	})
 
+	t.Run("uses default limit for non-numeric limit param", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedLimit int
+		ts := &mockTitleSuggester{
+			suggestTitlesFn: func(_ context.Context, _ string, limit int) ([]repository.TitleSuggestion, error) {
+				capturedLimit = limit
+				return nil, nil
+			},
+		}
+		h := newSearchHandlerWithMocks(nil, ts)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=test&limit=xyz", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Autocomplete(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, 5, capturedLimit, "non-numeric limit should fall back to default 5")
+	})
+
+	t.Run("response content-type is application/json", func(t *testing.T) {
+		t.Parallel()
+
+		ts := &mockTitleSuggester{
+			suggestTitlesFn: func(_ context.Context, _ string, _ int) ([]repository.TitleSuggestion, error) {
+				return []repository.TitleSuggestion{}, nil
+			},
+		}
+		h := newSearchHandlerWithMocks(nil, ts)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query=test", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Autocomplete(rr, req)
+
+		assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+	})
+
 	t.Run("returns 500 when suggester fails", func(t *testing.T) {
 		t.Parallel()
 
@@ -616,6 +792,26 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		dataRaw, ok := body["data"].([]any)
 		require.True(t, ok, "expected 'data' key with array value")
 		assert.Empty(t, dataRaw)
+	})
+
+	t.Run("accepts maximum valid query length of 100", func(t *testing.T) {
+		t.Parallel()
+
+		query100 := strings.Repeat("a", 100)
+		ts := &mockTitleSuggester{
+			suggestTitlesFn: func(_ context.Context, prefix string, _ int) ([]repository.TitleSuggestion, error) {
+				assert.Equal(t, query100, prefix)
+				return []repository.TitleSuggestion{}, nil
+			},
+		}
+		h := newSearchHandlerWithMocks(nil, ts)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/search/autocomplete?query="+query100, http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Autocomplete(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code, "query with exactly 100 chars should be accepted")
 	})
 
 	t.Run("accepts minimum valid query length of 2", func(t *testing.T) {

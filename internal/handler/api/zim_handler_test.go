@@ -854,3 +854,441 @@ func TestZimHandler_Show(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// ZimHandler.Search tests (fulltext search with kiwix client)
+// ---------------------------------------------------------------------------
+
+func TestZimHandler_Search(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns 400 when q param is missing", func(t *testing.T) {
+		t.Parallel()
+
+		kc := &mockKiwixSearcher{}
+		h := newZimHandlerWithMocks(nil, kc)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/wiki/search", http.NoBody)
+		req = chiContext(req, map[string]string{"archive": "wiki"})
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "query parameter 'q' is required" {
+			t.Errorf("message = %v, want 'query parameter 'q' is required'", msg)
+		}
+	})
+
+	t.Run("returns results from kiwix client", func(t *testing.T) {
+		t.Parallel()
+
+		kc := &mockKiwixSearcher{
+			SearchFn: func(_ context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error) {
+				if archiveName != "wikipedia_en" {
+					t.Errorf("archiveName = %q, want wikipedia_en", archiveName)
+				}
+				if query != "golang" {
+					t.Errorf("query = %q, want golang", query)
+				}
+				if searchType != "fulltext" {
+					t.Errorf("searchType = %q, want fulltext", searchType)
+				}
+				if limit != 10 {
+					t.Errorf("limit = %d, want 10 (default)", limit)
+				}
+				return []kiwix.SearchResult{
+					{Title: "Go (programming language)", Path: "A/Go_(programming_language)", Snippet: "Go is a language", Score: 0.95},
+					{Title: "Golang", Path: "A/Golang", Snippet: "Redirect", Score: 0.80},
+				}, nil
+			},
+		}
+		h := newZimHandlerWithMocks(nil, kc)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/wikipedia_en/search?q=golang", http.NoBody)
+		req = chiContext(req, map[string]string{"archive": "wikipedia_en"})
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+
+		data := body["data"].([]any)
+		if len(data) != 2 {
+			t.Fatalf("data length = %d, want 2", len(data))
+		}
+
+		first := data[0].(map[string]any)
+		if first["title"] != "Go (programming language)" {
+			t.Errorf("first title = %v, want Go (programming language)", first["title"])
+		}
+		if first["path"] != "A/Go_(programming_language)" {
+			t.Errorf("first path = %v, want A/Go_(programming_language)", first["path"])
+		}
+		if first["snippet"] != "Go is a language" {
+			t.Errorf("first snippet = %v, want 'Go is a language'", first["snippet"])
+		}
+
+		meta := body["meta"].(map[string]any)
+		if meta["archive"] != "wikipedia_en" {
+			t.Errorf("meta.archive = %v, want wikipedia_en", meta["archive"])
+		}
+		if meta["query"] != "golang" {
+			t.Errorf("meta.query = %v, want golang", meta["query"])
+		}
+		if total := meta["total"].(float64); total != 2 {
+			t.Errorf("meta.total = %v, want 2", total)
+		}
+	})
+
+	t.Run("returns 500 when kiwix client returns error", func(t *testing.T) {
+		t.Parallel()
+
+		kc := &mockKiwixSearcher{
+			SearchFn: func(_ context.Context, _, _, _ string, _ int) ([]kiwix.SearchResult, error) {
+				return nil, errors.New("connection refused")
+			},
+		}
+		h := newZimHandlerWithMocks(nil, kc)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/wiki/search?q=test", http.NoBody)
+		req = chiContext(req, map[string]string{"archive": "wiki"})
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "search failed" {
+			t.Errorf("message = %v, want 'search failed'", msg)
+		}
+	})
+
+	t.Run("respects explicit limit param", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedLimit int
+		kc := &mockKiwixSearcher{
+			SearchFn: func(_ context.Context, _, _, _ string, limit int) ([]kiwix.SearchResult, error) {
+				capturedLimit = limit
+				return []kiwix.SearchResult{}, nil
+			},
+		}
+		h := newZimHandlerWithMocks(nil, kc)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/wiki/search?q=test&limit=25", http.NoBody)
+		req = chiContext(req, map[string]string{"archive": "wiki"})
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		if capturedLimit != 25 {
+			t.Errorf("limit passed to kiwix = %d, want 25", capturedLimit)
+		}
+	})
+
+	t.Run("clamps limit exceeding 100 to 100", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedLimit int
+		kc := &mockKiwixSearcher{
+			SearchFn: func(_ context.Context, _, _, _ string, limit int) ([]kiwix.SearchResult, error) {
+				capturedLimit = limit
+				return []kiwix.SearchResult{}, nil
+			},
+		}
+		h := newZimHandlerWithMocks(nil, kc)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/wiki/search?q=test&limit=500", http.NoBody)
+		req = chiContext(req, map[string]string{"archive": "wiki"})
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		if capturedLimit != 100 {
+			t.Errorf("limit passed to kiwix = %d, want 100 (clamped)", capturedLimit)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// ZimHandler.Suggest tests (autocomplete suggestions)
+// ---------------------------------------------------------------------------
+
+func TestZimHandler_Suggest(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns 400 when q param is missing", func(t *testing.T) {
+		t.Parallel()
+
+		kc := &mockKiwixSearcher{}
+		h := newZimHandlerWithMocks(nil, kc)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/wiki/suggest", http.NoBody)
+		req = chiContext(req, map[string]string{"archive": "wiki"})
+		rr := httptest.NewRecorder()
+
+		h.Suggest(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "query parameter 'q' is required and must be at least 2 characters" {
+			t.Errorf("message = %v, want minimum length error", msg)
+		}
+	})
+
+	t.Run("returns 400 when q is only 1 character", func(t *testing.T) {
+		t.Parallel()
+
+		kc := &mockKiwixSearcher{}
+		h := newZimHandlerWithMocks(nil, kc)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/wiki/suggest?q=a", http.NoBody)
+		req = chiContext(req, map[string]string{"archive": "wiki"})
+		rr := httptest.NewRecorder()
+
+		h.Suggest(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "query parameter 'q' is required and must be at least 2 characters" {
+			t.Errorf("message = %v, want minimum length error", msg)
+		}
+	})
+
+	t.Run("returns suggestions from kiwix client", func(t *testing.T) {
+		t.Parallel()
+
+		kc := &mockKiwixSearcher{
+			SearchFn: func(_ context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error) {
+				if archiveName != "wikipedia_en" {
+					t.Errorf("archiveName = %q, want wikipedia_en", archiveName)
+				}
+				if query != "go" {
+					t.Errorf("query = %q, want go", query)
+				}
+				if searchType != "suggest" {
+					t.Errorf("searchType = %q, want suggest", searchType)
+				}
+				if limit != 10 {
+					t.Errorf("limit = %d, want 10 (default)", limit)
+				}
+				return []kiwix.SearchResult{
+					{Title: "Go (game)", Path: "A/Go_(game)"},
+					{Title: "Go (programming language)", Path: "A/Go_(programming_language)"},
+				}, nil
+			},
+		}
+		h := newZimHandlerWithMocks(nil, kc)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/wikipedia_en/suggest?q=go", http.NoBody)
+		req = chiContext(req, map[string]string{"archive": "wikipedia_en"})
+		rr := httptest.NewRecorder()
+
+		h.Suggest(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+
+		data := body["data"].([]any)
+		if len(data) != 2 {
+			t.Fatalf("data length = %d, want 2", len(data))
+		}
+
+		first := data[0].(map[string]any)
+		if first["title"] != "Go (game)" {
+			t.Errorf("first title = %v, want Go (game)", first["title"])
+		}
+		if first["path"] != "A/Go_(game)" {
+			t.Errorf("first path = %v, want A/Go_(game)", first["path"])
+		}
+
+		meta := body["meta"].(map[string]any)
+		if meta["archive"] != "wikipedia_en" {
+			t.Errorf("meta.archive = %v, want wikipedia_en", meta["archive"])
+		}
+		if meta["query"] != "go" {
+			t.Errorf("meta.query = %v, want go", meta["query"])
+		}
+		if total := meta["total"].(float64); total != 2 {
+			t.Errorf("meta.total = %v, want 2", total)
+		}
+	})
+
+	t.Run("returns 500 when kiwix client returns error", func(t *testing.T) {
+		t.Parallel()
+
+		kc := &mockKiwixSearcher{
+			SearchFn: func(_ context.Context, _, _, _ string, _ int) ([]kiwix.SearchResult, error) {
+				return nil, errors.New("timeout")
+			},
+		}
+		h := newZimHandlerWithMocks(nil, kc)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/wiki/suggest?q=test", http.NoBody)
+		req = chiContext(req, map[string]string{"archive": "wiki"})
+		rr := httptest.NewRecorder()
+
+		h.Suggest(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "suggest failed" {
+			t.Errorf("message = %v, want 'suggest failed'", msg)
+		}
+	})
+
+	t.Run("clamps limit exceeding 50 to 50", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedLimit int
+		kc := &mockKiwixSearcher{
+			SearchFn: func(_ context.Context, _, _, _ string, limit int) ([]kiwix.SearchResult, error) {
+				capturedLimit = limit
+				return []kiwix.SearchResult{}, nil
+			},
+		}
+		h := newZimHandlerWithMocks(nil, kc)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/wiki/suggest?q=test&limit=200", http.NoBody)
+		req = chiContext(req, map[string]string{"archive": "wiki"})
+		rr := httptest.NewRecorder()
+
+		h.Suggest(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		if capturedLimit != 50 {
+			t.Errorf("limit passed to kiwix = %d, want 50 (clamped)", capturedLimit)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// ZimHandler.ReadArticle tests (article retrieval with kiwix client)
+// ---------------------------------------------------------------------------
+
+func TestZimHandler_ReadArticle(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns article from kiwix client", func(t *testing.T) {
+		t.Parallel()
+
+		kc := &mockKiwixSearcher{
+			ReadArticleFn: func(_ context.Context, archiveName, articlePath string) (*kiwix.Article, error) {
+				if archiveName != "wikipedia_en" {
+					t.Errorf("archiveName = %q, want wikipedia_en", archiveName)
+				}
+				if articlePath != "A/Go_(programming_language)" {
+					t.Errorf("articlePath = %q, want A/Go_(programming_language)", articlePath)
+				}
+				return &kiwix.Article{
+					Title:    "Go (programming language)",
+					Content:  "Go is a statically typed, compiled language.",
+					MIMEType: "text/html; charset=utf-8",
+				}, nil
+			},
+		}
+		h := newZimHandlerWithMocks(nil, kc)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/wikipedia_en/articles/A/Go_(programming_language)", http.NoBody)
+		req = chiContext(req, map[string]string{"archive": "wikipedia_en", "*": "A/Go_(programming_language)"})
+		rr := httptest.NewRecorder()
+
+		h.ReadArticle(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+
+		data := body["data"].(map[string]any)
+		if data["archive_name"] != "wikipedia_en" {
+			t.Errorf("archive_name = %v, want wikipedia_en", data["archive_name"])
+		}
+		if data["path"] != "A/Go_(programming_language)" {
+			t.Errorf("path = %v, want A/Go_(programming_language)", data["path"])
+		}
+		if data["title"] != "Go (programming language)" {
+			t.Errorf("title = %v, want Go (programming language)", data["title"])
+		}
+		if data["content"] != "Go is a statically typed, compiled language." {
+			t.Errorf("content = %v, want 'Go is a statically typed, compiled language.'", data["content"])
+		}
+		if data["mime_type"] != "text/html; charset=utf-8" {
+			t.Errorf("mime_type = %v, want 'text/html; charset=utf-8'", data["mime_type"])
+		}
+	})
+
+	t.Run("returns 500 when kiwix client returns error", func(t *testing.T) {
+		t.Parallel()
+
+		kc := &mockKiwixSearcher{
+			ReadArticleFn: func(_ context.Context, _, _ string) (*kiwix.Article, error) {
+				return nil, errors.New("article not found in archive")
+			},
+		}
+		h := newZimHandlerWithMocks(nil, kc)
+		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives/wiki/articles/A/Missing", http.NoBody)
+		req = chiContext(req, map[string]string{"archive": "wiki", "*": "A/Missing"})
+		rr := httptest.NewRecorder()
+
+		h.ReadArticle(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "failed to read article" {
+			t.Errorf("message = %v, want 'failed to read article'", msg)
+		}
+	})
+}

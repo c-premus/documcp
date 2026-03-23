@@ -94,7 +94,6 @@ func truncateAll(t *testing.T) {
 		"search_queries",
 		"git_template_files",
 		"git_templates",
-		"confluence_spaces",
 		"zim_archives",
 		"external_services",
 		"users",

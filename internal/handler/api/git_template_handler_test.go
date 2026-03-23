@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,7 +19,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
+
 	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"git.999.haus/chris/DocuMCP-go/internal/queue"
 )
 
 // ---------------------------------------------------------------------------
@@ -1727,6 +1732,1449 @@ func TestGitTemplateHandler_ValidateURL(t *testing.T) {
 		}
 		if valid := body["valid"].(bool); valid {
 			t.Error("valid = true, want false for file:// URL")
+		}
+	})
+}
+
+// newGitTemplateHandlerFull creates a handler with repo and inserter mocks.
+// Uses mockJobInserter from external_service_handler_test.go (same package).
+func newGitTemplateHandlerFull(repo *mockGitTemplateRepo, ins gitTemplateJobInserter) *GitTemplateHandler {
+	return &GitTemplateHandler{
+		repo:     repo,
+		inserter: ins,
+		logger:   slog.New(slog.DiscardHandler),
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Shared test fixtures
+// ---------------------------------------------------------------------------
+
+func sampleTemplate() *model.GitTemplate {
+	return &model.GitTemplate{
+		ID:             42,
+		UUID:           "test-uuid",
+		Name:           "My Template",
+		Slug:           "my-template",
+		RepositoryURL:  "https://github.com/user/repo",
+		Branch:         "main",
+		IsPublic:       true,
+		IsEnabled:      true,
+		Status:         "synced",
+		FileCount:      2,
+		TotalSizeBytes: 1024,
+		Description:    sql.NullString{String: "A test template", Valid: true},
+	}
+}
+
+func sampleFiles() []model.GitTemplateFile {
+	return []model.GitTemplateFile{
+		{
+			ID:            1,
+			GitTemplateID: 42,
+			Path:          "README.md",
+			Filename:      "README.md",
+			Extension:     sql.NullString{String: ".md", Valid: true},
+			Content:       sql.NullString{String: "# Hello {{project_name}}", Valid: true},
+			SizeBytes:     24,
+			IsEssential:   true,
+			ContentHash:   sql.NullString{String: "abc123", Valid: true},
+		},
+		{
+			ID:            2,
+			GitTemplateID: 42,
+			Path:          "src/main.go",
+			Filename:      "main.go",
+			Extension:     sql.NullString{String: ".go", Valid: true},
+			Content:       sql.NullString{String: "package main\n", Valid: true},
+			SizeBytes:     13,
+			IsEssential:   false,
+		},
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GitTemplateHandler.Search tests
+// ---------------------------------------------------------------------------
+
+func TestGitTemplateHandler_Search(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns matching templates", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			SearchFn: func(_ context.Context, query, category string, limit int) ([]model.GitTemplate, error) {
+				if query != "docker" {
+					t.Errorf("query = %q, want docker", query)
+				}
+				if category != "devops" {
+					t.Errorf("category = %q, want devops", category)
+				}
+				if limit != 10 {
+					t.Errorf("limit = %d, want 10", limit)
+				}
+				return []model.GitTemplate{
+					{UUID: "t1", Name: "Docker Compose", Slug: "docker-compose", RepositoryURL: "https://github.com/a/b", Branch: "main", Status: "synced"},
+				}, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/search?q=docker&category=devops&limit=10", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].([]any)
+		if len(data) != 1 {
+			t.Errorf("data length = %d, want 1", len(data))
+		}
+		meta := body["meta"].(map[string]any)
+		if meta["query"] != "docker" {
+			t.Errorf("meta.query = %v, want docker", meta["query"])
+		}
+		if total := meta["total"].(float64); total != 1 {
+			t.Errorf("meta.total = %v, want 1", total)
+		}
+	})
+
+	t.Run("uses default limit of 50 when not provided", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			SearchFn: func(_ context.Context, _ string, _ string, limit int) ([]model.GitTemplate, error) {
+				if limit != 50 {
+					t.Errorf("limit = %d, want 50", limit)
+				}
+				return []model.GitTemplate{}, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/search?q=test", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+	})
+
+	t.Run("returns empty array when no results", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			SearchFn: func(_ context.Context, _ string, _ string, _ int) ([]model.GitTemplate, error) {
+				return []model.GitTemplate{}, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/search?q=nonexistent", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].([]any)
+		if len(data) != 0 {
+			t.Errorf("data length = %d, want 0", len(data))
+		}
+	})
+
+	t.Run("returns 500 when repo search fails", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			SearchFn: func(_ context.Context, _ string, _ string, _ int) ([]model.GitTemplate, error) {
+				return nil, errors.New("search index unavailable")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/search?q=test", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "failed to search git templates" {
+			t.Errorf("message = %v, want 'failed to search git templates'", msg)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// GitTemplateHandler.Update tests
+// ---------------------------------------------------------------------------
+
+func TestGitTemplateHandler_Update(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns 404 when template not found", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return nil, fmt.Errorf("not found: %w", sql.ErrNoRows)
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPut, "/api/git-templates/missing", strings.NewReader(`{"name":"Updated"}`))
+		req = chiContext(req, map[string]string{"uuid": "missing"})
+		rr := httptest.NewRecorder()
+
+		h.Update(rr, req)
+
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("returns 500 when find returns unexpected error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return nil, errors.New("connection timeout")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPut, "/api/git-templates/uuid-1", strings.NewReader(`{"name":"Updated"}`))
+		req = chiContext(req, map[string]string{"uuid": "uuid-1"})
+		rr := httptest.NewRecorder()
+
+		h.Update(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("returns 400 for invalid JSON body", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPut, "/api/git-templates/test-uuid", strings.NewReader("not json"))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Update(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "invalid JSON body" {
+			t.Errorf("message = %v, want 'invalid JSON body'", msg)
+		}
+	})
+
+	t.Run("returns 400 for SSRF-blocked repository URL", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPut, "/api/git-templates/test-uuid",
+			strings.NewReader(`{"repository_url":"http://127.0.0.1:8080/evil"}`))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Update(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		msg, _ := body["message"].(string)
+		if !strings.HasPrefix(msg, "Invalid repository URL:") {
+			t.Errorf("message = %q, want prefix 'Invalid repository URL:'", msg)
+		}
+	})
+
+	t.Run("updates all provided fields successfully", func(t *testing.T) {
+		t.Parallel()
+
+		var updatedTmpl *model.GitTemplate
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+			UpdateFn: func(_ context.Context, tmpl *model.GitTemplate) error {
+				updatedTmpl = tmpl
+				return nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		reqBody := `{
+			"name": "Updated Name",
+			"description": "New desc",
+			"branch": "develop",
+			"category": "web",
+			"tags": ["go", "api"],
+			"is_public": false,
+			"repository_url": "https://github.com/new/repo"
+		}`
+		req := httptest.NewRequest(http.MethodPut, "/api/git-templates/test-uuid", strings.NewReader(reqBody))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Update(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		if updatedTmpl == nil {
+			t.Fatal("UpdateFn was not called")
+		}
+		if updatedTmpl.Name != "Updated Name" {
+			t.Errorf("Name = %q, want 'Updated Name'", updatedTmpl.Name)
+		}
+		if updatedTmpl.Slug != "updated-name" {
+			t.Errorf("Slug = %q, want 'updated-name'", updatedTmpl.Slug)
+		}
+		if updatedTmpl.Description.String != "New desc" {
+			t.Errorf("Description = %q, want 'New desc'", updatedTmpl.Description.String)
+		}
+		if updatedTmpl.Branch != "develop" {
+			t.Errorf("Branch = %q, want 'develop'", updatedTmpl.Branch)
+		}
+		if updatedTmpl.Category.String != "web" {
+			t.Errorf("Category = %q, want 'web'", updatedTmpl.Category.String)
+		}
+		if updatedTmpl.RepositoryURL != "https://github.com/new/repo" {
+			t.Errorf("RepositoryURL = %q, want 'https://github.com/new/repo'", updatedTmpl.RepositoryURL)
+		}
+		if updatedTmpl.IsPublic {
+			t.Error("IsPublic = true, want false")
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "Git template updated successfully." {
+			t.Errorf("message = %v, want 'Git template updated successfully.'", msg)
+		}
+	})
+
+	t.Run("returns 500 when repo update fails", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+			UpdateFn: func(_ context.Context, _ *model.GitTemplate) error {
+				return errors.New("db write failed")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPut, "/api/git-templates/test-uuid",
+			strings.NewReader(`{"name":"Updated"}`))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Update(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "failed to update git template" {
+			t.Errorf("message = %v, want 'failed to update git template'", msg)
+		}
+	})
+
+	t.Run("partial update preserves unset fields", func(t *testing.T) {
+		t.Parallel()
+
+		var updatedTmpl *model.GitTemplate
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+			UpdateFn: func(_ context.Context, tmpl *model.GitTemplate) error {
+				updatedTmpl = tmpl
+				return nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPut, "/api/git-templates/test-uuid",
+			strings.NewReader(`{"name":"Only Name Changed"}`))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Update(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		if updatedTmpl.Name != "Only Name Changed" {
+			t.Errorf("Name = %q, want 'Only Name Changed'", updatedTmpl.Name)
+		}
+		// Original branch should be preserved.
+		if updatedTmpl.Branch != "main" {
+			t.Errorf("Branch = %q, want 'main' (preserved)", updatedTmpl.Branch)
+		}
+		// Original repository URL should be preserved.
+		if updatedTmpl.RepositoryURL != "https://github.com/user/repo" {
+			t.Errorf("RepositoryURL = %q, want original URL", updatedTmpl.RepositoryURL)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// GitTemplateHandler.Sync tests
+// ---------------------------------------------------------------------------
+
+func TestGitTemplateHandler_Sync(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns 404 when template not found", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return nil, fmt.Errorf("not found: %w", sql.ErrNoRows)
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/missing/sync", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "missing"})
+		rr := httptest.NewRecorder()
+
+		h.Sync(rr, req)
+
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("returns 500 when find returns unexpected error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return nil, errors.New("connection timeout")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/uuid-1/sync", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1"})
+		rr := httptest.NewRecorder()
+
+		h.Sync(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("returns 503 when inserter is nil", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/test-uuid/sync", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Sync(rr, req)
+
+		if rr.Code != http.StatusServiceUnavailable {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusServiceUnavailable)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "job queue not available" {
+			t.Errorf("message = %v, want 'job queue not available'", msg)
+		}
+	})
+
+	t.Run("returns 500 when inserter fails", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+		}
+		ins := &mockJobInserter{
+			insertFn: func(_ context.Context, _ river.JobArgs, _ *river.InsertOpts) (*rivertype.JobInsertResult, error) {
+				return nil, errors.New("queue full")
+			},
+		}
+		h := newGitTemplateHandlerFull(repo, ins)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/test-uuid/sync", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Sync(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "failed to enqueue sync job" {
+			t.Errorf("message = %v, want 'failed to enqueue sync job'", msg)
+		}
+	})
+
+	t.Run("returns 202 and enqueues job successfully", func(t *testing.T) {
+		t.Parallel()
+
+		var insertedArgs river.JobArgs
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+		}
+		ins := &mockJobInserter{
+			insertFn: func(_ context.Context, args river.JobArgs, _ *river.InsertOpts) (*rivertype.JobInsertResult, error) {
+				insertedArgs = args
+				return &rivertype.JobInsertResult{}, nil
+			},
+		}
+		h := newGitTemplateHandlerFull(repo, ins)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/test-uuid/sync", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Sync(rr, req)
+
+		if rr.Code != http.StatusAccepted {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusAccepted)
+		}
+
+		if _, ok := insertedArgs.(queue.SyncGitTemplatesArgs); !ok {
+			t.Errorf("inserted args type = %T, want queue.SyncGitTemplatesArgs", insertedArgs)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "Sync queued" {
+			t.Errorf("message = %v, want 'Sync queued'", msg)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// GitTemplateHandler.Structure tests
+// ---------------------------------------------------------------------------
+
+func TestGitTemplateHandler_Structure(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns 404 when template not found", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return nil, fmt.Errorf("not found: %w", sql.ErrNoRows)
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/missing/structure", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "missing"})
+		rr := httptest.NewRecorder()
+
+		h.Structure(rr, req)
+
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("returns 500 when find returns unexpected error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/uuid-1/structure", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1"})
+		rr := httptest.NewRecorder()
+
+		h.Structure(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("returns 500 when files query fails", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+			FilesForTemplateFn: func(_ context.Context, _ int64) ([]model.GitTemplateFile, error) {
+				return nil, errors.New("files table unavailable")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/test-uuid/structure", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Structure(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("returns file tree with essential files and variables", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+			FilesForTemplateFn: func(_ context.Context, templateID int64) ([]model.GitTemplateFile, error) {
+				if templateID != 42 {
+					t.Errorf("templateID = %d, want 42", templateID)
+				}
+				return sampleFiles(), nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/test-uuid/structure", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Structure(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].(map[string]any)
+
+		if data["uuid"] != "test-uuid" {
+			t.Errorf("uuid = %v, want test-uuid", data["uuid"])
+		}
+		if data["name"] != "My Template" {
+			t.Errorf("name = %v, want My Template", data["name"])
+		}
+
+		fileTree := data["file_tree"].([]any)
+		if len(fileTree) != 2 {
+			t.Fatalf("file_tree length = %d, want 2", len(fileTree))
+		}
+		if fileTree[0] != "README.md" {
+			t.Errorf("file_tree[0] = %v, want README.md", fileTree[0])
+		}
+		if fileTree[1] != "src/main.go" {
+			t.Errorf("file_tree[1] = %v, want src/main.go", fileTree[1])
+		}
+
+		essentialFiles := data["essential_files"].([]any)
+		if len(essentialFiles) != 1 {
+			t.Fatalf("essential_files length = %d, want 1", len(essentialFiles))
+		}
+		if essentialFiles[0] != "README.md" {
+			t.Errorf("essential_files[0] = %v, want README.md", essentialFiles[0])
+		}
+
+		variables := data["variables"].([]any)
+		if len(variables) != 1 {
+			t.Fatalf("variables length = %d, want 1", len(variables))
+		}
+		if variables[0] != "project_name" {
+			t.Errorf("variables[0] = %v, want project_name", variables[0])
+		}
+
+		files := data["files"].([]any)
+		if len(files) != 2 {
+			t.Fatalf("files length = %d, want 2", len(files))
+		}
+		firstFile := files[0].(map[string]any)
+		if firstFile["path"] != "README.md" {
+			t.Errorf("files[0].path = %v, want README.md", firstFile["path"])
+		}
+		if firstFile["extension"] != ".md" {
+			t.Errorf("files[0].extension = %v, want .md", firstFile["extension"])
+		}
+		if firstFile["is_essential"] != true {
+			t.Errorf("files[0].is_essential = %v, want true", firstFile["is_essential"])
+		}
+		if firstFile["content_hash"] != "abc123" {
+			t.Errorf("files[0].content_hash = %v, want abc123", firstFile["content_hash"])
+		}
+	})
+
+	t.Run("returns empty structure when template has no files", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+			FilesForTemplateFn: func(_ context.Context, _ int64) ([]model.GitTemplateFile, error) {
+				return []model.GitTemplateFile{}, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/test-uuid/structure", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Structure(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].(map[string]any)
+		fileTree := data["file_tree"].([]any)
+		if len(fileTree) != 0 {
+			t.Errorf("file_tree length = %d, want 0", len(fileTree))
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// GitTemplateHandler.DeploymentGuide tests
+// ---------------------------------------------------------------------------
+
+func TestGitTemplateHandler_DeploymentGuide(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns 404 when template not found", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return nil, fmt.Errorf("not found: %w", sql.ErrNoRows)
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/missing/deployment-guide", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "missing"})
+		rr := httptest.NewRecorder()
+
+		h.DeploymentGuide(rr, req)
+
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("returns 500 when find returns unexpected error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return nil, errors.New("db error")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/uuid-1/deployment-guide", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "uuid-1"})
+		rr := httptest.NewRecorder()
+
+		h.DeploymentGuide(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("returns 500 when files query fails", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+			FilesForTemplateFn: func(_ context.Context, _ int64) ([]model.GitTemplateFile, error) {
+				return nil, errors.New("disk error")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/test-uuid/deployment-guide", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.DeploymentGuide(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("returns guide with only essential files", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+			FilesForTemplateFn: func(_ context.Context, _ int64) ([]model.GitTemplateFile, error) {
+				return sampleFiles(), nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/test-uuid/deployment-guide", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.DeploymentGuide(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].(map[string]any)
+
+		if data["template_name"] != "My Template" {
+			t.Errorf("template_name = %v, want My Template", data["template_name"])
+		}
+		if data["description"] != "A test template" {
+			t.Errorf("description = %v, want 'A test template'", data["description"])
+		}
+
+		files := data["files"].([]any)
+		if len(files) != 1 {
+			t.Fatalf("files length = %d, want 1 (only essential)", len(files))
+		}
+		firstFile := files[0].(map[string]any)
+		if firstFile["path"] != "README.md" {
+			t.Errorf("files[0].path = %v, want README.md", firstFile["path"])
+		}
+		if firstFile["content"] != "# Hello {{project_name}}" {
+			t.Errorf("files[0].content = %v, want '# Hello {{project_name}}'", firstFile["content"])
+		}
+
+		steps := data["steps"].([]any)
+		if len(steps) != 1 {
+			t.Fatalf("steps length = %d, want 1", len(steps))
+		}
+
+		unresolved := data["unresolved_variables"].([]any)
+		if len(unresolved) != 0 {
+			t.Errorf("unresolved_variables length = %d, want 0 (no variable substitution requested)", len(unresolved))
+		}
+	})
+
+	t.Run("substitutes variables in essential file content", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+			FilesForTemplateFn: func(_ context.Context, _ int64) ([]model.GitTemplateFile, error) {
+				return sampleFiles(), nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet,
+			`/api/git-templates/test-uuid/deployment-guide?variables={"project_name":"MyApp"}`, http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.DeploymentGuide(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].(map[string]any)
+		files := data["files"].([]any)
+		firstFile := files[0].(map[string]any)
+		if firstFile["content"] != "# Hello MyApp" {
+			t.Errorf("content = %v, want '# Hello MyApp'", firstFile["content"])
+		}
+	})
+
+	t.Run("returns empty description when not set", func(t *testing.T) {
+		t.Parallel()
+
+		tmpl := sampleTemplate()
+		tmpl.Description = sql.NullString{Valid: false}
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return tmpl, nil
+			},
+			FilesForTemplateFn: func(_ context.Context, _ int64) ([]model.GitTemplateFile, error) {
+				return []model.GitTemplateFile{}, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodGet, "/api/git-templates/test-uuid/deployment-guide", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.DeploymentGuide(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].(map[string]any)
+		if data["description"] != "" {
+			t.Errorf("description = %v, want empty string", data["description"])
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// GitTemplateHandler.Create extended tests
+// ---------------------------------------------------------------------------
+
+func TestGitTemplateHandler_Create(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns 400 for SSRF-blocked repository URL", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestGitTemplateHandler()
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates",
+			strings.NewReader(`{"name":"Evil","repository_url":"http://169.254.169.254/latest/meta-data"}`))
+		rr := httptest.NewRecorder()
+
+		h.Create(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		msg, _ := body["message"].(string)
+		if !strings.HasPrefix(msg, "Invalid repository URL:") {
+			t.Errorf("message = %q, want prefix 'Invalid repository URL:'", msg)
+		}
+	})
+
+	t.Run("returns 500 when repo create fails", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			CreateFn: func(_ context.Context, _ *model.GitTemplate) error {
+				return errors.New("unique constraint violation")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates",
+			strings.NewReader(`{"name":"Test","repository_url":"https://github.com/user/repo"}`))
+		rr := httptest.NewRecorder()
+
+		h.Create(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "failed to create git template" {
+			t.Errorf("message = %v, want 'failed to create git template'", msg)
+		}
+	})
+
+	t.Run("succeeds with nil inserter without error", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			CreateFn: func(_ context.Context, _ *model.GitTemplate) error {
+				return nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates",
+			strings.NewReader(`{"name":"My Template","repository_url":"https://github.com/user/repo"}`))
+		rr := httptest.NewRecorder()
+
+		h.Create(rr, req)
+
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusCreated)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "Git template created and queued for sync." {
+			t.Errorf("message = %v, want 'Git template created and queued for sync.'", msg)
+		}
+	})
+
+	t.Run("creates template with all fields and enqueues sync", func(t *testing.T) {
+		t.Parallel()
+
+		var createdTmpl *model.GitTemplate
+		var insertCalled bool
+		repo := &mockGitTemplateRepo{
+			CreateFn: func(_ context.Context, tmpl *model.GitTemplate) error {
+				createdTmpl = tmpl
+				return nil
+			},
+		}
+		ins := &mockJobInserter{
+			insertFn: func(_ context.Context, _ river.JobArgs, _ *river.InsertOpts) (*rivertype.JobInsertResult, error) {
+				insertCalled = true
+				return &rivertype.JobInsertResult{}, nil
+			},
+		}
+		h := newGitTemplateHandlerFull(repo, ins)
+		reqBody := `{
+			"name": "Full Template",
+			"repository_url": "https://github.com/user/repo",
+			"description": "A complete template",
+			"branch": "develop",
+			"category": "devops",
+			"tags": ["go", "docker"],
+			"is_public": true
+		}`
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates", strings.NewReader(reqBody))
+		rr := httptest.NewRecorder()
+
+		h.Create(rr, req)
+
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusCreated)
+		}
+
+		if createdTmpl == nil {
+			t.Fatal("CreateFn was not called")
+		}
+		if createdTmpl.Name != "Full Template" {
+			t.Errorf("Name = %q, want 'Full Template'", createdTmpl.Name)
+		}
+		if createdTmpl.Slug != "full-template" {
+			t.Errorf("Slug = %q, want 'full-template'", createdTmpl.Slug)
+		}
+		if createdTmpl.Branch != "develop" {
+			t.Errorf("Branch = %q, want 'develop'", createdTmpl.Branch)
+		}
+		if createdTmpl.Description.String != "A complete template" {
+			t.Errorf("Description = %q, want 'A complete template'", createdTmpl.Description.String)
+		}
+		if createdTmpl.Category.String != "devops" {
+			t.Errorf("Category = %q, want 'devops'", createdTmpl.Category.String)
+		}
+		if !createdTmpl.IsPublic {
+			t.Error("IsPublic = false, want true")
+		}
+		if createdTmpl.Status != "pending" {
+			t.Errorf("Status = %q, want 'pending'", createdTmpl.Status)
+		}
+		if createdTmpl.UUID == "" {
+			t.Error("UUID should not be empty")
+		}
+		if !insertCalled {
+			t.Error("inserter.Insert was not called")
+		}
+	})
+
+	t.Run("defaults branch to main when not provided", func(t *testing.T) {
+		t.Parallel()
+
+		var createdTmpl *model.GitTemplate
+		repo := &mockGitTemplateRepo{
+			CreateFn: func(_ context.Context, tmpl *model.GitTemplate) error {
+				createdTmpl = tmpl
+				return nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates",
+			strings.NewReader(`{"name":"NoBranch","repository_url":"https://github.com/user/repo"}`))
+		rr := httptest.NewRecorder()
+
+		h.Create(rr, req)
+
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusCreated)
+		}
+		if createdTmpl.Branch != "main" {
+			t.Errorf("Branch = %q, want 'main' (default)", createdTmpl.Branch)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// GitTemplateHandler.Download tests
+// ---------------------------------------------------------------------------
+
+func TestGitTemplateHandler_Download(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns 404 when template not found", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return nil, fmt.Errorf("not found: %w", sql.ErrNoRows)
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/missing/download",
+			strings.NewReader(`{"format":"zip"}`))
+		req = chiContext(req, map[string]string{"uuid": "missing"})
+		rr := httptest.NewRecorder()
+
+		h.Download(rr, req)
+
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusNotFound)
+		}
+	})
+
+	t.Run("returns 400 for invalid format", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/test-uuid/download",
+			strings.NewReader(`{"format":"rar"}`))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Download(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if msg := body["message"]; msg != "format must be 'zip' or 'tar.gz'" {
+			t.Errorf("message = %v, want \"format must be 'zip' or 'tar.gz'\"", msg)
+		}
+	})
+
+	t.Run("returns 500 when files query fails", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+			FilesForTemplateFn: func(_ context.Context, _ int64) ([]model.GitTemplateFile, error) {
+				return nil, errors.New("disk error")
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/test-uuid/download",
+			strings.NewReader(`{"format":"zip"}`))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Download(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		}
+	})
+
+	t.Run("returns zip archive with correct metadata", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+			FilesForTemplateFn: func(_ context.Context, _ int64) ([]model.GitTemplateFile, error) {
+				return sampleFiles(), nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/test-uuid/download",
+			strings.NewReader(`{"format":"zip"}`))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Download(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].(map[string]any)
+
+		if data["format"] != "zip" {
+			t.Errorf("format = %v, want zip", data["format"])
+		}
+		if data["filename"] != "my-template.zip" {
+			t.Errorf("filename = %v, want my-template.zip", data["filename"])
+		}
+		if fileCount := data["file_count"].(float64); fileCount != 2 {
+			t.Errorf("file_count = %v, want 2", fileCount)
+		}
+		if data["archive_base64"] == nil || data["archive_base64"] == "" {
+			t.Error("archive_base64 should not be empty")
+		}
+	})
+
+	t.Run("returns tar.gz archive with correct metadata", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+			FilesForTemplateFn: func(_ context.Context, _ int64) ([]model.GitTemplateFile, error) {
+				return sampleFiles(), nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/test-uuid/download",
+			strings.NewReader(`{"format":"tar.gz"}`))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Download(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].(map[string]any)
+
+		if data["format"] != "tar.gz" {
+			t.Errorf("format = %v, want tar.gz", data["format"])
+		}
+		if data["filename"] != "my-template.tar.gz" {
+			t.Errorf("filename = %v, want my-template.tar.gz", data["filename"])
+		}
+		if fileCount := data["file_count"].(float64); fileCount != 2 {
+			t.Errorf("file_count = %v, want 2", fileCount)
+		}
+	})
+
+	t.Run("defaults to zip when format not provided", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+			FilesForTemplateFn: func(_ context.Context, _ int64) ([]model.GitTemplateFile, error) {
+				return []model.GitTemplateFile{}, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/test-uuid/download",
+			strings.NewReader(`{}`))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Download(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].(map[string]any)
+		if data["format"] != "zip" {
+			t.Errorf("format = %v, want zip (default)", data["format"])
+		}
+	})
+
+	t.Run("returns valid archive with no files", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+			FilesForTemplateFn: func(_ context.Context, _ int64) ([]model.GitTemplateFile, error) {
+				return []model.GitTemplateFile{}, nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/test-uuid/download",
+			strings.NewReader(`{"format":"zip"}`))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Download(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].(map[string]any)
+		if fileCount := data["file_count"].(float64); fileCount != 0 {
+			t.Errorf("file_count = %v, want 0", fileCount)
+		}
+		if data["archive_base64"] == nil {
+			t.Error("archive_base64 should not be nil for empty archive")
+		}
+	})
+
+	t.Run("substitutes variables in archive content", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockGitTemplateRepo{
+			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
+				return sampleTemplate(), nil
+			},
+			FilesForTemplateFn: func(_ context.Context, _ int64) ([]model.GitTemplateFile, error) {
+				return sampleFiles(), nil
+			},
+		}
+		h := newGitTemplateHandlerWithMock(repo)
+		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/test-uuid/download",
+			strings.NewReader(`{"format":"zip","variables":{"project_name":"MyApp"}}`))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Download(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		data := body["data"].(map[string]any)
+
+		// Decode the base64 zip and verify file content has substituted variables.
+		archiveB64 := data["archive_base64"].(string)
+		archiveBytes, err := base64.StdEncoding.DecodeString(archiveB64)
+		if err != nil {
+			t.Fatalf("decoding base64: %v", err)
+		}
+
+		reader, err := zip.NewReader(bytes.NewReader(archiveBytes), int64(len(archiveBytes)))
+		if err != nil {
+			t.Fatalf("opening zip: %v", err)
+		}
+
+		if len(reader.File) != 2 {
+			t.Fatalf("zip file count = %d, want 2", len(reader.File))
+		}
+
+		rc, err := reader.File[0].Open()
+		if err != nil {
+			t.Fatalf("opening zip entry: %v", err)
+		}
+		defer func() { _ = rc.Close() }()
+
+		content, _ := io.ReadAll(rc)
+		if string(content) != "# Hello MyApp" {
+			t.Errorf("file content = %q, want '# Hello MyApp'", string(content))
+		}
+
+		unresolved := data["unresolved_variables"].([]any)
+		if len(unresolved) != 0 {
+			t.Errorf("unresolved_variables length = %d, want 0", len(unresolved))
 		}
 	})
 }

@@ -228,6 +228,66 @@ func TestEventBus_ConcurrentPublishSubscribe(t *testing.T) {
 	// If we reach here without a race or deadlock, the test passes.
 }
 
+func TestEventBus_Close(t *testing.T) {
+	t.Parallel()
+
+	t.Run("closes all subscriber channels", func(t *testing.T) {
+		t.Parallel()
+
+		eb := NewEventBus()
+		ch1 := eb.Subscribe("sub-1")
+		ch2 := eb.Subscribe("sub-2")
+		ch3 := eb.Subscribe("sub-3")
+
+		eb.Close()
+
+		// All channels should be closed (readable with ok=false).
+		for i, ch := range []<-chan Event{ch1, ch2, ch3} {
+			select {
+			case _, ok := <-ch:
+				if ok {
+					t.Errorf("channel %d should be closed but received a value", i+1)
+				}
+			case <-time.After(time.Second):
+				t.Errorf("channel %d was not closed within timeout", i+1)
+			}
+		}
+	})
+
+	t.Run("empties the subscriber map", func(t *testing.T) {
+		t.Parallel()
+
+		eb := NewEventBus()
+		eb.Subscribe("sub-a")
+		eb.Subscribe("sub-b")
+
+		eb.Close()
+
+		eb.mu.RLock()
+		assert.Empty(t, eb.subscribers, "subscriber map should be empty after Close")
+		eb.mu.RUnlock()
+	})
+
+	t.Run("close on empty bus does not panic", func(t *testing.T) {
+		t.Parallel()
+
+		eb := NewEventBus()
+		assert.NotPanics(t, func() { eb.Close() })
+	})
+
+	t.Run("publish after close does not panic or block", func(t *testing.T) {
+		t.Parallel()
+
+		eb := NewEventBus()
+		eb.Subscribe("sub-1")
+		eb.Close()
+
+		assert.NotPanics(t, func() {
+			eb.Publish(Event{Type: EventJobCompleted, JobID: 1})
+		})
+	})
+}
+
 func TestEventType_constants(t *testing.T) {
 	t.Parallel()
 
