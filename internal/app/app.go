@@ -430,11 +430,6 @@ func New(cfg *config.Config) (*App, error) {
 		TrustedProxies:    trustedProxies,
 	}, logger)
 
-	csrfKey, err := deriveKey([]byte(sessionSecret), "csrf-token-key", 32)
-	if err != nil {
-		return nil, fmt.Errorf("deriving CSRF key: %w", err)
-	}
-
 	srv.RegisterRoutes(server.Deps{
 		Version:                cfg.DocuMCP.ServerVersion,
 		MCPHandler:             mcpH,
@@ -456,9 +451,7 @@ func New(cfg *config.Config) (*App, error) {
 		QueueHandler:           queueH,
 		Metrics:                metrics,
 		OTELEnabled:            cfg.OTEL.Enabled,
-		CSRFKey:                csrfKey,
 		IsSecure:               cfg.App.Env == "production",
-		AppURL:                 cfg.App.URL,
 		SearchClient:           searchClient,
 		DB:                     db.DB,
 		InternalAPIToken:       cfg.App.InternalAPIToken,
