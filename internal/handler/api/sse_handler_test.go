@@ -237,11 +237,7 @@ func TestSSEHandler_Stream(t *testing.T) {
 
 		body := rec.body()
 
-		// Verify the SSE event line format.
-		assert.Contains(t, body, "event: job.completed",
-			"body should contain event type line")
-
-		// Verify data line presence.
+		// Verify data line presence (unnamed SSE events — no event: field).
 		assert.Contains(t, body, "data: ",
 			"body should contain data line")
 
@@ -249,12 +245,16 @@ func TestSSEHandler_Stream(t *testing.T) {
 		assert.Contains(t, body, "\n\n",
 			"body should contain double newline separator")
 
+		// Should NOT contain named event lines (frontend uses onmessage).
+		assert.NotContains(t, body, "event: job.completed",
+			"should not use named SSE events")
+
 		// Extract the JSON data payload for the job.completed event.
 		lines := strings.Split(strings.TrimSpace(body), "\n")
 		var dataLine string
-		for i, line := range lines {
-			if line == "event: job.completed" && i+1 < len(lines) {
-				dataLine = strings.TrimPrefix(lines[i+1], "data: ")
+		for _, line := range lines {
+			if strings.HasPrefix(line, "data: ") && strings.Contains(line, "job.completed") {
+				dataLine = strings.TrimPrefix(line, "data: ")
 				break
 			}
 		}
@@ -296,15 +296,15 @@ func TestSSEHandler_Stream(t *testing.T) {
 
 		body := rec.body()
 
-		// All three event types should appear.
-		assert.Contains(t, body, "event: job.dispatched")
-		assert.Contains(t, body, "event: job.completed")
-		assert.Contains(t, body, "event: job.failed")
+		// All three event types should appear in data payloads.
+		assert.Contains(t, body, `"type":"job.dispatched"`)
+		assert.Contains(t, body, `"type":"job.completed"`)
+		assert.Contains(t, body, `"type":"job.failed"`)
 
 		// Verify ordering: dispatched before completed before failed.
-		idxDispatched := strings.Index(body, "event: job.dispatched")
-		idxCompleted := strings.Index(body, "event: job.completed")
-		idxFailed := strings.Index(body, "event: job.failed")
+		idxDispatched := strings.Index(body, `"type":"job.dispatched"`)
+		idxCompleted := strings.Index(body, `"type":"job.completed"`)
+		idxFailed := strings.Index(body, `"type":"job.failed"`)
 
 		assert.Less(t, idxDispatched, idxCompleted, "dispatched should come before completed")
 		assert.Less(t, idxCompleted, idxFailed, "completed should come before failed")
@@ -380,9 +380,9 @@ func TestSSEHandler_Stream(t *testing.T) {
 		lines := strings.Split(strings.TrimSpace(body), "\n")
 
 		var dataLine string
-		for i, line := range lines {
-			if line == "event: job.failed" && i+1 < len(lines) {
-				dataLine = strings.TrimPrefix(lines[i+1], "data: ")
+		for _, line := range lines {
+			if strings.HasPrefix(line, "data: ") && strings.Contains(line, "job.failed") {
+				dataLine = strings.TrimPrefix(line, "data: ")
 				break
 			}
 		}

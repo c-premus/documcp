@@ -514,6 +514,9 @@ func (a *App) Start(ctx context.Context) error {
 		}
 		a.Logger.Info("river queue started")
 
+		// Forward River job completion/snooze events to the EventBus for SSE.
+		a.RiverClient.StartEventForwarding()
+
 		// Re-dispatch jobs for documents stuck in intermediate states.
 		queue.RecoverStuckDocuments(ctx, a.RiverClient, a.docStatusFinder, a.Logger)
 	}
