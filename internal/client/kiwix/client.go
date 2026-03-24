@@ -25,6 +25,8 @@ import (
 const (
 	// catalogCacheKey is the cache key for the OPDS catalog.
 	catalogCacheKey = "catalog"
+	// maxResponseBytes limits the size of HTTP response bodies read from Kiwix Serve.
+	maxResponseBytes = 10 * 1024 * 1024 // 10 MB
 )
 
 // ClientConfig holds configuration for a Kiwix HTTP client.
@@ -114,7 +116,7 @@ func (c *Client) FetchCatalog(ctx context.Context) ([]CatalogEntry, error) {
 		return nil, fmt.Errorf("catalog request returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("reading catalog response: %w", err)
 	}
@@ -198,7 +200,7 @@ func (c *Client) Search(ctx context.Context, archiveName, query, searchType stri
 		return nil, fmt.Errorf("search returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("reading search response: %w", err)
 	}
@@ -239,7 +241,7 @@ func (c *Client) ReadArticle(ctx context.Context, archiveName, articlePath strin
 		return nil, fmt.Errorf("article request returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("reading article response: %w", err)
 	}

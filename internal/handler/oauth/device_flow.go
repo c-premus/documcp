@@ -62,7 +62,12 @@ func (h *Handler) DeviceAuthorization(w http.ResponseWriter, r *http.Request) {
 // DeviceVerification handles GET /oauth/device — user verification page.
 func (h *Handler) DeviceVerification(w http.ResponseWriter, r *http.Request) {
 	// Check user is authenticated
-	session, _ := h.store.Get(r, sessionName)
+	session, err := h.store.Get(r, sessionName)
+	if err != nil {
+		h.logger.Warn("session decode error in device verification", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	userID, ok := session.Values["user_id"].(int64)
 	if !ok || userID == 0 {
 		http.Redirect(w, r, "/auth/login?redirect="+r.URL.RequestURI(), http.StatusFound)
@@ -79,7 +84,12 @@ func (h *Handler) DeviceVerification(w http.ResponseWriter, r *http.Request) {
 // DeviceVerificationSubmit handles POST /oauth/device — user submits user_code.
 func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Request) {
 	// Check user is authenticated
-	session, _ := h.store.Get(r, sessionName)
+	session, sessErr := h.store.Get(r, sessionName)
+	if sessErr != nil {
+		h.logger.Warn("session decode error in device submit", "error", sessErr)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	userID, ok := session.Values["user_id"].(int64)
 	if !ok || userID == 0 {
 		http.Redirect(w, r, "/auth/login?redirect=/oauth/device", http.StatusFound)
@@ -161,7 +171,12 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 // DeviceApprove handles POST /oauth/device/approve — user approves/denies.
 func (h *Handler) DeviceApprove(w http.ResponseWriter, r *http.Request) {
 	// Check user is authenticated
-	session, _ := h.store.Get(r, sessionName)
+	session, err := h.store.Get(r, sessionName)
+	if err != nil {
+		h.logger.Warn("session decode error in device approve", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	userID, ok := session.Values["user_id"].(int64)
 	if !ok || userID == 0 {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)

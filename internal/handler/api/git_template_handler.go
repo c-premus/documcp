@@ -14,7 +14,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +23,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 
+	gitclient "git.999.haus/chris/DocuMCP-go/internal/client/git"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/queue"
 	"git.999.haus/chris/DocuMCP-go/internal/security"
@@ -98,8 +98,6 @@ type gitTemplateFileResponse struct {
 	ContentHash string `json:"content_hash,omitempty"`
 }
 
-// templateVariablePattern matches {{variable}} placeholders in template content.
-var templateVariablePattern = regexp.MustCompile(`\{\{(\w+)\}\}`)
 
 // List handles GET /api/git-templates -- list git templates with optional filters.
 func (h *GitTemplateHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -108,6 +106,9 @@ func (h *GitTemplateHandler) List(w http.ResponseWriter, r *http.Request) {
 	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
 	if perPage <= 0 {
 		perPage = 50
+	}
+	if perPage > 100 {
+		perPage = 100
 	}
 
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
@@ -222,7 +223,8 @@ func (h *GitTemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := security.ValidateExternalURL(body.RepositoryURL); err != nil {
-		errorResponse(w, http.StatusBadRequest, "Invalid repository URL: "+err.Error())
+		h.logger.Warn("SSRF validation rejected URL", "url", body.RepositoryURL, "error", err)
+		errorResponse(w, http.StatusBadRequest, "Invalid repository URL")
 		return
 	}
 
@@ -316,7 +318,8 @@ func (h *GitTemplateHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.RepositoryURL != "" {
 		if err := security.ValidateExternalURL(body.RepositoryURL); err != nil {
-			errorResponse(w, http.StatusBadRequest, "Invalid repository URL: "+err.Error())
+			h.logger.Warn("SSRF validation rejected URL", "url", body.RepositoryURL, "error", err)
+			errorResponse(w, http.StatusBadRequest, "Invalid repository URL")
 			return
 		}
 		tmpl.RepositoryURL = body.RepositoryURL
@@ -450,7 +453,7 @@ func (h *GitTemplateHandler) Structure(w http.ResponseWriter, r *http.Request) {
 
 		// Extract {{variables}} from file content.
 		if f.Content.Valid {
-			matches := templateVariablePattern.FindAllStringSubmatch(f.Content.String, -1)
+			matches := gitclient.VariablePattern.FindAllStringSubmatch(f.Content.String, -1)
 			for _, match := range matches {
 				variableSet[match[1]] = true
 			}
@@ -779,7 +782,7 @@ func toGitTemplateResponse(gt *model.GitTemplate) gitTemplateResponse {
 func substituteTemplateVariables(content string, variables map[string]string) (result string, missingVars []string) {
 	result = content
 
-	matches := templateVariablePattern.FindAllStringSubmatch(content, -1)
+	matches := gitclient.VariablePattern.FindAllStringSubmatch(content, -1)
 	seen := make(map[string]bool)
 	for _, match := range matches {
 		key := match[1]
@@ -896,9 +899,10 @@ func (h *GitTemplateHandler) ValidateURL(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := security.ValidateExternalURL(body.URL); err != nil {
+		h.logger.Warn("SSRF validation rejected URL", "url", body.URL, "error", err)
 		jsonResponse(w, http.StatusOK, map[string]any{
 			"valid": false,
-			"error": err.Error(),
+			"error": "URL is not allowed",
 		})
 		return
 	}

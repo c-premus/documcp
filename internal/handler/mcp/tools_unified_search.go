@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -130,6 +131,7 @@ func (h *Handler) handleUnifiedSearch(
 	for _, hit := range resp.Hits {
 		var m map[string]any
 		if err := hit.DecodeInto(&m); err != nil {
+			slog.WarnContext(ctx, "skipping malformed search hit", "error", err)
 			continue
 		}
 

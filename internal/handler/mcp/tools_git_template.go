@@ -10,13 +10,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
+	gitclient "git.999.haus/chris/DocuMCP-go/internal/client/git"
 	"git.999.haus/chris/DocuMCP-go/internal/dto"
 	"git.999.haus/chris/DocuMCP-go/internal/search"
 )
@@ -137,15 +137,13 @@ type archiveEntry struct {
 
 // --- Variable substitution ---
 
-var variablePattern = regexp.MustCompile(`\{\{(\w+)\}\}`)
-
 // substituteVariables replaces {{key}} placeholders in content using the
 // provided variable map. It returns the substituted content and a list of
 // any unresolved variable names.
 func substituteVariables(content string, variables map[string]string) (result string, missingVars []string) {
 	result = content
 
-	matches := variablePattern.FindAllStringSubmatch(content, -1)
+	matches := gitclient.VariablePattern.FindAllStringSubmatch(content, -1)
 	seen := make(map[string]bool)
 	for _, match := range matches {
 		key := match[1]
@@ -503,7 +501,7 @@ func (h *Handler) handleGetTemplateStructure(
 
 		// Extract {{variables}} from file content.
 		if files[i].Content.Valid {
-			matches := variablePattern.FindAllStringSubmatch(files[i].Content.String, -1)
+			matches := gitclient.VariablePattern.FindAllStringSubmatch(files[i].Content.String, -1)
 			for _, match := range matches {
 				variableSet[match[1]] = true
 			}

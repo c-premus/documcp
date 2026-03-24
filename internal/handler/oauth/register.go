@@ -18,7 +18,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	// Check auth requirement — verify admin status from DB, not session cache.
 	if h.oauthCfg.RegistrationRequireAuth {
-		session, _ := h.store.Get(r, sessionName)
+		session, err := h.store.Get(r, sessionName)
+		if err != nil {
+			h.logger.Warn("session decode error in register", "error", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 		userID, ok := session.Values["user_id"].(int64)
 		if !ok || userID == 0 {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
