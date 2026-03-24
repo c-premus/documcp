@@ -29,24 +29,47 @@ type kiwixSearcher interface {
 	ReadArticle(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error)
 }
 
+// kiwixClientFactory creates or returns a cached Kiwix client on demand.
+type kiwixClientFactory interface {
+	Get(ctx context.Context) (kiwixSearcher, error)
+}
+
 // ZimHandler handles REST API endpoints for ZIM archives.
 type ZimHandler struct {
-	repo        zimArchiveRepo
-	kiwixClient kiwixSearcher // can be nil if not configured
-	logger      *slog.Logger
+	repo         zimArchiveRepo
+	kiwixFactory kiwixClientFactory // lazy-init; nil if not configured
+	logger       *slog.Logger
 }
 
 // NewZimHandler creates a new ZimHandler.
 func NewZimHandler(
 	repo zimArchiveRepo,
-	kiwixClient kiwixSearcher,
+	kiwixFactory kiwixClientFactory,
 	logger *slog.Logger,
 ) *ZimHandler {
 	return &ZimHandler{
-		repo:        repo,
-		kiwixClient: kiwixClient,
-		logger:      logger,
+		repo:         repo,
+		kiwixFactory: kiwixFactory,
+		logger:       logger,
 	}
+}
+
+// KiwixFactoryAdapter wraps *kiwix.ClientFactory to satisfy kiwixClientFactory.
+type KiwixFactoryAdapter struct {
+	Factory *kiwix.ClientFactory
+}
+
+// Get returns the kiwix client as a kiwixSearcher.
+func (a *KiwixFactoryAdapter) Get(ctx context.Context) (kiwixSearcher, error) {
+	return a.Factory.Get(ctx)
+}
+
+// getKiwixClient returns a Kiwix client from the factory.
+func (h *ZimHandler) getKiwixClient(ctx context.Context) (kiwixSearcher, error) {
+	if h.kiwixFactory == nil {
+		return nil, errors.New("kiwix not configured")
+	}
+	return h.kiwixFactory.Get(ctx)
 }
 
 // zimArchiveResponse is the JSON representation of a ZIM archive.
@@ -154,10 +177,12 @@ func (h *ZimHandler) Show(w http.ResponseWriter, r *http.Request) {
 
 // Search handles GET /api/zim/archives/{archive}/search -- full-text search within an archive.
 func (h *ZimHandler) Search(w http.ResponseWriter, r *http.Request) {
-	if h.kiwixClient == nil {
+	kiwixClient, clientErr := h.getKiwixClient(r.Context())
+	if clientErr != nil {
 		errorResponse(w, http.StatusServiceUnavailable, "Kiwix integration not configured")
 		return
 	}
+
 
 	archiveName := chi.URLParam(r, "archive")
 
@@ -175,7 +200,7 @@ func (h *ZimHandler) Search(w http.ResponseWriter, r *http.Request) {
 		limit = 100
 	}
 
-	results, err := h.kiwixClient.Search(r.Context(), archiveName, query, "fulltext", limit)
+	results, err := kiwixClient.Search(r.Context(), archiveName, query, "fulltext", limit)
 	if err != nil {
 		h.logger.Error("searching zim archive", "archive", archiveName, "query", query, "error", err)
 		errorResponse(w, http.StatusInternalServerError, "search failed")
@@ -204,10 +229,12 @@ func (h *ZimHandler) Search(w http.ResponseWriter, r *http.Request) {
 
 // Suggest handles GET /api/zim/archives/{archive}/suggest -- autocomplete suggestions.
 func (h *ZimHandler) Suggest(w http.ResponseWriter, r *http.Request) {
-	if h.kiwixClient == nil {
+	kiwixClient, clientErr := h.getKiwixClient(r.Context())
+	if clientErr != nil {
 		errorResponse(w, http.StatusServiceUnavailable, "Kiwix integration not configured")
 		return
 	}
+
 
 	archiveName := chi.URLParam(r, "archive")
 
@@ -225,7 +252,7 @@ func (h *ZimHandler) Suggest(w http.ResponseWriter, r *http.Request) {
 		limit = 50
 	}
 
-	results, err := h.kiwixClient.Search(r.Context(), archiveName, query, "suggest", limit)
+	results, err := kiwixClient.Search(r.Context(), archiveName, query, "suggest", limit)
 	if err != nil {
 		h.logger.Error("suggesting zim archive", "archive", archiveName, "query", query, "error", err)
 		errorResponse(w, http.StatusInternalServerError, "suggest failed")
@@ -254,10 +281,12 @@ func (h *ZimHandler) Suggest(w http.ResponseWriter, r *http.Request) {
 
 // ReadArticle handles GET /api/zim/archives/{archive}/articles/* -- read a single article.
 func (h *ZimHandler) ReadArticle(w http.ResponseWriter, r *http.Request) {
-	if h.kiwixClient == nil {
+	kiwixClient, clientErr := h.getKiwixClient(r.Context())
+	if clientErr != nil {
 		errorResponse(w, http.StatusServiceUnavailable, "Kiwix integration not configured")
 		return
 	}
+
 
 	archiveName := chi.URLParam(r, "archive")
 	articlePath := chi.URLParam(r, "*")
@@ -267,7 +296,7 @@ func (h *ZimHandler) ReadArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	article, err := h.kiwixClient.ReadArticle(r.Context(), archiveName, articlePath)
+	article, err := kiwixClient.ReadArticle(r.Context(), archiveName, articlePath)
 	if err != nil {
 		h.logger.Error("reading zim article", "archive", archiveName, "path", articlePath, "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to read article")

@@ -2,6 +2,7 @@ package mcphandler
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -45,6 +46,12 @@ type gitTemplateStore interface {
 type kiwixSearcher interface {
 	Search(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error)
 	ReadArticle(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error)
+}
+
+// kiwixClientFactory creates or returns a cached Kiwix client on demand.
+// Get returns a kiwixSearcher (satisfied by *kiwix.Client and test mocks).
+type kiwixClientFactory interface {
+	Get(ctx context.Context) (kiwixSearcher, error)
 }
 
 // contentSearcher abstracts the search.Searcher methods.
@@ -98,9 +105,9 @@ type Handler struct {
 	gitTemplateRepo gitTemplateStore
 	searchQueryRepo     *repository.SearchQueryRepository
 
-	// External service clients (nil means service not configured)
-	kiwixClient kiwixSearcher
-	searcher    contentSearcher
+	// External service clients
+	kiwixFactory kiwixClientFactory // lazy-init; nil means ZIM tools not enabled
+	searcher     contentSearcher
 }
 
 // Config holds all optional dependencies for the MCP handler.
@@ -120,9 +127,9 @@ type Config struct {
 	ZimArchiveRepo      zimArchiveLister
 	GitTemplateRepo     gitTemplateStore
 
-	// External service clients (nil means service not configured)
-	KiwixClient kiwixSearcher
-	Searcher    contentSearcher
+	// External service clients
+	KiwixFactory *kiwix.ClientFactory // lazy-init Kiwix client (nil = ZIM tools disabled)
+	Searcher     contentSearcher
 
 	// Feature flags
 	ZimEnabled          bool
@@ -141,6 +148,11 @@ func New(cfg Config) *Handler {
 		},
 	)
 
+	var kf kiwixClientFactory
+	if cfg.KiwixFactory != nil {
+		kf = &kiwixFactoryAdapter{factory: cfg.KiwixFactory}
+	}
+
 	h := &Handler{
 		server:              mcpServer,
 		logger:              cfg.Logger,
@@ -150,7 +162,7 @@ func New(cfg Config) *Handler {
 		zimArchiveRepo:      cfg.ZimArchiveRepo,
 		gitTemplateRepo:     cfg.GitTemplateRepo,
 		searchQueryRepo:     cfg.SearchQueryRepo,
-		kiwixClient:         cfg.KiwixClient,
+		kiwixFactory:        kf,
 		searcher:            cfg.Searcher,
 	}
 
@@ -187,6 +199,25 @@ func New(cfg Config) *Handler {
 	})
 
 	return h
+}
+
+// kiwixFactoryAdapter wraps *kiwix.ClientFactory to satisfy kiwixClientFactory.
+type kiwixFactoryAdapter struct {
+	factory *kiwix.ClientFactory
+}
+
+// Get returns a Kiwix client from the underlying factory.
+func (a *kiwixFactoryAdapter) Get(ctx context.Context) (kiwixSearcher, error) {
+	return a.factory.Get(ctx)
+}
+
+// getKiwixClient returns a Kiwix client from the factory, or an error if
+// no kiwix service is configured.
+func (h *Handler) getKiwixClient(ctx context.Context) (kiwixSearcher, error) {
+	if h.kiwixFactory == nil {
+		return nil, errors.New("kiwix not enabled")
+	}
+	return h.kiwixFactory.Get(ctx)
 }
 
 // ServeHTTP implements http.Handler.

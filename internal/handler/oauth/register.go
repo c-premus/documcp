@@ -20,8 +20,9 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	if h.oauthCfg.RegistrationRequireAuth {
 		session, err := h.store.Get(r, sessionName)
 		if err != nil {
+			// Stale/corrupt cookie — treat as unauthenticated.
 			h.logger.Warn("session decode error in register", "error", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 		userID, ok := session.Values["user_id"].(int64)

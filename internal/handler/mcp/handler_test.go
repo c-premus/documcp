@@ -146,6 +146,18 @@ func (m *mockKiwixClient) ReadArticle(ctx context.Context, archiveName, articleP
 	return nil, nil
 }
 
+// mockKiwixFactory wraps a mockKiwixClient as a kiwixClientFactory for tests.
+type mockKiwixFactory struct {
+	client *mockKiwixClient
+}
+
+func (f *mockKiwixFactory) Get(_ context.Context) (kiwixSearcher, error) {
+	if f.client == nil {
+		return nil, errors.New("kiwix not configured")
+	}
+	return f.client, nil
+}
+
 type mockSearcher struct {
 	searchFn          func(ctx context.Context, params search.SearchParams) (*meilisearch.SearchResponse, error)
 	federatedSearchFn func(ctx context.Context, params search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error)
@@ -192,7 +204,7 @@ func newHandlerWithMocks(opts struct {
 		h.gitTemplateRepo = opts.gitRepo
 	}
 	if opts.kiwixC != nil {
-		h.kiwixClient = opts.kiwixC
+		h.kiwixFactory = &mockKiwixFactory{client: opts.kiwixC}
 	}
 	if opts.searcher != nil {
 		h.searcher = opts.searcher
@@ -2453,8 +2465,9 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(resp.SourcesSearched) != 2 {
-			t.Fatalf("SourcesSearched length = %d, want 2", len(resp.SourcesSearched))
+		// sources_searched reflects all queried indexes, not just those with hits.
+		if len(resp.SourcesSearched) != 3 {
+			t.Fatalf("SourcesSearched length = %d, want 3", len(resp.SourcesSearched))
 		}
 		foundDoc, foundGit := false, false
 		for _, s := range resp.SourcesSearched {

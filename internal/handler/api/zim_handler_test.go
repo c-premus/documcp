@@ -419,20 +419,35 @@ func (m *mockKiwixSearcher) ReadArticle(ctx context.Context, archiveName, articl
 // ZimHandler early-return path tests (nil kiwixClient)
 // ---------------------------------------------------------------------------
 
+// mockZimFactory implements kiwixClientFactory for tests.
+type mockZimFactory struct {
+	client kiwixSearcher
+}
+
+func (f *mockZimFactory) Get(_ context.Context) (kiwixSearcher, error) {
+	if f.client == nil {
+		return nil, errors.New("kiwix not configured")
+	}
+	return f.client, nil
+}
+
 func newTestZimHandler() *ZimHandler {
 	return &ZimHandler{
-		repo:        nil,
-		kiwixClient: nil,
-		logger:      slog.New(slog.DiscardHandler),
+		repo:         nil,
+		kiwixFactory: nil,
+		logger:       slog.New(slog.DiscardHandler),
 	}
 }
 
 func newZimHandlerWithMocks(repo *mockZimArchiveRepo, kc kiwixSearcher) *ZimHandler {
-	return &ZimHandler{
-		repo:        repo,
-		kiwixClient: kc,
-		logger:      slog.New(slog.DiscardHandler),
+	h := &ZimHandler{
+		repo:   repo,
+		logger: slog.New(slog.DiscardHandler),
 	}
+	if kc != nil {
+		h.kiwixFactory = &mockZimFactory{client: kc}
+	}
+	return h
 }
 
 func TestZimHandler_Search_NilClient(t *testing.T) {
@@ -546,7 +561,7 @@ func TestNewZimHandler(t *testing.T) {
 	if h.logger != logger {
 		t.Error("logger not set correctly")
 	}
-	if h.kiwixClient != nil {
+	if h.kiwixFactory != nil {
 		t.Error("kiwixClient should be nil")
 	}
 }

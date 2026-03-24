@@ -165,7 +165,8 @@ func (h *Handler) handleSearchZim(ctx context.Context, _ *mcp.CallToolRequest, i
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, searchZimResponse{}, errors.New("mcp:read scope required")
 	}
-	if h.kiwixClient == nil {
+	kiwixClient, _ := h.getKiwixClient(ctx)
+	if kiwixClient == nil {
 		return nil, searchZimResponse{
 			Success: false,
 			Archive: input.Archive,
@@ -188,7 +189,7 @@ func (h *Handler) handleSearchZim(ctx context.Context, _ *mcp.CallToolRequest, i
 		limit = 50
 	}
 
-	results, err := h.kiwixClient.Search(ctx, input.Archive, input.Query, searchType, limit)
+	results, err := kiwixClient.Search(ctx, input.Archive, input.Query, searchType, limit)
 	if err != nil {
 		return nil, searchZimResponse{}, fmt.Errorf("searching zim archive %s: %w", input.Archive, err)
 	}
@@ -217,7 +218,8 @@ func (h *Handler) handleReadZimArticle(ctx context.Context, _ *mcp.CallToolReque
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, readZimArticleResponse{}, errors.New("mcp:read scope required")
 	}
-	if h.kiwixClient == nil {
+	kiwixClient, _ := h.getKiwixClient(ctx)
+	if kiwixClient == nil {
 		return nil, readZimArticleResponse{
 			Success: false,
 			Archive: input.Archive,
@@ -226,7 +228,7 @@ func (h *Handler) handleReadZimArticle(ctx context.Context, _ *mcp.CallToolReque
 		}, nil
 	}
 
-	article, err := h.kiwixClient.ReadArticle(ctx, input.Archive, input.Path)
+	article, err := kiwixClient.ReadArticle(ctx, input.Archive, input.Path)
 	if err != nil {
 		return nil, readZimArticleResponse{}, fmt.Errorf("reading zim article: %w", err)
 	}

@@ -197,28 +197,13 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	// --- External Service Clients ---
-	// Look up configured external services from the database and create clients.
-	var kiwixClient *kiwix.Client
-
-	kiwixServices, err := externalServiceRepo.FindEnabledByType(context.Background(), "kiwix")
-	if err != nil {
-		logger.Warn("failed to look up kiwix services", "error", err)
-	} else if len(kiwixServices) > 0 {
-		svc := kiwixServices[0]
-		var kiwixErr error
-		kiwixClient, kiwixErr = kiwix.NewClient(kiwix.ClientConfig{
-			BaseURL:            svc.BaseURL,
-			HTTPTimeout:        cfg.Kiwix.HTTPTimeout,
-			HealthCheckTimeout: cfg.Kiwix.HealthCheckTimeout,
-			CacheTTL:           cfg.Kiwix.CacheTTL,
-			SSRFDialerTimeout:  cfg.App.SSRFDialerTimeout,
-		}, logger)
-		if kiwixErr != nil {
-			logger.Warn("kiwix client URL rejected", "base_url", svc.BaseURL, "error", kiwixErr)
-		} else {
-			logger.Info("Kiwix client configured", "base_url", svc.BaseURL)
-		}
-	}
+	// Kiwix client is lazy-initialized on first use from the database.
+	kiwixFactory := kiwix.NewClientFactory(externalServiceRepo, kiwix.ClientConfig{
+		HTTPTimeout:        cfg.Kiwix.HTTPTimeout,
+		HealthCheckTimeout: cfg.Kiwix.HealthCheckTimeout,
+		CacheTTL:           cfg.Kiwix.CacheTTL,
+		SSRFDialerTimeout:  cfg.App.SSRFDialerTimeout,
+	}, logger)
 
 	// --- Content Extractors ---
 	extractorRegistry := extractor.NewRegistry(
@@ -384,7 +369,7 @@ func New(cfg *config.Config) (*App, error) {
 	if searcher != nil {
 		searchH = apihandler.NewSearchHandler(searcher, searchQueryRepo, documentRepo, logger)
 	}
-	zimH := apihandler.NewZimHandler(zimArchiveRepo, kiwixClient, logger)
+	zimH := apihandler.NewZimHandler(zimArchiveRepo, &apihandler.KiwixFactoryAdapter{Factory: kiwixFactory}, logger)
 	gitTemplateH := apihandler.NewGitTemplateHandler(gitTemplateRepo, riverClient, logger)
 	externalServiceH := apihandler.NewExternalServiceHandler(externalServiceSvc, externalServiceRepo, riverClient, logger)
 	userH := apihandler.NewUserHandler(oauthRepo, logger)
@@ -427,9 +412,7 @@ func New(cfg *config.Config) (*App, error) {
 		ZimEnabled:          true,
 		GitTemplatesEnabled: true,
 	}
-	if kiwixClient != nil {
-		mcpCfg.KiwixClient = kiwixClient
-	}
+	mcpCfg.KiwixFactory = kiwixFactory
 	if searcher != nil {
 		mcpCfg.Searcher = searcher
 	}
