@@ -990,6 +990,212 @@ func TestExternalServiceService_Delete(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Mock zimArchiveFinder and ExternalServiceIndexCleaner
+// ---------------------------------------------------------------------------
+
+type mockZimArchiveFinder struct {
+	findUUIDsFn func(ctx context.Context, serviceID int64) ([]string, error)
+}
+
+func (m *mockZimArchiveFinder) FindUUIDsByExternalServiceID(ctx context.Context, serviceID int64) ([]string, error) {
+	if m.findUUIDsFn != nil {
+		return m.findUUIDsFn(ctx, serviceID)
+	}
+	return nil, nil
+}
+
+type mockIndexCleaner struct {
+	deleteZimFn func(ctx context.Context, uuid string) error
+}
+
+func (m *mockIndexCleaner) DeleteZimArchive(ctx context.Context, uuid string) error {
+	if m.deleteZimFn != nil {
+		return m.deleteZimFn(ctx, uuid)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// TestExternalServiceService_Delete_WithCleanup
+// ---------------------------------------------------------------------------
+
+func TestExternalServiceService_Delete_WithCleanup(t *testing.T) {
+	t.Parallel()
+
+	t.Run("kiwix type cleans up ZIM archives from index", func(t *testing.T) {
+		t.Parallel()
+
+		var deletedUUIDs []string
+		zimRepo := &mockZimArchiveFinder{
+			findUUIDsFn: func(_ context.Context, serviceID int64) ([]string, error) {
+				if serviceID != 40 {
+					t.Errorf("FindUUIDsByExternalServiceID serviceID = %d, want 40", serviceID)
+				}
+				return []string{"zim-uuid-1", "zim-uuid-2"}, nil
+			},
+		}
+		indexCleaner := &mockIndexCleaner{
+			deleteZimFn: func(_ context.Context, uuid string) error {
+				deletedUUIDs = append(deletedUUIDs, uuid)
+				return nil
+			},
+		}
+		repo := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
+				return &model.ExternalService{
+					ID:   40,
+					UUID: "kiwix-svc-uuid",
+					Type: "kiwix",
+				}, nil
+			},
+			deleteFn: func(_ context.Context, _ int64) error {
+				return nil
+			},
+		}
+
+		svc := NewExternalServiceService(repo, zimRepo, indexCleaner, discardLogger())
+		err := svc.Delete(context.Background(), "kiwix-svc-uuid")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(deletedUUIDs) != 2 {
+			t.Fatalf("expected 2 deleted UUIDs, got %d", len(deletedUUIDs))
+		}
+		if deletedUUIDs[0] != "zim-uuid-1" || deletedUUIDs[1] != "zim-uuid-2" {
+			t.Errorf("deleted UUIDs = %v, want [zim-uuid-1 zim-uuid-2]", deletedUUIDs)
+		}
+	})
+
+	t.Run("non-kiwix type skips cleanup", func(t *testing.T) {
+		t.Parallel()
+
+		zimRepoCalled := false
+		zimRepo := &mockZimArchiveFinder{
+			findUUIDsFn: func(_ context.Context, _ int64) ([]string, error) {
+				zimRepoCalled = true
+				return nil, nil
+			},
+		}
+		indexCleaner := &mockIndexCleaner{}
+		repo := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
+				return &model.ExternalService{
+					ID:   41,
+					UUID: "meili-svc-uuid",
+					Type: "meilisearch",
+				}, nil
+			},
+			deleteFn: func(_ context.Context, _ int64) error {
+				return nil
+			},
+		}
+
+		svc := NewExternalServiceService(repo, zimRepo, indexCleaner, discardLogger())
+		err := svc.Delete(context.Background(), "meili-svc-uuid")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if zimRepoCalled {
+			t.Error("expected zimRepo NOT to be called for non-kiwix type")
+		}
+	})
+
+	t.Run("nil zimRepo skips cleanup", func(t *testing.T) {
+		t.Parallel()
+
+		indexCleaner := &mockIndexCleaner{}
+		repo := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
+				return &model.ExternalService{
+					ID:   42,
+					UUID: "nil-zim-uuid",
+					Type: "kiwix",
+				}, nil
+			},
+			deleteFn: func(_ context.Context, _ int64) error {
+				return nil
+			},
+		}
+
+		svc := NewExternalServiceService(repo, nil, indexCleaner, discardLogger())
+		err := svc.Delete(context.Background(), "nil-zim-uuid")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("zimRepo error is non-fatal", func(t *testing.T) {
+		t.Parallel()
+
+		zimRepo := &mockZimArchiveFinder{
+			findUUIDsFn: func(_ context.Context, _ int64) ([]string, error) {
+				return nil, errors.New("zim lookup failed")
+			},
+		}
+		indexCleaner := &mockIndexCleaner{}
+		repo := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
+				return &model.ExternalService{
+					ID:   43,
+					UUID: "zim-err-uuid",
+					Type: "kiwix",
+				}, nil
+			},
+			deleteFn: func(_ context.Context, _ int64) error {
+				return nil
+			},
+		}
+
+		svc := NewExternalServiceService(repo, zimRepo, indexCleaner, discardLogger())
+		err := svc.Delete(context.Background(), "zim-err-uuid")
+		if err != nil {
+			t.Fatalf("expected no error (cleanup is best-effort), got: %v", err)
+		}
+	})
+
+	t.Run("indexCleaner error is non-fatal and continues", func(t *testing.T) {
+		t.Parallel()
+
+		deleteCallCount := 0
+		zimRepo := &mockZimArchiveFinder{
+			findUUIDsFn: func(_ context.Context, _ int64) ([]string, error) {
+				return []string{"fail-uuid", "ok-uuid"}, nil
+			},
+		}
+		indexCleaner := &mockIndexCleaner{
+			deleteZimFn: func(_ context.Context, uuid string) error {
+				deleteCallCount++
+				if uuid == "fail-uuid" {
+					return errors.New("delete failed")
+				}
+				return nil
+			},
+		}
+		repo := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
+				return &model.ExternalService{
+					ID:   44,
+					UUID: "cleaner-err-uuid",
+					Type: "kiwix",
+				}, nil
+			},
+			deleteFn: func(_ context.Context, _ int64) error {
+				return nil
+			},
+		}
+
+		svc := NewExternalServiceService(repo, zimRepo, indexCleaner, discardLogger())
+		err := svc.Delete(context.Background(), "cleaner-err-uuid")
+		if err != nil {
+			t.Fatalf("expected no error (cleanup is best-effort), got: %v", err)
+		}
+		if deleteCallCount != 2 {
+			t.Errorf("expected DeleteZimArchive to be called 2 times, got %d", deleteCallCount)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // TestExternalServiceService_CheckHealth
 // ---------------------------------------------------------------------------
 

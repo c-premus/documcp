@@ -191,6 +191,83 @@ func (m *mockSearchIndexer) DeleteGitTemplate(_ context.Context, _ string) error
 	return nil
 }
 
+// --- Enhanced mocks for VerifySearchIndex zim/git branches ---
+
+// mockZimArchiveRepoWithUUIDs wraps mockZimArchiveRepo but returns configurable UUIDs.
+type mockZimArchiveRepoWithUUIDs struct {
+	*mockZimArchiveRepo
+	allUUIDs    []string
+	allUUIDsErr error
+}
+
+func (m *mockZimArchiveRepoWithUUIDs) ListAllUUIDs(_ context.Context) ([]string, error) {
+	return m.allUUIDs, m.allUUIDsErr
+}
+
+// mockGitTemplateRepoWithUUIDs wraps mockGitTemplateRepo but returns configurable UUIDs.
+type mockGitTemplateRepoWithUUIDs struct {
+	*mockGitTemplateRepo
+	allUUIDs    []string
+	allUUIDsErr error
+}
+
+func (m *mockGitTemplateRepoWithUUIDs) ListAllUUIDs(_ context.Context) ([]string, error) {
+	return m.allUUIDs, m.allUUIDsErr
+}
+
+// mockSearchIndexerFull extends the search indexer mock with configurable responses
+// for zim and git template UUID listing.
+type mockSearchIndexerFull struct {
+	docUUIDs       map[string]bool
+	zimUUIDs       map[string]bool
+	gitUUIDs       map[string]bool
+	listUUIDsErr   error
+	listZimUUIDErr error
+	listGitUUIDErr error
+	deleteDocErr   error
+	deleteZimErr   error
+	deleteGitErr   error
+
+	deletedDocUUIDs []string
+	deletedZimUUIDs []string
+	deletedGitUUIDs []string
+}
+
+func (m *mockSearchIndexerFull) ListIndexedDocumentUUIDs(_ context.Context) (map[string]bool, error) {
+	return m.docUUIDs, m.listUUIDsErr
+}
+
+func (m *mockSearchIndexerFull) ListIndexedZimUUIDs(_ context.Context) (map[string]bool, error) {
+	return m.zimUUIDs, m.listZimUUIDErr
+}
+
+func (m *mockSearchIndexerFull) ListIndexedGitTemplateUUIDs(_ context.Context) (map[string]bool, error) {
+	return m.gitUUIDs, m.listGitUUIDErr
+}
+
+func (m *mockSearchIndexerFull) DeleteDocument(_ context.Context, uuid string) error {
+	m.deletedDocUUIDs = append(m.deletedDocUUIDs, uuid)
+	return m.deleteDocErr
+}
+
+func (m *mockSearchIndexerFull) DeleteZimArchive(_ context.Context, uuid string) error {
+	m.deletedZimUUIDs = append(m.deletedZimUUIDs, uuid)
+	return m.deleteZimErr
+}
+
+func (m *mockSearchIndexerFull) DeleteGitTemplate(_ context.Context, uuid string) error {
+	m.deletedGitUUIDs = append(m.deletedGitUUIDs, uuid)
+	return m.deleteGitErr
+}
+
+func (m *mockSearchIndexerFull) IndexZimArchive(_ context.Context, _ search.ZimArchiveRecord) error {
+	return nil
+}
+
+func (m *mockSearchIndexerFull) IndexGitTemplate(_ context.Context, _ search.GitTemplateRecord) error {
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // toSyncTemplate
 // ---------------------------------------------------------------------------
@@ -1189,6 +1266,289 @@ func TestHealthCheckServicesWorker_Work(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// VerifySearchIndexWorker — ZIM and Git template index verification
+// ---------------------------------------------------------------------------
+
+func TestVerifySearchIndexWorker_Work_ZimRepoVerification(t *testing.T) {
+	t.Parallel()
+
+	t.Run("orphaned zim archives in index are deleted", func(t *testing.T) {
+		t.Parallel()
+
+		zimRepo := &mockZimArchiveRepo{}
+		// Override ListAllUUIDs to return specific UUIDs.
+		zimRepoWithUUIDs := &mockZimArchiveRepoWithUUIDs{
+			mockZimArchiveRepo: zimRepo,
+			allUUIDs:           []string{"zim-1", "zim-2"},
+		}
+
+		indexer := &mockSearchIndexerFull{
+			docUUIDs: map[string]bool{"u1": true},
+			zimUUIDs: map[string]bool{"zim-1": true, "zim-2": true, "zim-orphan": true},
+			gitUUIDs: map[string]bool{},
+		}
+		docRepo := &mockDocumentRepo{
+			allUUIDs: []string{"u1"},
+		}
+
+		worker := &VerifySearchIndexWorker{
+			Deps: SchedulerDeps{
+				DocRepo: docRepo,
+				Indexer: indexer,
+				ZimRepo: zimRepoWithUUIDs,
+				Logger:  testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
+		require.NoError(t, err)
+		assert.Contains(t, indexer.deletedZimUUIDs, "zim-orphan")
+		assert.Len(t, indexer.deletedZimUUIDs, 1)
+	})
+
+	t.Run("zim ListAllUUIDs error is logged not returned", func(t *testing.T) {
+		t.Parallel()
+
+		zimRepo := &mockZimArchiveRepoWithUUIDs{
+			mockZimArchiveRepo: &mockZimArchiveRepo{},
+			allUUIDsErr:        errors.New("zim db error"),
+		}
+		indexer := &mockSearchIndexerFull{
+			docUUIDs: map[string]bool{},
+		}
+		docRepo := &mockDocumentRepo{
+			allUUIDs: []string{},
+		}
+
+		worker := &VerifySearchIndexWorker{
+			Deps: SchedulerDeps{
+				DocRepo: docRepo,
+				Indexer: indexer,
+				ZimRepo: zimRepo,
+				Logger:  testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
+		require.NoError(t, err)
+	})
+
+	t.Run("zim ListIndexedZimUUIDs error is logged not returned", func(t *testing.T) {
+		t.Parallel()
+
+		zimRepo := &mockZimArchiveRepoWithUUIDs{
+			mockZimArchiveRepo: &mockZimArchiveRepo{},
+			allUUIDs:           []string{"zim-1"},
+		}
+		indexer := &mockSearchIndexerFull{
+			docUUIDs:       map[string]bool{},
+			listZimUUIDErr: errors.New("search down"),
+		}
+		docRepo := &mockDocumentRepo{
+			allUUIDs: []string{},
+		}
+
+		worker := &VerifySearchIndexWorker{
+			Deps: SchedulerDeps{
+				DocRepo: docRepo,
+				Indexer: indexer,
+				ZimRepo: zimRepo,
+				Logger:  testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
+		require.NoError(t, err)
+	})
+}
+
+func TestVerifySearchIndexWorker_Work_GitRepoVerification(t *testing.T) {
+	t.Parallel()
+
+	t.Run("orphaned git templates in index are deleted", func(t *testing.T) {
+		t.Parallel()
+
+		gitRepo := &mockGitTemplateRepoWithUUIDs{
+			mockGitTemplateRepo: &mockGitTemplateRepo{},
+			allUUIDs:            []string{"git-1"},
+		}
+
+		indexer := &mockSearchIndexerFull{
+			docUUIDs: map[string]bool{},
+			gitUUIDs: map[string]bool{"git-1": true, "git-orphan": true},
+		}
+		docRepo := &mockDocumentRepo{
+			allUUIDs: []string{},
+		}
+
+		worker := &VerifySearchIndexWorker{
+			Deps: SchedulerDeps{
+				DocRepo: docRepo,
+				Indexer: indexer,
+				GitRepo: gitRepo,
+				Logger:  testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
+		require.NoError(t, err)
+		assert.Contains(t, indexer.deletedGitUUIDs, "git-orphan")
+		assert.Len(t, indexer.deletedGitUUIDs, 1)
+	})
+
+	t.Run("git ListAllUUIDs error is logged not returned", func(t *testing.T) {
+		t.Parallel()
+
+		gitRepo := &mockGitTemplateRepoWithUUIDs{
+			mockGitTemplateRepo: &mockGitTemplateRepo{},
+			allUUIDsErr:         errors.New("git db error"),
+		}
+		indexer := &mockSearchIndexerFull{
+			docUUIDs: map[string]bool{},
+		}
+		docRepo := &mockDocumentRepo{
+			allUUIDs: []string{},
+		}
+
+		worker := &VerifySearchIndexWorker{
+			Deps: SchedulerDeps{
+				DocRepo: docRepo,
+				Indexer: indexer,
+				GitRepo: gitRepo,
+				Logger:  testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
+		require.NoError(t, err)
+	})
+
+	t.Run("git ListIndexedGitTemplateUUIDs error is logged not returned", func(t *testing.T) {
+		t.Parallel()
+
+		gitRepo := &mockGitTemplateRepoWithUUIDs{
+			mockGitTemplateRepo: &mockGitTemplateRepo{},
+			allUUIDs:            []string{"git-1"},
+		}
+		indexer := &mockSearchIndexerFull{
+			docUUIDs:       map[string]bool{},
+			listGitUUIDErr: errors.New("search down"),
+		}
+		docRepo := &mockDocumentRepo{
+			allUUIDs: []string{},
+		}
+
+		worker := &VerifySearchIndexWorker{
+			Deps: SchedulerDeps{
+				DocRepo: docRepo,
+				Indexer: indexer,
+				GitRepo: gitRepo,
+				Logger:  testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
+		require.NoError(t, err)
+	})
+
+	t.Run("both zim and git repos verified together", func(t *testing.T) {
+		t.Parallel()
+
+		zimRepo := &mockZimArchiveRepoWithUUIDs{
+			mockZimArchiveRepo: &mockZimArchiveRepo{},
+			allUUIDs:           []string{"zim-1"},
+		}
+		gitRepo := &mockGitTemplateRepoWithUUIDs{
+			mockGitTemplateRepo: &mockGitTemplateRepo{},
+			allUUIDs:            []string{"git-1"},
+		}
+		indexer := &mockSearchIndexerFull{
+			docUUIDs: map[string]bool{"u1": true},
+			zimUUIDs: map[string]bool{"zim-1": true, "zim-orphan": true},
+			gitUUIDs: map[string]bool{"git-1": true, "git-orphan": true},
+		}
+		docRepo := &mockDocumentRepo{
+			allUUIDs: []string{"u1"},
+		}
+
+		worker := &VerifySearchIndexWorker{
+			Deps: SchedulerDeps{
+				DocRepo: docRepo,
+				Indexer: indexer,
+				ZimRepo: zimRepo,
+				GitRepo: gitRepo,
+				Logger:  testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
+		require.NoError(t, err)
+		assert.Contains(t, indexer.deletedZimUUIDs, "zim-orphan")
+		assert.Contains(t, indexer.deletedGitUUIDs, "git-orphan")
+	})
+
+	t.Run("delete git template error logged but does not fail job", func(t *testing.T) {
+		t.Parallel()
+
+		gitRepo := &mockGitTemplateRepoWithUUIDs{
+			mockGitTemplateRepo: &mockGitTemplateRepo{},
+			allUUIDs:            []string{"git-1"},
+		}
+		indexer := &mockSearchIndexerFull{
+			docUUIDs:       map[string]bool{},
+			gitUUIDs:       map[string]bool{"git-orphan": true},
+			deleteGitErr:   errors.New("index delete failed"),
+		}
+		docRepo := &mockDocumentRepo{
+			allUUIDs: []string{},
+		}
+
+		worker := &VerifySearchIndexWorker{
+			Deps: SchedulerDeps{
+				DocRepo: docRepo,
+				Indexer: indexer,
+				GitRepo: gitRepo,
+				Logger:  testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
+		require.NoError(t, err)
+		assert.Contains(t, indexer.deletedGitUUIDs, "git-orphan")
+	})
+
+	t.Run("delete zim archive error logged but does not fail job", func(t *testing.T) {
+		t.Parallel()
+
+		zimRepo := &mockZimArchiveRepoWithUUIDs{
+			mockZimArchiveRepo: &mockZimArchiveRepo{},
+			allUUIDs:           []string{"zim-1"},
+		}
+		indexer := &mockSearchIndexerFull{
+			docUUIDs:     map[string]bool{},
+			zimUUIDs:     map[string]bool{"zim-orphan": true},
+			deleteZimErr: errors.New("index delete failed"),
+		}
+		docRepo := &mockDocumentRepo{
+			allUUIDs: []string{},
+		}
+
+		worker := &VerifySearchIndexWorker{
+			Deps: SchedulerDeps{
+				DocRepo: docRepo,
+				Indexer: indexer,
+				ZimRepo: zimRepo,
+				Logger:  testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
+		require.NoError(t, err)
+		assert.Contains(t, indexer.deletedZimUUIDs, "zim-orphan")
+	})
+}
+
+// ---------------------------------------------------------------------------
 // SyncKiwixWorker
 // ---------------------------------------------------------------------------
 
@@ -1257,6 +1617,59 @@ func TestSyncKiwixWorker_Work(t *testing.T) {
 		err := worker.Work(context.Background(), makeJob(SyncKiwixArgs{}))
 		require.NoError(t, err)
 	})
+
+	t.Run("service with invalid URL and health checker logs error", func(t *testing.T) {
+		t.Parallel()
+
+		// Invalid URL causes kiwix.NewClient to reject it. The worker skips the
+		// service with a log message but does not call HealthChecker (client creation
+		// failure is not a health check failure).
+		finder := &mockExternalServiceFinder{
+			findEnabledByTypeFn: func(_ context.Context, _ string) ([]model.ExternalService, error) {
+				return []model.ExternalService{
+					{ID: 1, BaseURL: "://bad-url"},
+					{ID: 2, BaseURL: "ftp://not-http"},
+				}, nil
+			},
+		}
+
+		checker := &mockExternalServiceHealthChecker{}
+
+		worker := &SyncKiwixWorker{
+			Deps: SchedulerDeps{
+				Services:      finder,
+				HealthChecker: checker,
+				Logger:        testLogger(),
+			},
+		}
+
+		// Both services have invalid URLs; worker succeeds (skips them).
+		err := worker.Work(context.Background(), makeJob(SyncKiwixArgs{}))
+		require.NoError(t, err)
+	})
+
+	t.Run("multiple services with mixed valid and invalid URLs", func(t *testing.T) {
+		t.Parallel()
+
+		finder := &mockExternalServiceFinder{
+			findEnabledByTypeFn: func(_ context.Context, _ string) ([]model.ExternalService, error) {
+				return []model.ExternalService{
+					{ID: 1, BaseURL: "://invalid"},
+					{ID: 2, BaseURL: "http://"},
+				}, nil
+			},
+		}
+
+		worker := &SyncKiwixWorker{
+			Deps: SchedulerDeps{
+				Services: finder,
+				Logger:   testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(SyncKiwixArgs{}))
+		require.NoError(t, err)
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -1302,6 +1715,71 @@ func TestSyncGitTemplatesWorker_Work(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "listing git templates")
 		assert.Contains(t, err.Error(), "db timeout")
+	})
+
+	t.Run("valid template with unreachable repo fails sync gracefully", func(t *testing.T) {
+		t.Parallel()
+
+		gitRepo := &mockGitTemplateRepo{
+			templates: []model.GitTemplate{
+				{
+					ID:            1,
+					UUID:          "uuid-valid",
+					Name:          "valid-template",
+					Slug:          "valid-template",
+					RepositoryURL: "https://nonexistent.invalid/repo.git",
+					Branch:        "main",
+				},
+			},
+		}
+
+		worker := &SyncGitTemplatesWorker{
+			Deps: SchedulerDeps{
+				GitRepo:    gitRepo,
+				GitTempDir: t.TempDir(),
+				Logger:     testLogger(),
+			},
+		}
+
+		// git.Sync will fail because the repo URL is unreachable.
+		// The worker should log the error and return nil.
+		err := worker.Work(context.Background(), makeJob(SyncGitTemplatesArgs{}))
+		require.NoError(t, err)
+	})
+
+	t.Run("valid template with indexer set syncs with indexer adapter", func(t *testing.T) {
+		t.Parallel()
+
+		gitRepo := &mockGitTemplateRepo{
+			templates: []model.GitTemplate{
+				{
+					ID:            2,
+					UUID:          "uuid-idx",
+					Name:          "idx-template",
+					Slug:          "idx-template",
+					RepositoryURL: "https://nonexistent.invalid/repo2.git",
+					Branch:        "main",
+					Tags:          sql.NullString{String: `["go"]`, Valid: true},
+				},
+			},
+		}
+
+		indexer := &mockSearchIndexer{
+			indexedUUIDs: map[string]bool{},
+		}
+
+		worker := &SyncGitTemplatesWorker{
+			Deps: SchedulerDeps{
+				GitRepo:    gitRepo,
+				GitTempDir: t.TempDir(),
+				Indexer:    indexer,
+				Logger:     testLogger(),
+			},
+		}
+
+		// Will fail at git clone but exercises the indexer adapter creation path.
+		err := worker.Work(context.Background(), makeJob(SyncGitTemplatesArgs{}))
+		require.NoError(t, err)
 	})
 
 	t.Run("template with invalid tags is skipped", func(t *testing.T) {

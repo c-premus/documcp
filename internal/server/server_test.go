@@ -10,16 +10,34 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
+	"git.999.haus/chris/DocuMCP-go/internal/auth/oidc"
 	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
 	"git.999.haus/chris/DocuMCP-go/internal/config"
 	"git.999.haus/chris/DocuMCP-go/internal/handler"
+	apihandler "git.999.haus/chris/DocuMCP-go/internal/handler/api"
+	oauthhandler "git.999.haus/chris/DocuMCP-go/internal/handler/oauth"
+	"git.999.haus/chris/DocuMCP-go/internal/observability"
 	"git.999.haus/chris/DocuMCP-go/internal/server"
 )
+
+// testMetrics is a singleton to avoid duplicate Prometheus registration panics.
+var (
+	testMetrics     *observability.Metrics
+	testMetricsOnce sync.Once
+)
+
+func sharedMetrics() *observability.Metrics {
+	testMetricsOnce.Do(func() {
+		testMetrics = observability.NewMetrics()
+	})
+	return testMetrics
+}
 
 func newTestServer(t *testing.T) *server.Server {
 	t.Helper()
@@ -256,7 +274,7 @@ func TestListenAndServeOnAvailablePort(t *testing.T) {
 
 	// Verify we can actually make an HTTP request to the server.
 	url := fmt.Sprintf("http://%s/test-available-port", addr)
-	resp, err := http.Get(url) //nolint:noctx // test helper; context not needed for connectivity check
+	resp, err := http.Get(url) //nolint:noctx // test helper — context not needed // test helper; context not needed for connectivity check
 	if err != nil {
 		t.Fatalf("HTTP GET %s returned unexpected error: %v", url, err)
 	}
@@ -334,7 +352,7 @@ func TestShutdown_GracefulStop(t *testing.T) {
 
 	// After shutdown, new requests should fail.
 	url := fmt.Sprintf("http://%s/ping", srv.Addr())
-	resp, err := http.Get(url) //nolint:noctx // test helper; context not needed for connectivity check
+	resp, err := http.Get(url) //nolint:noctx // test helper — context not needed // test helper; context not needed for connectivity check
 	if resp != nil {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			t.Fatalf("closing response body: %v", closeErr)
@@ -930,5 +948,630 @@ func TestRegisterRoutes_AdminLoginRedirectPreservesMethod(t *testing.T) {
 	// POST to a GET-only route should return 405 Method Not Allowed.
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: route registration for each handler group
+// ---------------------------------------------------------------------------
+
+// routeRegistered is a test helper that verifies a route is registered (not 404).
+// Handlers may panic (caught by SafeRecoverer → 500) or return auth errors,
+// but the key assertion is: the route exists in the router.
+func routeRegistered(t *testing.T, srv *server.Server, method, path string) {
+	t.Helper()
+
+	req := httptest.NewRequest(method, path, http.NoBody)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusNotFound {
+		t.Errorf("%s %s returned 404, want route to be registered", method, path)
+	}
+}
+
+func TestRegisterRoutes_DocumentEndpoints(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:         "test",
+		OAuthService:    stubOAuthService(),
+		DocumentHandler: new(apihandler.DocumentHandler),
+	})
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/documents"},
+		{http.MethodGet, "/api/documents/trash"},
+		{http.MethodGet, "/api/documents/00000000-0000-0000-0000-000000000001"},
+		{http.MethodGet, "/api/documents/00000000-0000-0000-0000-000000000001/download"},
+		{http.MethodPost, "/api/documents"},
+		{http.MethodPost, "/api/documents/analyze"},
+		{http.MethodPut, "/api/documents/00000000-0000-0000-0000-000000000001"},
+		{http.MethodDelete, "/api/documents/00000000-0000-0000-0000-000000000001"},
+		{http.MethodPost, "/api/documents/00000000-0000-0000-0000-000000000001/restore"},
+		{http.MethodDelete, "/api/documents/00000000-0000-0000-0000-000000000001/purge"},
+	}
+
+	for _, tt := range routes {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			t.Parallel()
+			routeRegistered(t, srv, tt.method, tt.path)
+		})
+	}
+}
+
+func TestRegisterRoutes_DocumentEndpointsNotRegisteredWhenNil(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:      "test",
+		OAuthService: stubOAuthService(),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/documents", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	// Without DocumentHandler, /api/documents hits the /api route group
+	// but has no handler. Chi returns 404 for unmatched nested routes.
+	if rec.Code == http.StatusOK {
+		t.Error("expected non-200 when DocumentHandler is nil")
+	}
+}
+
+func TestRegisterRoutes_SearchEndpoints(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:       "test",
+		OAuthService:  stubOAuthService(),
+		SearchHandler: new(apihandler.SearchHandler),
+	})
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/search"},
+		{http.MethodGet, "/api/search/unified"},
+		{http.MethodGet, "/api/search/popular"},
+		{http.MethodGet, "/api/search/autocomplete"},
+	}
+
+	for _, tt := range routes {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			t.Parallel()
+			routeRegistered(t, srv, tt.method, tt.path)
+		})
+	}
+}
+
+func TestRegisterRoutes_ZimEndpoints(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:      "test",
+		OAuthService: stubOAuthService(),
+		ZimHandler:   new(apihandler.ZimHandler),
+	})
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/zim/archives"},
+		{http.MethodGet, "/api/zim/archives/test-archive"},
+		{http.MethodGet, "/api/zim/archives/test-archive/search"},
+		{http.MethodGet, "/api/zim/archives/test-archive/suggest"},
+		{http.MethodGet, "/api/zim/archives/test-archive/articles/A/Test"},
+	}
+
+	for _, tt := range routes {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			t.Parallel()
+			routeRegistered(t, srv, tt.method, tt.path)
+		})
+	}
+}
+
+func TestRegisterRoutes_GitTemplateEndpoints(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:            "test",
+		OAuthService:       stubOAuthService(),
+		GitTemplateHandler: new(apihandler.GitTemplateHandler),
+	})
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/git-templates"},
+		{http.MethodGet, "/api/git-templates/search"},
+		{http.MethodGet, "/api/git-templates/00000000-0000-0000-0000-000000000001"},
+		{http.MethodGet, "/api/git-templates/00000000-0000-0000-0000-000000000001/structure"},
+		{http.MethodGet, "/api/git-templates/00000000-0000-0000-0000-000000000001/files/README.md"},
+		{http.MethodGet, "/api/git-templates/00000000-0000-0000-0000-000000000001/deployment-guide"},
+		{http.MethodPost, "/api/git-templates"},
+		{http.MethodPut, "/api/git-templates/00000000-0000-0000-0000-000000000001"},
+		{http.MethodDelete, "/api/git-templates/00000000-0000-0000-0000-000000000001"},
+		{http.MethodPost, "/api/git-templates/00000000-0000-0000-0000-000000000001/sync"},
+		{http.MethodPost, "/api/git-templates/00000000-0000-0000-0000-000000000001/download"},
+	}
+
+	for _, tt := range routes {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			t.Parallel()
+			routeRegistered(t, srv, tt.method, tt.path)
+		})
+	}
+}
+
+func TestRegisterRoutes_ExternalServiceEndpoints(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:                "test",
+		OAuthService:           stubOAuthService(),
+		ExternalServiceHandler: new(apihandler.ExternalServiceHandler),
+	})
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/external-services"},
+		{http.MethodGet, "/api/external-services/00000000-0000-0000-0000-000000000001"},
+		{http.MethodPost, "/api/external-services"},
+		{http.MethodPut, "/api/external-services/00000000-0000-0000-0000-000000000001"},
+		{http.MethodDelete, "/api/external-services/00000000-0000-0000-0000-000000000001"},
+		{http.MethodPost, "/api/external-services/00000000-0000-0000-0000-000000000001/health-check"},
+		{http.MethodPost, "/api/external-services/00000000-0000-0000-0000-000000000001/sync"},
+	}
+
+	for _, tt := range routes {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			t.Parallel()
+			routeRegistered(t, srv, tt.method, tt.path)
+		})
+	}
+}
+
+func TestRegisterRoutes_AdminUserEndpoints(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:      "test",
+		OAuthService: stubOAuthService(),
+		UserHandler:  new(apihandler.UserHandler),
+	})
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/admin/users"},
+		{http.MethodPost, "/api/admin/users"},
+		{http.MethodGet, "/api/admin/users/1"},
+		{http.MethodPut, "/api/admin/users/1"},
+		{http.MethodDelete, "/api/admin/users/1"},
+		{http.MethodPost, "/api/admin/users/1/toggle-admin"},
+	}
+
+	for _, tt := range routes {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			t.Parallel()
+			routeRegistered(t, srv, tt.method, tt.path)
+		})
+	}
+}
+
+func TestRegisterRoutes_AdminOAuthClientEndpoints(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:            "test",
+		OAuthService:       stubOAuthService(),
+		OAuthClientHandler: new(apihandler.OAuthClientHandler),
+	})
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/admin/oauth-clients"},
+		{http.MethodPost, "/api/admin/oauth-clients"},
+		{http.MethodGet, "/api/admin/oauth-clients/1"},
+		{http.MethodPost, "/api/admin/oauth-clients/1/revoke"},
+	}
+
+	for _, tt := range routes {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			t.Parallel()
+			routeRegistered(t, srv, tt.method, tt.path)
+		})
+	}
+}
+
+func TestRegisterRoutes_AdminQueueEndpoints(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:      "test",
+		OAuthService: stubOAuthService(),
+		QueueHandler: new(apihandler.QueueHandler),
+	})
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/admin/queue/stats"},
+		{http.MethodGet, "/api/admin/queue/failed"},
+		{http.MethodPost, "/api/admin/queue/failed/1/retry"},
+		{http.MethodDelete, "/api/admin/queue/failed/1"},
+	}
+
+	for _, tt := range routes {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			t.Parallel()
+			routeRegistered(t, srv, tt.method, tt.path)
+		})
+	}
+}
+
+func TestRegisterRoutes_AdminDashboardEndpoints(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:          "test",
+		OAuthService:     stubOAuthService(),
+		DashboardHandler: new(apihandler.DashboardHandler),
+	})
+
+	routeRegistered(t, srv, http.MethodGet, "/api/admin/dashboard/stats")
+}
+
+func TestRegisterRoutes_AdminSSEEndpoints(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:      "test",
+		OAuthService: stubOAuthService(),
+		SSEHandler:   new(apihandler.SSEHandler),
+	})
+
+	routeRegistered(t, srv, http.MethodGet, "/api/admin/events/stream")
+}
+
+func TestRegisterRoutes_AdminBulkPurge(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:         "test",
+		OAuthService:    stubOAuthService(),
+		DocumentHandler: new(apihandler.DocumentHandler),
+	})
+
+	routeRegistered(t, srv, http.MethodDelete, "/api/admin/documents/purge")
+}
+
+func TestRegisterRoutes_AdminExternalServiceReorder(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:                "test",
+		OAuthService:           stubOAuthService(),
+		ExternalServiceHandler: new(apihandler.ExternalServiceHandler),
+	})
+
+	routeRegistered(t, srv, http.MethodPut, "/api/admin/external-services/reorder")
+}
+
+func TestRegisterRoutes_AdminGitTemplateValidateURL(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:            "test",
+		OAuthService:       stubOAuthService(),
+		GitTemplateHandler: new(apihandler.GitTemplateHandler),
+	})
+
+	routeRegistered(t, srv, http.MethodPost, "/api/admin/git-templates/validate-url")
+}
+
+func TestRegisterRoutes_OAuthEndpoints(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:      "test",
+		OAuthHandler: new(oauthhandler.Handler),
+	})
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/.well-known/oauth-authorization-server"},
+		{http.MethodGet, "/.well-known/oauth-protected-resource"},
+		{http.MethodGet, "/oauth/authorize"},
+		{http.MethodPost, "/oauth/authorize/approve"},
+		{http.MethodGet, "/oauth/device"},
+		{http.MethodPost, "/oauth/device"},
+		{http.MethodPost, "/oauth/device/approve"},
+		{http.MethodPost, "/oauth/token"},
+		{http.MethodPost, "/oauth/revoke"},
+		// /oauth/register omitted: zero-value Handler has RegistrationEnabled=false,
+		// so Register() returns 404 by design (not a routing issue).
+		{http.MethodPost, "/oauth/device/code"},
+	}
+
+	for _, tt := range routes {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			t.Parallel()
+			routeRegistered(t, srv, tt.method, tt.path)
+		})
+	}
+}
+
+func TestRegisterRoutes_OIDCEndpoints(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:     "test",
+		OIDCHandler: new(oidc.Handler),
+	})
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/auth/login"},
+		{http.MethodGet, "/auth/callback"},
+		{http.MethodPost, "/auth/logout"},
+	}
+
+	for _, tt := range routes {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			t.Parallel()
+			routeRegistered(t, srv, tt.method, tt.path)
+		})
+	}
+}
+
+func TestRegisterRoutes_AuthMeEndpoint(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:     "test",
+		AuthHandler: new(apihandler.AuthHandler),
+	})
+
+	routeRegistered(t, srv, http.MethodGet, "/api/auth/me")
+}
+
+// ---------------------------------------------------------------------------
+// Start and Close
+// ---------------------------------------------------------------------------
+
+func TestStart_ListensAndAcceptsConnections(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	cfg := server.DefaultConfig()
+	cfg.Host = "127.0.0.1"
+	cfg.Port = 0
+	srv := server.New(cfg, logger)
+
+	srv.Router().Get("/ping", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("pong"))
+	})
+
+	ln, err := srv.ListenAndServeOnAvailablePort()
+	if err != nil {
+		t.Fatalf("ListenAndServeOnAvailablePort() error: %v", err)
+	}
+	defer func() {
+		_ = srv.Close()
+	}()
+
+	url := fmt.Sprintf("http://%s/ping", ln.Addr().String())
+	resp, err := http.Get(url) //nolint:noctx // test helper — context not needed
+	if err != nil {
+		t.Fatalf("GET %s error: %v", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "pong" {
+		t.Errorf("body = %q, want %q", string(body), "pong")
+	}
+}
+
+func TestClose_RejectsNewConnections(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	srv := server.New(server.DefaultConfig(), logger)
+
+	srv.Router().Get("/ping", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	ln, err := srv.ListenAndServeOnAvailablePort()
+	if err != nil {
+		t.Fatalf("ListenAndServeOnAvailablePort() error: %v", err)
+	}
+
+	addr := ln.Addr().String()
+
+	// Close the server immediately.
+	if err := srv.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+
+	// New connections should fail after Close.
+	url := fmt.Sprintf("http://%s/ping", addr)
+	resp, err := http.Get(url) //nolint:noctx // test helper — context not needed
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+	if err == nil {
+		t.Error("expected error connecting to closed server, got nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: all handlers together
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_AllHandlers(t *testing.T) {
+	t.Parallel()
+
+	// Verify that RegisterRoutes does not panic when all handler slots are populated.
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:                "test",
+		OAuthService:           stubOAuthService(),
+		OAuthHandler:           new(oauthhandler.Handler),
+		OIDCHandler:            new(oidc.Handler),
+		DocumentHandler:        new(apihandler.DocumentHandler),
+		SearchHandler:          new(apihandler.SearchHandler),
+		ZimHandler:             new(apihandler.ZimHandler),
+		GitTemplateHandler:     new(apihandler.GitTemplateHandler),
+		ExternalServiceHandler: new(apihandler.ExternalServiceHandler),
+		UserHandler:            new(apihandler.UserHandler),
+		OAuthClientHandler:     new(apihandler.OAuthClientHandler),
+		QueueHandler:           new(apihandler.QueueHandler),
+		DashboardHandler:       new(apihandler.DashboardHandler),
+		SSEHandler:             new(apihandler.SSEHandler),
+		AuthHandler:            new(apihandler.AuthHandler),
+		SPAHandler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+		MCPHandler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	})
+
+	// Smoke test: health should still work.
+	req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: well-known endpoints not registered when OAuthHandler is nil
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_WellKnownNotRegisteredWithoutOAuth(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
+
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d when OAuthHandler is nil", rec.Code, http.StatusNotFound)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RegisterRoutes: OIDC endpoints not registered when OIDCHandler is nil
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_OIDCNotRegisteredWithoutHandler(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
+
+	paths := []string{"/auth/login", "/auth/callback"}
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(http.MethodGet, path, http.NoBody)
+			rec := httptest.NewRecorder()
+			srv.Router().ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusNotFound {
+				t.Errorf("status = %d, want %d when OIDCHandler is nil", rec.Code, http.StatusNotFound)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// internalTokenAuth: metrics endpoint protected when token is configured
+// ---------------------------------------------------------------------------
+
+func TestRegisterRoutes_MetricsProtectedByToken(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:          "test",
+		Metrics:          sharedMetrics(),
+		InternalAPIToken: "secret-token",
+	})
+
+	// Without token: should return 401
+	req := httptest.NewRequest(http.MethodGet, "/metrics", http.NoBody)
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status without token = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+
+	// With correct token: should return 200
+	req2 := httptest.NewRequest(http.MethodGet, "/metrics", http.NoBody)
+	req2.Header.Set("Authorization", "Bearer secret-token")
+	rec2 := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Errorf("status with token = %d, want %d", rec2.Code, http.StatusOK)
+	}
+}
+
+func TestRegisterRoutes_MetricsUnprotectedWithoutToken(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version: "test",
+		Metrics: sharedMetrics(),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", http.NoBody)
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d when no token configured", rec.Code, http.StatusOK)
+	}
+}
+
+func TestRegisterRoutes_MetricsNotRegisteredWithoutMetrics(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServerWithDeps(t, server.Deps{Version: "test"})
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", http.NoBody)
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d when Metrics is nil", rec.Code, http.StatusNotFound)
 	}
 }

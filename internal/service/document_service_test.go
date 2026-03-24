@@ -1040,11 +1040,18 @@ func TestMimeTypeForFileType(t *testing.T) {
 	}{
 		{"markdown", "text/markdown"},
 		{"md", "text/markdown"},
+		{"txt", "text/markdown"},
 		{"html", "text/html"},
+		{"htm", "text/html"},
+		{"pdf", "application/pdf"},
+		{"docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+		{"xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
 		{"other", "application/octet-stream"},
 		{"", "application/octet-stream"},
 		{"MARKDOWN", "text/markdown"},
 		{"Html", "text/html"},
+		{"DOCX", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+		{"PDF", "application/pdf"},
 	}
 
 	for _, tt := range tests {

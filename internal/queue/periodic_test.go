@@ -79,15 +79,48 @@ func TestBuildPeriodicJobs_invalidCronSkipped(t *testing.T) {
 func TestBuildPeriodicJobs_nilLogger(t *testing.T) {
 	t.Parallel()
 
-	cfg := config.SchedulerConfig{
-		KiwixSchedule: "0 */6 * * *",
-		GitSchedule:   "invalid", // triggers error log
-	}
+	t.Run("valid and invalid schedules with nil logger", func(t *testing.T) {
+		t.Parallel()
 
-	// Should not panic with nil logger.
-	assert.NotPanics(t, func() {
-		jobs := BuildPeriodicJobs(cfg, nil)
-		assert.Len(t, jobs, 1)
+		cfg := config.SchedulerConfig{
+			KiwixSchedule: "0 */6 * * *",
+			GitSchedule:   "invalid", // triggers error log path with nil logger
+		}
+
+		// Should not panic with nil logger.
+		assert.NotPanics(t, func() {
+			jobs := BuildPeriodicJobs(cfg, nil)
+			assert.Len(t, jobs, 1)
+		})
+	})
+
+	t.Run("empty schedule with nil logger", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := config.SchedulerConfig{
+			KiwixSchedule: "",
+			GitSchedule:   "0 * * * *",
+		}
+
+		// nil logger on empty schedule branch should not panic.
+		assert.NotPanics(t, func() {
+			jobs := BuildPeriodicJobs(cfg, nil)
+			assert.Len(t, jobs, 1)
+		})
+	})
+
+	t.Run("successful registration with nil logger", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := config.SchedulerConfig{
+			KiwixSchedule: "0 */6 * * *",
+		}
+
+		// nil logger on success path should not panic.
+		assert.NotPanics(t, func() {
+			jobs := BuildPeriodicJobs(cfg, nil)
+			assert.Len(t, jobs, 1)
+		})
 	})
 }
 
