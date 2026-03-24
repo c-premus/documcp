@@ -15,6 +15,8 @@ const (
 	EventJobCompleted EventType = "job.completed"
 	// EventJobFailed is emitted when a background job exhausts all retries.
 	EventJobFailed EventType = "job.failed"
+	// EventJobSnoozed is emitted when a background job is snoozed for later retry.
+	EventJobSnoozed EventType = "job.snoozed"
 	// EventJobRetrying is emitted when a background job is scheduled for retry.
 	EventJobRetrying EventType = "job.retrying"
 )

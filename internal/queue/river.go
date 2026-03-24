@@ -17,11 +17,13 @@ import (
 
 // RiverClient wraps River's client with application-specific configuration.
 type RiverClient struct {
-	client   *river.Client[pgx.Tx]
-	pool     *pgxpool.Pool
-	eventBus *EventBus
-	metrics  *observability.Metrics
-	logger   *slog.Logger
+	client            *river.Client[pgx.Tx]
+	pool              *pgxpool.Pool
+	eventBus          *EventBus
+	metrics           *observability.Metrics
+	logger            *slog.Logger
+	cancelSubscribe   func()
+	forwardingDone    chan struct{}
 }
 
 // RiverConfig holds configuration for the River queue client.
@@ -74,8 +76,53 @@ func (rc *RiverClient) Start(ctx context.Context) error {
 	return nil
 }
 
+// StartEventForwarding subscribes to River's job completion and snooze events
+// and forwards them to the application EventBus so SSE clients receive them.
+// Call after Start(). The goroutine exits when Stop() cancels the subscription.
+func (rc *RiverClient) StartEventForwarding() {
+	if rc.eventBus == nil {
+		return
+	}
+
+	subscribeCh, cancel := rc.client.Subscribe(
+		river.EventKindJobCompleted,
+		river.EventKindJobSnoozed,
+	)
+	rc.cancelSubscribe = cancel
+	rc.forwardingDone = make(chan struct{})
+
+	go func() {
+		defer close(rc.forwardingDone)
+		for re := range subscribeCh {
+			var eventType EventType
+			switch re.Kind {
+			case river.EventKindJobCompleted:
+				eventType = EventJobCompleted
+			case river.EventKindJobSnoozed:
+				eventType = EventJobSnoozed
+			default:
+				continue
+			}
+
+			evt := Event{
+				Type:      eventType,
+				JobKind:   re.Job.Kind,
+				JobID:     re.Job.ID,
+				Queue:     re.Job.Queue,
+				Attempt:   re.Job.Attempt,
+				Timestamp: time.Now(),
+			}
+			rc.eventBus.Publish(evt)
+		}
+	}()
+}
+
 // Stop gracefully shuts down the River client, waiting for in-progress jobs.
 func (rc *RiverClient) Stop(ctx context.Context) error {
+	if rc.cancelSubscribe != nil {
+		rc.cancelSubscribe()
+		<-rc.forwardingDone
+	}
 	if err := rc.client.Stop(ctx); err != nil {
 		return fmt.Errorf("stopping river client: %w", err)
 	}
