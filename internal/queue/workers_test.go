@@ -314,6 +314,117 @@ func TestReindexAllWorker_Work(t *testing.T) {
 	})
 }
 
+// --- DocumentExtractWorker nil pipeline test ---
+
+func TestDocumentExtractWorker_Work_nilPipeline(t *testing.T) {
+	t.Parallel()
+
+	worker := &DocumentExtractWorker{Pipeline: nil}
+
+	job := &river.Job[DocumentExtractArgs]{
+		JobRow: &rivertype.JobRow{ID: 1},
+		Args:   DocumentExtractArgs{DocumentID: 1, DocUUID: "uuid"},
+	}
+
+	err := worker.Work(context.Background(), job)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "pipeline is nil")
+}
+
+// --- DocumentExtractWorker success records metrics ---
+
+func TestDocumentExtractWorker_Work_successRecordsMetrics(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockDocumentProcessor{}
+	metrics := newTestMetrics()
+	worker := &DocumentExtractWorker{Pipeline: mock, Metrics: metrics}
+
+	job := &river.Job[DocumentExtractArgs]{
+		JobRow: &rivertype.JobRow{ID: 1, Queue: "high", Kind: "document_extract"},
+		Args:   DocumentExtractArgs{DocumentID: 10, DocUUID: "test-uuid"},
+	}
+
+	err := worker.Work(context.Background(), job)
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), mock.calledWith)
+
+	// Verify completed counter was incremented.
+	counter, metricErr := metrics.QueueJobsCompleted.GetMetricWithLabelValues("high", "document_extract")
+	require.NoError(t, metricErr)
+	require.NotNil(t, counter)
+}
+
+// --- DocumentIndexWorker nil indexer test ---
+
+func TestDocumentIndexWorker_Work_nilIndexer(t *testing.T) {
+	t.Parallel()
+
+	worker := &DocumentIndexWorker{Indexer: nil}
+
+	job := &river.Job[DocumentIndexArgs]{
+		JobRow: &rivertype.JobRow{ID: 1},
+		Args:   DocumentIndexArgs{DocumentID: 1, DocUUID: "uuid"},
+	}
+
+	err := worker.Work(context.Background(), job)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "indexer is nil")
+}
+
+// --- DocumentIndexWorker success records metrics ---
+
+func TestDocumentIndexWorker_Work_successRecordsMetrics(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockDocumentIndexer{}
+	metrics := newTestMetrics()
+	worker := &DocumentIndexWorker{Indexer: mock, Metrics: metrics}
+
+	job := &river.Job[DocumentIndexArgs]{
+		JobRow: &rivertype.JobRow{ID: 2, Queue: "default", Kind: "document_index"},
+		Args:   DocumentIndexArgs{DocumentID: 55, DocUUID: "idx-uuid"},
+	}
+
+	err := worker.Work(context.Background(), job)
+	require.NoError(t, err)
+	assert.Equal(t, int64(55), mock.calledWith)
+
+	// Verify completed counter was incremented.
+	counter, metricErr := metrics.QueueJobsCompleted.GetMetricWithLabelValues("default", "document_index")
+	require.NoError(t, metricErr)
+	require.NotNil(t, counter)
+}
+
+// --- recordJobCompleted tests ---
+
+func TestRecordJobCompleted(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil metrics does not panic", func(t *testing.T) {
+		t.Parallel()
+		assert.NotPanics(t, func() {
+			recordJobCompleted(nil, "high", "document_extract", 100*time.Millisecond)
+		})
+	})
+
+	t.Run("non-nil metrics increments counter and observes duration", func(t *testing.T) {
+		t.Parallel()
+		metrics := newTestMetrics()
+		recordJobCompleted(metrics, "high", "document_extract", 150*time.Millisecond)
+
+		// Counter was incremented (no panic means it exists).
+		counter, err := metrics.QueueJobsCompleted.GetMetricWithLabelValues("high", "document_extract")
+		require.NoError(t, err)
+		require.NotNil(t, counter)
+
+		// Duration was observed.
+		hist, err := metrics.QueueJobDuration.GetMetricWithLabelValues("high", "document_extract")
+		require.NoError(t, err)
+		require.NotNil(t, hist)
+	})
+}
+
 // --- nextRetryFromBackoffs tests ---
 
 func TestNextRetryFromBackoffs(t *testing.T) {

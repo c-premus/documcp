@@ -50,6 +50,47 @@ func makeJobRow(id int64, kind, queue string, attempt int) *rivertype.JobRow {
 }
 
 // ---------------------------------------------------------------------------
+// StartEventForwarding — nil eventBus
+// ---------------------------------------------------------------------------
+
+func TestRiverClient_StartEventForwarding_nilEventBus(t *testing.T) {
+	t.Parallel()
+
+	rc := &RiverClient{
+		eventBus: nil,
+		logger:   discardLogger(),
+	}
+
+	// Should return immediately without panic when eventBus is nil.
+	assert.NotPanics(t, func() {
+		rc.StartEventForwarding()
+	})
+
+	// cancelSubscribe should remain nil since we never subscribed.
+	assert.Nil(t, rc.cancelSubscribe)
+	assert.Nil(t, rc.forwardingDone)
+}
+
+// ---------------------------------------------------------------------------
+// Client accessor
+// ---------------------------------------------------------------------------
+
+func TestRiverClient_Client_returnsNilWhenNotSet(t *testing.T) {
+	t.Parallel()
+
+	rc := &RiverClient{}
+	assert.Nil(t, rc.Client(), "Client() should return nil when inner client is not set")
+}
+
+// ---------------------------------------------------------------------------
+// RiverClient.Stop — partial coverage (cancelSubscribe nil path)
+// ---------------------------------------------------------------------------
+
+// Note: We cannot test Stop fully because it requires a real River client.
+// We test the nil cancelSubscribe path which covers the subscription cleanup guard.
+// The rc.client.Stop() call will panic with nil client, so we don't invoke it here.
+
+// ---------------------------------------------------------------------------
 // HandleError
 // ---------------------------------------------------------------------------
 

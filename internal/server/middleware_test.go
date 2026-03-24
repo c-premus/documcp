@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/tls"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -9,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // mustParseCIDR is a test helper that parses a CIDR string or panics.
@@ -823,5 +825,371 @@ func TestInternalTokenAuth_VariousWrongTokens(t *testing.T) {
 				t.Errorf("token %q: status = %d, want %d", tt.token, w.Code, http.StatusUnauthorized)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// BlockSensitiveFiles
+// ---------------------------------------------------------------------------
+
+func TestBlockSensitiveFiles_BlocksDotfiles(t *testing.T) {
+	t.Parallel()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	h := BlockSensitiveFiles(inner)
+
+	tests := []struct {
+		name string
+		path string
+		want int
+	}{
+		{"dotenv", "/.env", http.StatusNotFound},
+		{"git config", "/.git/config", http.StatusNotFound},
+		{"htaccess", "/.htaccess", http.StatusNotFound},
+		{"dotfile subpath", "/.secret/key", http.StatusNotFound},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := httptest.NewRequest("GET", tt.path, http.NoBody)
+			w := httptest.NewRecorder()
+
+			h.ServeHTTP(w, r)
+
+			if w.Code != tt.want {
+				t.Errorf("BlockSensitiveFiles(%s) status = %d, want %d", tt.path, w.Code, tt.want)
+			}
+		})
+	}
+}
+
+func TestBlockSensitiveFiles_BlocksKnownFiles(t *testing.T) {
+	t.Parallel()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	h := BlockSensitiveFiles(inner)
+
+	blocked := []string{
+		"/Dockerfile",
+		"/docker-compose.yml",
+		"/composer.json",
+		"/composer.lock",
+		"/package.json",
+		"/package-lock.json",
+		"/yarn.lock",
+		"/web.config",
+		"/Makefile",
+		"/go.mod",
+		"/go.sum",
+		"/.env.example",
+	}
+
+	for _, path := range blocked {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			r := httptest.NewRequest("GET", path, http.NoBody)
+			w := httptest.NewRecorder()
+
+			h.ServeHTTP(w, r)
+
+			if w.Code != http.StatusNotFound {
+				t.Errorf("BlockSensitiveFiles(%s) status = %d, want %d", path, w.Code, http.StatusNotFound)
+			}
+		})
+	}
+}
+
+func TestBlockSensitiveFiles_AllowsWellKnown(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	h := BlockSensitiveFiles(inner)
+
+	r := httptest.NewRequest("GET", "/.well-known/openid-configuration", http.NoBody)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d for .well-known path", w.Code, http.StatusOK)
+	}
+	if !called {
+		t.Error("inner handler was not called for .well-known path")
+	}
+}
+
+func TestBlockSensitiveFiles_AllowsNormalPaths(t *testing.T) {
+	t.Parallel()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	h := BlockSensitiveFiles(inner)
+
+	paths := []string{
+		"/api/something",
+		"/health",
+		"/admin/dashboard",
+		"/",
+	}
+
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			r := httptest.NewRequest("GET", path, http.NoBody)
+			w := httptest.NewRecorder()
+
+			h.ServeHTTP(w, r)
+
+			if w.Code != http.StatusOK {
+				t.Errorf("BlockSensitiveFiles(%s) status = %d, want %d", path, w.Code, http.StatusOK)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SafeRecoverer
+// ---------------------------------------------------------------------------
+
+func TestSafeRecoverer_PanicWithString(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+
+	inner := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		panic("something went wrong")
+	})
+
+	h := SafeRecoverer(logger)(inner)
+
+	r := httptest.NewRequest("GET", "/", http.NoBody)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+
+	body := w.Body.String()
+	if strings.Contains(body, "something went wrong") {
+		t.Error("response body should not contain the panic message")
+	}
+	if !strings.Contains(body, "Internal Server Error") {
+		t.Errorf("body = %q, want it to contain 'Internal Server Error'", body)
+	}
+}
+
+func TestSafeRecoverer_PanicWithError(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+
+	inner := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		panic(errors.New("database connection lost"))
+	})
+
+	h := SafeRecoverer(logger)(inner)
+
+	r := httptest.NewRequest("GET", "/", http.NoBody)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+
+	body := w.Body.String()
+	if strings.Contains(body, "database") {
+		t.Error("response body should not leak internal error details")
+	}
+}
+
+func TestSafeRecoverer_NoPanic(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	h := SafeRecoverer(logger)(inner)
+
+	r := httptest.NewRequest("GET", "/", http.NoBody)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if w.Body.String() != "ok" {
+		t.Errorf("body = %q, want %q", w.Body.String(), "ok")
+	}
+}
+
+func TestSafeRecoverer_PanicWithWebsocketUpgrade(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+
+	inner := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		panic("ws error")
+	})
+
+	h := SafeRecoverer(logger)(inner)
+
+	r := httptest.NewRequest("GET", "/", http.NoBody)
+	r.Header.Set("Connection", "Upgrade")
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	// For websocket upgrade requests, the recoverer should not write a response body.
+	// The status should remain 200 (default for unwritten recorder).
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d for websocket upgrade panic", w.Code, http.StatusOK)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TimeoutExcept
+// ---------------------------------------------------------------------------
+
+func TestTimeoutExcept_ExcludedPrefixSkipsTimeout(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	h := TimeoutExcept(1*time.Second, "/documcp", "/api/admin/events/stream")(inner)
+
+	r := httptest.NewRequest("GET", "/documcp/some/path", http.NoBody)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	if !called {
+		t.Error("inner handler was not called for excluded prefix")
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestTimeoutExcept_NonExcludedPrefixAppliesTimeout(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	h := TimeoutExcept(5*time.Second, "/documcp")(inner)
+
+	r := httptest.NewRequest("GET", "/api/documents", http.NoBody)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	if !called {
+		t.Error("inner handler was not called for non-excluded path")
+	}
+}
+
+func TestTimeoutExcept_SecondExcludedPrefix(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	h := TimeoutExcept(1*time.Second, "/documcp", "/api/admin/events/stream")(inner)
+
+	r := httptest.NewRequest("GET", "/api/admin/events/stream", http.NoBody)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	if !called {
+		t.Error("inner handler was not called for second excluded prefix")
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SecurityHeaders — HSTS disabled (maxAge 0)
+// ---------------------------------------------------------------------------
+
+func TestSecurityHeaders_HSTS_DisabledWhenZero(t *testing.T) {
+	t.Parallel()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	h := SecurityHeaders(0)(inner)
+
+	r := httptest.NewRequest("GET", "/", http.NoBody)
+	r.TLS = &tls.ConnectionState{} // simulate TLS
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	got := w.Header().Get("Strict-Transport-Security")
+	if got != "" {
+		t.Errorf("Strict-Transport-Security = %q, want empty when hstsMaxAge is 0", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SecurityHeaders — Cache-Control header present
+// ---------------------------------------------------------------------------
+
+func TestSecurityHeaders_CacheControl(t *testing.T) {
+	t.Parallel()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	h := SecurityHeaders(0)(inner)
+
+	r := httptest.NewRequest("GET", "/", http.NoBody)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	got := w.Header().Get("Cache-Control")
+	if got != "no-store" {
+		t.Errorf("Cache-Control = %q, want %q", got, "no-store")
 	}
 }
