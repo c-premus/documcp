@@ -203,7 +203,9 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		s.logger.Info("auth/me endpoint registered", "path", "/api/auth/me")
 	}
 
-	// REST API (always authenticated)
+	// REST API (always authenticated via dual-auth model):
+	//   - OAuth tokens: scoped via RequireScope middleware
+	//   - Session cookies: scoped via handler-level ownership checks (see RequireScope doc)
 	r.Route("/api", func(r chi.Router) {
 		switch {
 		case deps.OAuthService != nil:

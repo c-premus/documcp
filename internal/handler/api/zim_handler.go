@@ -94,6 +94,9 @@ func (h *ZimHandler) List(w http.ResponseWriter, r *http.Request) {
 	if perPage <= 0 {
 		perPage = 50
 	}
+	if perPage > 100 {
+		perPage = 100
+	}
 
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	if offset < 0 {

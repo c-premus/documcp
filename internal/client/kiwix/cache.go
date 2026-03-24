@@ -36,8 +36,8 @@ func (c *cache) get(key string) (any, bool) {
 
 	if time.Now().After(entry.expiresAt) {
 		c.mu.Lock()
+		defer c.mu.Unlock()
 		delete(c.entries, key)
-		c.mu.Unlock()
 		return nil, false
 	}
 
@@ -47,9 +47,9 @@ func (c *cache) get(key string) (any, bool) {
 // set stores a value in the cache with the given TTL.
 func (c *cache) set(key string, data any, ttl time.Duration) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.entries[key] = cacheEntry{
 		data:      data,
 		expiresAt: time.Now().Add(ttl),
 	}
-	c.mu.Unlock()
 }

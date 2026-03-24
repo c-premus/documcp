@@ -129,7 +129,12 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, _ := h.store.Get(r, sessionName)
+	session, err := h.store.Get(r, sessionName)
+	if err != nil {
+		h.logger.Warn("session decode error in login", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	session.Values["oidc_state"] = state
 
 	// Preserve redirect destination (validated to prevent open redirect).
@@ -149,7 +154,12 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Callback handles GET /auth/callback — processes the OIDC callback.
 func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
-	session, _ := h.store.Get(r, sessionName)
+	session, err := h.store.Get(r, sessionName)
+	if err != nil {
+		h.logger.Warn("session decode error in callback", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	// Verify state (timing-safe comparison to prevent timing attacks).
 	expectedState, _ := session.Values["oidc_state"].(string)
@@ -237,7 +247,13 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 
 // Logout handles POST /auth/logout — clears the session.
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	session, _ := h.store.Get(r, sessionName)
+	session, err := h.store.Get(r, sessionName)
+	if err != nil {
+		h.logger.Warn("session decode error in logout", "error", err)
+		// Best effort — redirect anyway.
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
 	session.Options.MaxAge = -1
 	_ = session.Save(r, w)
 	http.Redirect(w, r, "/", http.StatusFound)

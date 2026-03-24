@@ -2311,8 +2311,8 @@ func TestGitTemplateHandler_Update(t *testing.T) {
 			t.Fatalf("decoding response: %v", err)
 		}
 		msg, _ := body["message"].(string)
-		if !strings.HasPrefix(msg, "Invalid repository URL:") {
-			t.Errorf("message = %q, want prefix 'Invalid repository URL:'", msg)
+		if msg != "Invalid repository URL" {
+			t.Errorf("message = %q, want %q", msg, "Invalid repository URL")
 		}
 	})
 
@@ -3015,8 +3015,8 @@ func TestGitTemplateHandler_Create(t *testing.T) {
 			t.Fatalf("decoding response: %v", err)
 		}
 		msg, _ := body["message"].(string)
-		if !strings.HasPrefix(msg, "Invalid repository URL:") {
-			t.Errorf("message = %q, want prefix 'Invalid repository URL:'", msg)
+		if msg != "Invalid repository URL" {
+			t.Errorf("message = %q, want %q", msg, "Invalid repository URL")
 		}
 	})
 

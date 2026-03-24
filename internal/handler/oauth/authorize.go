@@ -53,7 +53,12 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check user is authenticated
-	session, _ := h.store.Get(r, sessionName)
+	session, err := h.store.Get(r, sessionName)
+	if err != nil {
+		h.logger.Warn("session decode error in authorize", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	userID, ok := session.Values["user_id"].(int64)
 	if !ok || userID == 0 {
 		// Redirect to login with return URL (escape to prevent open redirect)
@@ -136,7 +141,12 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 // AuthorizeApprove handles POST /oauth/authorize/approve — processes consent.
 func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	// Check user is authenticated
-	session, _ := h.store.Get(r, sessionName)
+	session, sessErr := h.store.Get(r, sessionName)
+	if sessErr != nil {
+		h.logger.Warn("session decode error in authorize/approve", "error", sessErr)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	userID, ok := session.Values["user_id"].(int64)
 	if !ok || userID == 0 {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)

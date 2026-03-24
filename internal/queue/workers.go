@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -51,6 +52,9 @@ type DocumentExtractWorker struct {
 
 // Work executes the document extraction job for a single document.
 func (w *DocumentExtractWorker) Work(ctx context.Context, job *river.Job[DocumentExtractArgs]) error {
+	if w.Pipeline == nil {
+		return errors.New("extract worker not configured: pipeline is nil")
+	}
 	start := time.Now()
 	err := w.Pipeline.ProcessDocument(ctx, job.Args.DocumentID)
 	if err == nil {
@@ -73,6 +77,9 @@ type DocumentIndexWorker struct {
 
 // Work executes the document indexing job for a single document.
 func (w *DocumentIndexWorker) Work(ctx context.Context, job *river.Job[DocumentIndexArgs]) error {
+	if w.Indexer == nil {
+		return errors.New("index worker not configured: indexer is nil")
+	}
 	start := time.Now()
 	err := w.Indexer.IndexDocumentByID(ctx, job.Args.DocumentID)
 	if err == nil {

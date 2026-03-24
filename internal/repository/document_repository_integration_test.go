@@ -802,8 +802,6 @@ func TestDocumentRepository_SuggestTitles(t *testing.T) {
 	})
 }
 
-func boolPtr(b bool) *bool { return &b }
-
 func TestDocumentRepository_List(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
@@ -887,7 +885,7 @@ func TestDocumentRepository_List(t *testing.T) {
 	})
 
 	t.Run("filter by is_public", func(t *testing.T) {
-		result, err := repo.List(ctx, DocumentListParams{IsPublic: boolPtr(true)})
+		result, err := repo.List(ctx, DocumentListParams{IsPublic: new(true)})
 		if err != nil {
 			t.Fatalf("List() error: %v", err)
 		}

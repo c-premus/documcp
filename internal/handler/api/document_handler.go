@@ -100,6 +100,12 @@ type documentResponse struct {
 func (h *DocumentHandler) List(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
 
 	params := repository.DocumentListParams{
 		FileType: r.URL.Query().Get("file_type"),
@@ -161,11 +167,9 @@ func (h *DocumentHandler) Show(w http.ResponseWriter, r *http.Request) {
 
 	// Non-admin users can only see their own documents or public documents.
 	user, _ := authmiddleware.UserFromContext(r.Context())
-	if user != nil && !user.IsAdmin {
-		if !doc.IsPublic && (!doc.UserID.Valid || doc.UserID.Int64 != user.ID) {
-			errorResponse(w, http.StatusNotFound, "document not found")
-			return
-		}
+	if !canAccessDocument(user, doc) {
+		errorResponse(w, http.StatusNotFound, "document not found")
+		return
 	}
 
 	tags, _ := h.repo.TagsForDocument(r.Context(), doc.ID)
@@ -356,13 +360,11 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check access: document must be public or owned by the authenticated user.
-	if !doc.IsPublic {
-		user, ok := authmiddleware.UserFromContext(r.Context())
-		if !ok || !doc.UserID.Valid || user.ID != doc.UserID.Int64 {
-			errorResponse(w, http.StatusForbidden, "access denied")
-			return
-		}
+	// Check access: public, admin, or owner.
+	user, _ := authmiddleware.UserFromContext(r.Context())
+	if !canAccessDocument(user, doc) {
+		errorResponse(w, http.StatusForbidden, "access denied")
+		return
 	}
 
 	if doc.FilePath == "" {
@@ -825,11 +827,24 @@ func (h *DocumentHandler) ListDeleted(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// sanitizeFilename removes characters that could cause header injection in
-// Content-Disposition values (quotes, backslashes, control characters).
+// canAccessDocument returns true if the user may view the document.
+// Access is granted when the document is public, the user is an admin,
+// or the user owns the document.
+func canAccessDocument(user *model.User, doc *model.Document) bool {
+	if doc.IsPublic {
+		return true
+	}
+	if user == nil {
+		return false
+	}
+	return user.IsAdmin || (doc.UserID.Valid && doc.UserID.Int64 == user.ID)
+}
+
+// sanitizeFilename removes characters unsafe for Content-Disposition headers
+// (quotes, backslashes, control characters including DEL, path separators).
 func sanitizeFilename(name string) string {
 	return strings.Map(func(r rune) rune {
-		if r == '"' || r == '\\' || r < 32 {
+		if r == '"' || r == '\\' || r < 32 || r == 127 || r == '/' || r == ':' {
 			return '_'
 		}
 		return r

@@ -128,7 +128,12 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store) func(htt
 			}
 
 			// No Authorization header — try session cookie.
-			session, _ := store.Get(r, "documcp_session")
+			session, err := store.Get(r, "documcp_session")
+			if err != nil {
+				slog.Warn("session decode error in BearerOrSession", "error", err)
+				jsonError(w, http.StatusUnauthorized, "Authentication required")
+				return
+			}
 			userID, ok := session.Values["user_id"].(int64)
 			if !ok || userID == 0 {
 				jsonError(w, http.StatusUnauthorized, "Authentication required")
@@ -152,7 +157,12 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store) func(htt
 func SessionAuth(store sessions.Store, oauthService *oauth.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			session, _ := store.Get(r, "documcp_session")
+			session, err := store.Get(r, "documcp_session")
+			if err != nil {
+				slog.Warn("session decode error in SessionAuth", "error", err)
+				http.Redirect(w, r, "/auth/login?redirect="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
+				return
+			}
 			userID, ok := session.Values["user_id"].(int64)
 			if !ok || userID == 0 {
 				http.Redirect(w, r, "/auth/login?redirect="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
@@ -194,9 +204,16 @@ func RequireAdmin(next http.Handler) http.Handler {
 
 // RequireScope returns middleware that checks the authenticated token has the required scope.
 // Scopes are space-delimited per RFC 6749. Tokens with no scope or empty scope are rejected.
-// Session-authenticated users (no access token) are allowed through, as scope enforcement
-// only applies to OAuth token-based access.
 // Must be used after BearerToken or BearerOrSession middleware.
+//
+// SECURITY CONTRACT: Session-authenticated users (no access token) are allowed through
+// because session cookies do not carry OAuth scopes. For these users, data-level access
+// control MUST be enforced at the handler level:
+//   - Document handlers filter by ownership (OwnerOrPublic) for non-admin users
+//   - Write routes are additionally gated by RequireAdmin middleware
+//   - External sources (ZIM, git templates) are accessible to all authenticated users
+//
+// Any new endpoint serving user-scoped data MUST enforce ownership for non-admin users.
 func RequireScope(scope string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

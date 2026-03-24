@@ -26,8 +26,8 @@ const (
 	binaryProbeSize           = 8 * 1024         // 8 KB for binary detection
 )
 
-// variablePattern matches {{variable}} placeholders in template files.
-var variablePattern = regexp.MustCompile(`\{\{(\w+)\}\}`)
+// VariablePattern matches {{variable}} placeholders in template files.
+var VariablePattern = regexp.MustCompile(`\{\{(\w+)\}\}`)
 
 // Client handles git operations for template repositories.
 type Client struct {
@@ -279,7 +279,7 @@ func isBinary(data []byte) bool {
 
 // extractVariables returns unique {{variable}} placeholder names found in content.
 func extractVariables(content string) []string {
-	matches := variablePattern.FindAllStringSubmatch(content, -1)
+	matches := VariablePattern.FindAllStringSubmatch(content, -1)
 	if len(matches) == 0 {
 		return nil
 	}
