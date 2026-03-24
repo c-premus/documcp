@@ -152,6 +152,16 @@ func (r *GitTemplateRepository) ListAll(ctx context.Context, query string, limit
 	return templates, nil
 }
 
+// ListAllUUIDs returns all non-deleted git template UUIDs.
+func (r *GitTemplateRepository) ListAllUUIDs(ctx context.Context) ([]string, error) {
+	var uuids []string
+	err := r.db.SelectContext(ctx, &uuids, `SELECT uuid FROM git_templates WHERE deleted_at IS NULL`)
+	if err != nil {
+		return nil, fmt.Errorf("listing all git template uuids: %w", err)
+	}
+	return uuids, nil
+}
+
 // Count returns the total number of non-deleted git templates.
 func (r *GitTemplateRepository) Count(ctx context.Context) (int, error) {
 	var count int

@@ -130,9 +130,9 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store) func(htt
 			// No Authorization header — try session cookie.
 			session, err := store.Get(r, "documcp_session")
 			if err != nil {
+				// Stale/corrupt cookie — gorilla returns fresh empty session;
+				// userID check below will naturally reject.
 				slog.Warn("session decode error in BearerOrSession", "error", err)
-				jsonError(w, http.StatusUnauthorized, "Authentication required")
-				return
 			}
 			userID, ok := session.Values["user_id"].(int64)
 			if !ok || userID == 0 {
@@ -159,9 +159,9 @@ func SessionAuth(store sessions.Store, oauthService *oauth.Service) func(http.Ha
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			session, err := store.Get(r, "documcp_session")
 			if err != nil {
+				// Stale/corrupt cookie — gorilla returns fresh empty session;
+				// userID check below will redirect to login.
 				slog.Warn("session decode error in SessionAuth", "error", err)
-				http.Redirect(w, r, "/auth/login?redirect="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
-				return
 			}
 			userID, ok := session.Values["user_id"].(int64)
 			if !ok || userID == 0 {

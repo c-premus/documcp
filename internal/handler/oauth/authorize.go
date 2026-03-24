@@ -55,9 +55,9 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	// Check user is authenticated
 	session, err := h.store.Get(r, sessionName)
 	if err != nil {
+		// Stale/corrupt cookie — gorilla returns fresh empty session;
+		// userID check below will redirect to login.
 		h.logger.Warn("session decode error in authorize", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
 	}
 	userID, ok := session.Values["user_id"].(int64)
 	if !ok || userID == 0 {
@@ -143,8 +143,9 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	// Check user is authenticated
 	session, sessErr := h.store.Get(r, sessionName)
 	if sessErr != nil {
+		// Stale/corrupt cookie — consent requires valid session state.
 		h.logger.Warn("session decode error in authorize/approve", "error", sessErr)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 	userID, ok := session.Values["user_id"].(int64)

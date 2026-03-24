@@ -109,6 +109,16 @@ func (h *Handler) handleUnifiedSearch(
 		}
 	}
 
+	// Determine which indexes will be queried (matches FederatedSearch default).
+	queriedIndexes := indexes
+	if len(queriedIndexes) == 0 {
+		queriedIndexes = []string{search.IndexDocuments, search.IndexZimArchives, search.IndexGitTemplates}
+	}
+	sourcesSearched := make([]string, 0, len(queriedIndexes))
+	for _, idx := range queriedIndexes {
+		sourcesSearched = append(sourcesSearched, indexToSource(idx))
+	}
+
 	start := time.Now()
 
 	resp, err := h.searcher.FederatedSearch(ctx, search.FederatedSearchParams{
@@ -126,7 +136,6 @@ func (h *Handler) handleUnifiedSearch(
 
 	// Build result list from federated hits.
 	results := make([]unifiedSearchResult, 0, len(resp.Hits))
-	sourcesMap := make(map[string]bool)
 
 	for _, hit := range resp.Hits {
 		var m map[string]any
@@ -153,8 +162,6 @@ func (h *Handler) handleUnifiedSearch(
 			}
 		}
 
-		sourcesMap[source] = true
-
 		result := unifiedSearchResult{
 			Source: source,
 		}
@@ -176,17 +183,12 @@ func (h *Handler) handleUnifiedSearch(
 		results = append(results, result)
 	}
 
-	sources := make([]string, 0, len(sourcesMap))
-	for s := range sourcesMap {
-		sources = append(sources, s)
-	}
-
 	return nil, unifiedSearchResponse{
 		Success:          true,
 		Query:            input.Query,
 		Results:          results,
 		Total:            len(results),
-		SourcesSearched:  sources,
+		SourcesSearched:  sourcesSearched,
 		ProcessingTimeMs: processingMs,
 	}, nil
 }

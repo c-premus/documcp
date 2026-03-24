@@ -131,9 +131,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	session, err := h.store.Get(r, sessionName)
 	if err != nil {
-		h.logger.Warn("session decode error in login", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
+		// Stale/corrupt cookie — gorilla returns a fresh empty session; proceed
+		// so the user can log in (the Save below will overwrite the bad cookie).
+		h.logger.Warn("session decode error in login, using fresh session", "error", err)
 	}
 	session.Values["oidc_state"] = state
 
@@ -156,9 +156,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	session, err := h.store.Get(r, sessionName)
 	if err != nil {
+		// Stale/corrupt cookie — state will be empty, verification below fails with 400.
 		h.logger.Warn("session decode error in callback", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
 	}
 
 	// Verify state (timing-safe comparison to prevent timing attacks).
@@ -249,10 +248,8 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	session, err := h.store.Get(r, sessionName)
 	if err != nil {
-		h.logger.Warn("session decode error in logout", "error", err)
-		// Best effort — redirect anyway.
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
+		// Stale cookie — expire it and redirect.
+		h.logger.Warn("session decode error in logout, clearing cookie", "error", err)
 	}
 	session.Options.MaxAge = -1
 	_ = session.Save(r, w)

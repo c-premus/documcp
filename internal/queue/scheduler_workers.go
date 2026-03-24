@@ -48,6 +48,7 @@ type DocumentRepoDeps interface {
 // ZimArchiveRepoDeps provides ZIM archive repository methods needed by scheduler workers.
 type ZimArchiveRepoDeps interface {
 	FindDisabled(ctx context.Context) ([]model.ZimArchive, error)
+	ListAllUUIDs(ctx context.Context) ([]string, error)
 	UpsertFromCatalog(ctx context.Context, serviceID int64, upsert repository.ZimArchiveUpsert) error
 	DisableOrphaned(ctx context.Context, serviceID int64, activeNames []string) (int, error)
 }
@@ -55,6 +56,7 @@ type ZimArchiveRepoDeps interface {
 // GitTemplateRepoDeps provides Git template repository methods needed by scheduler workers.
 type GitTemplateRepoDeps interface {
 	List(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error)
+	ListAllUUIDs(ctx context.Context) ([]string, error)
 	UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error
 	ReplaceFiles(ctx context.Context, templateID int64, files []repository.GitTemplateFileInsert) error
 }
@@ -62,8 +64,11 @@ type GitTemplateRepoDeps interface {
 // SearchIndexDeps provides search indexer methods needed by cleanup workers.
 type SearchIndexDeps interface {
 	ListIndexedDocumentUUIDs(ctx context.Context) (map[string]bool, error)
+	ListIndexedZimUUIDs(ctx context.Context) (map[string]bool, error)
+	ListIndexedGitTemplateUUIDs(ctx context.Context) (map[string]bool, error)
 	DeleteDocument(ctx context.Context, uuid string) error
 	DeleteZimArchive(ctx context.Context, uuid string) error
+	DeleteGitTemplate(ctx context.Context, uuid string) error
 	IndexZimArchive(ctx context.Context, record search.ZimArchiveRecord) error
 	IndexGitTemplate(ctx context.Context, record search.GitTemplateRecord) error
 }
@@ -359,10 +364,67 @@ func (w *VerifySearchIndexWorker) Work(ctx context.Context, _ *river.Job[VerifyS
 		}
 	}
 
-	logger.Info("search index verification completed",
+	logger.Info("document index verification completed",
 		"missing_from_index", missingCount,
 		"orphaned_in_index", orphanedCount,
 	)
+
+	// Verify ZIM archives index.
+	if w.Deps.ZimRepo != nil {
+		zimOrphaned := 0
+		zimDBUUIDs, err := w.Deps.ZimRepo.ListAllUUIDs(ctx)
+		if err != nil {
+			logger.Error("listing zim archive UUIDs from database", "error", err)
+		} else {
+			zimDBSet := make(map[string]bool, len(zimDBUUIDs))
+			for _, uuid := range zimDBUUIDs {
+				zimDBSet[uuid] = true
+			}
+			zimIndexed, err := w.Deps.Indexer.ListIndexedZimUUIDs(ctx)
+			if err != nil {
+				logger.Error("listing indexed zim archive UUIDs", "error", err)
+			} else {
+				for uuid := range zimIndexed {
+					if !zimDBSet[uuid] {
+						zimOrphaned++
+						if err := w.Deps.Indexer.DeleteZimArchive(ctx, uuid); err != nil {
+							logger.Error("removing orphaned zim archive from index", "uuid", uuid, "error", err)
+						}
+					}
+				}
+				logger.Info("zim archive index verification completed", "orphaned_in_index", zimOrphaned)
+			}
+		}
+	}
+
+	// Verify Git templates index.
+	if w.Deps.GitRepo != nil {
+		gitOrphaned := 0
+		gitDBUUIDs, err := w.Deps.GitRepo.ListAllUUIDs(ctx)
+		if err != nil {
+			logger.Error("listing git template UUIDs from database", "error", err)
+		} else {
+			gitDBSet := make(map[string]bool, len(gitDBUUIDs))
+			for _, uuid := range gitDBUUIDs {
+				gitDBSet[uuid] = true
+			}
+			gitIndexed, err := w.Deps.Indexer.ListIndexedGitTemplateUUIDs(ctx)
+			if err != nil {
+				logger.Error("listing indexed git template UUIDs", "error", err)
+			} else {
+				for uuid := range gitIndexed {
+					if !gitDBSet[uuid] {
+						gitOrphaned++
+						if err := w.Deps.Indexer.DeleteGitTemplate(ctx, uuid); err != nil {
+							logger.Error("removing orphaned git template from index", "uuid", uuid, "error", err)
+						}
+					}
+				}
+				logger.Info("git template index verification completed", "orphaned_in_index", gitOrphaned)
+			}
+		}
+	}
+
 	return nil
 }
 

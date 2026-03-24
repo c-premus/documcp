@@ -123,6 +123,10 @@ func (m *mockZimArchiveRepo) DisableOrphaned(_ context.Context, _ int64, _ []str
 	return 0, nil
 }
 
+func (m *mockZimArchiveRepo) ListAllUUIDs(_ context.Context) ([]string, error) {
+	return nil, nil
+}
+
 type mockGitTemplateRepo struct {
 	templates []model.GitTemplate
 	listErr   error
@@ -138,6 +142,10 @@ func (m *mockGitTemplateRepo) UpdateSyncStatus(_ context.Context, _ int64, _, _ 
 
 func (m *mockGitTemplateRepo) ReplaceFiles(_ context.Context, _ int64, _ []repository.GitTemplateFileInsert) error {
 	return nil
+}
+
+func (m *mockGitTemplateRepo) ListAllUUIDs(_ context.Context) ([]string, error) {
+	return nil, nil
 }
 
 type mockSearchIndexer struct {
@@ -168,6 +176,18 @@ func (m *mockSearchIndexer) IndexZimArchive(_ context.Context, _ search.ZimArchi
 }
 
 func (m *mockSearchIndexer) IndexGitTemplate(_ context.Context, _ search.GitTemplateRecord) error {
+	return nil
+}
+
+func (m *mockSearchIndexer) ListIndexedZimUUIDs(_ context.Context) (map[string]bool, error) {
+	return nil, nil
+}
+
+func (m *mockSearchIndexer) ListIndexedGitTemplateUUIDs(_ context.Context) (map[string]bool, error) {
+	return nil, nil
+}
+
+func (m *mockSearchIndexer) DeleteGitTemplate(_ context.Context, _ string) error {
 	return nil
 }
 

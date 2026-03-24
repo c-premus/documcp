@@ -177,6 +177,16 @@ func (r *ZimArchiveRepository) ListAll(ctx context.Context, query string, limit 
 	return archives, nil
 }
 
+// ListAllUUIDs returns all ZIM archive UUIDs.
+func (r *ZimArchiveRepository) ListAllUUIDs(ctx context.Context) ([]string, error) {
+	var uuids []string
+	err := r.db.SelectContext(ctx, &uuids, `SELECT uuid FROM zim_archives`)
+	if err != nil {
+		return nil, fmt.Errorf("listing all zim archive uuids: %w", err)
+	}
+	return uuids, nil
+}
+
 // Count returns the total number of ZIM archives.
 func (r *ZimArchiveRepository) Count(ctx context.Context) (int, error) {
 	var count int

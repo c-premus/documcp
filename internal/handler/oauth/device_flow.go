@@ -64,9 +64,8 @@ func (h *Handler) DeviceVerification(w http.ResponseWriter, r *http.Request) {
 	// Check user is authenticated
 	session, err := h.store.Get(r, sessionName)
 	if err != nil {
+		// Stale/corrupt cookie — redirect to login.
 		h.logger.Warn("session decode error in device verification", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
 	}
 	userID, ok := session.Values["user_id"].(int64)
 	if !ok || userID == 0 {
@@ -86,9 +85,8 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 	// Check user is authenticated
 	session, sessErr := h.store.Get(r, sessionName)
 	if sessErr != nil {
+		// Stale/corrupt cookie — redirect to login.
 		h.logger.Warn("session decode error in device submit", "error", sessErr)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
 	}
 	userID, ok := session.Values["user_id"].(int64)
 	if !ok || userID == 0 {
@@ -173,8 +171,9 @@ func (h *Handler) DeviceApprove(w http.ResponseWriter, r *http.Request) {
 	// Check user is authenticated
 	session, err := h.store.Get(r, sessionName)
 	if err != nil {
+		// Stale/corrupt cookie — approval requires valid session state.
 		h.logger.Warn("session decode error in device approve", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 	userID, ok := session.Values["user_id"].(int64)
