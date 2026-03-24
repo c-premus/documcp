@@ -33,22 +33,57 @@ type ExternalServiceHealthChecker interface {
 	UpdateHealthStatus(ctx context.Context, id int64, status string, latencyMs int, lastError string) error
 }
 
+// OAuthTokenPurger purges expired OAuth tokens.
+type OAuthTokenPurger interface {
+	PurgeExpiredTokens(ctx context.Context, retentionDays int) (int64, error)
+}
+
+// DocumentRepoDeps provides document repository methods needed by cleanup workers.
+type DocumentRepoDeps interface {
+	ListActiveFilePaths(ctx context.Context) ([]repository.DocumentFilePath, error)
+	ListAllUUIDs(ctx context.Context) ([]string, error)
+	PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
+}
+
+// ZimArchiveRepoDeps provides ZIM archive repository methods needed by scheduler workers.
+type ZimArchiveRepoDeps interface {
+	FindDisabled(ctx context.Context) ([]model.ZimArchive, error)
+	UpsertFromCatalog(ctx context.Context, serviceID int64, upsert repository.ZimArchiveUpsert) error
+	DisableOrphaned(ctx context.Context, serviceID int64, activeNames []string) (int, error)
+}
+
+// GitTemplateRepoDeps provides Git template repository methods needed by scheduler workers.
+type GitTemplateRepoDeps interface {
+	List(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error)
+	UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error
+	ReplaceFiles(ctx context.Context, templateID int64, files []repository.GitTemplateFileInsert) error
+}
+
+// SearchIndexDeps provides search indexer methods needed by cleanup workers.
+type SearchIndexDeps interface {
+	ListIndexedDocumentUUIDs(ctx context.Context) (map[string]bool, error)
+	DeleteDocument(ctx context.Context, uuid string) error
+	DeleteZimArchive(ctx context.Context, uuid string) error
+	IndexZimArchive(ctx context.Context, record search.ZimArchiveRecord) error
+	IndexGitTemplate(ctx context.Context, record search.GitTemplateRecord) error
+}
+
 // SchedulerDeps holds all dependencies needed by scheduler workers.
 type SchedulerDeps struct {
-	Services         ExternalServiceFinder
-	HealthChecker    ExternalServiceHealthChecker
-	ZimRepo          *repository.ZimArchiveRepository
-	GitRepo          *repository.GitTemplateRepository
-	OAuthRepo        *repository.OAuthRepository
-	DocRepo          *repository.DocumentRepository
-	Indexer          *search.Indexer
-	GitTempDir       string
-	StoragePath      string
-	Logger           *slog.Logger
-	GitMaxFileSize   int64
-	GitMaxTotalSize  int64
+	Services          ExternalServiceFinder
+	HealthChecker     ExternalServiceHealthChecker
+	ZimRepo           ZimArchiveRepoDeps
+	GitRepo           GitTemplateRepoDeps
+	OAuthRepo         OAuthTokenPurger
+	DocRepo           DocumentRepoDeps
+	Indexer           SearchIndexDeps
+	GitTempDir        string
+	StoragePath       string
+	Logger            *slog.Logger
+	GitMaxFileSize    int64
+	GitMaxTotalSize   int64
 	SSRFDialerTimeout time.Duration
-	KiwixConfig      kiwix.ClientConfig
+	KiwixConfig       kiwix.ClientConfig
 }
 
 // --- Sync Workers ---.
