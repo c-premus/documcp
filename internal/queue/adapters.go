@@ -12,9 +12,9 @@ import (
 
 // --- Kiwix adapters ---.
 
-// kiwixRepoAdapter adapts *repository.ZimArchiveRepository to satisfy kiwix.ArchiveRepo.
+// kiwixRepoAdapter adapts ZimArchiveRepoDeps to satisfy kiwix.ArchiveRepo.
 type kiwixRepoAdapter struct {
-	repo *repository.ZimArchiveRepository
+	repo ZimArchiveRepoDeps
 }
 
 // UpsertFromCatalog creates or updates a ZIM archive record from a Kiwix catalog entry.
@@ -40,9 +40,9 @@ func (a *kiwixRepoAdapter) DisableOrphaned(ctx context.Context, serviceID int64,
 	return a.repo.DisableOrphaned(ctx, serviceID, activeNames)
 }
 
-// kiwixIndexerAdapter adapts *search.Indexer to satisfy kiwix.ArchiveIndexer.
+// kiwixIndexerAdapter adapts SearchIndexDeps to satisfy kiwix.ArchiveIndexer.
 type kiwixIndexerAdapter struct {
-	indexer *search.Indexer
+	indexer SearchIndexDeps
 }
 
 // IndexZimArchive indexes a ZIM archive in the search engine.
@@ -62,9 +62,9 @@ func (a *kiwixIndexerAdapter) IndexZimArchive(ctx context.Context, record kiwix.
 
 // --- Git template adapters ---.
 
-// gitRepoAdapter adapts *repository.GitTemplateRepository to satisfy git.TemplateRepo.
+// gitRepoAdapter adapts GitTemplateRepoDeps to satisfy git.TemplateRepo.
 type gitRepoAdapter struct {
-	repo *repository.GitTemplateRepository
+	repo GitTemplateRepoDeps
 }
 
 // UpdateSyncStatus updates the sync status of a Git template after a sync attempt.
@@ -90,9 +90,9 @@ func (a *gitRepoAdapter) ReplaceFiles(ctx context.Context, templateID int64, fil
 	return a.repo.ReplaceFiles(ctx, templateID, converted)
 }
 
-// gitIndexerAdapter adapts *search.Indexer to satisfy git.TemplateIndexer.
+// gitIndexerAdapter adapts SearchIndexDeps to satisfy git.TemplateIndexer.
 type gitIndexerAdapter struct {
-	indexer *search.Indexer
+	indexer SearchIndexDeps
 }
 
 // IndexGitTemplate indexes a Git template in the search engine.
