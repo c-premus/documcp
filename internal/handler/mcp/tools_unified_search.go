@@ -248,6 +248,31 @@ func (h *Handler) searchKiwixArchives(ctx context.Context, query string, perArch
 		return nil, nil
 	}
 
+	// Use Meilisearch to find archives relevant to the query (by title,
+	// description, tags). This narrows the fan-out to only topically relevant
+	// archives instead of blindly picking the largest ones.
+	var selectedNames map[string]bool
+	if h.searcher != nil {
+		resp, searchErr := h.searcher.Search(ctx, search.SearchParams{
+			Query:    query,
+			IndexUID: search.IndexZimArchives,
+			Limit:    int64(h.federatedMaxArchives),
+		})
+		if searchErr != nil {
+			h.logger.Warn("meilisearch archive selection failed, falling back to DB", "error", searchErr)
+		} else if resp != nil && len(resp.Hits) > 0 {
+			selectedNames = make(map[string]bool, len(resp.Hits))
+			for _, hit := range resp.Hits {
+				var m map[string]any
+				if decodeErr := hit.DecodeInto(&m); decodeErr == nil {
+					if name, ok := m["name"].(string); ok && name != "" {
+						selectedNames[name] = true
+					}
+				}
+			}
+		}
+	}
+
 	archives, err := h.zimArchiveRepo.ListSearchable(ctx)
 	if err != nil {
 		h.logger.Warn("failed to list searchable archives", "error", err)
@@ -255,6 +280,20 @@ func (h *Handler) searchKiwixArchives(ctx context.Context, query string, perArch
 	}
 	if len(archives) == 0 {
 		return nil, nil
+	}
+
+	// Filter to Meilisearch-selected archives when available.
+	if len(selectedNames) > 0 {
+		filtered := archives[:0]
+		for _, a := range archives {
+			if selectedNames[a.Name] {
+				filtered = append(filtered, a)
+			}
+		}
+		if len(filtered) > 0 {
+			archives = filtered
+		}
+		// If no DB archives match (e.g. stale index), fall through to full list.
 	}
 
 	// Fetch catalog to determine fulltext index availability per archive.

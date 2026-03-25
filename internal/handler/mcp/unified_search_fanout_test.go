@@ -614,3 +614,230 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 		}
 	})
 }
+
+// ===== Meilisearch-based archive selection tests =====
+
+func TestSearchKiwixArchives_MeilisearchSelection(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	// catalogForNames returns a catalog with fulltext support for all named archives.
+	catalogForNames := func(names ...string) func(context.Context) ([]kiwix.CatalogEntry, error) {
+		return func(_ context.Context) ([]kiwix.CatalogEntry, error) {
+			entries := make([]kiwix.CatalogEntry, len(names))
+			for i, n := range names {
+				entries[i] = kiwix.CatalogEntry{Name: n, HasFulltextIndex: true}
+			}
+			return entries, nil
+		}
+	}
+
+	t.Run("selects archives via meilisearch", func(t *testing.T) {
+		t.Parallel()
+
+		var searchedArchives sync.Map
+		mc := &mockKiwixClient{
+			fetchCatalogFn: catalogForNames("archive_a", "archive_b", "archive_c", "archive_d", "archive_e"),
+			searchFn: func(_ context.Context, archiveName, _, _ string, _ int) ([]kiwix.SearchResult, error) {
+				searchedArchives.Store(archiveName, true)
+				return []kiwix.SearchResult{{Title: "Article", Path: "A/Article"}}, nil
+			},
+		}
+
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{
+			kiwixC: mc,
+			searcher: &mockSearcher{
+				searchFn: func(_ context.Context, params search.SearchParams) (*meilisearch.SearchResponse, error) {
+					if params.IndexUID != search.IndexZimArchives {
+						t.Errorf("expected index %q, got %q", search.IndexZimArchives, params.IndexUID)
+					}
+					return &meilisearch.SearchResponse{
+						Hits: meilisearch.Hits{
+							makeHit(map[string]any{"name": "archive_a", "title": "Archive A"}),
+							makeHit(map[string]any{"name": "archive_b", "title": "Archive B"}),
+						},
+					}, nil
+				},
+			},
+			zimRepo: &mockZimArchiveRepo{
+				listSearchableFn: func(_ context.Context) ([]model.ZimArchive, error) {
+					return []model.ZimArchive{
+						{Name: "archive_a", ArticleCount: 100},
+						{Name: "archive_b", ArticleCount: 200},
+						{Name: "archive_c", ArticleCount: 300},
+						{Name: "archive_d", ArticleCount: 400},
+						{Name: "archive_e", ArticleCount: 500},
+					}, nil
+				},
+			},
+		})
+		h.federatedSearchTimeout = 3 * time.Second
+		h.federatedMaxArchives = 10
+		h.federatedPerArchiveLimit = 3
+
+		results, searched := h.searchKiwixArchives(ctx, "test query", 3)
+		if len(results) == 0 {
+			t.Fatal("expected results, got none")
+		}
+
+		// Only archive_a and archive_b should have been fanned out to.
+		if len(searched) != 2 {
+			t.Errorf("expected 2 archives searched, got %d: %v", len(searched), searched)
+		}
+		for _, name := range searched {
+			if name != "archive_a" && name != "archive_b" {
+				t.Errorf("unexpected archive searched: %s", name)
+			}
+		}
+
+		// Verify irrelevant archives were NOT called.
+		for _, name := range []string{"archive_c", "archive_d", "archive_e"} {
+			if _, ok := searchedArchives.Load(name); ok {
+				t.Errorf("archive %s should not have been searched", name)
+			}
+		}
+	})
+
+	t.Run("falls back when meilisearch returns no hits", func(t *testing.T) {
+		t.Parallel()
+
+		var callCount atomic.Int32
+		mc := &mockKiwixClient{
+			fetchCatalogFn: catalogForNames("archive_a", "archive_b", "archive_c"),
+			searchFn: func(_ context.Context, _, _, _ string, _ int) ([]kiwix.SearchResult, error) {
+				callCount.Add(1)
+				return []kiwix.SearchResult{{Title: "Article", Path: "A/Article"}}, nil
+			},
+		}
+
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{
+			kiwixC: mc,
+			searcher: &mockSearcher{
+				searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
+					return &meilisearch.SearchResponse{Hits: meilisearch.Hits{}}, nil
+				},
+			},
+			zimRepo: &mockZimArchiveRepo{
+				listSearchableFn: func(_ context.Context) ([]model.ZimArchive, error) {
+					return []model.ZimArchive{
+						{Name: "archive_a", ArticleCount: 100},
+						{Name: "archive_b", ArticleCount: 200},
+						{Name: "archive_c", ArticleCount: 300},
+					}, nil
+				},
+			},
+		})
+		h.federatedSearchTimeout = 3 * time.Second
+		h.federatedMaxArchives = 10
+		h.federatedPerArchiveLimit = 3
+
+		_, searched := h.searchKiwixArchives(ctx, "test query", 3)
+
+		// All 3 archives should be searched (fallback to DB list).
+		if len(searched) != 3 {
+			t.Errorf("expected 3 archives searched (fallback), got %d: %v", len(searched), searched)
+		}
+	})
+
+	t.Run("falls back when searcher is nil", func(t *testing.T) {
+		t.Parallel()
+
+		var callCount atomic.Int32
+		mc := &mockKiwixClient{
+			fetchCatalogFn: catalogForNames("archive_a", "archive_b", "archive_c"),
+			searchFn: func(_ context.Context, _, _, _ string, _ int) ([]kiwix.SearchResult, error) {
+				callCount.Add(1)
+				return []kiwix.SearchResult{{Title: "Article", Path: "A/Article"}}, nil
+			},
+		}
+
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{
+			kiwixC: mc,
+			// searcher intentionally nil
+			zimRepo: &mockZimArchiveRepo{
+				listSearchableFn: func(_ context.Context) ([]model.ZimArchive, error) {
+					return []model.ZimArchive{
+						{Name: "archive_a", ArticleCount: 100},
+						{Name: "archive_b", ArticleCount: 200},
+						{Name: "archive_c", ArticleCount: 300},
+					}, nil
+				},
+			},
+		})
+		h.federatedSearchTimeout = 3 * time.Second
+		h.federatedMaxArchives = 10
+		h.federatedPerArchiveLimit = 3
+
+		_, searched := h.searchKiwixArchives(ctx, "test query", 3)
+
+		// All 3 archives should be searched (no Meilisearch filtering).
+		if len(searched) != 3 {
+			t.Errorf("expected 3 archives searched, got %d: %v", len(searched), searched)
+		}
+	})
+
+	t.Run("falls back on meilisearch error", func(t *testing.T) {
+		t.Parallel()
+
+		var callCount atomic.Int32
+		mc := &mockKiwixClient{
+			fetchCatalogFn: catalogForNames("archive_a", "archive_b", "archive_c"),
+			searchFn: func(_ context.Context, _, _, _ string, _ int) ([]kiwix.SearchResult, error) {
+				callCount.Add(1)
+				return []kiwix.SearchResult{{Title: "Article", Path: "A/Article"}}, nil
+			},
+		}
+
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{
+			kiwixC: mc,
+			searcher: &mockSearcher{
+				searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
+					return nil, errors.New("meilisearch unavailable")
+				},
+			},
+			zimRepo: &mockZimArchiveRepo{
+				listSearchableFn: func(_ context.Context) ([]model.ZimArchive, error) {
+					return []model.ZimArchive{
+						{Name: "archive_a", ArticleCount: 100},
+						{Name: "archive_b", ArticleCount: 200},
+						{Name: "archive_c", ArticleCount: 300},
+					}, nil
+				},
+			},
+		})
+		h.federatedSearchTimeout = 3 * time.Second
+		h.federatedMaxArchives = 10
+		h.federatedPerArchiveLimit = 3
+
+		_, searched := h.searchKiwixArchives(ctx, "test query", 3)
+
+		// All 3 archives should be searched (graceful fallback).
+		if len(searched) != 3 {
+			t.Errorf("expected 3 archives searched (fallback), got %d: %v", len(searched), searched)
+		}
+	})
+}
