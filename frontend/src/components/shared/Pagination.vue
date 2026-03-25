@@ -51,7 +51,9 @@ function handlePerPageChange(event: Event): void {
 </script>
 
 <template>
-  <div class="flex items-center justify-between border-t border-border-default bg-bg-surface px-4 py-3 sm:px-6">
+  <div
+    class="flex items-center justify-between border-t border-border-default bg-bg-surface px-4 py-3 sm:px-6"
+  >
     <div class="flex flex-1 items-center justify-between">
       <div class="flex items-center gap-4">
         <p class="text-sm text-text-secondary">

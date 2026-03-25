@@ -14,12 +14,16 @@ const STATUS_STYLES: Readonly<Record<string, BadgeStyle>> = {
   extracted: { classes: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' },
   indexed: { classes: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' },
   failed: { classes: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' },
-  index_failed: { classes: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' },
+  index_failed: {
+    classes: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
+  },
   active: { classes: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' },
   revoked: { classes: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' },
 }
 
-const DEFAULT_STYLE: BadgeStyle = { classes: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300' }
+const DEFAULT_STYLE: BadgeStyle = {
+  classes: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
+}
 
 const badgeClasses = computed(() => {
   const style = STATUS_STYLES[props.status] ?? DEFAULT_STYLE

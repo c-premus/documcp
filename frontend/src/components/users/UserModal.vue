@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import {
-  Dialog,
-  DialogPanel,
-  DialogTitle,
-  Switch,
-} from '@headlessui/vue'
+import { Dialog, DialogPanel, DialogTitle, Switch } from '@headlessui/vue'
 import { toast } from 'vue-sonner'
 
 interface User {
@@ -42,24 +37,27 @@ const submitting = ref(false)
 const error = ref<string | null>(null)
 
 const isEditMode = computed(() => props.user !== null && props.user !== undefined)
-const dialogTitle = computed(() => isEditMode.value ? 'Edit User' : 'Create User')
-const submitLabel = computed(() => isEditMode.value ? 'Save' : 'Create')
+const dialogTitle = computed(() => (isEditMode.value ? 'Edit User' : 'Create User'))
+const submitLabel = computed(() => (isEditMode.value ? 'Save' : 'Create'))
 
-watch(() => props.open, (isOpen) => {
-  if (isOpen) {
-    if (props.user !== null && props.user !== undefined) {
-      name.value = props.user.name
-      email.value = props.user.email
-      isAdmin.value = props.user.is_admin
-    } else {
-      name.value = ''
-      email.value = ''
-      isAdmin.value = false
+watch(
+  () => props.open,
+  (isOpen) => {
+    if (isOpen) {
+      if (props.user !== null && props.user !== undefined) {
+        name.value = props.user.name
+        email.value = props.user.email
+        isAdmin.value = props.user.is_admin
+      } else {
+        name.value = ''
+        email.value = ''
+        isAdmin.value = false
+      }
+      submitting.value = false
+      error.value = null
     }
-    submitting.value = false
-    error.value = null
-  }
-})
+  },
+)
 
 function validate(): boolean {
   if (name.value.trim() === '') {
@@ -144,7 +142,9 @@ async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
           <form @submit.prevent="handleSubmit">
             <div class="space-y-4">
               <div>
-                <label for="user-name" class="block text-sm font-medium text-text-secondary">Name</label>
+                <label for="user-name" class="block text-sm font-medium text-text-secondary"
+                  >Name</label
+                >
                 <input
                   id="user-name"
                   v-model="name"
@@ -155,7 +155,9 @@ async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
               </div>
 
               <div>
-                <label for="user-email" class="block text-sm font-medium text-text-secondary">Email</label>
+                <label for="user-email" class="block text-sm font-medium text-text-secondary"
+                  >Email</label
+                >
                 <input
                   id="user-email"
                   v-model="email"
@@ -180,7 +182,9 @@ async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
               </div>
             </div>
 
-            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">
+              {{ error }}
+            </p>
 
             <div class="mt-5 flex justify-end gap-3">
               <button

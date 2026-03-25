@@ -85,12 +85,20 @@ watch(
     </RouterLink>
 
     <!-- Loading state -->
-    <div v-if="store.loading && !store.currentDocument" class="flex items-center justify-center py-20">
-      <div class="h-8 w-8 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400" />
+    <div
+      v-if="store.loading && !store.currentDocument"
+      class="flex items-center justify-center py-20"
+    >
+      <div
+        class="h-8 w-8 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400"
+      />
     </div>
 
     <!-- Error state -->
-    <div v-else-if="store.error && !store.currentDocument" class="rounded-lg bg-red-50 dark:bg-red-900/20 p-6 text-center">
+    <div
+      v-else-if="store.error && !store.currentDocument"
+      class="rounded-lg bg-red-50 dark:bg-red-900/20 p-6 text-center"
+    >
       <p class="text-sm text-red-800 dark:text-red-300">{{ store.error }}</p>
       <button
         type="button"
@@ -118,14 +126,18 @@ watch(
             <!-- Description -->
             <div v-if="store.currentDocument.description">
               <dt class="text-sm font-medium text-text-muted">Description</dt>
-              <dd class="mt-1 text-sm text-text-primary">{{ store.currentDocument.description }}</dd>
+              <dd class="mt-1 text-sm text-text-primary">
+                {{ store.currentDocument.description }}
+              </dd>
             </div>
 
             <!-- File Type -->
             <div>
               <dt class="text-sm font-medium text-text-muted">File Type</dt>
               <dd class="mt-1">
-                <span class="inline-flex items-center rounded bg-bg-active px-2 py-0.5 text-xs font-medium uppercase text-text-primary">
+                <span
+                  class="inline-flex items-center rounded bg-bg-active px-2 py-0.5 text-xs font-medium uppercase text-text-primary"
+                >
                   {{ store.currentDocument.file_type }}
                 </span>
               </dd>
@@ -142,19 +154,26 @@ watch(
             <!-- File Size -->
             <div>
               <dt class="text-sm font-medium text-text-muted">File Size</dt>
-              <dd class="mt-1 text-sm text-text-primary">{{ formatFileSize(store.currentDocument.file_size) }}</dd>
+              <dd class="mt-1 text-sm text-text-primary">
+                {{ formatFileSize(store.currentDocument.file_size) }}
+              </dd>
             </div>
 
             <!-- Word Count -->
             <div>
               <dt class="text-sm font-medium text-text-muted">Word Count</dt>
-              <dd class="mt-1 text-sm text-text-primary">{{ store.currentDocument.word_count.toLocaleString() }}</dd>
+              <dd class="mt-1 text-sm text-text-primary">
+                {{ store.currentDocument.word_count.toLocaleString() }}
+              </dd>
             </div>
 
             <!-- Content Hash -->
             <div>
               <dt class="text-sm font-medium text-text-muted">Content Hash</dt>
-              <dd class="mt-1 font-mono text-sm text-text-primary" :title="store.currentDocument.content_hash">
+              <dd
+                class="mt-1 font-mono text-sm text-text-primary"
+                :title="store.currentDocument.content_hash"
+              >
                 {{ truncateHash(store.currentDocument.content_hash) }}
               </dd>
             </div>
@@ -176,13 +195,17 @@ watch(
             <!-- Created at -->
             <div>
               <dt class="text-sm font-medium text-text-muted">Created</dt>
-              <dd class="mt-1 text-sm text-text-primary">{{ formatDate(store.currentDocument.created_at) }}</dd>
+              <dd class="mt-1 text-sm text-text-primary">
+                {{ formatDate(store.currentDocument.created_at) }}
+              </dd>
             </div>
 
             <!-- Updated at -->
             <div>
               <dt class="text-sm font-medium text-text-muted">Updated</dt>
-              <dd class="mt-1 text-sm text-text-primary">{{ formatDate(store.currentDocument.updated_at) }}</dd>
+              <dd class="mt-1 text-sm text-text-primary">
+                {{ formatDate(store.currentDocument.updated_at) }}
+              </dd>
             </div>
           </dl>
 
@@ -216,9 +239,7 @@ watch(
               :content="store.currentDocument.content"
               :file-type="store.currentDocument.file_type"
             />
-            <p v-else class="text-sm text-text-muted">
-              Content not available for preview.
-            </p>
+            <p v-else class="text-sm text-text-muted">Content not available for preview.</p>
           </div>
         </div>
       </div>

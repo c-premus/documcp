@@ -58,7 +58,7 @@ const router = createRouter({
       component: () => import('@/views/ZimArchiveBrowseView.vue'),
       props: true,
     },
-{
+    {
       path: '/git-templates',
       name: 'git-templates',
       component: () => import('@/views/GitTemplateListView.vue'),

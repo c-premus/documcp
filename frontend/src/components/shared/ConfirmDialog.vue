@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import {
-  Dialog,
-  DialogPanel,
-  DialogTitle,
-} from '@headlessui/vue'
+import { Dialog, DialogPanel, DialogTitle } from '@headlessui/vue'
 import { ExclamationTriangleIcon } from '@heroicons/vue/24/outline'
 
 const props = withDefaults(

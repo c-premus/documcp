@@ -6,8 +6,7 @@ client.setConfig({
 
 client.interceptors.response.use((response: Response) => {
   if (response.status === 401) {
-    window.location.href =
-      '/auth/login?redirect=' + encodeURIComponent(window.location.pathname)
+    window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname)
   }
   if (response.status === 403) {
     window.dispatchEvent(

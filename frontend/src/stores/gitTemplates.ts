@@ -96,7 +96,6 @@ interface CreateTemplateParams {
   readonly is_public?: boolean
 }
 
-
 export function buildTree(files: GitTemplateFile[]): TreeItem[] {
   const root: TreeItem[] = []
 
@@ -253,10 +252,7 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
 
   async function readFile(uuid: string, path: string): Promise<FileContentResponse['data']> {
     try {
-      const encodedPath = path
-        .split('/')
-        .map(encodeURIComponent)
-        .join('/')
+      const encodedPath = path.split('/').map(encodeURIComponent).join('/')
       const response = await apiFetch<FileContentResponse>(
         `/api/git-templates/${uuid}/files/${encodedPath}`,
       )

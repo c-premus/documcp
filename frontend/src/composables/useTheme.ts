@@ -7,9 +7,7 @@ const STORAGE_KEY = 'theme'
 
 const mode = ref<ThemeMode>(readStoredMode())
 const systemDark = ref(
-  typeof window !== 'undefined'
-    ? window.matchMedia('(prefers-color-scheme: dark)').matches
-    : false,
+  typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)').matches : false,
 )
 
 const resolved = computed<ResolvedTheme>(() => {
@@ -63,9 +61,13 @@ export function useTheme() {
     })
   }
 
-  watch(resolved, (theme) => {
-    applyTheme(theme)
-  }, { immediate: true })
+  watch(
+    resolved,
+    (theme) => {
+      applyTheme(theme)
+    },
+    { immediate: true },
+  )
 
   return {
     mode,

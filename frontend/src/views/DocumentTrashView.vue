@@ -95,9 +95,13 @@ function fetchData(): void {
   })
 }
 
-watch([page, perPage], () => {
-  fetchData()
-}, { immediate: true })
+watch(
+  [page, perPage],
+  () => {
+    fetchData()
+  },
+  { immediate: true },
+)
 
 async function handleRestore(doc: Document): Promise<void> {
   try {
@@ -185,11 +189,7 @@ function handleBulkPurgeCancel(): void {
 
     <!-- Data Table -->
     <template v-else>
-      <DataTable
-        :data="store.documents"
-        :columns="columns"
-        :loading="store.loading"
-      />
+      <DataTable :data="store.documents" :columns="columns" :loading="store.loading" />
 
       <Pagination
         :page="page"

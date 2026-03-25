@@ -66,7 +66,6 @@ interface UpdateServicePayload {
   readonly is_enabled?: boolean
 }
 
-
 export const useExternalServicesStore = defineStore('externalServices', () => {
   const services = ref<ExternalService[]>([])
   const total = ref(0)
@@ -113,7 +112,10 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
     }
   }
 
-  async function updateService(uuid: string, payload: UpdateServicePayload): Promise<ExternalService> {
+  async function updateService(
+    uuid: string,
+    payload: UpdateServicePayload,
+  ): Promise<ExternalService> {
     loading.value = true
     error.value = null
     try {
@@ -166,13 +168,16 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
 
   async function checkHealth(uuid: string): Promise<MessageResponse> {
     try {
-      const response = await apiFetch<MessageResponse>(`/api/external-services/${uuid}/health-check`, {
-        method: 'POST',
-      })
+      const response = await apiFetch<MessageResponse>(
+        `/api/external-services/${uuid}/health-check`,
+        {
+          method: 'POST',
+        },
+      )
       return response
     } catch (e) {
       if (e instanceof Error && e.message.includes('Not Implemented')) {
-        throw new Error('Health check is not yet available')
+        throw new Error('Health check is not yet available', { cause: e })
       }
       throw e
     }

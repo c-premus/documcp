@@ -17,13 +17,20 @@ defineEmits<{
 const sorting = ref<SortingState>([])
 
 const table = useVueTable({
-  get data() { return props.data },
-  get columns() { return props.columns },
-  state: { get sorting() { return sorting.value } },
+  get data() {
+    return props.data
+  },
+  get columns() {
+    return props.columns
+  },
+  state: {
+    get sorting() {
+      return sorting.value
+    },
+  },
   onSortingChange: (updaterOrValue) => {
-    sorting.value = typeof updaterOrValue === 'function'
-      ? updaterOrValue(sorting.value)
-      : updaterOrValue
+    sorting.value =
+      typeof updaterOrValue === 'function' ? updaterOrValue(sorting.value) : updaterOrValue
   },
   getCoreRowModel: getCoreRowModel(),
   getSortedRowModel: getSortedRowModel(),
@@ -31,9 +38,14 @@ const table = useVueTable({
 </script>
 
 <template>
-  <div class="overflow-hidden shadow ring-1 ring-black/5 dark:ring-white/10 rounded-lg" aria-live="polite">
+  <div
+    class="overflow-hidden shadow ring-1 ring-black/5 dark:ring-white/10 rounded-lg"
+    aria-live="polite"
+  >
     <div v-if="loading" class="flex items-center justify-center py-12">
-      <div class="h-8 w-8 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400" />
+      <div
+        class="h-8 w-8 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400"
+      />
     </div>
     <table v-else class="min-w-full divide-y divide-border-default">
       <thead class="bg-bg-surface-alt">
@@ -41,13 +53,24 @@ const table = useVueTable({
           <th
             v-for="header in table.getHeaderGroups()[0]?.headers"
             :key="header.id"
-            :class="['px-3 py-3.5 text-left text-sm font-semibold text-text-primary cursor-pointer select-none', header.column.columnDef.meta?.className]"
+            :class="[
+              'px-3 py-3.5 text-left text-sm font-semibold text-text-primary cursor-pointer select-none',
+              header.column.columnDef.meta?.className,
+            ]"
             @click="header.column.getToggleSortingHandler()?.($event)"
           >
             <div class="flex items-center gap-1">
               <FlexRender :render="header.column.columnDef.header" :props="header.getContext()" />
-              <span v-if="header.column.getIsSorted() === 'asc'" class="text-indigo-600 dark:text-indigo-400">↑</span>
-              <span v-else-if="header.column.getIsSorted() === 'desc'" class="text-indigo-600 dark:text-indigo-400">↓</span>
+              <span
+                v-if="header.column.getIsSorted() === 'asc'"
+                class="text-indigo-600 dark:text-indigo-400"
+                >↑</span
+              >
+              <span
+                v-else-if="header.column.getIsSorted() === 'desc'"
+                class="text-indigo-600 dark:text-indigo-400"
+                >↓</span
+              >
             </div>
           </th>
         </tr>
@@ -63,7 +86,10 @@ const table = useVueTable({
           <td
             v-for="cell in row.getVisibleCells()"
             :key="cell.id"
-            :class="['whitespace-nowrap px-3 py-4 text-sm text-text-muted', cell.column.columnDef.meta?.className]"
+            :class="[
+              'whitespace-nowrap px-3 py-4 text-sm text-text-muted',
+              cell.column.columnDef.meta?.className,
+            ]"
           >
             <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
           </td>

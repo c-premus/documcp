@@ -142,10 +142,14 @@ function fetchData(): void {
   })
 }
 
-watch([search, fileTypeFilter, statusFilter], () => {
-  page.value = 1
-  fetchData()
-}, { immediate: true })
+watch(
+  [search, fileTypeFilter, statusFilter],
+  () => {
+    page.value = 1
+    fetchData()
+  },
+  { immediate: true },
+)
 
 watch([page, perPage], () => {
   fetchData()
@@ -172,6 +176,11 @@ async function handleDeleteConfirm(): Promise<void> {
 
 function handleDeleteCancel(): void {
   deleteTarget.value = null
+}
+
+function handleUploaded(): void {
+  showUpload.value = false
+  fetchData()
 }
 </script>
 
@@ -270,10 +279,6 @@ function handleDeleteCancel(): void {
     />
 
     <!-- Upload Modal -->
-    <UploadModal
-      :open="showUpload"
-      @close="showUpload = false"
-      @uploaded="showUpload = false; fetchData()"
-    />
+    <UploadModal :open="showUpload" @close="showUpload = false" @uploaded="handleUploaded" />
   </div>
 </template>

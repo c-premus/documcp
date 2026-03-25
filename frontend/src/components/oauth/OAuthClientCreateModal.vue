@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import {
-  Dialog,
-  DialogPanel,
-  DialogTitle,
-} from '@headlessui/vue'
+import { Dialog, DialogPanel, DialogTitle } from '@headlessui/vue'
 import { PlusIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import { toast } from 'vue-sonner'
 
@@ -104,9 +100,7 @@ async function handleSubmit(): Promise<void> {
   submitting.value = true
   error.value = null
 
-  const filteredUris = redirectUris.value
-    .map((uri) => uri.trim())
-    .filter((uri) => uri !== '')
+  const filteredUris = redirectUris.value.map((uri) => uri.trim()).filter((uri) => uri !== '')
 
   const body = JSON.stringify({
     client_name: clientName.value.trim(),
@@ -274,7 +268,9 @@ function handleClose(): void {
               </div>
             </div>
 
-            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">
+              {{ error }}
+            </p>
 
             <div class="mt-5 flex justify-end gap-3">
               <button

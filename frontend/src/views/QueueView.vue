@@ -173,10 +173,7 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
 
     <TabGroup>
       <TabList class="flex space-x-1 rounded-xl bg-bg-active p-1 mb-6">
-        <Tab
-          v-slot="{ selected }"
-          as="template"
-        >
+        <Tab v-slot="{ selected }" as="template">
           <button
             :class="[
               'w-full rounded-lg py-2.5 text-sm font-medium leading-5',
@@ -188,10 +185,7 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
             Stats
           </button>
         </Tab>
-        <Tab
-          v-slot="{ selected }"
-          as="template"
-        >
+        <Tab v-slot="{ selected }" as="template">
           <button
             :class="[
               'w-full rounded-lg py-2.5 text-sm font-medium leading-5',
@@ -211,27 +205,39 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
           <div v-if="store.stats" class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
             <div class="rounded-lg bg-bg-surface p-4 shadow ring-1 ring-black/5 dark:ring-white/10">
               <dt class="text-sm font-medium text-text-muted">Available</dt>
-              <dd class="mt-1 text-2xl font-semibold text-text-primary">{{ store.stats.available }}</dd>
+              <dd class="mt-1 text-2xl font-semibold text-text-primary">
+                {{ store.stats.available }}
+              </dd>
             </div>
             <div class="rounded-lg bg-bg-surface p-4 shadow ring-1 ring-black/5 dark:ring-white/10">
               <dt class="text-sm font-medium text-text-muted">Running</dt>
-              <dd class="mt-1 text-2xl font-semibold text-indigo-600 dark:text-indigo-400">{{ store.stats.running }}</dd>
+              <dd class="mt-1 text-2xl font-semibold text-indigo-600 dark:text-indigo-400">
+                {{ store.stats.running }}
+              </dd>
             </div>
             <div class="rounded-lg bg-bg-surface p-4 shadow ring-1 ring-black/5 dark:ring-white/10">
               <dt class="text-sm font-medium text-text-muted">Retryable</dt>
-              <dd class="mt-1 text-2xl font-semibold text-yellow-600 dark:text-yellow-400">{{ store.stats.retryable }}</dd>
+              <dd class="mt-1 text-2xl font-semibold text-yellow-600 dark:text-yellow-400">
+                {{ store.stats.retryable }}
+              </dd>
             </div>
             <div class="rounded-lg bg-bg-surface p-4 shadow ring-1 ring-black/5 dark:ring-white/10">
               <dt class="text-sm font-medium text-text-muted">Discarded</dt>
-              <dd class="mt-1 text-2xl font-semibold text-red-600 dark:text-red-400">{{ store.stats.discarded }}</dd>
+              <dd class="mt-1 text-2xl font-semibold text-red-600 dark:text-red-400">
+                {{ store.stats.discarded }}
+              </dd>
             </div>
             <div class="rounded-lg bg-bg-surface p-4 shadow ring-1 ring-black/5 dark:ring-white/10">
               <dt class="text-sm font-medium text-text-muted">Cancelled</dt>
-              <dd class="mt-1 text-2xl font-semibold text-text-muted">{{ store.stats.cancelled }}</dd>
+              <dd class="mt-1 text-2xl font-semibold text-text-muted">
+                {{ store.stats.cancelled }}
+              </dd>
             </div>
           </div>
           <div v-else class="flex items-center justify-center py-12">
-            <div class="h-8 w-8 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400" />
+            <div
+              class="h-8 w-8 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400"
+            />
           </div>
         </TabPanel>
 
@@ -243,12 +249,7 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
             description="All jobs are running smoothly."
           />
 
-          <DataTable
-            v-else
-            :data="store.failedJobs"
-            :columns="columns"
-            :loading="store.loading"
-          />
+          <DataTable v-else :data="store.failedJobs" :columns="columns" :loading="store.loading" />
         </TabPanel>
       </TabPanels>
     </TabGroup>

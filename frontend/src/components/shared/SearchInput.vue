@@ -28,9 +28,12 @@ function clearDebounce(): void {
   }
 }
 
-watch(() => props.modelValue, (newValue) => {
-  internalValue.value = newValue
-})
+watch(
+  () => props.modelValue,
+  (newValue) => {
+    internalValue.value = newValue
+  },
+)
 
 function handleInput(event: Event): void {
   const target = event.target as HTMLInputElement

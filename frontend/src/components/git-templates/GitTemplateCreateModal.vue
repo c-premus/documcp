@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import {
-  Dialog,
-  DialogPanel,
-  DialogTitle,
-} from '@headlessui/vue'
+import { Dialog, DialogPanel, DialogTitle } from '@headlessui/vue'
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/vue/24/outline'
 import { toast } from 'vue-sonner'
 import { useGitTemplatesStore } from '../../stores/gitTemplates'
@@ -39,19 +35,22 @@ const CATEGORIES = [
   { value: 'project', label: 'Project' },
 ] as const
 
-watch(() => props.open, (isOpen) => {
-  if (isOpen) {
-    name.value = ''
-    repositoryUrl.value = ''
-    branch.value = 'main'
-    category.value = 'project'
-    description.value = ''
-    submitting.value = false
-    error.value = null
-    urlValid.value = null
-    urlError.value = null
-  }
-})
+watch(
+  () => props.open,
+  (isOpen) => {
+    if (isOpen) {
+      name.value = ''
+      repositoryUrl.value = ''
+      branch.value = 'main'
+      category.value = 'project'
+      description.value = ''
+      submitting.value = false
+      error.value = null
+      urlValid.value = null
+      urlError.value = null
+    }
+  },
+)
 
 watch(repositoryUrl, () => {
   urlValid.value = null
@@ -147,7 +146,9 @@ async function handleSubmit(): Promise<void> {
           <form @submit.prevent="handleSubmit">
             <div class="space-y-4">
               <div>
-                <label for="template-name" class="block text-sm font-medium text-text-secondary">Name</label>
+                <label for="template-name" class="block text-sm font-medium text-text-secondary"
+                  >Name</label
+                >
                 <input
                   id="template-name"
                   v-model="name"
@@ -158,7 +159,9 @@ async function handleSubmit(): Promise<void> {
               </div>
 
               <div>
-                <label for="template-url" class="block text-sm font-medium text-text-secondary">Repository URL</label>
+                <label for="template-url" class="block text-sm font-medium text-text-secondary"
+                  >Repository URL</label
+                >
                 <div class="relative mt-1">
                   <input
                     id="template-url"
@@ -170,16 +173,23 @@ async function handleSubmit(): Promise<void> {
                     @blur="handleUrlBlur"
                   />
                   <div class="absolute inset-y-0 right-0 flex items-center pr-3">
-                    <div v-if="urlValidating" class="h-4 w-4 animate-spin rounded-full border-2 border-border-input border-t-indigo-600 dark:border-t-indigo-400" />
+                    <div
+                      v-if="urlValidating"
+                      class="h-4 w-4 animate-spin rounded-full border-2 border-border-input border-t-indigo-600 dark:border-t-indigo-400"
+                    />
                     <CheckCircleIcon v-else-if="urlValid === true" class="h-5 w-5 text-green-500" />
                     <XCircleIcon v-else-if="urlValid === false" class="h-5 w-5 text-red-500" />
                   </div>
                 </div>
-                <p v-if="urlError" class="mt-1 text-sm text-red-600 dark:text-red-400">{{ urlError }}</p>
+                <p v-if="urlError" class="mt-1 text-sm text-red-600 dark:text-red-400">
+                  {{ urlError }}
+                </p>
               </div>
 
               <div>
-                <label for="template-branch" class="block text-sm font-medium text-text-secondary">Branch</label>
+                <label for="template-branch" class="block text-sm font-medium text-text-secondary"
+                  >Branch</label
+                >
                 <input
                   id="template-branch"
                   v-model="branch"
@@ -190,7 +200,9 @@ async function handleSubmit(): Promise<void> {
               </div>
 
               <div>
-                <label for="template-category" class="block text-sm font-medium text-text-secondary">Category</label>
+                <label for="template-category" class="block text-sm font-medium text-text-secondary"
+                  >Category</label
+                >
                 <select
                   id="template-category"
                   v-model="category"
@@ -203,7 +215,11 @@ async function handleSubmit(): Promise<void> {
               </div>
 
               <div>
-                <label for="template-description" class="block text-sm font-medium text-text-secondary">Description</label>
+                <label
+                  for="template-description"
+                  class="block text-sm font-medium text-text-secondary"
+                  >Description</label
+                >
                 <textarea
                   id="template-description"
                   v-model="description"
@@ -213,7 +229,9 @@ async function handleSubmit(): Promise<void> {
               </div>
             </div>
 
-            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">
+              {{ error }}
+            </p>
 
             <div class="mt-5 flex justify-end gap-3">
               <button

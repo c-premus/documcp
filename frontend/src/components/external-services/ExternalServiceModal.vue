@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import {
-  Dialog,
-  DialogPanel,
-  DialogTitle,
-} from '@headlessui/vue'
+import { Dialog, DialogPanel, DialogTitle } from '@headlessui/vue'
 import { toast } from 'vue-sonner'
 import type { ExternalService } from '../../stores/externalServices'
 import { useExternalServicesStore } from '../../stores/externalServices'
@@ -30,28 +26,31 @@ const submitting = ref(false)
 const error = ref<string | null>(null)
 
 const isEditMode = computed(() => props.service !== null && props.service !== undefined)
-const dialogTitle = computed(() => isEditMode.value ? 'Edit Service' : 'Add Service')
-const submitLabel = computed(() => isEditMode.value ? 'Save' : 'Create')
+const dialogTitle = computed(() => (isEditMode.value ? 'Edit Service' : 'Add Service'))
+const submitLabel = computed(() => (isEditMode.value ? 'Save' : 'Create'))
 
-watch(() => props.open, (isOpen) => {
-  if (isOpen) {
-    if (props.service !== null && props.service !== undefined) {
-      name.value = props.service.name
-      serviceType.value = props.service.type
-      baseUrl.value = props.service.base_url
-      apiKey.value = ''
-      priority.value = props.service.priority
-    } else {
-      name.value = ''
-      serviceType.value = 'kiwix'
-      baseUrl.value = ''
-      apiKey.value = ''
-      priority.value = 0
+watch(
+  () => props.open,
+  (isOpen) => {
+    if (isOpen) {
+      if (props.service !== null && props.service !== undefined) {
+        name.value = props.service.name
+        serviceType.value = props.service.type
+        baseUrl.value = props.service.base_url
+        apiKey.value = ''
+        priority.value = props.service.priority
+      } else {
+        name.value = ''
+        serviceType.value = 'kiwix'
+        baseUrl.value = ''
+        apiKey.value = ''
+        priority.value = 0
+      }
+      submitting.value = false
+      error.value = null
     }
-    submitting.value = false
-    error.value = null
-  }
-})
+  },
+)
 
 function validate(): boolean {
   if (name.value.trim() === '') {
@@ -103,7 +102,15 @@ async function handleSubmit(): Promise<void> {
       if (apiKey.value.trim() !== '') {
         payload.api_key = apiKey.value.trim()
       }
-      await store.createService(payload as { name: string; type: string; base_url: string; api_key?: string; priority?: number })
+      await store.createService(
+        payload as {
+          name: string
+          type: string
+          base_url: string
+          api_key?: string
+          priority?: number
+        },
+      )
       toast.success(`Service "${name.value.trim()}" created`)
     }
     emit('saved')
@@ -131,7 +138,9 @@ async function handleSubmit(): Promise<void> {
           <form @submit.prevent="handleSubmit">
             <div class="space-y-4">
               <div>
-                <label for="service-name" class="block text-sm font-medium text-text-secondary">Name</label>
+                <label for="service-name" class="block text-sm font-medium text-text-secondary"
+                  >Name</label
+                >
                 <input
                   id="service-name"
                   v-model="name"
@@ -142,7 +151,9 @@ async function handleSubmit(): Promise<void> {
               </div>
 
               <div>
-                <label for="service-type" class="block text-sm font-medium text-text-secondary">Type</label>
+                <label for="service-type" class="block text-sm font-medium text-text-secondary"
+                  >Type</label
+                >
                 <select
                   id="service-type"
                   v-model="serviceType"
@@ -153,7 +164,9 @@ async function handleSubmit(): Promise<void> {
               </div>
 
               <div>
-                <label for="service-base-url" class="block text-sm font-medium text-text-secondary">Base URL</label>
+                <label for="service-base-url" class="block text-sm font-medium text-text-secondary"
+                  >Base URL</label
+                >
                 <input
                   id="service-base-url"
                   v-model="baseUrl"
@@ -167,7 +180,9 @@ async function handleSubmit(): Promise<void> {
               <div>
                 <label for="service-api-key" class="block text-sm font-medium text-text-secondary">
                   API Key
-                  <span v-if="isEditMode" class="text-text-disabled font-normal">(leave blank to keep current)</span>
+                  <span v-if="isEditMode" class="text-text-disabled font-normal"
+                    >(leave blank to keep current)</span
+                  >
                 </label>
                 <input
                   id="service-api-key"
@@ -179,7 +194,9 @@ async function handleSubmit(): Promise<void> {
               </div>
 
               <div>
-                <label for="service-priority" class="block text-sm font-medium text-text-secondary">Priority</label>
+                <label for="service-priority" class="block text-sm font-medium text-text-secondary"
+                  >Priority</label
+                >
                 <input
                   id="service-priority"
                   v-model.number="priority"
@@ -190,7 +207,9 @@ async function handleSubmit(): Promise<void> {
               </div>
             </div>
 
-            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">
+              {{ error }}
+            </p>
 
             <div class="mt-5 flex justify-end gap-3">
               <button

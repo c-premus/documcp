@@ -46,11 +46,19 @@ function handleChildSelect(path: string): void {
       type="button"
       class="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-sm hover:bg-bg-hover text-left"
       :class="[
-        item.type === 'file' && selectedPath === item.path ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' : 'text-text-secondary',
+        item.type === 'file' && selectedPath === item.path
+          ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
+          : 'text-text-secondary',
       ]"
       :style="{ paddingLeft: `${depth * 16 + 4}px` }"
       :aria-expanded="item.type === 'directory' ? expanded : undefined"
-      :aria-label="item.type === 'directory' ? (expanded ? `Collapse ${item.name}` : `Expand ${item.name}`) : undefined"
+      :aria-label="
+        item.type === 'directory'
+          ? expanded
+            ? `Collapse ${item.name}`
+            : `Expand ${item.name}`
+          : undefined
+      "
       @click="handleClick"
     >
       <template v-if="item.type === 'directory'">

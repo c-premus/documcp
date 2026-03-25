@@ -76,10 +76,14 @@ async function fetchClients(): Promise<void> {
   }
 }
 
-watch([searchQuery], () => {
-  page.value = 1
-  fetchClients()
-}, { immediate: true })
+watch(
+  [searchQuery],
+  () => {
+    page.value = 1
+    fetchClients()
+  },
+  { immediate: true },
+)
 
 watch([page, perPage], () => {
   fetchClients()
@@ -142,7 +146,11 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     meta: { className: 'hidden lg:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
-      return h('span', { class: 'block max-w-[12rem] truncate font-mono text-xs', title: value }, value)
+      return h(
+        'span',
+        { class: 'block max-w-[12rem] truncate font-mono text-xs', title: value },
+        value,
+      )
     },
   },
   {
@@ -219,11 +227,7 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     cell: ({ row }) => {
       const client = row.original
       if (!client.is_active) {
-        return h(
-          'span',
-          { class: 'text-xs text-text-disabled' },
-          'Revoked',
-        )
+        return h('span', { class: 'text-xs text-text-disabled' }, 'Revoked')
       }
       return h(
         'button',
@@ -284,11 +288,7 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
 
     <!-- Data Table -->
     <template v-else>
-      <DataTable
-        :data="clients"
-        :columns="columns"
-        :loading="loading"
-      />
+      <DataTable :data="clients" :columns="columns" :loading="loading" />
 
       <Pagination
         :page="page"

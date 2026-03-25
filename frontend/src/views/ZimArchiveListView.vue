@@ -38,7 +38,10 @@ const columns: ColumnDef<ZimArchive, unknown>[] = [
       const value = getValue<string>()
       return h(
         'span',
-        { class: 'text-indigo-600 dark:text-indigo-400 font-medium hover:text-indigo-800 dark:hover:text-indigo-300' },
+        {
+          class:
+            'text-indigo-600 dark:text-indigo-400 font-medium hover:text-indigo-800 dark:hover:text-indigo-300',
+        },
         value,
       )
     },
@@ -104,21 +107,27 @@ const columns: ColumnDef<ZimArchive, unknown>[] = [
 ]
 
 function fetchData(): void {
-  store.fetchArchives({
-    query: search.value || undefined,
-    category: categoryFilter.value !== 'All' ? categoryFilter.value : undefined,
-    language: languageFilter.value !== 'All' ? languageFilter.value : undefined,
-    per_page: perPage.value,
-    offset: (page.value - 1) * perPage.value,
-  }).catch(() => {
-    toast.error('Failed to load ZIM archives')
-  })
+  store
+    .fetchArchives({
+      query: search.value || undefined,
+      category: categoryFilter.value !== 'All' ? categoryFilter.value : undefined,
+      language: languageFilter.value !== 'All' ? languageFilter.value : undefined,
+      per_page: perPage.value,
+      offset: (page.value - 1) * perPage.value,
+    })
+    .catch(() => {
+      toast.error('Failed to load ZIM archives')
+    })
 }
 
-watch([search, categoryFilter, languageFilter], () => {
-  page.value = 1
-  fetchData()
-}, { immediate: true })
+watch(
+  [search, categoryFilter, languageFilter],
+  () => {
+    page.value = 1
+    fetchData()
+  },
+  { immediate: true },
+)
 
 watch([page, perPage], () => {
   fetchData()

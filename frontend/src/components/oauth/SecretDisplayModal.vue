@@ -1,14 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import {
-  Dialog,
-  DialogPanel,
-  DialogTitle,
-} from '@headlessui/vue'
-import {
-  ClipboardDocumentIcon,
-  ExclamationTriangleIcon,
-} from '@heroicons/vue/24/outline'
+import { Dialog, DialogPanel, DialogTitle } from '@headlessui/vue'
+import { ClipboardDocumentIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline'
 import { toast } from 'vue-sonner'
 
 defineProps<{
@@ -63,9 +56,7 @@ async function copyToClipboard(value: string, fieldName: string): Promise<void> 
           <div class="space-y-4">
             <!-- Client ID -->
             <div>
-              <label class="block text-sm font-medium text-text-secondary mb-1">
-                Client ID
-              </label>
+              <label class="block text-sm font-medium text-text-secondary mb-1"> Client ID </label>
               <div class="flex items-center gap-2">
                 <input
                   :value="clientId"

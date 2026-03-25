@@ -26,17 +26,23 @@ const showDeleteDialog = computed(() => deleteTarget.value !== null)
 const syncingUuids = ref<Set<string>>(new Set())
 
 function fetchData(): void {
-  store.fetchTemplates({
-    per_page: perPage.value,
-    offset: (page.value - 1) * perPage.value,
-  }).catch(() => {
-    toast.error('Failed to load git templates')
-  })
+  store
+    .fetchTemplates({
+      per_page: perPage.value,
+      offset: (page.value - 1) * perPage.value,
+    })
+    .catch(() => {
+      toast.error('Failed to load git templates')
+    })
 }
 
-watch([page, perPage], () => {
-  fetchData()
-}, { immediate: true })
+watch(
+  [page, perPage],
+  () => {
+    fetchData()
+  },
+  { immediate: true },
+)
 
 function handleRowClick(row: GitTemplate): void {
   router.push(`/git-templates/${row.uuid}/files`)
@@ -137,11 +143,7 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
     meta: { className: 'w-24 hidden md:table-cell' },
     cell: ({ getValue }) => {
       const value = getValue<string>()
-      return h(
-        'span',
-        { class: 'font-mono text-xs text-text-muted' },
-        value,
-      )
+      return h('span', { class: 'font-mono text-xs text-text-muted' }, value)
     },
   },
   {

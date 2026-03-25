@@ -77,13 +77,17 @@ function goBack(): void {
 
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-12">
-      <div class="h-8 w-8 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400" />
+      <div
+        class="h-8 w-8 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400"
+      />
     </div>
 
     <!-- Two-pane layout -->
     <div v-else class="flex gap-4 h-[calc(100vh-12rem)]">
       <!-- Left sidebar: file tree -->
-      <div class="w-72 shrink-0 overflow-y-auto rounded-lg border border-border-default bg-bg-surface p-2">
+      <div
+        class="w-72 shrink-0 overflow-y-auto rounded-lg border border-border-default bg-bg-surface p-2"
+      >
         <template v-if="tree.length > 0">
           <TreeNode
             v-for="item in tree"
@@ -97,7 +101,9 @@ function goBack(): void {
       </div>
 
       <!-- Right main: file content viewer -->
-      <div class="flex-1 overflow-hidden rounded-lg border border-border-default bg-bg-surface flex flex-col">
+      <div
+        class="flex-1 overflow-hidden rounded-lg border border-border-default bg-bg-surface flex flex-col"
+      >
         <template v-if="selectedPath === ''">
           <div class="flex items-center justify-center h-full text-text-disabled text-sm">
             Select a file to view its contents.
@@ -105,18 +111,23 @@ function goBack(): void {
         </template>
         <template v-else>
           <!-- File header -->
-          <div class="flex items-center gap-2 border-b border-border-default px-4 py-2 bg-bg-surface-alt">
+          <div
+            class="flex items-center gap-2 border-b border-border-default px-4 py-2 bg-bg-surface-alt"
+          >
             <span class="font-mono text-sm text-text-secondary">{{ selectedPath }}</span>
           </div>
 
           <!-- File content -->
           <div v-if="fileLoading" class="flex items-center justify-center py-12">
-            <div class="h-6 w-6 animate-spin rounded-full border-2 border-border-input border-t-indigo-600 dark:border-t-indigo-400" />
+            <div
+              class="h-6 w-6 animate-spin rounded-full border-2 border-border-input border-t-indigo-600 dark:border-t-indigo-400"
+            />
           </div>
           <pre
             v-else
             class="flex-1 overflow-auto p-4 text-sm leading-relaxed text-text-primary font-mono whitespace-pre-wrap break-words"
-          >{{ fileContent }}</pre>
+            >{{ fileContent }}</pre
+          >
         </template>
       </div>
     </div>
