@@ -182,6 +182,10 @@ func (s *stubZimRepo) DisableOrphaned(_ context.Context, _ int64, names []string
 
 func (s *stubZimRepo) ListAllUUIDs(_ context.Context) ([]string, error) { return nil, nil }
 
+func (s *stubZimRepo) FindByUUIDs(_ context.Context, _ []string) ([]model.ZimArchive, error) {
+	return nil, nil
+}
+
 // stubSearchIndexer captures calls to IndexZimArchive and IndexGitTemplate.
 type stubSearchIndexer struct {
 	zimRecord search.ZimArchiveRecord
@@ -199,6 +203,10 @@ func (s *stubSearchIndexer) ListIndexedZimUUIDs(_ context.Context) (map[string]b
 }
 func (s *stubSearchIndexer) ListIndexedGitTemplateUUIDs(_ context.Context) (map[string]bool, error) {
 	return nil, nil
+}
+
+func (s *stubSearchIndexer) IndexDocument(_ context.Context, _ search.DocumentRecord) error {
+	return nil
 }
 
 func (s *stubSearchIndexer) IndexZimArchive(_ context.Context, rec search.ZimArchiveRecord) error {
@@ -229,6 +237,10 @@ func (s *stubGitRepo) UpdateSyncStatus(_ context.Context, templateID int64, stat
 }
 
 func (s *stubGitRepo) ListAllUUIDs(_ context.Context) ([]string, error) { return nil, nil }
+
+func (s *stubGitRepo) FindByUUIDs(_ context.Context, _ []string) ([]model.GitTemplate, error) {
+	return nil, nil
+}
 
 func (s *stubGitRepo) ReplaceFiles(_ context.Context, _ int64, files []repository.GitTemplateFileInsert) error {
 	s.replacedFiles = files
