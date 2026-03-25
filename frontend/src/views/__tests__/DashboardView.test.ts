@@ -68,10 +68,7 @@ describe('DashboardView', () => {
 
   it('shows loading state initially', () => {
     // Never resolving fetch to keep loading state
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockReturnValue(new Promise(() => {})),
-    )
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})))
 
     const wrapper = mount(DashboardView)
 

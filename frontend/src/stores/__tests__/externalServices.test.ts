@@ -138,9 +138,9 @@ describe('externalServices store', () => {
       stubFetch({ message: 'Validation failed' }, false)
 
       const store = useExternalServicesStore()
-      await expect(
-        store.createService({ name: '', type: 'llm', base_url: '' }),
-      ).rejects.toThrow('Validation failed')
+      await expect(store.createService({ name: '', type: 'llm', base_url: '' })).rejects.toThrow(
+        'Validation failed',
+      )
 
       expect(store.error).toBe('Validation failed')
     })
@@ -229,9 +229,7 @@ describe('externalServices store', () => {
       stubFetch({ message: 'Not Implemented' }, false)
 
       const store = useExternalServicesStore()
-      await expect(store.checkHealth('svc-1')).rejects.toThrow(
-        'Health check is not yet available',
-      )
+      await expect(store.checkHealth('svc-1')).rejects.toThrow('Health check is not yet available')
     })
   })
 

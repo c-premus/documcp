@@ -58,10 +58,7 @@ describe('auth store', () => {
     })
 
     it('sets user to null on 401 response', async () => {
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({ ok: false, status: 401 }),
-      )
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }))
 
       const auth = useAuthStore()
       await auth.fetchUser()

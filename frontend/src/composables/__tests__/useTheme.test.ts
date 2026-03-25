@@ -20,11 +20,14 @@ describe('useTheme', () => {
     })
 
     // Default matchMedia stub: system prefers light
-    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    }))
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockReturnValue({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    )
 
     // Ensure document.documentElement.classList is available
     document.documentElement.classList.remove('dark')
@@ -150,11 +153,14 @@ describe('useTheme', () => {
     })
 
     it('returns light when mode is system and system prefers light', async () => {
-      vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
-        matches: false,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      }))
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn().mockReturnValue({
+          matches: false,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        }),
+      )
 
       storageMap['theme'] = 'system'
       const { resolved } = await loadTheme()
@@ -162,11 +168,14 @@ describe('useTheme', () => {
     })
 
     it('returns dark when mode is system and system prefers dark', async () => {
-      vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
-        matches: true,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      }))
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn().mockReturnValue({
+          matches: true,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        }),
+      )
 
       storageMap['theme'] = 'system'
       const { resolved } = await loadTheme()
@@ -220,11 +229,14 @@ describe('useTheme', () => {
     })
 
     it('applies dark class when system mode resolves to dark', async () => {
-      vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
-        matches: true,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      }))
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn().mockReturnValue({
+          matches: true,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        }),
+      )
 
       storageMap['theme'] = 'system'
       await loadTheme()
@@ -235,11 +247,14 @@ describe('useTheme', () => {
   describe('matchMedia listener', () => {
     it('registers a change listener on matchMedia', async () => {
       const addEventListenerSpy = vi.fn()
-      vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
-        matches: false,
-        addEventListener: addEventListenerSpy,
-        removeEventListener: vi.fn(),
-      }))
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn().mockReturnValue({
+          matches: false,
+          addEventListener: addEventListenerSpy,
+          removeEventListener: vi.fn(),
+        }),
+      )
 
       await loadTheme()
       expect(addEventListenerSpy).toHaveBeenCalledWith('change', expect.any(Function))
