@@ -10,13 +10,14 @@ DocuMCP implements OAuth 2.1 with:
 - **RFC 7009** - Token Revocation
 - **RFC 8628** - Device Authorization Grant (for CLI tools)
 - **RFC 8414** - OAuth Authorization Server Metadata Discovery
+- **RFC 9728** - Protected Resource Metadata (automatic auth server discovery)
 
 ## Quick Start
 
 ### 1. Register Your Client
 
 ```bash
-curl -X POST http://localhost:8000/oauth/register \
+curl -X POST http://localhost:8080/oauth/register \
   -H "Content-Type: application/json" \
   -d '{
     "client_name": "My MCP Client",
@@ -24,7 +25,7 @@ curl -X POST http://localhost:8000/oauth/register \
     "grant_types": ["authorization_code", "refresh_token"],
     "response_types": ["code"],
     "token_endpoint_auth_method": "none",
-    "scope": "mcp:access"
+    "scope": "mcp:access documents:read search:read"
   }'
 ```
 
@@ -38,7 +39,7 @@ curl -X POST http://localhost:8000/oauth/register \
   "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"],
   "token_endpoint_auth_method": "none",
-  "scope": "mcp:access"
+  "scope": "mcp:access documents:read search:read"
 }
 ```
 
@@ -62,11 +63,11 @@ echo "Code Challenge: $code_challenge"
 Redirect user to:
 
 ```
-http://localhost:8000/oauth/authorize?
+http://localhost:8080/oauth/authorize?
   response_type=code&
   client_id=YOUR_CLIENT_ID&
   redirect_uri=http://localhost:3000/callback&
-  scope=mcp:access&
+  scope=mcp:access+documents:read+search:read&
   code_challenge=YOUR_CODE_CHALLENGE&
   code_challenge_method=S256&
   state=RANDOM_STATE_VALUE
@@ -83,7 +84,7 @@ http://localhost:3000/callback?
 ### 4. Exchange Code for Tokens
 
 ```bash
-curl -X POST http://localhost:8000/oauth/token \
+curl -X POST http://localhost:8080/oauth/token \
   -H "Content-Type: application/json" \
   -d '{
     "grant_type": "authorization_code",
@@ -108,7 +109,7 @@ curl -X POST http://localhost:8000/oauth/token \
 ### 5. Use Token with MCP Endpoint
 
 ```bash
-curl -X POST http://localhost:8000/documcp \
+curl -X POST http://localhost:8080/documcp \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -123,7 +124,7 @@ curl -X POST http://localhost:8000/documcp \
 ### Refresh Token
 
 ```bash
-curl -X POST http://localhost:8000/oauth/token \
+curl -X POST http://localhost:8080/oauth/token \
   -H "Content-Type: application/json" \
   -d '{
     "grant_type": "refresh_token",
@@ -135,7 +136,7 @@ curl -X POST http://localhost:8000/oauth/token \
 ### Revoke Token
 
 ```bash
-curl -X POST http://localhost:8000/oauth/revoke \
+curl -X POST http://localhost:8080/oauth/revoke \
   -H "Content-Type: application/json" \
   -d '{
     "token": "YOUR_ACCESS_TOKEN",
@@ -150,7 +151,7 @@ For CLI tools and devices without browsers, use RFC 8628 Device Authorization Gr
 ### 1. Request Device Code
 
 ```bash
-curl -X POST http://localhost:8000/oauth/device/authorize \
+curl -X POST http://localhost:8080/oauth/device/authorize \
   -H "Content-Type: application/json" \
   -d '{
     "client_id": "YOUR_CLIENT_ID",
@@ -163,8 +164,8 @@ curl -X POST http://localhost:8000/oauth/device/authorize \
 {
   "device_code": "DEVICE_CODE",
   "user_code": "ABCD-EFGH",
-  "verification_uri": "http://localhost:8000/device",
-  "verification_uri_complete": "http://localhost:8000/device?user_code=ABCD-EFGH",
+  "verification_uri": "http://localhost:8080/device",
+  "verification_uri_complete": "http://localhost:8080/device?user_code=ABCD-EFGH",
   "expires_in": 900,
   "interval": 5
 }
@@ -179,7 +180,7 @@ Direct user to `verification_uri_complete` or have them manually enter the `user
 Poll the token endpoint at the specified `interval` (minimum 5 seconds):
 
 ```bash
-curl -X POST http://localhost:8000/oauth/token \
+curl -X POST http://localhost:8080/oauth/token \
   -H "Content-Type: application/json" \
   -d '{
     "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
@@ -219,10 +220,29 @@ curl -X POST http://localhost:8000/oauth/token \
 
 ```bash
 # Register client for device flow
-claude mcp add documcp -- npx -y mcp-remote http://localhost:8000/documcp 3334 --allow-http
+claude mcp add documcp -- npx -y mcp-remote http://localhost:8080/documcp 3334 --allow-http
 ```
 
-The fixed port 3334 avoids VS Code port forwarding issues. See `docs/DEVCONTAINER_PORT_FORWARDING.md` for details.
+The fixed port 3334 avoids VS Code port forwarding issues.
+
+## Available Scopes
+
+| Scope | Description |
+|-------|-------------|
+| `mcp:access` | MCP endpoint access |
+| `mcp:read` | MCP read operations |
+| `mcp:write` | MCP write operations |
+| `documents:read` | Read documents |
+| `documents:write` | Write/modify documents |
+| `search:read` | Search functionality |
+| `zim:read` | Read ZIM archives |
+| `templates:read` | Read Git templates |
+| `templates:write` | Write/modify templates |
+| `services:read` | Read external services |
+| `services:write` | Write/modify services |
+| `admin` | Admin access |
+
+Default scopes for new registrations: `mcp:access documents:read search:read zim:read templates:read services:read`
 
 ## MCP Tools Available
 
@@ -372,7 +392,7 @@ Or JSON-RPC errors:
         "-X", "POST",
         "-H", "Content-Type: application/json",
         "-H", "Authorization: Bearer YOUR_TOKEN",
-        "http://localhost:8000/documcp"
+        "http://localhost:8080/documcp"
       ]
     }
   }
@@ -386,7 +406,7 @@ class DocuMCPClient {
   constructor(clientId, redirectUri) {
     this.clientId = clientId;
     this.redirectUri = redirectUri;
-    this.baseUrl = 'http://localhost:8000';
+    this.baseUrl = 'http://localhost:8080';
   }
 
   generatePKCE() {
@@ -407,7 +427,7 @@ class DocuMCPClient {
       `response_type=code&` +
       `client_id=${this.clientId}&` +
       `redirect_uri=${encodeURIComponent(this.redirectUri)}&` +
-      `scope=mcp:access&` +
+      `scope=mcp:access+documents:read+search:read&` +
       `code_challenge=${challenge}&` +
       `code_challenge_method=S256&` +
       `state=${state}`;
@@ -493,3 +513,4 @@ All operations complete well under 500ms, suitable for real-time MCP integration
 - Dynamic Registration: [RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591)
 - Device Authorization: [RFC 8628](https://datatracker.ietf.org/doc/html/rfc8628)
 - Server Metadata: [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414)
+- Protected Resource Metadata: [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728)
