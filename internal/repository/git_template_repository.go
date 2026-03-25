@@ -162,6 +162,25 @@ func (r *GitTemplateRepository) ListAllUUIDs(ctx context.Context) ([]string, err
 	return uuids, nil
 }
 
+// FindByUUIDs returns non-deleted git templates matching the given UUIDs.
+// Used by search index reconciliation to re-index missing entries.
+func (r *GitTemplateRepository) FindByUUIDs(ctx context.Context, uuids []string) ([]model.GitTemplate, error) {
+	if len(uuids) == 0 {
+		return nil, nil
+	}
+	query, args, err := sqlx.In(`SELECT * FROM git_templates WHERE uuid IN (?) AND deleted_at IS NULL`, uuids)
+	if err != nil {
+		return nil, fmt.Errorf("building IN clause for git template FindByUUIDs: %w", err)
+	}
+	query = r.db.Rebind(query)
+	var templates []model.GitTemplate
+	if err := r.db.SelectContext(ctx, &templates, query, args...); err != nil {
+		return nil, fmt.Errorf("finding git templates by uuids: %w", err)
+	}
+	r.decryptTokens(templates)
+	return templates, nil
+}
+
 // Count returns the total number of non-deleted git templates.
 func (r *GitTemplateRepository) Count(ctx context.Context) (int, error) {
 	var count int

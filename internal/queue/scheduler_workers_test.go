@@ -88,6 +88,10 @@ type mockDocumentRepo struct {
 	activePathsErr  error
 	allUUIDs        []string
 	allUUIDsErr     error
+	foundDocs       []model.Document
+	findByUUIDsErr  error
+	tagsForDoc      []model.DocumentTag
+	tagsForDocErr   error
 	purgedDocs      []repository.DocumentFilePath
 	purgeErr        error
 	purgeCalledWith time.Duration
@@ -99,6 +103,14 @@ func (m *mockDocumentRepo) ListActiveFilePaths(_ context.Context) ([]repository.
 
 func (m *mockDocumentRepo) ListAllUUIDs(_ context.Context) ([]string, error) {
 	return m.allUUIDs, m.allUUIDsErr
+}
+
+func (m *mockDocumentRepo) FindByUUIDs(_ context.Context, _ []string) ([]model.Document, error) {
+	return m.foundDocs, m.findByUUIDsErr
+}
+
+func (m *mockDocumentRepo) TagsForDocument(_ context.Context, _ int64) ([]model.DocumentTag, error) {
+	return m.tagsForDoc, m.tagsForDocErr
 }
 
 func (m *mockDocumentRepo) PurgeSoftDeleted(_ context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error) {
@@ -127,6 +139,10 @@ func (m *mockZimArchiveRepo) ListAllUUIDs(_ context.Context) ([]string, error) {
 	return nil, nil
 }
 
+func (m *mockZimArchiveRepo) FindByUUIDs(_ context.Context, _ []string) ([]model.ZimArchive, error) {
+	return nil, nil
+}
+
 type mockGitTemplateRepo struct {
 	templates []model.GitTemplate
 	listErr   error
@@ -148,13 +164,19 @@ func (m *mockGitTemplateRepo) ListAllUUIDs(_ context.Context) ([]string, error) 
 	return nil, nil
 }
 
+func (m *mockGitTemplateRepo) FindByUUIDs(_ context.Context, _ []string) ([]model.GitTemplate, error) {
+	return nil, nil
+}
+
 type mockSearchIndexer struct {
-	indexedUUIDs    map[string]bool
-	listUUIDsErr   error
-	deleteDocErr    error
-	deleteZimErr    error
-	deletedDocUUIDs []string
-	deletedZimUUIDs []string
+	indexedUUIDs       map[string]bool
+	listUUIDsErr       error
+	deleteDocErr       error
+	deleteZimErr       error
+	deletedDocUUIDs    []string
+	deletedZimUUIDs    []string
+	indexedDocRecords  []search.DocumentRecord
+	indexDocErr        error
 }
 
 func (m *mockSearchIndexer) ListIndexedDocumentUUIDs(_ context.Context) (map[string]bool, error) {
@@ -169,6 +191,11 @@ func (m *mockSearchIndexer) DeleteDocument(_ context.Context, uuid string) error
 func (m *mockSearchIndexer) DeleteZimArchive(_ context.Context, uuid string) error {
 	m.deletedZimUUIDs = append(m.deletedZimUUIDs, uuid)
 	return m.deleteZimErr
+}
+
+func (m *mockSearchIndexer) IndexDocument(_ context.Context, doc search.DocumentRecord) error {
+	m.indexedDocRecords = append(m.indexedDocRecords, doc)
+	return m.indexDocErr
 }
 
 func (m *mockSearchIndexer) IndexZimArchive(_ context.Context, _ search.ZimArchiveRecord) error {
@@ -204,6 +231,10 @@ func (m *mockZimArchiveRepoWithUUIDs) ListAllUUIDs(_ context.Context) ([]string,
 	return m.allUUIDs, m.allUUIDsErr
 }
 
+func (m *mockZimArchiveRepoWithUUIDs) FindByUUIDs(_ context.Context, _ []string) ([]model.ZimArchive, error) {
+	return nil, nil
+}
+
 // mockGitTemplateRepoWithUUIDs wraps mockGitTemplateRepo but returns configurable UUIDs.
 type mockGitTemplateRepoWithUUIDs struct {
 	*mockGitTemplateRepo
@@ -213,6 +244,10 @@ type mockGitTemplateRepoWithUUIDs struct {
 
 func (m *mockGitTemplateRepoWithUUIDs) ListAllUUIDs(_ context.Context) ([]string, error) {
 	return m.allUUIDs, m.allUUIDsErr
+}
+
+func (m *mockGitTemplateRepoWithUUIDs) FindByUUIDs(_ context.Context, _ []string) ([]model.GitTemplate, error) {
+	return nil, nil
 }
 
 // mockSearchIndexerFull extends the search indexer mock with configurable responses
@@ -258,6 +293,10 @@ func (m *mockSearchIndexerFull) DeleteZimArchive(_ context.Context, uuid string)
 func (m *mockSearchIndexerFull) DeleteGitTemplate(_ context.Context, uuid string) error {
 	m.deletedGitUUIDs = append(m.deletedGitUUIDs, uuid)
 	return m.deleteGitErr
+}
+
+func (m *mockSearchIndexerFull) IndexDocument(_ context.Context, _ search.DocumentRecord) error {
+	return nil
 }
 
 func (m *mockSearchIndexerFull) IndexZimArchive(_ context.Context, _ search.ZimArchiveRecord) error {
@@ -737,7 +776,7 @@ func TestVerifySearchIndexWorker_Work(t *testing.T) {
 		assert.Empty(t, indexer.deletedDocUUIDs)
 	})
 
-	t.Run("ListAllUUIDs error returned", func(t *testing.T) {
+	t.Run("ListAllUUIDs error logged not returned", func(t *testing.T) {
 		t.Parallel()
 
 		docRepo := &mockDocumentRepo{
@@ -753,11 +792,10 @@ func TestVerifySearchIndexWorker_Work(t *testing.T) {
 		}
 
 		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "listing database document UUIDs")
+		require.NoError(t, err, "document errors are logged, not propagated")
 	})
 
-	t.Run("ListIndexedDocumentUUIDs error returned", func(t *testing.T) {
+	t.Run("ListIndexedDocumentUUIDs error logged not returned", func(t *testing.T) {
 		t.Parallel()
 
 		docRepo := &mockDocumentRepo{
@@ -776,8 +814,7 @@ func TestVerifySearchIndexWorker_Work(t *testing.T) {
 		}
 
 		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "listing indexed document UUIDs")
+		require.NoError(t, err, "index listing errors are logged, not propagated")
 	})
 
 	t.Run("DeleteDocument error logged but does not fail job", func(t *testing.T) {
@@ -1545,6 +1582,124 @@ func TestVerifySearchIndexWorker_Work_GitRepoVerification(t *testing.T) {
 		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
 		require.NoError(t, err)
 		assert.Contains(t, indexer.deletedZimUUIDs, "zim-orphan")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// VerifySearchIndexWorker — Re-indexing missing entries
+// ---------------------------------------------------------------------------
+
+func TestVerifySearchIndexWorker_ReindexMissing(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing documents are re-indexed", func(t *testing.T) {
+		t.Parallel()
+
+		docRepo := &mockDocumentRepo{
+			allUUIDs: []string{"doc-1", "doc-2"},
+			foundDocs: []model.Document{
+				{UUID: "doc-1", Title: "First", FileType: "pdf", Status: "processed", IsPublic: true},
+				{UUID: "doc-2", Title: "Second", FileType: "markdown", Status: "processed"},
+			},
+		}
+		indexer := &mockSearchIndexer{
+			indexedUUIDs: map[string]bool{}, // both missing from index
+		}
+
+		worker := &VerifySearchIndexWorker{
+			Deps: SchedulerDeps{
+				DocRepo: docRepo,
+				Indexer: indexer,
+				Logger:  testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
+		require.NoError(t, err)
+		assert.Len(t, indexer.indexedDocRecords, 2)
+		assert.Equal(t, "doc-1", indexer.indexedDocRecords[0].UUID)
+		assert.Equal(t, "doc-2", indexer.indexedDocRecords[1].UUID)
+	})
+
+	t.Run("FindByUUIDs error logged but does not fail job", func(t *testing.T) {
+		t.Parallel()
+
+		docRepo := &mockDocumentRepo{
+			allUUIDs:       []string{"doc-missing"},
+			findByUUIDsErr: errors.New("db connection lost"),
+		}
+		indexer := &mockSearchIndexer{
+			indexedUUIDs: map[string]bool{},
+		}
+
+		worker := &VerifySearchIndexWorker{
+			Deps: SchedulerDeps{
+				DocRepo: docRepo,
+				Indexer: indexer,
+				Logger:  testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
+		require.NoError(t, err)
+		assert.Empty(t, indexer.indexedDocRecords)
+	})
+
+	t.Run("mixed: re-index missing and delete orphaned", func(t *testing.T) {
+		t.Parallel()
+
+		docRepo := &mockDocumentRepo{
+			allUUIDs: []string{"in-both", "missing-from-index"},
+			foundDocs: []model.Document{
+				{UUID: "missing-from-index", Title: "Needs Reindex", FileType: "pdf", Status: "processed"},
+			},
+		}
+		indexer := &mockSearchIndexer{
+			indexedUUIDs: map[string]bool{
+				"in-both":  true,
+				"orphaned": true, // not in DB
+			},
+		}
+
+		worker := &VerifySearchIndexWorker{
+			Deps: SchedulerDeps{
+				DocRepo: docRepo,
+				Indexer: indexer,
+				Logger:  testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
+		require.NoError(t, err)
+		// Orphaned entry deleted.
+		assert.Contains(t, indexer.deletedDocUUIDs, "orphaned")
+		// Missing entry re-indexed.
+		assert.Len(t, indexer.indexedDocRecords, 1)
+		assert.Equal(t, "missing-from-index", indexer.indexedDocRecords[0].UUID)
+	})
+
+	t.Run("no missing and no orphaned does nothing", func(t *testing.T) {
+		t.Parallel()
+
+		docRepo := &mockDocumentRepo{
+			allUUIDs: []string{"u1"},
+		}
+		indexer := &mockSearchIndexer{
+			indexedUUIDs: map[string]bool{"u1": true},
+		}
+
+		worker := &VerifySearchIndexWorker{
+			Deps: SchedulerDeps{
+				DocRepo: docRepo,
+				Indexer: indexer,
+				Logger:  testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(VerifySearchIndexArgs{}))
+		require.NoError(t, err)
+		assert.Empty(t, indexer.deletedDocUUIDs)
+		assert.Empty(t, indexer.indexedDocRecords)
 	})
 }
 

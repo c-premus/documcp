@@ -13,20 +13,21 @@ import (
 // Empty schedule strings are skipped (disables the job).
 func BuildPeriodicJobs(cfg config.SchedulerConfig, logger *slog.Logger) []*river.PeriodicJob {
 	type entry struct {
-		name     string
-		schedule string
-		args     river.JobArgs
+		name       string
+		schedule   string
+		args       river.JobArgs
+		runOnStart bool
 	}
 
 	entries := []entry{
-		{"kiwix", cfg.KiwixSchedule, SyncKiwixArgs{}},
-		{"git", cfg.GitSchedule, SyncGitTemplatesArgs{}},
-		{"oauth-cleanup", cfg.OAuthCleanupSchedule, CleanupOAuthTokensArgs{}},
-		{"orphaned-files", cfg.OrphanedFilesSchedule, CleanupOrphanedFilesArgs{}},
-		{"search-verify", cfg.SearchVerifySchedule, VerifySearchIndexArgs{}},
-		{"soft-delete-purge", cfg.SoftDeletePurgeSchedule, PurgeSoftDeletedArgs{}},
-		{"zim-cleanup", cfg.ZimCleanupSchedule, CleanupDisabledZimArgs{}},
-		{"health-check", cfg.HealthCheckSchedule, HealthCheckServicesArgs{}},
+		{"kiwix", cfg.KiwixSchedule, SyncKiwixArgs{}, false},
+		{"git", cfg.GitSchedule, SyncGitTemplatesArgs{}, false},
+		{"oauth-cleanup", cfg.OAuthCleanupSchedule, CleanupOAuthTokensArgs{}, false},
+		{"orphaned-files", cfg.OrphanedFilesSchedule, CleanupOrphanedFilesArgs{}, false},
+		{"search-verify", cfg.SearchVerifySchedule, VerifySearchIndexArgs{}, true},
+		{"soft-delete-purge", cfg.SoftDeletePurgeSchedule, PurgeSoftDeletedArgs{}, false},
+		{"zim-cleanup", cfg.ZimCleanupSchedule, CleanupDisabledZimArgs{}, false},
+		{"health-check", cfg.HealthCheckSchedule, HealthCheckServicesArgs{}, false},
 	}
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
@@ -53,12 +54,13 @@ func BuildPeriodicJobs(cfg config.SchedulerConfig, logger *slog.Logger) []*river
 		}
 
 		args := e.args
+		runOnStart := e.runOnStart
 		jobs = append(jobs, river.NewPeriodicJob(
 			schedule,
 			func() (river.JobArgs, *river.InsertOpts) {
 				return args, nil
 			},
-			&river.PeriodicJobOpts{RunOnStart: false},
+			&river.PeriodicJobOpts{RunOnStart: runOnStart},
 		))
 
 		if logger != nil {

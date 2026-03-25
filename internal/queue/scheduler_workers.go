@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/riverqueue/river"
 
 	"git.999.haus/chris/DocuMCP-go/internal/client/git"
@@ -19,6 +20,21 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/search"
 	"git.999.haus/chris/DocuMCP-go/internal/security"
 )
+
+// reconciliationActions tracks search index reconciliation operations.
+var reconciliationActions = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "documcp",
+		Subsystem: "search",
+		Name:      "reconciliation_actions_total",
+		Help:      "Total number of search index reconciliation actions by index and action type.",
+	},
+	[]string{"index", "action"},
+)
+
+func init() {
+	prometheus.MustRegister(reconciliationActions)
+}
 
 // --- Interfaces (defined where consumed) ---.
 
@@ -42,6 +58,8 @@ type OAuthTokenPurger interface {
 type DocumentRepoDeps interface {
 	ListActiveFilePaths(ctx context.Context) ([]repository.DocumentFilePath, error)
 	ListAllUUIDs(ctx context.Context) ([]string, error)
+	FindByUUIDs(ctx context.Context, uuids []string) ([]model.Document, error)
+	TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
 	PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
 }
 
@@ -49,6 +67,7 @@ type DocumentRepoDeps interface {
 type ZimArchiveRepoDeps interface {
 	FindDisabled(ctx context.Context) ([]model.ZimArchive, error)
 	ListAllUUIDs(ctx context.Context) ([]string, error)
+	FindByUUIDs(ctx context.Context, uuids []string) ([]model.ZimArchive, error)
 	UpsertFromCatalog(ctx context.Context, serviceID int64, upsert repository.ZimArchiveUpsert) error
 	DisableOrphaned(ctx context.Context, serviceID int64, activeNames []string) (int, error)
 }
@@ -57,6 +76,7 @@ type ZimArchiveRepoDeps interface {
 type GitTemplateRepoDeps interface {
 	List(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error)
 	ListAllUUIDs(ctx context.Context) ([]string, error)
+	FindByUUIDs(ctx context.Context, uuids []string) ([]model.GitTemplate, error)
 	UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error
 	ReplaceFiles(ctx context.Context, templateID int64, files []repository.GitTemplateFileInsert) error
 }
@@ -69,6 +89,7 @@ type SearchIndexDeps interface {
 	DeleteDocument(ctx context.Context, uuid string) error
 	DeleteZimArchive(ctx context.Context, uuid string) error
 	DeleteGitTemplate(ctx context.Context, uuid string) error
+	IndexDocument(ctx context.Context, doc search.DocumentRecord) error
 	IndexZimArchive(ctx context.Context, record search.ZimArchiveRecord) error
 	IndexGitTemplate(ctx context.Context, record search.GitTemplateRecord) error
 }
@@ -318,7 +339,9 @@ type VerifySearchIndexWorker struct {
 	Deps SchedulerDeps
 }
 
-// Work executes the VerifySearchIndexWorker job, checking consistency between the database and search index.
+// Work executes the VerifySearchIndexWorker job, performing two-way reconciliation
+// between the database and Meilisearch indexes: removing orphaned index entries and
+// re-indexing database records missing from the search index.
 func (w *VerifySearchIndexWorker) Work(ctx context.Context, _ *river.Job[VerifySearchIndexArgs]) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -331,9 +354,25 @@ func (w *VerifySearchIndexWorker) Work(ctx context.Context, _ *river.Job[VerifyS
 	logger := w.Deps.Logger.With("job", "search-verify")
 	logger.Info("starting search index verification")
 
+	w.reconcileDocuments(ctx, logger)
+
+	if w.Deps.ZimRepo != nil {
+		w.reconcileZimArchives(ctx, logger)
+	}
+
+	if w.Deps.GitRepo != nil {
+		w.reconcileGitTemplates(ctx, logger)
+	}
+
+	return nil
+}
+
+// reconcileDocuments performs two-way sync between the documents DB table and Meilisearch index.
+func (w *VerifySearchIndexWorker) reconcileDocuments(ctx context.Context, logger *slog.Logger) {
 	dbUUIDs, err := w.Deps.DocRepo.ListAllUUIDs(ctx)
 	if err != nil {
-		return fmt.Errorf("listing database document UUIDs: %w", err)
+		logger.Error("listing database document UUIDs", "error", err)
+		return
 	}
 
 	dbSet := make(map[string]bool, len(dbUUIDs))
@@ -343,17 +382,37 @@ func (w *VerifySearchIndexWorker) Work(ctx context.Context, _ *river.Job[VerifyS
 
 	indexedSet, err := w.Deps.Indexer.ListIndexedDocumentUUIDs(ctx)
 	if err != nil {
-		return fmt.Errorf("listing indexed document UUIDs: %w", err)
+		logger.Error("listing indexed document UUIDs", "error", err)
+		return
 	}
 
-	var missingCount int
+	// Find missing: in DB but not in index.
+	var missingUUIDs []string
 	for _, uuid := range dbUUIDs {
 		if !indexedSet[uuid] {
-			missingCount++
-			logger.Warn("document missing from search index", "uuid", uuid)
+			missingUUIDs = append(missingUUIDs, uuid)
 		}
 	}
 
+	// Re-index missing documents.
+	var reindexedCount int
+	if len(missingUUIDs) > 0 {
+		docs, fetchErr := w.Deps.DocRepo.FindByUUIDs(ctx, missingUUIDs)
+		if fetchErr != nil {
+			logger.Error("fetching documents for re-indexing", "error", fetchErr)
+		} else {
+			for i := range docs {
+				record := w.documentToRecord(ctx, &docs[i], logger)
+				if indexErr := w.Deps.Indexer.IndexDocument(ctx, record); indexErr != nil {
+					logger.Error("re-indexing missing document", "uuid", docs[i].UUID, "error", indexErr)
+				} else {
+					reindexedCount++
+				}
+			}
+		}
+	}
+
+	// Remove orphaned: in index but not in DB.
 	var orphanedCount int
 	for uuid := range indexedSet {
 		if !dbSet[uuid] {
@@ -364,68 +423,240 @@ func (w *VerifySearchIndexWorker) Work(ctx context.Context, _ *river.Job[VerifyS
 		}
 	}
 
+	reconciliationActions.WithLabelValues("documents", "orphaned_deleted").Add(float64(orphanedCount))
+	reconciliationActions.WithLabelValues("documents", "missing_reindexed").Add(float64(reindexedCount))
+
 	logger.Info("document index verification completed",
-		"missing_from_index", missingCount,
-		"orphaned_in_index", orphanedCount,
+		"missing_reindexed", reindexedCount,
+		"orphaned_deleted", orphanedCount,
 	)
+}
 
-	// Verify ZIM archives index.
-	if w.Deps.ZimRepo != nil {
-		zimOrphaned := 0
-		zimDBUUIDs, err := w.Deps.ZimRepo.ListAllUUIDs(ctx)
-		if err != nil {
-			logger.Error("listing zim archive UUIDs from database", "error", err)
+// documentToRecord converts a model.Document to a search.DocumentRecord, loading tags.
+func (w *VerifySearchIndexWorker) documentToRecord(ctx context.Context, doc *model.Document, logger *slog.Logger) search.DocumentRecord {
+	record := search.DocumentRecord{
+		UUID:        doc.UUID,
+		Title:       doc.Title,
+		Description: doc.Description.String,
+		Content:     doc.Content.String,
+		FileType:    doc.FileType,
+		Status:      doc.Status,
+		IsPublic:    doc.IsPublic,
+		WordCount:   int(doc.WordCount.Int64),
+		SoftDeleted: doc.DeletedAt.Valid,
+	}
+	if doc.UserID.Valid {
+		uid := doc.UserID.Int64
+		record.UserID = &uid
+	}
+	if doc.CreatedAt.Valid {
+		record.CreatedAt = doc.CreatedAt.Time.Format(time.RFC3339)
+	}
+	if doc.UpdatedAt.Valid {
+		record.UpdatedAt = doc.UpdatedAt.Time.Format(time.RFC3339)
+	}
+
+	tags, err := w.Deps.DocRepo.TagsForDocument(ctx, doc.ID)
+	if err != nil {
+		logger.Warn("loading tags for document re-index", "uuid", doc.UUID, "error", err)
+	} else {
+		tagNames := make([]string, len(tags))
+		for i, t := range tags {
+			tagNames[i] = t.Tag
+		}
+		record.Tags = tagNames
+	}
+
+	return record
+}
+
+// reconcileZimArchives performs two-way sync between the zim_archives DB table and Meilisearch index.
+func (w *VerifySearchIndexWorker) reconcileZimArchives(ctx context.Context, logger *slog.Logger) {
+	zimDBUUIDs, err := w.Deps.ZimRepo.ListAllUUIDs(ctx)
+	if err != nil {
+		logger.Error("listing zim archive UUIDs from database", "error", err)
+		return
+	}
+
+	zimDBSet := make(map[string]bool, len(zimDBUUIDs))
+	for _, uuid := range zimDBUUIDs {
+		zimDBSet[uuid] = true
+	}
+
+	zimIndexed, err := w.Deps.Indexer.ListIndexedZimUUIDs(ctx)
+	if err != nil {
+		logger.Error("listing indexed zim archive UUIDs", "error", err)
+		return
+	}
+
+	// Find missing: in DB but not in index.
+	var missingUUIDs []string
+	for _, uuid := range zimDBUUIDs {
+		if !zimIndexed[uuid] {
+			missingUUIDs = append(missingUUIDs, uuid)
+		}
+	}
+
+	// Re-index missing ZIM archives.
+	var reindexedCount int
+	if len(missingUUIDs) > 0 {
+		archives, fetchErr := w.Deps.ZimRepo.FindByUUIDs(ctx, missingUUIDs)
+		if fetchErr != nil {
+			logger.Error("fetching zim archives for re-indexing", "error", fetchErr)
 		} else {
-			zimDBSet := make(map[string]bool, len(zimDBUUIDs))
-			for _, uuid := range zimDBUUIDs {
-				zimDBSet[uuid] = true
-			}
-			zimIndexed, err := w.Deps.Indexer.ListIndexedZimUUIDs(ctx)
-			if err != nil {
-				logger.Error("listing indexed zim archive UUIDs", "error", err)
-			} else {
-				for uuid := range zimIndexed {
-					if !zimDBSet[uuid] {
-						zimOrphaned++
-						if err := w.Deps.Indexer.DeleteZimArchive(ctx, uuid); err != nil {
-							logger.Error("removing orphaned zim archive from index", "uuid", uuid, "error", err)
-						}
-					}
+			for i := range archives {
+				record := zimArchiveToRecord(&archives[i])
+				if indexErr := w.Deps.Indexer.IndexZimArchive(ctx, record); indexErr != nil {
+					logger.Error("re-indexing missing zim archive", "uuid", archives[i].UUID, "error", indexErr)
+				} else {
+					reindexedCount++
 				}
-				logger.Info("zim archive index verification completed", "orphaned_in_index", zimOrphaned)
 			}
 		}
 	}
 
-	// Verify Git templates index.
-	if w.Deps.GitRepo != nil {
-		gitOrphaned := 0
-		gitDBUUIDs, err := w.Deps.GitRepo.ListAllUUIDs(ctx)
-		if err != nil {
-			logger.Error("listing git template UUIDs from database", "error", err)
-		} else {
-			gitDBSet := make(map[string]bool, len(gitDBUUIDs))
-			for _, uuid := range gitDBUUIDs {
-				gitDBSet[uuid] = true
-			}
-			gitIndexed, err := w.Deps.Indexer.ListIndexedGitTemplateUUIDs(ctx)
-			if err != nil {
-				logger.Error("listing indexed git template UUIDs", "error", err)
-			} else {
-				for uuid := range gitIndexed {
-					if !gitDBSet[uuid] {
-						gitOrphaned++
-						if err := w.Deps.Indexer.DeleteGitTemplate(ctx, uuid); err != nil {
-							logger.Error("removing orphaned git template from index", "uuid", uuid, "error", err)
-						}
-					}
-				}
-				logger.Info("git template index verification completed", "orphaned_in_index", gitOrphaned)
+	// Remove orphaned: in index but not in DB.
+	var orphanedCount int
+	for uuid := range zimIndexed {
+		if !zimDBSet[uuid] {
+			orphanedCount++
+			if err := w.Deps.Indexer.DeleteZimArchive(ctx, uuid); err != nil {
+				logger.Error("removing orphaned zim archive from index", "uuid", uuid, "error", err)
 			}
 		}
 	}
 
-	return nil
+	reconciliationActions.WithLabelValues("zim_archives", "orphaned_deleted").Add(float64(orphanedCount))
+	reconciliationActions.WithLabelValues("zim_archives", "missing_reindexed").Add(float64(reindexedCount))
+
+	logger.Info("zim archive index verification completed",
+		"missing_reindexed", reindexedCount,
+		"orphaned_deleted", orphanedCount,
+	)
+}
+
+// reconcileGitTemplates performs two-way sync between the git_templates DB table and Meilisearch index.
+func (w *VerifySearchIndexWorker) reconcileGitTemplates(ctx context.Context, logger *slog.Logger) {
+	gitDBUUIDs, err := w.Deps.GitRepo.ListAllUUIDs(ctx)
+	if err != nil {
+		logger.Error("listing git template UUIDs from database", "error", err)
+		return
+	}
+
+	gitDBSet := make(map[string]bool, len(gitDBUUIDs))
+	for _, uuid := range gitDBUUIDs {
+		gitDBSet[uuid] = true
+	}
+
+	gitIndexed, err := w.Deps.Indexer.ListIndexedGitTemplateUUIDs(ctx)
+	if err != nil {
+		logger.Error("listing indexed git template UUIDs", "error", err)
+		return
+	}
+
+	// Find missing: in DB but not in index.
+	var missingUUIDs []string
+	for _, uuid := range gitDBUUIDs {
+		if !gitIndexed[uuid] {
+			missingUUIDs = append(missingUUIDs, uuid)
+		}
+	}
+
+	// Re-index missing Git templates.
+	var reindexedCount int
+	if len(missingUUIDs) > 0 {
+		templates, fetchErr := w.Deps.GitRepo.FindByUUIDs(ctx, missingUUIDs)
+		if fetchErr != nil {
+			logger.Error("fetching git templates for re-indexing", "error", fetchErr)
+		} else {
+			for i := range templates {
+				record := gitTemplateToRecord(&templates[i])
+				if indexErr := w.Deps.Indexer.IndexGitTemplate(ctx, record); indexErr != nil {
+					logger.Error("re-indexing missing git template", "uuid", templates[i].UUID, "error", indexErr)
+				} else {
+					reindexedCount++
+				}
+			}
+		}
+	}
+
+	// Remove orphaned: in index but not in DB.
+	var orphanedCount int
+	for uuid := range gitIndexed {
+		if !gitDBSet[uuid] {
+			orphanedCount++
+			if err := w.Deps.Indexer.DeleteGitTemplate(ctx, uuid); err != nil {
+				logger.Error("removing orphaned git template from index", "uuid", uuid, "error", err)
+			}
+		}
+	}
+
+	reconciliationActions.WithLabelValues("git_templates", "orphaned_deleted").Add(float64(orphanedCount))
+	reconciliationActions.WithLabelValues("git_templates", "missing_reindexed").Add(float64(reindexedCount))
+
+	logger.Info("git template index verification completed",
+		"missing_reindexed", reindexedCount,
+		"orphaned_deleted", orphanedCount,
+	)
+}
+
+// zimArchiveToRecord converts a model.ZimArchive to a search.ZimArchiveRecord.
+func zimArchiveToRecord(za *model.ZimArchive) search.ZimArchiveRecord {
+	rec := search.ZimArchiveRecord{
+		UUID:         za.UUID,
+		Name:         za.Name,
+		Title:        za.Title,
+		Language:     za.Language,
+		ArticleCount: za.ArticleCount,
+	}
+	if za.Description.Valid {
+		rec.Description = za.Description.String
+	}
+	if za.Category.Valid {
+		rec.Category = za.Category.String
+	}
+	if za.Creator.Valid {
+		rec.Creator = za.Creator.String
+	}
+	if za.Tags.Valid && za.Tags.String != "" {
+		tags, err := za.ParseTags()
+		if err == nil {
+			rec.Tags = tags
+		}
+	}
+	return rec
+}
+
+// gitTemplateToRecord converts a model.GitTemplate to a search.GitTemplateRecord.
+func gitTemplateToRecord(gt *model.GitTemplate) search.GitTemplateRecord {
+	rec := search.GitTemplateRecord{
+		UUID:        gt.UUID,
+		Name:        gt.Name,
+		Slug:        gt.Slug,
+		IsPublic:    gt.IsPublic,
+		Status:      gt.Status,
+		SoftDeleted: gt.DeletedAt.Valid,
+	}
+	if gt.Description.Valid {
+		rec.Description = gt.Description.String
+	}
+	if gt.ReadmeContent.Valid {
+		rec.ReadmeContent = gt.ReadmeContent.String
+	}
+	if gt.Category.Valid {
+		rec.Category = gt.Category.String
+	}
+	if gt.UserID.Valid {
+		uid := gt.UserID.Int64
+		rec.UserID = &uid
+	}
+	if gt.Tags.Valid && gt.Tags.String != "" {
+		tags, err := gt.ParseTags()
+		if err == nil {
+			rec.Tags = tags
+		}
+	}
+	return rec
 }
 
 // PurgeSoftDeletedWorker permanently removes documents soft-deleted >30 days.

@@ -206,6 +206,24 @@ func (r *ZimArchiveRepository) ListAllUUIDs(ctx context.Context) ([]string, erro
 	return uuids, nil
 }
 
+// FindByUUIDs returns ZIM archives matching the given UUIDs.
+// Used by search index reconciliation to re-index missing entries.
+func (r *ZimArchiveRepository) FindByUUIDs(ctx context.Context, uuids []string) ([]model.ZimArchive, error) {
+	if len(uuids) == 0 {
+		return nil, nil
+	}
+	query, args, err := sqlx.In(`SELECT * FROM zim_archives WHERE uuid IN (?)`, uuids)
+	if err != nil {
+		return nil, fmt.Errorf("building IN clause for zim archive FindByUUIDs: %w", err)
+	}
+	query = r.db.Rebind(query)
+	var archives []model.ZimArchive
+	if err := r.db.SelectContext(ctx, &archives, query, args...); err != nil {
+		return nil, fmt.Errorf("finding zim archives by uuids: %w", err)
+	}
+	return archives, nil
+}
+
 // Count returns the total number of ZIM archives.
 func (r *ZimArchiveRepository) Count(ctx context.Context) (int, error) {
 	var count int

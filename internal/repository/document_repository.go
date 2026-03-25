@@ -195,6 +195,24 @@ func (r *DocumentRepository) ListAllUUIDs(ctx context.Context) ([]string, error)
 	return uuids, nil
 }
 
+// FindByUUIDs returns documents matching the given UUIDs (including soft-deleted).
+// Used by search index reconciliation to re-index missing entries.
+func (r *DocumentRepository) FindByUUIDs(ctx context.Context, uuids []string) ([]model.Document, error) {
+	if len(uuids) == 0 {
+		return nil, nil
+	}
+	query, args, err := sqlx.In(`SELECT * FROM documents WHERE uuid IN (?)`, uuids)
+	if err != nil {
+		return nil, fmt.Errorf("building IN clause for document FindByUUIDs: %w", err)
+	}
+	query = r.db.Rebind(query)
+	var docs []model.Document
+	if err := r.db.SelectContext(ctx, &docs, query, args...); err != nil {
+		return nil, fmt.Errorf("finding documents by uuids: %w", err)
+	}
+	return docs, nil
+}
+
 // ListActiveFilePaths returns file paths for non-deleted documents.
 func (r *DocumentRepository) ListActiveFilePaths(ctx context.Context) ([]DocumentFilePath, error) {
 	var paths []DocumentFilePath
