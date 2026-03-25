@@ -36,6 +36,10 @@ prompts/
 .DS_Store
 Thumbs.db
 
+# CI/CD workflows
+.forgejo/
+.github/
+
 # Docker
 Dockerfile
 docker-compose.yml
