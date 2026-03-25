@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/security"
+	"git.999.haus/chris/DocuMCP-go/internal/stringutil"
 )
 
 // ExternalServiceRepo defines repository methods needed by ExternalServiceService.
@@ -115,7 +115,7 @@ func (s *ExternalServiceService) Create(ctx context.Context, params CreateExtern
 	svc := &model.ExternalService{
 		UUID:      uuid.New().String(),
 		Name:      params.Name,
-		Slug:      slugify(params.Name),
+		Slug:      stringutil.Slugify(params.Name),
 		Type:      params.Type,
 		BaseURL:   params.BaseURL,
 		Priority:  params.Priority,
@@ -151,7 +151,7 @@ func (s *ExternalServiceService) Update(ctx context.Context, svcUUID string, par
 
 	if params.Name != "" {
 		svc.Name = params.Name
-		svc.Slug = slugify(params.Name)
+		svc.Slug = stringutil.Slugify(params.Name)
 	}
 	if params.BaseURL != "" {
 		if err = security.ValidateExternalURL(params.BaseURL, true); err != nil {
@@ -274,24 +274,3 @@ func (s *ExternalServiceService) CheckHealth(ctx context.Context, svcUUID string
 	return updated, nil
 }
 
-// slugify converts a name to a URL-friendly slug.
-func slugify(name string) string {
-	s := strings.ToLower(strings.TrimSpace(name))
-	s = strings.Map(func(r rune) rune {
-		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
-			return r
-		}
-		if r == ' ' || r == '-' || r == '_' {
-			return '-'
-		}
-		return -1
-	}, s)
-
-	// Collapse consecutive hyphens.
-	for strings.Contains(s, "--") {
-		s = strings.ReplaceAll(s, "--", "-")
-	}
-	s = strings.Trim(s, "-")
-
-	return s
-}

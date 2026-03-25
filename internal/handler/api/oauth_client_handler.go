@@ -8,10 +8,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strconv"
-	"time"
-
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
@@ -63,12 +59,7 @@ type oauthClientResponse struct {
 func (h *OAuthClientHandler) List(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit <= 0 {
-		limit = 20
-	}
-
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	limit, offset := parsePagination(r, 20, 100)
 
 	clients, total, err := h.repo.ListClients(r.Context(), query, limit, offset)
 	if err != nil {
@@ -82,14 +73,7 @@ func (h *OAuthClientHandler) List(w http.ResponseWriter, r *http.Request) {
 		items = append(items, toOAuthClientResponse(&clients[i]))
 	}
 
-	jsonResponse(w, http.StatusOK, map[string]any{
-		"data": items,
-		"meta": map[string]any{
-			"total":  total,
-			"limit":  limit,
-			"offset": offset,
-		},
-	})
+	jsonResponse(w, http.StatusOK, listResponse(items, total, limit, offset))
 }
 
 // Create handles POST /api/admin/oauth-clients -- create a new OAuth client.
@@ -181,9 +165,8 @@ func (h *OAuthClientHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // Revoke handles POST /api/admin/oauth-clients/{id}/revoke -- deactivate a client.
 func (h *OAuthClientHandler) Revoke(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
-		errorResponse(w, http.StatusBadRequest, "invalid client id")
+	id, ok := parseIDParam(w, r, "id", "client id")
+	if !ok {
 		return
 	}
 
@@ -200,9 +183,8 @@ func (h *OAuthClientHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 
 // Show handles GET /api/admin/oauth-clients/{id} -- get a single OAuth client.
 func (h *OAuthClientHandler) Show(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
-		errorResponse(w, http.StatusBadRequest, "invalid client id")
+	id, ok := parseIDParam(w, r, "id", "client id")
+	if !ok {
 		return
 	}
 
@@ -233,12 +215,6 @@ func toOAuthClientResponse(c *model.OAuthClient) oauthClientResponse {
 		responseTypes = []string{}
 	}
 
-	var lastUsedAt *string
-	if c.LastUsedAt.Valid {
-		s := c.LastUsedAt.Time.UTC().Format(time.RFC3339)
-		lastUsedAt = &s
-	}
-
 	resp := oauthClientResponse{
 		ID:                      c.ID,
 		ClientID:                c.ClientID,
@@ -248,17 +224,10 @@ func toOAuthClientResponse(c *model.OAuthClient) oauthClientResponse {
 		ResponseTypes:           responseTypes,
 		TokenEndpointAuthMethod: c.TokenEndpointAuthMethod,
 		IsActive:                c.IsActive,
-		LastUsedAt:              lastUsedAt,
-	}
-
-	if c.Scope.Valid {
-		resp.Scope = c.Scope.String
-	}
-	if c.CreatedAt.Valid {
-		resp.CreatedAt = c.CreatedAt.Time.Format(time.RFC3339)
-	}
-	if c.UpdatedAt.Valid {
-		resp.UpdatedAt = c.UpdatedAt.Time.Format(time.RFC3339)
+		Scope:                   nullStringValue(c.Scope),
+		LastUsedAt:              nullTimePtr(c.LastUsedAt),
+		CreatedAt:               nullTimeToString(c.CreatedAt),
+		UpdatedAt:               nullTimeToString(c.UpdatedAt),
 	}
 
 	return resp

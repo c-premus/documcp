@@ -431,32 +431,17 @@ func (h *Handler) handleSearchGitTemplates(
 		return nil, searchGitTemplatesResponse{}, fmt.Errorf("searching git templates: %w", err)
 	}
 
-	results := make([]gitTemplateSearchResult, 0, len(resp.Hits))
-	for _, hit := range resp.Hits {
-		var m map[string]any
-		if err := hit.DecodeInto(&m); err != nil {
-			continue
-		}
-		result := gitTemplateSearchResult{}
-		if v, ok := m["uuid"].(string); ok {
-			result.UUID = v
-		}
-		if v, ok := m["name"].(string); ok {
-			result.Name = v
-		}
-		if v, ok := m["description"].(string); ok {
-			result.Description = v
-		}
-		if v, ok := m["category"].(string); ok {
-			result.Category = v
-		}
-		if v, ok := m["file_count"].(float64); ok {
-			result.FileCount = int(v)
-		}
-		if v, ok := m["status"].(string); ok {
-			result.Status = v
-		}
-		results = append(results, result)
+	normalized := search.NormalizeHits(resp.Hits, "git_template")
+	results := make([]gitTemplateSearchResult, 0, len(normalized))
+	for _, sr := range normalized {
+		results = append(results, gitTemplateSearchResult{
+			UUID:        sr.UUID,
+			Name:        sr.Title,
+			Description: sr.Description,
+			Category:    search.ExtraString(sr.Extra, "category"),
+			FileCount:   search.ExtraInt(sr.Extra, "file_count"),
+			Status:      search.ExtraString(sr.Extra, "status"),
+		})
 	}
 
 	return nil, searchGitTemplatesResponse{

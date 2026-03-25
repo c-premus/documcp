@@ -4,6 +4,8 @@ package authmiddleware
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -23,6 +25,82 @@ const (
 	// AccessTokenContextKey is the context key for the validated access token.
 	AccessTokenContextKey contextKey = "access_token"
 )
+
+// Sentinel errors for auth helpers.
+var (
+	errNotBearer    = errors.New("not a bearer token")
+	errInvalidToken = errors.New("invalid or expired token")
+	errNoSession    = errors.New("no valid session")
+)
+
+// bearerResult holds the outcome of bearer token authentication.
+type bearerResult struct {
+	token *model.OAuthAccessToken
+	user  *model.User
+}
+
+// authenticateBearerToken extracts and validates a bearer token from the
+// Authorization header value. On success it fires-and-forgets
+// TouchClientLastUsed and optionally loads the associated user.
+func authenticateBearerToken(ctx context.Context, authHeader string, oauthService *oauth.Service) (*bearerResult, error) {
+	bearerToken := strings.TrimPrefix(authHeader, "Bearer ")
+	if bearerToken == authHeader {
+		return nil, errNotBearer
+	}
+
+	token, err := oauthService.ValidateAccessToken(ctx, bearerToken)
+	if err != nil {
+		return nil, errInvalidToken
+	}
+
+	go func(id int64) {
+		touchCtx, cancel := context.WithTimeout(context.Background(), oauthService.ClientTouchTimeout())
+		defer cancel()
+		if err := oauthService.TouchClientLastUsed(touchCtx, id); err != nil {
+			slog.Warn("updating oauth client last_used_at", "client_id", id, "error", err)
+		}
+	}(token.ClientID)
+
+	result := &bearerResult{token: token}
+	if token.UserID.Valid {
+		user, err := oauthService.FindUserByID(ctx, token.UserID.Int64)
+		if err != nil {
+			slog.Warn("loading user for bearer token", "user_id", token.UserID.Int64, "error", err)
+		} else {
+			result.user = user
+		}
+	}
+	return result, nil
+}
+
+// loadSessionUser retrieves the authenticated user from the session cookie.
+func loadSessionUser(ctx context.Context, r *http.Request, store sessions.Store, oauthService *oauth.Service) (*model.User, *sessions.Session, error) {
+	session, err := store.Get(r, "documcp_session")
+	if err != nil {
+		slog.Warn("session decode error", "error", err)
+	}
+
+	userID, ok := session.Values["user_id"].(int64)
+	if !ok || userID == 0 {
+		return nil, session, errNoSession
+	}
+
+	user, err := oauthService.FindUserByID(ctx, userID)
+	if err != nil {
+		return nil, session, fmt.Errorf("loading session user %d: %w", userID, err)
+	}
+
+	return user, session, nil
+}
+
+// setBearerContext sets the access token and optional user in the request context.
+func setBearerContext(r *http.Request, result *bearerResult) *http.Request {
+	ctx := context.WithValue(r.Context(), AccessTokenContextKey, result.token)
+	if result.user != nil {
+		ctx = context.WithValue(ctx, UserContextKey, result.user)
+	}
+	return r.WithContext(ctx)
+}
 
 // UserFromContext returns the authenticated user from the request context.
 func UserFromContext(ctx context.Context) (*model.User, bool) {
@@ -44,41 +122,19 @@ func BearerToken(oauthService *oauth.Service) func(http.Handler) http.Handler {
 				return
 			}
 
-			bearerToken := strings.TrimPrefix(authHeader, "Bearer ")
-			if bearerToken == authHeader {
-				w.Header().Set("WWW-Authenticate", `Bearer`)
-				jsonError(w, http.StatusUnauthorized, "Bearer token required")
-				return
-			}
-
-			token, err := oauthService.ValidateAccessToken(r.Context(), bearerToken)
+			result, err := authenticateBearerToken(r.Context(), authHeader, oauthService)
 			if err != nil {
-				w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
-				jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
+				if errors.Is(err, errInvalidToken) {
+					w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+					jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
+				} else {
+					w.Header().Set("WWW-Authenticate", `Bearer`)
+					jsonError(w, http.StatusUnauthorized, "Bearer token required")
+				}
 				return
 			}
 
-			go func(id int64) {
-				touchCtx, cancel := context.WithTimeout(context.Background(), oauthService.ClientTouchTimeout())
-				defer cancel()
-				if err := oauthService.TouchClientLastUsed(touchCtx, id); err != nil {
-					slog.Warn("updating oauth client last_used_at", "client_id", id, "error", err)
-				}
-			}(token.ClientID)
-
-			ctx := context.WithValue(r.Context(), AccessTokenContextKey, token)
-
-			// Optionally load user
-			if token.UserID.Valid {
-				user, err := oauthService.FindUserByID(r.Context(), token.UserID.Int64)
-				if err != nil {
-					slog.Warn("loading user for bearer token", "user_id", token.UserID.Int64, "error", err)
-				} else {
-					ctx = context.WithValue(ctx, UserContextKey, user)
-				}
-			}
-
-			next.ServeHTTP(w, r.WithContext(ctx))
+			next.ServeHTTP(w, setBearerContext(r, result))
 		})
 	}
 }
@@ -91,56 +147,24 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store) func(htt
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// If Authorization header is present, use bearer token auth.
 			if authHeader := r.Header.Get("Authorization"); authHeader != "" {
-				bearerToken := strings.TrimPrefix(authHeader, "Bearer ")
-				if bearerToken == authHeader {
-					w.Header().Set("WWW-Authenticate", `Bearer`)
-					jsonError(w, http.StatusUnauthorized, "Bearer token required")
-					return
-				}
-
-				token, err := oauthService.ValidateAccessToken(r.Context(), bearerToken)
+				result, err := authenticateBearerToken(r.Context(), authHeader, oauthService)
 				if err != nil {
-					w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
-					jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
+					if errors.Is(err, errInvalidToken) {
+						w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+						jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
+					} else {
+						w.Header().Set("WWW-Authenticate", `Bearer`)
+						jsonError(w, http.StatusUnauthorized, "Bearer token required")
+					}
 					return
 				}
 
-				go func(id int64) {
-					touchCtx, cancel := context.WithTimeout(context.Background(), oauthService.ClientTouchTimeout())
-					defer cancel()
-					if err := oauthService.TouchClientLastUsed(touchCtx, id); err != nil {
-						slog.Warn("updating oauth client last_used_at", "client_id", id, "error", err)
-					}
-				}(token.ClientID)
-
-				ctx := context.WithValue(r.Context(), AccessTokenContextKey, token)
-				if token.UserID.Valid {
-					user, err := oauthService.FindUserByID(r.Context(), token.UserID.Int64)
-					if err != nil {
-						slog.Warn("loading user for bearer token", "user_id", token.UserID.Int64, "error", err)
-					} else {
-						ctx = context.WithValue(ctx, UserContextKey, user)
-					}
-				}
-
-				next.ServeHTTP(w, r.WithContext(ctx))
+				next.ServeHTTP(w, setBearerContext(r, result))
 				return
 			}
 
 			// No Authorization header — try session cookie.
-			session, err := store.Get(r, "documcp_session")
-			if err != nil {
-				// Stale/corrupt cookie — gorilla returns fresh empty session;
-				// userID check below will naturally reject.
-				slog.Warn("session decode error in BearerOrSession", "error", err)
-			}
-			userID, ok := session.Values["user_id"].(int64)
-			if !ok || userID == 0 {
-				jsonError(w, http.StatusUnauthorized, "Authentication required")
-				return
-			}
-
-			user, err := oauthService.FindUserByID(r.Context(), userID)
+			user, _, err := loadSessionUser(r.Context(), r, store, oauthService)
 			if err != nil {
 				jsonError(w, http.StatusUnauthorized, "Authentication required")
 				return
@@ -157,23 +181,13 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store) func(htt
 func SessionAuth(store sessions.Store, oauthService *oauth.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			session, err := store.Get(r, "documcp_session")
+			user, session, err := loadSessionUser(r.Context(), r, store, oauthService)
 			if err != nil {
-				// Stale/corrupt cookie — gorilla returns fresh empty session;
-				// userID check below will redirect to login.
-				slog.Warn("session decode error in SessionAuth", "error", err)
-			}
-			userID, ok := session.Values["user_id"].(int64)
-			if !ok || userID == 0 {
-				http.Redirect(w, r, "/auth/login?redirect="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
-				return
-			}
-
-			user, err := oauthService.FindUserByID(r.Context(), userID)
-			if err != nil {
-				// Session invalid — clear it
-				session.Options.MaxAge = -1
-				_ = session.Save(r, w)
+				if !errors.Is(err, errNoSession) {
+					// User lookup failed — clear stale session.
+					session.Options.MaxAge = -1
+					_ = session.Save(r, w)
+				}
 				http.Redirect(w, r, "/auth/login?redirect="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
 				return
 			}

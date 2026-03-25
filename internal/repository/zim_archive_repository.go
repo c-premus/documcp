@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/jmoiron/sqlx"
 
 	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"git.999.haus/chris/DocuMCP-go/internal/stringutil"
 )
 
 // ZimArchiveUpsert holds the fields needed to upsert a ZIM archive from a catalog sync.
@@ -257,7 +257,7 @@ func (r *ZimArchiveRepository) UpsertFromCatalog(ctx context.Context, serviceID 
 			external_service_id = EXCLUDED.external_service_id,
 			last_synced_at = NOW(),
 			updated_at = NOW()`,
-		entry.Name, slugifyName(entry.Name), entry.Title, nullStr(entry.Description),
+		entry.Name, stringutil.Slugify(entry.Name), entry.Title, nullStr(entry.Description),
 		nullStr(entry.Language), nullStr(entry.Category),
 		nullStr(entry.Creator), nullStr(entry.Publisher), nullStr(entry.Favicon),
 		entry.ArticleCount, entry.MediaCount,
@@ -323,23 +323,3 @@ func nullStr(s string) *string {
 	return &s
 }
 
-// slugifyName converts a name to a URL-friendly slug.
-func slugifyName(name string) string {
-	s := strings.ToLower(strings.TrimSpace(name))
-	s = strings.Map(func(r rune) rune {
-		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
-			return r
-		}
-		if r == ' ' || r == '-' || r == '_' {
-			return '-'
-		}
-		return -1
-	}, s)
-
-	for strings.Contains(s, "--") {
-		s = strings.ReplaceAll(s, "--", "-")
-	}
-	s = strings.Trim(s, "-")
-
-	return s
-}

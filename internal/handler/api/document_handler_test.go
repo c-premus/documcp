@@ -747,10 +747,10 @@ func TestToDocumentResponse(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// formatTime tests
+// nullTimeToString tests
 // ---------------------------------------------------------------------------
 
-func TestFormatTime(t *testing.T) {
+func TestNullTimeToString(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -778,9 +778,9 @@ func TestFormatTime(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := formatTime(tt.t)
+			got := nullTimeToString(tt.t)
 			if got != tt.want {
-				t.Errorf("formatTime() = %q, want %q", got, tt.want)
+				t.Errorf("nullTimeToString() = %q, want %q", got, tt.want)
 			}
 		})
 	}

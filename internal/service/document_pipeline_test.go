@@ -10,6 +10,8 @@ import (
 
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"git.999.haus/chris/DocuMCP-go/internal/extractor"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
@@ -917,7 +919,8 @@ func TestDocumentPipeline_DispatchExtraction_NilInserter(t *testing.T) {
 	pipeline := NewDocumentPipeline(svc, nil, nil, nil, t.TempDir())
 
 	// Should not panic with nil inserter.
-	pipeline.dispatchExtraction(context.Background(), 1, "test-uuid")
+	err := pipeline.dispatchExtraction(context.Background(), 1, "test-uuid")
+	require.NoError(t, err)
 }
 
 func TestDocumentPipeline_DispatchExtraction_Success(t *testing.T) {
@@ -934,7 +937,8 @@ func TestDocumentPipeline_DispatchExtraction_Success(t *testing.T) {
 	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
 	pipeline := NewDocumentPipeline(svc, nil, nil, inserter, t.TempDir())
 
-	pipeline.dispatchExtraction(context.Background(), 42, "doc-uuid")
+	err := pipeline.dispatchExtraction(context.Background(), 42, "doc-uuid")
+	require.NoError(t, err)
 
 	if !inserted {
 		t.Error("expected inserter.Insert to be called")
@@ -953,8 +957,10 @@ func TestDocumentPipeline_DispatchExtraction_Error(t *testing.T) {
 	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
 	pipeline := NewDocumentPipeline(svc, nil, nil, inserter, t.TempDir())
 
-	// Should log error but not panic.
-	pipeline.dispatchExtraction(context.Background(), 42, "doc-uuid")
+	// Should return error.
+	err := pipeline.dispatchExtraction(context.Background(), 42, "doc-uuid")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "dispatching extraction job")
 }
 
 // ---------------------------------------------------------------------------
@@ -967,7 +973,8 @@ func TestDocumentPipeline_DispatchIndexing_NilInserter(t *testing.T) {
 	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
 	pipeline := NewDocumentPipeline(svc, nil, nil, nil, t.TempDir())
 
-	pipeline.dispatchIndexing(context.Background(), &model.Document{ID: 1, UUID: "test"})
+	err := pipeline.dispatchIndexing(context.Background(), &model.Document{ID: 1, UUID: "test"})
+	require.NoError(t, err)
 }
 
 // ---------------------------------------------------------------------------

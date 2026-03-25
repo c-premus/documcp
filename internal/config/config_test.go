@@ -225,13 +225,23 @@ func TestLoad_EnvOverrides(t *testing.T) {
 // validBaseConfig returns a Config with all always-required fields set.
 func validBaseConfig() Config {
 	return Config{
+		Server: ServerConfig{
+			Port:        8080,
+			MaxBodySize: 1048576,
+		},
 		Database: DatabaseConfig{
-			Host:     "localhost",
-			Database: "mydb",
-			Username: "admin",
+			Host:         "localhost",
+			Database:     "mydb",
+			Username:     "admin",
+			MaxOpenConns: 25,
+			MaxIdleConns: 10,
 		},
 		Meilisearch: MeilisearchConfig{
 			Host: "http://localhost:7700",
+		},
+		Git: GitConfig{
+			MaxFileSize:  10 * 1024 * 1024,
+			MaxTotalSize: 50 * 1024 * 1024,
 		},
 	}
 }
@@ -467,6 +477,78 @@ func TestConfig_Validate(t *testing.T) {
 			}(),
 			wantErr: false,
 		},
+		// Numeric range checks
+		{
+			name: "port zero is invalid",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.Server.Port = 0
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "SERVER_PORT must be between 1 and 65535",
+		},
+		{
+			name: "port exceeds max",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.Server.Port = 70000
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "SERVER_PORT must be between 1 and 65535",
+		},
+		{
+			name: "max body size zero is invalid",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.Server.MaxBodySize = 0
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "SERVER_MAX_BODY_SIZE must be positive",
+		},
+		{
+			name: "idle conns exceeds open conns",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.Database.MaxOpenConns = 10
+				c.Database.MaxIdleConns = 20
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "DB_MAX_IDLE_CONNS must not exceed DB_MAX_OPEN_CONNS",
+		},
+		{
+			name: "idle conns equals open conns is valid",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.Database.MaxOpenConns = 10
+				c.Database.MaxIdleConns = 10
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "git max file size zero is invalid",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.Git.MaxFileSize = 0
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "GIT_MAX_FILE_SIZE must be positive",
+		},
+		{
+			name: "git max total size zero is invalid",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.Git.MaxTotalSize = 0
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "GIT_MAX_TOTAL_SIZE must be positive",
+		},
 	}
 
 	for _, tt := range tests {
@@ -684,6 +766,10 @@ func TestConfig_DatabaseDSN_EmptyPassword(t *testing.T) {
 
 func TestConfig_Validate_ValidWithMinimumFields(t *testing.T) {
 	cfg := Config{
+		Server: ServerConfig{
+			Port:        8080,
+			MaxBodySize: 1,
+		},
 		Database: DatabaseConfig{
 			Host:     "h",
 			Database: "d",
@@ -691,6 +777,10 @@ func TestConfig_Validate_ValidWithMinimumFields(t *testing.T) {
 		},
 		Meilisearch: MeilisearchConfig{
 			Host: "http://localhost:7700",
+		},
+		Git: GitConfig{
+			MaxFileSize:  1,
+			MaxTotalSize: 1,
 		},
 	}
 
@@ -701,6 +791,10 @@ func TestConfig_Validate_ValidWithMinimumFields(t *testing.T) {
 
 func TestConfig_Validate_ProductionMultipleErrors(t *testing.T) {
 	cfg := Config{
+		Server: ServerConfig{
+			Port:        8080,
+			MaxBodySize: 1,
+		},
 		App: AppConfig{
 			Env: "production",
 			URL: "http://localhost",
@@ -712,6 +806,10 @@ func TestConfig_Validate_ProductionMultipleErrors(t *testing.T) {
 		},
 		Meilisearch: MeilisearchConfig{
 			Host: "http://localhost:7700",
+		},
+		Git: GitConfig{
+			MaxFileSize:  1,
+			MaxTotalSize: 1,
 		},
 	}
 

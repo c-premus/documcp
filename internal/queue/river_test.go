@@ -100,7 +100,7 @@ func TestRiverErrorHandler_HandleError(t *testing.T) {
 	t.Run("publishes event and increments metrics", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus()
+		eb := NewEventBus(discardLogger())
 		ch := eb.Subscribe("test")
 		metrics := newTestMetrics()
 
@@ -159,7 +159,7 @@ func TestRiverErrorHandler_HandleError(t *testing.T) {
 	t.Run("nil metrics does not panic", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus()
+		eb := NewEventBus(discardLogger())
 
 		handler := &riverErrorHandler{
 			eventBus: eb,
@@ -185,7 +185,7 @@ func TestRiverErrorHandler_HandlePanic(t *testing.T) {
 	t.Run("publishes event with panic info", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus()
+		eb := NewEventBus(discardLogger())
 		ch := eb.Subscribe("test")
 
 		handler := &riverErrorHandler{
@@ -234,7 +234,7 @@ func TestRiverErrorHandler_HandlePanic(t *testing.T) {
 	t.Run("integer panic value is handled", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus()
+		eb := NewEventBus(discardLogger())
 		ch := eb.Subscribe("int-panic")
 
 		handler := &riverErrorHandler{

@@ -152,7 +152,7 @@ func (w *SyncKiwixWorker) Work(ctx context.Context, _ *river.Job[SyncKiwixArgs])
 			Indexer:   indexer,
 			Logger:    svcLogger,
 		}); err != nil {
-			svcLogger.Error(fmt.Sprintf("syncing kiwix service %d: %v", svc.ID, err))
+			svcLogger.Error("kiwix sync failed", "error", err)
 			if w.Deps.HealthChecker != nil {
 				if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", 0, err.Error()); hErr != nil {
 					svcLogger.Error("updating health status", "error", hErr)
@@ -219,7 +219,7 @@ func (w *SyncGitTemplatesWorker) Work(ctx context.Context, _ *river.Job[SyncGitT
 			Indexer:  indexer,
 			Logger:   tmplLogger,
 		}); err != nil {
-			tmplLogger.Error(fmt.Sprintf("syncing git template %d: %v", t.ID, err))
+			tmplLogger.Error("git template sync failed", "error", err)
 			continue
 		}
 

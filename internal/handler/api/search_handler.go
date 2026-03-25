@@ -5,7 +5,6 @@ import (
 	"html"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"git.999.haus/chris/DocuMCP-go/internal/repository"
@@ -48,15 +47,8 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit, _ := strconv.ParseInt(r.URL.Query().Get("limit"), 10, 64)
-	if limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
-
-	offset, _ := strconv.ParseInt(r.URL.Query().Get("offset"), 10, 64)
+	limitInt, offsetInt := parsePagination(r, 20, 100)
+	limit, offset := int64(limitInt), int64(offsetInt)
 
 	var filters []string
 	if ft := r.URL.Query().Get("file_type"); ft != "" {
@@ -108,15 +100,8 @@ func (h *SearchHandler) FederatedSearch(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	limit, _ := strconv.ParseInt(r.URL.Query().Get("limit"), 10, 64)
-	if limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
-
-	offset, _ := strconv.ParseInt(r.URL.Query().Get("offset"), 10, 64)
+	limitInt, offsetInt := parsePagination(r, 20, 100)
+	limit, offset := int64(limitInt), int64(offsetInt)
 
 	// Parse optional source types filter.
 	var indexes []string
@@ -161,13 +146,7 @@ func (h *SearchHandler) FederatedSearch(w http.ResponseWriter, r *http.Request) 
 
 // Popular handles GET /api/search/popular — returns popular search queries.
 func (h *SearchHandler) Popular(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit <= 0 {
-		limit = 10
-	}
-	if limit > 50 {
-		limit = 50
-	}
+	limit, _ := parsePagination(r, 10, 50)
 
 	queries, err := h.queryLister.PopularQueries(r.Context(), limit)
 	if err != nil {
@@ -194,13 +173,7 @@ func (h *SearchHandler) Autocomplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit <= 0 {
-		limit = 5
-	}
-	if limit > 10 {
-		limit = 10
-	}
+	limit, _ := parsePagination(r, 5, 10)
 
 	suggestions, err := h.suggester.SuggestTitles(r.Context(), query, limit)
 	if err != nil {

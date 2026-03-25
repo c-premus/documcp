@@ -1,7 +1,9 @@
 package queue
 
 import (
+	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,6 +21,10 @@ const (
 	EventJobSnoozed EventType = "job.snoozed"
 	// EventJobRetrying is emitted when a background job is scheduled for retry.
 	EventJobRetrying EventType = "job.retrying"
+
+	// eventBusBufferSize is the per-subscriber channel capacity.
+	// Events are dropped (non-blocking send) when a subscriber's buffer is full.
+	eventBusBufferSize = 64
 )
 
 // Event represents a queue lifecycle event.
@@ -36,11 +42,16 @@ type Event struct {
 type EventBus struct {
 	mu          sync.RWMutex
 	subscribers map[string]chan Event
+	logger      *slog.Logger
+	dropped     atomic.Int64
 }
 
 // NewEventBus creates a new EventBus.
-func NewEventBus() *EventBus {
-	return &EventBus{subscribers: make(map[string]chan Event)}
+func NewEventBus(logger *slog.Logger) *EventBus {
+	return &EventBus{
+		subscribers: make(map[string]chan Event),
+		logger:      logger,
+	}
 }
 
 // Subscribe returns a channel that receives events. Call Unsubscribe with the
@@ -48,7 +59,7 @@ func NewEventBus() *EventBus {
 func (eb *EventBus) Subscribe(id string) <-chan Event {
 	eb.mu.Lock()
 	defer eb.mu.Unlock()
-	ch := make(chan Event, 64)
+	ch := make(chan Event, eventBusBufferSize)
 	eb.subscribers[id] = ch
 	return ch
 }
@@ -80,10 +91,24 @@ func (eb *EventBus) Close() {
 func (eb *EventBus) Publish(event Event) {
 	eb.mu.RLock()
 	defer eb.mu.RUnlock()
+	var droppedCount int
 	for _, ch := range eb.subscribers {
 		select {
 		case ch <- event:
 		default:
+			droppedCount++
+			eb.dropped.Add(1)
 		}
 	}
+	if droppedCount > 0 {
+		eb.logger.Warn("events dropped for slow subscribers",
+			"event_type", event.Type,
+			"dropped", droppedCount,
+		)
+	}
+}
+
+// DroppedCount returns the total number of events dropped across all subscribers.
+func (eb *EventBus) DroppedCount() int64 {
+	return eb.dropped.Load()
 }

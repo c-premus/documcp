@@ -25,18 +25,18 @@ func newCache() *cache {
 }
 
 // get returns the cached value for key if it exists and has not expired.
+// Uses a write lock for the entire operation to avoid a TOCTOU race between
+// the expiry check and the delete — safe because this cache is low-contention.
 func (c *cache) get(key string) (any, bool) {
-	c.mu.RLock()
-	entry, ok := c.entries[key]
-	c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
+	entry, ok := c.entries[key]
 	if !ok {
 		return nil, false
 	}
 
 	if time.Now().After(entry.expiresAt) {
-		c.mu.Lock()
-		defer c.mu.Unlock()
 		delete(c.entries, key)
 		return nil, false
 	}

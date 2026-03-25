@@ -234,7 +234,7 @@ func New(cfg *config.Config) (*App, error) {
 	logger.Info("Prometheus metrics registered")
 
 	// --- EventBus ---
-	eventBus := queue.NewEventBus()
+	eventBus := queue.NewEventBus(logger)
 
 	// --- River Workers ---
 	schedulerDeps := queue.SchedulerDeps{

@@ -5,10 +5,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strconv"
-	"time"
-
-	"github.com/go-chi/chi/v5"
 
 	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
 	"git.999.haus/chris/DocuMCP-go/internal/model"
@@ -39,28 +35,17 @@ type userResponse struct {
 }
 
 func newUserResponse(u *model.User) userResponse {
-	r := userResponse{
-		ID:      u.ID,
-		Name:    u.Name,
-		Email:   u.Email,
-		IsAdmin: u.IsAdmin,
+	return userResponse{
+		ID:              u.ID,
+		Name:            u.Name,
+		Email:           u.Email,
+		IsAdmin:         u.IsAdmin,
+		OIDCSub:         nullStringValue(u.OIDCSub),
+		OIDCProvider:    nullStringValue(u.OIDCProvider),
+		EmailVerifiedAt: nullTimeToString(u.EmailVerifiedAt),
+		CreatedAt:       nullTimeToString(u.CreatedAt),
+		UpdatedAt:       nullTimeToString(u.UpdatedAt),
 	}
-	if u.OIDCSub.Valid {
-		r.OIDCSub = u.OIDCSub.String
-	}
-	if u.OIDCProvider.Valid {
-		r.OIDCProvider = u.OIDCProvider.String
-	}
-	if u.EmailVerifiedAt.Valid {
-		r.EmailVerifiedAt = u.EmailVerifiedAt.Time.Format(time.RFC3339)
-	}
-	if u.CreatedAt.Valid {
-		r.CreatedAt = u.CreatedAt.Time.Format(time.RFC3339)
-	}
-	if u.UpdatedAt.Valid {
-		r.UpdatedAt = u.UpdatedAt.Time.Format(time.RFC3339)
-	}
-	return r
 }
 
 func newUserResponseList(users []model.User) []userResponse {
@@ -92,15 +77,7 @@ func NewUserHandler(
 func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 
-	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
-	if err != nil || limit <= 0 {
-		limit = 20
-	}
-
-	offset, err := strconv.Atoi(r.URL.Query().Get("offset"))
-	if err != nil || offset < 0 {
-		offset = 0
-	}
+	limit, offset := parsePagination(r, 20, 100)
 
 	users, total, err := h.repo.ListUsers(r.Context(), q, limit, offset)
 	if err != nil {
@@ -283,11 +260,5 @@ func (h *UserHandler) ToggleAdmin(w http.ResponseWriter, r *http.Request) {
 // parseID extracts and validates the {id} URL parameter.
 // Returns the parsed ID and true on success, or writes an error response and returns false.
 func (h *UserHandler) parseID(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	raw := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		errorResponse(w, http.StatusBadRequest, "invalid user ID")
-		return 0, false
-	}
-	return id, true
+	return parseIDParam(w, r, "id", "user ID")
 }

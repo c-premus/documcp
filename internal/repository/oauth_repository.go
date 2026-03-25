@@ -171,10 +171,14 @@ func (r *OAuthRepository) FindAccessTokenByToken(ctx context.Context, tokenHash 
 
 // RevokeAccessToken marks an access token as revoked.
 func (r *OAuthRepository) RevokeAccessToken(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx,
+	result, err := r.db.ExecContext(ctx,
 		`UPDATE oauth_access_tokens SET revoked = true, updated_at = NOW() WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("revoking access token %d: %w", id, err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("access token %d not found: %w", id, sql.ErrNoRows)
 	}
 	return nil
 }
@@ -214,10 +218,14 @@ func (r *OAuthRepository) FindRefreshTokenByToken(ctx context.Context, tokenHash
 
 // RevokeRefreshToken marks a refresh token as revoked.
 func (r *OAuthRepository) RevokeRefreshToken(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx,
+	result, err := r.db.ExecContext(ctx,
 		`UPDATE oauth_refresh_tokens SET revoked = true, updated_at = NOW() WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("revoking refresh token %d: %w", id, err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("refresh token %d not found: %w", id, sql.ErrNoRows)
 	}
 	return nil
 }
@@ -305,11 +313,15 @@ func (r *OAuthRepository) UpdateDeviceCodeStatus(ctx context.Context, id int64, 
 
 // UpdateDeviceCodeLastPolled updates the last_polled_at timestamp and polling interval.
 func (r *OAuthRepository) UpdateDeviceCodeLastPolled(ctx context.Context, id int64, interval int) error {
-	_, err := r.db.ExecContext(ctx,
+	result, err := r.db.ExecContext(ctx,
 		`UPDATE oauth_device_codes SET last_polled_at = NOW(), interval = $1, updated_at = NOW() WHERE id = $2`,
 		interval, id)
 	if err != nil {
 		return fmt.Errorf("updating device code %d last polled: %w", id, err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("device code %d not found: %w", id, sql.ErrNoRows)
 	}
 	return nil
 }

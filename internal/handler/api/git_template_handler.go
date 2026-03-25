@@ -14,9 +14,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -27,6 +25,7 @@ import (
 	"git.999.haus/chris/DocuMCP-go/internal/model"
 	"git.999.haus/chris/DocuMCP-go/internal/queue"
 	"git.999.haus/chris/DocuMCP-go/internal/security"
+	"git.999.haus/chris/DocuMCP-go/internal/stringutil"
 )
 
 // gitTemplateRepo defines the methods used by GitTemplateHandler -- defined where consumed.
@@ -103,18 +102,7 @@ type gitTemplateFileResponse struct {
 func (h *GitTemplateHandler) List(w http.ResponseWriter, r *http.Request) {
 	category := r.URL.Query().Get("category")
 
-	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
-	if perPage <= 0 {
-		perPage = 50
-	}
-	if perPage > 100 {
-		perPage = 100
-	}
-
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	if offset < 0 {
-		offset = 0
-	}
+	perPage, offset := parsePaginationParam(r, "per_page", 50, 100)
 
 	total, err := h.repo.CountFiltered(r.Context(), category)
 	if err != nil {
@@ -135,14 +123,7 @@ func (h *GitTemplateHandler) List(w http.ResponseWriter, r *http.Request) {
 		items = append(items, toGitTemplateResponse(&templates[i]))
 	}
 
-	jsonResponse(w, http.StatusOK, map[string]any{
-		"data": items,
-		"meta": map[string]any{
-			"total":  total,
-			"limit":  perPage,
-			"offset": offset,
-		},
-	})
+	jsonResponse(w, http.StatusOK, listResponse(items, total, perPage, offset))
 }
 
 // Search handles GET /api/git-templates/search -- search templates by query and category.
@@ -150,10 +131,7 @@ func (h *GitTemplateHandler) Search(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	category := r.URL.Query().Get("category")
 
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit <= 0 {
-		limit = 50
-	}
+	limit, _ := parsePagination(r, 50, 100)
 
 	templates, err := h.repo.Search(r.Context(), query, category, limit)
 	if err != nil {
@@ -236,7 +214,7 @@ func (h *GitTemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
 	tmpl := &model.GitTemplate{
 		UUID:          uuid.New().String(),
 		Name:          body.Name,
-		Slug:          slugifyTemplateName(body.Name),
+		Slug:          stringutil.Slugify(body.Name),
 		RepositoryURL: body.RepositoryURL,
 		Branch:        branch,
 		IsPublic:      body.IsPublic,
@@ -314,7 +292,7 @@ func (h *GitTemplateHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	if body.Name != "" {
 		tmpl.Name = body.Name
-		tmpl.Slug = slugifyTemplateName(body.Name)
+		tmpl.Slug = stringutil.Slugify(body.Name)
 	}
 	if body.RepositoryURL != "" {
 		if err := security.ValidateExternalURL(body.RepositoryURL); err != nil {
@@ -464,12 +442,8 @@ func (h *GitTemplateHandler) Structure(w http.ResponseWriter, r *http.Request) {
 			Filename:    f.Filename,
 			SizeBytes:   f.SizeBytes,
 			IsEssential: f.IsEssential,
-		}
-		if f.Extension.Valid {
-			item.Extension = f.Extension.String
-		}
-		if f.ContentHash.Valid {
-			item.ContentHash = f.ContentHash.String
+			Extension:   nullStringValue(f.Extension),
+			ContentHash: nullStringValue(f.ContentHash),
 		}
 		fileItems = append(fileItems, item)
 	}
@@ -619,10 +593,7 @@ func (h *GitTemplateHandler) DeploymentGuide(w http.ResponseWriter, r *http.Requ
 		unresolvedList = append(unresolvedList, v)
 	}
 
-	description := ""
-	if tmpl.Description.Valid {
-		description = tmpl.Description.String
-	}
+	description := nullStringValue(tmpl.Description)
 
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"data": map[string]any{
@@ -751,27 +722,13 @@ func toGitTemplateResponse(gt *model.GitTemplate) gitTemplateResponse {
 		TotalSizeBytes: gt.TotalSizeBytes,
 	}
 
-	if gt.Description.Valid {
-		resp.Description = gt.Description.String
-	}
-	if gt.Category.Valid {
-		resp.Category = gt.Category.String
-	}
-	if gt.ErrorMessage.Valid {
-		resp.ErrorMessage = gt.ErrorMessage.String
-	}
-	if gt.LastSyncedAt.Valid {
-		resp.LastSyncedAt = gt.LastSyncedAt.Time.Format(time.RFC3339)
-	}
-	if gt.LastCommitSHA.Valid {
-		resp.LastCommitSHA = gt.LastCommitSHA.String
-	}
-	if gt.CreatedAt.Valid {
-		resp.CreatedAt = gt.CreatedAt.Time.Format(time.RFC3339)
-	}
-	if gt.UpdatedAt.Valid {
-		resp.UpdatedAt = gt.UpdatedAt.Time.Format(time.RFC3339)
-	}
+	resp.Description = nullStringValue(gt.Description)
+	resp.Category = nullStringValue(gt.Category)
+	resp.ErrorMessage = nullStringValue(gt.ErrorMessage)
+	resp.LastSyncedAt = nullTimeToString(gt.LastSyncedAt)
+	resp.LastCommitSHA = nullStringValue(gt.LastCommitSHA)
+	resp.CreatedAt = nullTimeToString(gt.CreatedAt)
+	resp.UpdatedAt = nullTimeToString(gt.UpdatedAt)
 
 	return resp
 }
@@ -809,26 +766,6 @@ func parseTemplateVariablesJSON(raw string) (map[string]string, error) {
 	return vars, nil
 }
 
-// slugifyTemplateName converts a name to a URL-friendly slug.
-func slugifyTemplateName(name string) string {
-	s := strings.ToLower(strings.TrimSpace(name))
-	s = strings.Map(func(r rune) rune {
-		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
-			return r
-		}
-		if r == ' ' || r == '-' || r == '_' {
-			return '-'
-		}
-		return -1
-	}, s)
-
-	for strings.Contains(s, "--") {
-		s = strings.ReplaceAll(s, "--", "-")
-	}
-	s = strings.Trim(s, "-")
-
-	return s
-}
 
 // templateArchiveEntry holds a single file's path and content for archive creation.
 type templateArchiveEntry struct {
