@@ -216,7 +216,7 @@ func (h *Handler) DeviceApprove(w http.ResponseWriter, r *http.Request) {
 
 	// Validate timestamp (10 minute expiry)
 	pendingTimestamp, _ := pending["timestamp"].(int64)
-	if time.Now().Unix()-pendingTimestamp > 600 {
+	if time.Now().Unix()-pendingTimestamp > pendingStateMaxAge {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = fmt.Fprintf(w, deviceErrorHTML, "Authorization request expired. Please restart the authorization flow.")
 		return

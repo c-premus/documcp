@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 
@@ -69,24 +70,29 @@ func (r *ExternalServiceRepository) FindBySlug(ctx context.Context, slug string)
 // List returns external services with optional type/status filters and pagination.
 // Returns the matching services and the total count (before LIMIT/OFFSET).
 func (r *ExternalServiceRepository) List(ctx context.Context, serviceType, status string, limit, offset int) ([]model.ExternalService, int, error) {
-	where := ``
-	args := []any{}
+	var conditions []string
+	var args []any
 	argIdx := 1
 
 	if serviceType != "" {
-		where += fmt.Sprintf(` AND type = $%d`, argIdx)
+		conditions = append(conditions, fmt.Sprintf("type = $%d", argIdx))
 		args = append(args, serviceType)
 		argIdx++
 	}
 
 	if status != "" {
-		where += fmt.Sprintf(` AND status = $%d`, argIdx)
+		conditions = append(conditions, fmt.Sprintf("status = $%d", argIdx))
 		args = append(args, status)
 		argIdx++
 	}
 
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = " WHERE " + strings.Join(conditions, " AND ")
+	}
+
 	// Count total matching rows.
-	countQuery := `SELECT COUNT(*) FROM external_services WHERE 1=1` + where
+	countQuery := `SELECT COUNT(*) FROM external_services` + whereClause
 	var total int
 	if err := r.db.GetContext(ctx, &total, countQuery, args...); err != nil {
 		return nil, 0, fmt.Errorf("counting external services: %w", err)
@@ -97,7 +103,7 @@ func (r *ExternalServiceRepository) List(ctx context.Context, serviceType, statu
 		limit = 50
 	}
 
-	q := `SELECT * FROM external_services WHERE 1=1` + where + ` ORDER BY priority, name`
+	q := `SELECT * FROM external_services` + whereClause + ` ORDER BY priority, name`
 	q += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, argIdx, argIdx+1)
 	args = append(args, limit, offset)
 
