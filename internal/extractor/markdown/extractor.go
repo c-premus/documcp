@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"git.999.haus/chris/DocuMCP-go/internal/extractor"
+	"github.com/c-premus/documcp/internal/extractor"
 )
 
 // supportedMIMETypes lists the MIME types this extractor handles.

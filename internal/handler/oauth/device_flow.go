@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
+	"github.com/c-premus/documcp/internal/auth/oauth"
 )
 
 // DeviceAuthorization handles POST /oauth/device/code — issue device_code + user_code.

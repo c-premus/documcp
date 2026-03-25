@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.999.haus/chris/DocuMCP-go/internal/extractor"
+	"github.com/c-premus/documcp/internal/extractor"
 )
 
 // mockExtractor is a simple test double that supports a fixed set of MIME types.

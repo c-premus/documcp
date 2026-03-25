@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"testing"
 
-	"git.999.haus/chris/DocuMCP-go/internal/extractor/pdf"
+	"github.com/c-premus/documcp/internal/extractor/pdf"
 )
 
 func TestPDFExtractor_Supports(t *testing.T) {

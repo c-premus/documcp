@@ -20,8 +20,8 @@ import (
 	"github.com/gorilla/sessions"
 	"golang.org/x/oauth2"
 
-	"git.999.haus/chris/DocuMCP-go/internal/config"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"github.com/c-premus/documcp/internal/config"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // UserRepo defines the repository interface consumed by the OIDC handler.

@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"git.999.haus/chris/DocuMCP-go/internal/config"
+	"github.com/c-premus/documcp/internal/config"
 )
 
 func TestBuildPeriodicJobs_allSchedulesConfigured(t *testing.T) {

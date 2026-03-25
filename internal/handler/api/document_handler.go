@@ -18,11 +18,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
-	"git.999.haus/chris/DocuMCP-go/internal/extractor"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/repository"
-	"git.999.haus/chris/DocuMCP-go/internal/service"
+	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
+	"github.com/c-premus/documcp/internal/extractor"
+	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/repository"
+	"github.com/c-premus/documcp/internal/service"
 )
 
 // documentPipeline defines the pipeline methods used by DocumentHandler.

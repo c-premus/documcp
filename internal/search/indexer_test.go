@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"git.999.haus/chris/DocuMCP-go/internal/search"
+	"github.com/c-premus/documcp/internal/search"
 )
 
 func TestNewIndexer(t *testing.T) {

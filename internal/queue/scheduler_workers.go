@@ -13,12 +13,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/riverqueue/river"
 
-	"git.999.haus/chris/DocuMCP-go/internal/client/git"
-	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/repository"
-	"git.999.haus/chris/DocuMCP-go/internal/search"
-	"git.999.haus/chris/DocuMCP-go/internal/security"
+	"github.com/c-premus/documcp/internal/client/git"
+	"github.com/c-premus/documcp/internal/client/kiwix"
+	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/repository"
+	"github.com/c-premus/documcp/internal/search"
+	"github.com/c-premus/documcp/internal/security"
 )
 
 // reconciliationActions tracks search index reconciliation operations.

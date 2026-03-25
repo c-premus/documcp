@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
-	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // oauthClientRepo defines the methods used by OAuthClientHandler.

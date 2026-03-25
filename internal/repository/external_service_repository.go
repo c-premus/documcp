@@ -9,7 +9,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // ExternalServiceRepository handles external service persistence.

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.999.haus/chris/DocuMCP-go/internal/extractor/docx"
+	"github.com/c-premus/documcp/internal/extractor/docx"
 )
 
 // wNS is the WordprocessingML namespace used in document.xml.

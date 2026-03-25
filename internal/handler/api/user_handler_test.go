@@ -13,8 +13,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
+	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // ---------------------------------------------------------------------------

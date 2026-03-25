@@ -21,11 +21,11 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 
-	gitclient "git.999.haus/chris/DocuMCP-go/internal/client/git"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/queue"
-	"git.999.haus/chris/DocuMCP-go/internal/security"
-	"git.999.haus/chris/DocuMCP-go/internal/stringutil"
+	gitclient "github.com/c-premus/documcp/internal/client/git"
+	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/queue"
+	"github.com/c-premus/documcp/internal/security"
+	"github.com/c-premus/documcp/internal/stringutil"
 )
 
 // gitTemplateRepo defines the methods used by GitTemplateHandler -- defined where consumed.

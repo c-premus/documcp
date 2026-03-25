@@ -14,9 +14,9 @@ import (
 
 	"github.com/google/uuid"
 
-	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
-	"git.999.haus/chris/DocuMCP-go/internal/config"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
+	authscope "github.com/c-premus/documcp/internal/auth/scope"
+	"github.com/c-premus/documcp/internal/config"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 //nolint:revive // OAuthRepo is intentionally named to distinguish from other repository interfaces

@@ -10,9 +10,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/security"
-	"git.999.haus/chris/DocuMCP-go/internal/stringutil"
+	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/security"
+	"github.com/c-premus/documcp/internal/stringutil"
 )
 
 // ExternalServiceRepo defines repository methods needed by ExternalServiceService.

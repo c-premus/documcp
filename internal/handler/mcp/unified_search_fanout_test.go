@@ -11,10 +11,10 @@ import (
 
 	"github.com/meilisearch/meilisearch-go"
 
-	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
-	"git.999.haus/chris/DocuMCP-go/internal/dto"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/search"
+	"github.com/c-premus/documcp/internal/client/kiwix"
+	"github.com/c-premus/documcp/internal/dto"
+	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/search"
 )
 
 // ===== searchKiwixArchives unit tests =====

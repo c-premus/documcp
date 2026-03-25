@@ -13,7 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // ---------------------------------------------------------------------------

@@ -16,7 +16,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"git.999.haus/chris/DocuMCP-go/internal/database"
+	"github.com/c-premus/documcp/internal/database"
 )
 
 var testDSN string

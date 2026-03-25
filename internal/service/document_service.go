@@ -13,7 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // DocumentRepo defines the repository methods the document service needs.

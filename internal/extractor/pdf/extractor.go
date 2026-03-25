@@ -10,7 +10,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"git.999.haus/chris/DocuMCP-go/internal/extractor"
+	"github.com/c-premus/documcp/internal/extractor"
 )
 
 const mimeTypePDF = "application/pdf"

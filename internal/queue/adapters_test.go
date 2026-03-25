@@ -8,11 +8,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	gitclient "git.999.haus/chris/DocuMCP-go/internal/client/git"
-	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/repository"
-	"git.999.haus/chris/DocuMCP-go/internal/search"
+	gitclient "github.com/c-premus/documcp/internal/client/git"
+	"github.com/c-premus/documcp/internal/client/kiwix"
+	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/repository"
+	"github.com/c-premus/documcp/internal/search"
 )
 
 // ---------------------------------------------------------------------------

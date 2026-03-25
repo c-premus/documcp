@@ -9,7 +9,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 
-	"git.999.haus/chris/DocuMCP-go/internal/handler"
+	"github.com/c-premus/documcp/internal/handler"
 )
 
 func TestReadinessHandler_NilDB(t *testing.T) {

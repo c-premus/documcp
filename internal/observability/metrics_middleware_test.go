@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 
-	"git.999.haus/chris/DocuMCP-go/internal/observability"
+	"github.com/c-premus/documcp/internal/observability"
 )
 
 // newTestMetrics creates Metrics registered against a fresh registry so tests

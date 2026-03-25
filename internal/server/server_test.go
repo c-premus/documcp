@@ -16,14 +16,14 @@ import (
 
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
-	"git.999.haus/chris/DocuMCP-go/internal/auth/oidc"
-	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
-	"git.999.haus/chris/DocuMCP-go/internal/config"
-	"git.999.haus/chris/DocuMCP-go/internal/handler"
-	apihandler "git.999.haus/chris/DocuMCP-go/internal/handler/api"
-	oauthhandler "git.999.haus/chris/DocuMCP-go/internal/handler/oauth"
-	"git.999.haus/chris/DocuMCP-go/internal/observability"
-	"git.999.haus/chris/DocuMCP-go/internal/server"
+	"github.com/c-premus/documcp/internal/auth/oidc"
+	"github.com/c-premus/documcp/internal/auth/oauth"
+	"github.com/c-premus/documcp/internal/config"
+	"github.com/c-premus/documcp/internal/handler"
+	apihandler "github.com/c-premus/documcp/internal/handler/api"
+	oauthhandler "github.com/c-premus/documcp/internal/handler/oauth"
+	"github.com/c-premus/documcp/internal/observability"
+	"github.com/c-premus/documcp/internal/server"
 )
 
 // testMetrics is a singleton to avoid duplicate Prometheus registration panics.

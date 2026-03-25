@@ -12,7 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
+	"github.com/c-premus/documcp/internal/auth/oauth"
 )
 
 // Authorize handles GET /oauth/authorize — shows the consent screen.

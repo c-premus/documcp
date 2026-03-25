@@ -8,7 +8,7 @@ import (
 
 	"github.com/meilisearch/meilisearch-go"
 
-	"git.999.haus/chris/DocuMCP-go/internal/observability"
+	"github.com/c-premus/documcp/internal/observability"
 )
 
 // SearchResult holds a normalized result from any index.

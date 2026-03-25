@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // ServiceFinder retrieves enabled external services by type.

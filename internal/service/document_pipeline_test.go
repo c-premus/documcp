@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"git.999.haus/chris/DocuMCP-go/internal/extractor"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"github.com/c-premus/documcp/internal/extractor"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // ---------------------------------------------------------------------------

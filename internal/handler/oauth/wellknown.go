@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
+	authscope "github.com/c-premus/documcp/internal/auth/scope"
 )
 
 // AuthorizationServerMetadata handles GET /.well-known/oauth-authorization-server (RFC 8414).

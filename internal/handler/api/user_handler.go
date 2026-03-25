@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
+	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // userRepo defines the methods used by UserHandler — defined where consumed.

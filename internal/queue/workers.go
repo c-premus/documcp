@@ -9,8 +9,8 @@ import (
 
 	"github.com/riverqueue/river"
 
-	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/observability"
+	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/observability"
 )
 
 // retryBackoffs defines the exponential backoff schedule for retries.

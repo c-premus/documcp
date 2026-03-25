@@ -15,10 +15,10 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
-	gitclient "git.999.haus/chris/DocuMCP-go/internal/client/git"
-	"git.999.haus/chris/DocuMCP-go/internal/dto"
-	"git.999.haus/chris/DocuMCP-go/internal/search"
+	authscope "github.com/c-premus/documcp/internal/auth/scope"
+	gitclient "github.com/c-premus/documcp/internal/client/git"
+	"github.com/c-premus/documcp/internal/dto"
+	"github.com/c-premus/documcp/internal/search"
 )
 
 // --- Response types ---

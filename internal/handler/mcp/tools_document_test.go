@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 func TestTruncateContent(t *testing.T) {

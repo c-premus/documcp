@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
+	"github.com/c-premus/documcp/internal/auth/oauth"
 )
 
 // Register handles POST /oauth/register — dynamic client registration (RFC 7591).

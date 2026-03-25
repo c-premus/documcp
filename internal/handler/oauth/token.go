@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
+	"github.com/c-premus/documcp/internal/auth/oauth"
 )
 
 // Token handles POST /oauth/token — the token endpoint.

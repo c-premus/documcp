@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"git.999.haus/chris/DocuMCP-go/internal/observability"
+	"github.com/c-premus/documcp/internal/observability"
 )
 
 // newTestMetrics creates a Metrics instance with isolated Prometheus registerer

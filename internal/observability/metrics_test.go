@@ -8,7 +8,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"git.999.haus/chris/DocuMCP-go/internal/observability"
+	"github.com/c-premus/documcp/internal/observability"
 )
 
 func TestNewMetrics(t *testing.T) {

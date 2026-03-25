@@ -12,7 +12,7 @@ import (
 	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
 	"github.com/microcosm-cc/bluemonday"
 
-	"git.999.haus/chris/DocuMCP-go/internal/extractor"
+	"github.com/c-premus/documcp/internal/extractor"
 )
 
 // supportedMIMETypes lists the MIME types this extractor handles.

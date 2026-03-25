@@ -17,10 +17,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"git.999.haus/chris/DocuMCP-go/internal/client/git"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/repository"
-	"git.999.haus/chris/DocuMCP-go/internal/search"
+	"github.com/c-premus/documcp/internal/client/git"
+	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/repository"
+	"github.com/c-premus/documcp/internal/search"
 )
 
 // ---------------------------------------------------------------------------

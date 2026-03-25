@@ -13,7 +13,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 
-	"git.999.haus/chris/DocuMCP-go/internal/config"
+	"github.com/c-premus/documcp/internal/config"
 )
 
 // InitTracer sets up the OpenTelemetry TracerProvider with an OTLP HTTP

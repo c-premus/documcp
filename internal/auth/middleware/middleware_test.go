@@ -14,9 +14,9 @@ import (
 
 	"github.com/gorilla/sessions"
 
-	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
-	"git.999.haus/chris/DocuMCP-go/internal/config"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"github.com/c-premus/documcp/internal/auth/oauth"
+	"github.com/c-premus/documcp/internal/config"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // ---------------------------------------------------------------------------

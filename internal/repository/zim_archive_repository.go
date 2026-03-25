@@ -9,8 +9,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/stringutil"
+	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/stringutil"
 )
 
 // ZimArchiveUpsert holds the fields needed to upsert a ZIM archive from a catalog sync.

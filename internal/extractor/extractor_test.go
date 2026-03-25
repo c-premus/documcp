@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"git.999.haus/chris/DocuMCP-go/internal/extractor"
-	"git.999.haus/chris/DocuMCP-go/internal/extractor/html"
-	"git.999.haus/chris/DocuMCP-go/internal/extractor/markdown"
-	"git.999.haus/chris/DocuMCP-go/internal/extractor/pdf"
+	"github.com/c-premus/documcp/internal/extractor"
+	"github.com/c-premus/documcp/internal/extractor/html"
+	"github.com/c-premus/documcp/internal/extractor/markdown"
+	"github.com/c-premus/documcp/internal/extractor/pdf"
 )
 
 func TestRegistry_ForMIMEType_WithRealExtractors(t *testing.T) {

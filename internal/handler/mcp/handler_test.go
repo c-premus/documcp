@@ -11,11 +11,11 @@ import (
 	"github.com/meilisearch/meilisearch-go"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
-	"git.999.haus/chris/DocuMCP-go/internal/dto"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/search"
-	"git.999.haus/chris/DocuMCP-go/internal/service"
+	"github.com/c-premus/documcp/internal/client/kiwix"
+	"github.com/c-premus/documcp/internal/dto"
+	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/search"
+	"github.com/c-premus/documcp/internal/service"
 )
 
 // makeMCPHit builds a meilisearch.Hit from a plain map for test convenience.

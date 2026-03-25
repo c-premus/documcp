@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"git.999.haus/chris/DocuMCP-go/internal/security"
+	"github.com/c-premus/documcp/internal/security"
 )
 
 func TestValidateExternalURL(t *testing.T) {

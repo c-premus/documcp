@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // mockServiceFinder is a test double for the ServiceFinder interface.

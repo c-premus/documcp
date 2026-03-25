@@ -17,10 +17,10 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 
-	"git.999.haus/chris/DocuMCP-go/internal/extractor"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/queue"
-	"git.999.haus/chris/DocuMCP-go/internal/search"
+	"github.com/c-premus/documcp/internal/extractor"
+	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/queue"
+	"github.com/c-premus/documcp/internal/search"
 )
 
 // JobInserter inserts jobs into the queue. Defined here (where consumed).

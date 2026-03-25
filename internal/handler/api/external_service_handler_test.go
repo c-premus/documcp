@@ -14,9 +14,9 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 
-	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/queue"
-	"git.999.haus/chris/DocuMCP-go/internal/service"
+	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/queue"
+	"github.com/c-premus/documcp/internal/service"
 )
 
 // ---------------------------------------------------------------------------

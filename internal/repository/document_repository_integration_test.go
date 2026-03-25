@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"git.999.haus/chris/DocuMCP-go/internal/model"
-	"git.999.haus/chris/DocuMCP-go/internal/testutil"
+	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/testutil"
 )
 
 func TestDocumentRepository_CreateAndFind(t *testing.T) {

@@ -1,4 +1,4 @@
-module git.999.haus/chris/DocuMCP-go
+module github.com/c-premus/documcp
 
 go 1.26.1
 

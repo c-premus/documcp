@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"git.999.haus/chris/DocuMCP-go/internal/repository"
-	"git.999.haus/chris/DocuMCP-go/internal/search"
+	"github.com/c-premus/documcp/internal/repository"
+	"github.com/c-premus/documcp/internal/search"
 )
 
 // searchQueryLister retrieves popular search queries.

@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"git.999.haus/chris/DocuMCP-go/internal/config"
-	"git.999.haus/chris/DocuMCP-go/internal/observability"
+	"github.com/c-premus/documcp/internal/config"
+	"github.com/c-premus/documcp/internal/observability"
 )
 
 func TestInitTracer_Disabled(t *testing.T) {

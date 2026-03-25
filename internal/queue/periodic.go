@@ -6,7 +6,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/robfig/cron/v3"
 
-	"git.999.haus/chris/DocuMCP-go/internal/config"
+	"github.com/c-premus/documcp/internal/config"
 )
 
 // BuildPeriodicJobs converts scheduler config cron expressions into River periodic jobs.

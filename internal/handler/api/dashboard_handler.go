@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"git.999.haus/chris/DocuMCP-go/internal/queue"
+	"github.com/c-premus/documcp/internal/queue"
 )
 
 // Interfaces accepted by DashboardHandler — defined where consumed.

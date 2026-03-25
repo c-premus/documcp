@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"git.999.haus/chris/DocuMCP-go/internal/security"
+	"github.com/c-premus/documcp/internal/security"
 )
 
 const (

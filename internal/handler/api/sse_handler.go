@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"git.999.haus/chris/DocuMCP-go/internal/queue"
+	"github.com/c-premus/documcp/internal/queue"
 )
 
 // SSEHandler streams real-time queue events via Server-Sent Events.

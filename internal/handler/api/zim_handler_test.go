@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
+	"github.com/c-premus/documcp/internal/client/kiwix"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.999.haus/chris/DocuMCP-go/internal/extractor/xlsx"
+	"github.com/c-premus/documcp/internal/extractor/xlsx"
 )
 
 const sampleXLSX = "../../testutil/testdata/sample.xlsx"

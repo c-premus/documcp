@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"git.999.haus/chris/DocuMCP-go/internal/app"
-	"git.999.haus/chris/DocuMCP-go/internal/config"
+	"github.com/c-premus/documcp/internal/app"
+	"github.com/c-premus/documcp/internal/config"
 )
 
 // Set via ldflags at build time.

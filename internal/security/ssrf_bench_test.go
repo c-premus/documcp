@@ -3,7 +3,7 @@ package security_test
 import (
 	"testing"
 
-	"git.999.haus/chris/DocuMCP-go/internal/security"
+	"github.com/c-premus/documcp/internal/security"
 )
 
 func BenchmarkValidateExternalURL_ValidHTTPS(b *testing.B) {

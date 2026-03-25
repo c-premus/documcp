@@ -7,8 +7,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
-	"git.999.haus/chris/DocuMCP-go/internal/dto"
+	authscope "github.com/c-premus/documcp/internal/auth/scope"
+	"github.com/c-premus/documcp/internal/dto"
 )
 
 // --- Response types ---

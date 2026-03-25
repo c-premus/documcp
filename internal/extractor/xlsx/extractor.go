@@ -9,7 +9,7 @@ import (
 
 	"github.com/xuri/excelize/v2"
 
-	"git.999.haus/chris/DocuMCP-go/internal/extractor"
+	"github.com/c-premus/documcp/internal/extractor"
 )
 
 const mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

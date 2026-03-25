@@ -8,8 +8,8 @@ import (
 
 	"github.com/gorilla/sessions"
 
-	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
-	"git.999.haus/chris/DocuMCP-go/internal/config"
+	"github.com/c-premus/documcp/internal/auth/oauth"
+	"github.com/c-premus/documcp/internal/config"
 )
 
 // Handler holds dependencies for all OAuth HTTP handlers.

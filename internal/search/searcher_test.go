@@ -9,8 +9,8 @@ import (
 	"github.com/meilisearch/meilisearch-go"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"git.999.haus/chris/DocuMCP-go/internal/observability"
-	"git.999.haus/chris/DocuMCP-go/internal/search"
+	"github.com/c-premus/documcp/internal/observability"
+	"github.com/c-premus/documcp/internal/search"
 )
 
 // makeHit builds a meilisearch.Hit from a plain map for test convenience.

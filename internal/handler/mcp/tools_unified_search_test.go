@@ -3,7 +3,7 @@ package mcphandler
 import (
 	"testing"
 
-	"git.999.haus/chris/DocuMCP-go/internal/search"
+	"github.com/c-premus/documcp/internal/search"
 )
 
 func TestIndexToSource(t *testing.T) {

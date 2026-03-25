@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.999.haus/chris/DocuMCP-go/internal/extractor/html"
+	"github.com/c-premus/documcp/internal/extractor/html"
 )
 
 func TestHTMLExtractor_Extract(t *testing.T) {

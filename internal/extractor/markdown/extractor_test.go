@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"git.999.haus/chris/DocuMCP-go/internal/extractor/markdown"
+	"github.com/c-premus/documcp/internal/extractor/markdown"
 )
 
 func TestMarkdownExtractor_Extract(t *testing.T) {

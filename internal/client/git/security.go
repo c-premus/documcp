@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"regexp"
 
-	"git.999.haus/chris/DocuMCP-go/internal/security"
+	"github.com/c-premus/documcp/internal/security"
 )
 
 // ValidateRepositoryURL checks that a repository URL is safe to clone.

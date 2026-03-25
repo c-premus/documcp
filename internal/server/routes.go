@@ -12,14 +12,14 @@ import (
 	"github.com/go-chi/httprate"
 	"github.com/gorilla/sessions"
 
-	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
-	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
-	"git.999.haus/chris/DocuMCP-go/internal/auth/oidc"
-	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
-	"git.999.haus/chris/DocuMCP-go/internal/handler"
-	apihandler "git.999.haus/chris/DocuMCP-go/internal/handler/api"
-	oauthhandler "git.999.haus/chris/DocuMCP-go/internal/handler/oauth"
-	"git.999.haus/chris/DocuMCP-go/internal/observability"
+	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
+	"github.com/c-premus/documcp/internal/auth/oauth"
+	"github.com/c-premus/documcp/internal/auth/oidc"
+	authscope "github.com/c-premus/documcp/internal/auth/scope"
+	"github.com/c-premus/documcp/internal/handler"
+	apihandler "github.com/c-premus/documcp/internal/handler/api"
+	oauthhandler "github.com/c-premus/documcp/internal/handler/oauth"
+	"github.com/c-premus/documcp/internal/observability"
 )
 
 // Deps holds handler dependencies injected from the app layer.

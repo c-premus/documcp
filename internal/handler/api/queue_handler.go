@@ -8,7 +8,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 
-	"git.999.haus/chris/DocuMCP-go/internal/queue"
+	"github.com/c-premus/documcp/internal/queue"
 )
 
 // QueueHandler provides REST API for queue management.

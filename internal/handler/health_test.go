@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"git.999.haus/chris/DocuMCP-go/internal/handler"
+	"github.com/c-premus/documcp/internal/handler"
 )
 
 func TestHealthHandler(t *testing.T) {

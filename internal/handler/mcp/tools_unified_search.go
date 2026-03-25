@@ -10,11 +10,11 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
-	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
-	"git.999.haus/chris/DocuMCP-go/internal/client/kiwix"
-	"git.999.haus/chris/DocuMCP-go/internal/dto"
-	"git.999.haus/chris/DocuMCP-go/internal/search"
+	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
+	authscope "github.com/c-premus/documcp/internal/auth/scope"
+	"github.com/c-premus/documcp/internal/client/kiwix"
+	"github.com/c-premus/documcp/internal/dto"
+	"github.com/c-premus/documcp/internal/search"
 )
 
 // --- Response types ---

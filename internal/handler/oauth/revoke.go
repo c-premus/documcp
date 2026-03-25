@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"git.999.haus/chris/DocuMCP-go/internal/auth/oauth"
+	"github.com/c-premus/documcp/internal/auth/oauth"
 )
 
 // Revoke handles POST /oauth/revoke — token revocation (RFC 7009).

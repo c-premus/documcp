@@ -7,9 +7,9 @@ import (
 	"slices"
 	"strings"
 
-	authmiddleware "git.999.haus/chris/DocuMCP-go/internal/auth/middleware"
-	authscope "git.999.haus/chris/DocuMCP-go/internal/auth/scope"
-	"git.999.haus/chris/DocuMCP-go/internal/model"
+	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
+	authscope "github.com/c-premus/documcp/internal/auth/scope"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // errInsufficientScope is returned when a tool requires a scope the token lacks.
