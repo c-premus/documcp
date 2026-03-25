@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/meilisearch/meilisearch-go"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -31,6 +32,7 @@ type documentServicer interface {
 // zimArchiveLister abstracts the ZIM archive repository methods.
 type zimArchiveLister interface {
 	List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error)
+	ListSearchable(ctx context.Context) ([]model.ZimArchive, error)
 }
 
 // gitTemplateStore abstracts the git template repository methods.
@@ -46,6 +48,7 @@ type gitTemplateStore interface {
 type kiwixSearcher interface {
 	Search(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error)
 	ReadArticle(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error)
+	FetchCatalog(ctx context.Context) ([]kiwix.CatalogEntry, error)
 }
 
 // kiwixClientFactory creates or returns a cached Kiwix client on demand.
@@ -65,7 +68,7 @@ type contentSearcher interface {
 const serverInstructions = `Documentation knowledge base with full-text search.
 
 **Unified Search**
-- ` + "`unified_search`" + ` - Search across ALL sources (documents, templates, archives, wikis) in one request. Use for discovery; type-specific tools for deep search.
+- ` + "`unified_search`" + ` - Search across ALL sources in one request: documents, git templates, ZIM archive metadata, AND ZIM article content (via Kiwix fan-out). Use for discovery; type-specific tools for deep search.
 
 **Documents**
 - ` + "`search_documents`" + ` - Full-text search with filters (file type, tags). Returns metadata and snippets.
@@ -76,7 +79,7 @@ const serverInstructions = `Documentation knowledge base with full-text search.
 
 **ZIM Archives** (offline documentation: DevDocs, Wikipedia, Stack Exchange)
 - ` + "`list_zim_archives`" + ` - List available archives with category/language filters.
-- ` + "`search_zim`" + ` - Search within an archive. ` + "`suggest`" + ` matches titles, ` + "`fulltext`" + ` searches content.
+- ` + "`search_zim`" + ` - Deep search within a specific archive. ` + "`suggest`" + ` matches titles, ` + "`fulltext`" + ` searches content.
 - ` + "`read_zim_article`" + ` - Retrieve article content. Supports ` + "`summary_only`" + ` and ` + "`max_paragraphs`" + `.
 
 **Git Templates** (project bootstrapping: CLAUDE.md, Memory Bank)
@@ -108,6 +111,11 @@ type Handler struct {
 	// External service clients
 	kiwixFactory kiwixClientFactory // lazy-init; nil means ZIM tools not enabled
 	searcher     contentSearcher
+
+	// Federated search config
+	federatedSearchTimeout   time.Duration
+	federatedMaxArchives     int
+	federatedPerArchiveLimit int
 }
 
 // Config holds all optional dependencies for the MCP handler.
@@ -131,6 +139,11 @@ type Config struct {
 	KiwixFactory *kiwix.ClientFactory // lazy-init Kiwix client (nil = ZIM tools disabled)
 	Searcher     contentSearcher
 
+	// Federated search (Kiwix fan-out during unified_search)
+	FederatedSearchTimeout   time.Duration
+	FederatedMaxArchives     int
+	FederatedPerArchiveLimit int
+
 	// Feature flags
 	ZimEnabled          bool
 	GitTemplatesEnabled bool
@@ -153,6 +166,20 @@ func New(cfg Config) *Handler {
 		kf = &kiwixFactoryAdapter{factory: cfg.KiwixFactory}
 	}
 
+	// Apply federated search defaults.
+	fedTimeout := cfg.FederatedSearchTimeout
+	if fedTimeout == 0 {
+		fedTimeout = 3 * time.Second
+	}
+	fedMaxArchives := cfg.FederatedMaxArchives
+	if fedMaxArchives == 0 {
+		fedMaxArchives = 10
+	}
+	fedPerArchive := cfg.FederatedPerArchiveLimit
+	if fedPerArchive == 0 {
+		fedPerArchive = 3
+	}
+
 	h := &Handler{
 		server:              mcpServer,
 		logger:              cfg.Logger,
@@ -164,6 +191,10 @@ func New(cfg Config) *Handler {
 		searchQueryRepo:     cfg.SearchQueryRepo,
 		kiwixFactory:        kf,
 		searcher:            cfg.Searcher,
+
+		federatedSearchTimeout:   fedTimeout,
+		federatedMaxArchives:     fedMaxArchives,
+		federatedPerArchiveLimit: fedPerArchive,
 	}
 
 	// Register tools

@@ -74,12 +74,20 @@ func (m *mockDocumentService) Delete(ctx context.Context, uuid string) error {
 }
 
 type mockZimArchiveRepo struct {
-	listFn func(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error)
+	listFn           func(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error)
+	listSearchableFn func(ctx context.Context) ([]model.ZimArchive, error)
 }
 
 func (m *mockZimArchiveRepo) List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error) {
 	if m.listFn != nil {
 		return m.listFn(ctx, category, language, query, limit, offset)
+	}
+	return nil, nil
+}
+
+func (m *mockZimArchiveRepo) ListSearchable(ctx context.Context) ([]model.ZimArchive, error) {
+	if m.listSearchableFn != nil {
+		return m.listSearchableFn(ctx)
 	}
 	return nil, nil
 }
@@ -128,8 +136,9 @@ func (m *mockGitTemplateRepo) FindFileByPath(ctx context.Context, templateID int
 }
 
 type mockKiwixClient struct {
-	searchFn      func(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error)
-	readArticleFn func(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error)
+	searchFn       func(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error)
+	readArticleFn  func(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error)
+	fetchCatalogFn func(ctx context.Context) ([]kiwix.CatalogEntry, error)
 }
 
 func (m *mockKiwixClient) Search(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error) {
@@ -142,6 +151,13 @@ func (m *mockKiwixClient) Search(ctx context.Context, archiveName, query, search
 func (m *mockKiwixClient) ReadArticle(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error) {
 	if m.readArticleFn != nil {
 		return m.readArticleFn(ctx, archiveName, articlePath)
+	}
+	return nil, nil
+}
+
+func (m *mockKiwixClient) FetchCatalog(ctx context.Context) ([]kiwix.CatalogEntry, error) {
+	if m.fetchCatalogFn != nil {
+		return m.fetchCatalogFn(ctx)
 	}
 	return nil, nil
 }

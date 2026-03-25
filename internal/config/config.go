@@ -139,6 +139,11 @@ type KiwixConfig struct {
 	CacheTTL           time.Duration `mapstructure:"kiwix_cache_ttl"`
 	HTTPTimeout        time.Duration `mapstructure:"kiwix_http_timeout"`
 	HealthCheckTimeout time.Duration `mapstructure:"kiwix_health_check_timeout"`
+
+	// Federated search: fan-out to Kiwix archives during unified_search.
+	FederatedSearchTimeout  time.Duration `mapstructure:"kiwix_federated_search_timeout"`
+	FederatedMaxArchives    int           `mapstructure:"kiwix_federated_max_archives"`
+	FederatedPerArchiveLimit int          `mapstructure:"kiwix_federated_per_archive_limit"`
 }
 
 // GitConfig holds Git template client settings.
@@ -263,6 +268,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("kiwix_cache_ttl", 1*time.Hour)
 	v.SetDefault("kiwix_http_timeout", 10*time.Second)
 	v.SetDefault("kiwix_health_check_timeout", 5*time.Second)
+	v.SetDefault("kiwix_federated_search_timeout", 3*time.Second)
+	v.SetDefault("kiwix_federated_max_archives", 10)
+	v.SetDefault("kiwix_federated_per_archive_limit", 3)
 
 	// Git
 	v.SetDefault("git_max_file_size", int64(1*1024*1024))
@@ -415,9 +423,12 @@ func Load() (*Config, error) {
 	}
 
 	cfg.Kiwix = KiwixConfig{
-		CacheTTL:           v.GetDuration("kiwix_cache_ttl"),
-		HTTPTimeout:        v.GetDuration("kiwix_http_timeout"),
-		HealthCheckTimeout: v.GetDuration("kiwix_health_check_timeout"),
+		CacheTTL:                 v.GetDuration("kiwix_cache_ttl"),
+		HTTPTimeout:              v.GetDuration("kiwix_http_timeout"),
+		HealthCheckTimeout:       v.GetDuration("kiwix_health_check_timeout"),
+		FederatedSearchTimeout:   v.GetDuration("kiwix_federated_search_timeout"),
+		FederatedMaxArchives:     v.GetInt("kiwix_federated_max_archives"),
+		FederatedPerArchiveLimit: v.GetInt("kiwix_federated_per_archive_limit"),
 	}
 
 	cfg.Git = GitConfig{
