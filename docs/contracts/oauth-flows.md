@@ -12,7 +12,7 @@ DocuMCP implements an OAuth 2.1 authorization server with the following characte
 | Authorization code lifetime | 600 seconds (10 minutes) |
 | Access token lifetime | 3600 seconds (1 hour) |
 | Refresh token lifetime | 2592000 seconds (30 days) |
-| Device code lifetime | 900 seconds (15 minutes) |
+| Device code lifetime | 600 seconds (10 minutes) |
 | Device polling interval | 5 seconds (doubles on slow_down) |
 | Default scope | `mcp:access` |
 | Available scopes | `mcp:access`, `mcp:read`, `mcp:write` |
@@ -561,7 +561,7 @@ Content-Type: application/json
   "user_code": "BCDF-GHJK",
   "verification_uri": "https://documcp.example.com/oauth/device",
   "verification_uri_complete": "https://documcp.example.com/oauth/device?user_code=BCDF-GHJK",
-  "expires_in": 900,
+  "expires_in": 600,
   "interval": 5
 }
 ```
@@ -745,7 +745,7 @@ The device should stop polling and inform the user.
 
 #### Polling Response: Expired Token
 
-Device code has expired (after 900 seconds).
+Device code has expired (after 600 seconds).
 
 ```http
 HTTP/1.1 400 Bad Request

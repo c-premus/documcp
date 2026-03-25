@@ -52,7 +52,7 @@ servers:
     description: DocuMCP server
     variables:
       baseUrl:
-        default: "http://localhost:8000"
+        default: "http://localhost:8080"
 
 tags:
   - name: Health
