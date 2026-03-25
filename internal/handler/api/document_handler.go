@@ -53,6 +53,8 @@ type DocumentIndexer interface {
 	UndeleteDocument(ctx context.Context, uuid string) error
 }
 
+const maxUploadBodySize = 50*1024*1024 + 1024 // 50 MiB + metadata overhead
+
 // DocumentHandler handles REST API endpoints for documents.
 type DocumentHandler struct {
 	pipeline documentPipeline
@@ -98,14 +100,7 @@ type documentResponse struct {
 
 // List handles GET /api/documents — list documents with pagination and filters.
 func (h *DocumentHandler) List(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 100 {
-		limit = 100
-	}
+	limit, offset := parsePagination(r, 50, 100)
 
 	params := repository.DocumentListParams{
 		FileType: r.URL.Query().Get("file_type"),
@@ -140,14 +135,7 @@ func (h *DocumentHandler) List(w http.ResponseWriter, r *http.Request) {
 		docs = append(docs, toDocumentResponse(doc, tags))
 	}
 
-	jsonResponse(w, http.StatusOK, map[string]any{
-		"data": docs,
-		"meta": map[string]any{
-			"total":  result.Total,
-			"limit":  params.Limit,
-			"offset": params.Offset,
-		},
-	})
+	jsonResponse(w, http.StatusOK, listResponse(docs, result.Total, params.Limit, params.Offset))
 }
 
 // Show handles GET /api/documents/{uuid} — get a single document.
@@ -182,7 +170,7 @@ func (h *DocumentHandler) Show(w http.ResponseWriter, r *http.Request) {
 // Upload handles POST /api/documents — upload a new document.
 func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	// Limit request body size.
-	r.Body = http.MaxBytesReader(w, r.Body, 50*1024*1024+1024) // 50MB + metadata overhead
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBodySize)
 
 	if err := r.ParseMultipartForm(10 * 1024 * 1024); err != nil {
 		errorResponse(w, http.StatusBadRequest, "invalid multipart form")
@@ -316,19 +304,19 @@ func toDocumentResponse(doc *model.Document, tags []model.DocumentTag, includeCo
 	resp := documentResponse{
 		UUID:        doc.UUID,
 		Title:       doc.Title,
-		Description: doc.Description.String,
+		Description: nullStringValue(doc.Description),
 		FileType:    doc.FileType,
 		FileSize:    doc.FileSize,
 		MIMEType:    doc.MIMEType,
-		WordCount:   doc.WordCount.Int64,
+		WordCount:   nullInt64Value(doc.WordCount),
 		IsPublic:    doc.IsPublic,
 		HasFile:     doc.FilePath != "",
 		Status:      doc.Status,
-		ContentHash: doc.ContentHash.String,
+		ContentHash: nullStringValue(doc.ContentHash),
 		Tags:        tagNames,
-		CreatedAt:   formatTime(doc.CreatedAt),
-		UpdatedAt:   formatTime(doc.UpdatedAt),
-		ProcessedAt: formatTime(doc.ProcessedAt),
+		CreatedAt:   nullTimeToString(doc.CreatedAt),
+		UpdatedAt:   nullTimeToString(doc.UpdatedAt),
+		ProcessedAt: nullTimeToString(doc.ProcessedAt),
 	}
 
 	if len(includeContent) > 0 && includeContent[0] && doc.Content.Valid {
@@ -336,13 +324,6 @@ func toDocumentResponse(doc *model.Document, tags []model.DocumentTag, includeCo
 	}
 
 	return resp
-}
-
-func formatTime(t sql.NullTime) string {
-	if !t.Valid {
-		return ""
-	}
-	return t.Time.Format(time.RFC3339)
 }
 
 // Download handles GET /api/documents/{uuid}/download — serve the document file.
@@ -793,8 +774,7 @@ func (h *DocumentHandler) BulkPurge(w http.ResponseWriter, r *http.Request) {
 
 // ListDeleted handles GET /api/documents/trash — list soft-deleted documents.
 func (h *DocumentHandler) ListDeleted(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	limit, offset := parsePagination(r, 50, 100)
 
 	// Non-admin users can only see their own deleted documents.
 	var userID *int64

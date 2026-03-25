@@ -192,3 +192,84 @@ func NormalizeHits(hits meilisearch.Hits, source string) []SearchResult {
 	}
 	return results
 }
+
+// NormalizeFederatedHits converts federated Meilisearch hits into SearchResults.
+// Unlike NormalizeHits, it derives the source per-hit from _federation.indexUid.
+func NormalizeFederatedHits(hits meilisearch.Hits) []SearchResult {
+	if hits == nil {
+		return []SearchResult{}
+	}
+	results := make([]SearchResult, 0, hits.Len())
+	for _, hit := range hits {
+		var m map[string]any
+		if err := hit.DecodeInto(&m); err != nil {
+			continue
+		}
+
+		// Determine source from _federation metadata.
+		source := ""
+		if fed, ok := m["_federation"].(map[string]any); ok {
+			if idx, ok := fed["indexUid"].(string); ok {
+				source = idx
+			}
+		}
+
+		uuid, _ := m["uuid"].(string)
+		title, _ := m["title"].(string)
+		if title == "" {
+			title, _ = m["name"].(string)
+		}
+		description, _ := m["description"].(string)
+		score, _ := m["_rankingScore"].(float64)
+
+		results = append(results, SearchResult{
+			UUID:        uuid,
+			Title:       title,
+			Description: description,
+			Source:      source,
+			Score:       score,
+			Extra:       m,
+		})
+	}
+	return results
+}
+
+// ExtraString extracts a string value from a SearchResult.Extra map.
+func ExtraString(extra map[string]any, key string) string {
+	if v, ok := extra[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// ExtraFloat64 extracts a float64 value from a SearchResult.Extra map.
+func ExtraFloat64(extra map[string]any, key string) float64 {
+	if v, ok := extra[key].(float64); ok {
+		return v
+	}
+	return 0
+}
+
+// ExtraInt extracts an int value (from JSON float64) from a SearchResult.Extra map.
+func ExtraInt(extra map[string]any, key string) int {
+	if v, ok := extra[key].(float64); ok {
+		return int(v)
+	}
+	return 0
+}
+
+// ExtraStringSlice extracts a string slice from a SearchResult.Extra map.
+// JSON arrays unmarshal as []any, so each element is individually type-asserted.
+func ExtraStringSlice(extra map[string]any, key string) []string {
+	arr, ok := extra[key].([]any)
+	if !ok {
+		return nil
+	}
+	result := make([]string, 0, len(arr))
+	for _, v := range arr {
+		if s, ok := v.(string); ok {
+			result = append(result, s)
+		}
+	}
+	return result
+}

@@ -6,9 +6,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
-	"time"
-
 	"github.com/go-chi/chi/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
@@ -77,12 +74,7 @@ func (h *ExternalServiceHandler) List(w http.ResponseWriter, r *http.Request) {
 	serviceType := r.URL.Query().Get("type")
 	status := r.URL.Query().Get("status")
 
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit <= 0 {
-		limit = 50
-	}
-
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	limit, offset := parsePagination(r, 50, 100)
 
 	services, total, err := h.svc.List(r.Context(), serviceType, status, limit, offset)
 	if err != nil {
@@ -96,14 +88,7 @@ func (h *ExternalServiceHandler) List(w http.ResponseWriter, r *http.Request) {
 		items = append(items, toExternalServiceResponse(&services[i]))
 	}
 
-	jsonResponse(w, http.StatusOK, map[string]any{
-		"data": items,
-		"meta": map[string]any{
-			"total":  total,
-			"limit":  limit,
-			"offset": offset,
-		},
-	})
+	jsonResponse(w, http.StatusOK, listResponse(items, total, limit, offset))
 }
 
 // Show handles GET /api/external-services/{uuid} -- get a single external service.
@@ -351,24 +336,12 @@ func toExternalServiceResponse(es *model.ExternalService) externalServiceRespons
 		ConsecutiveFailures: es.ConsecutiveFailures,
 	}
 
-	if es.LastError.Valid {
-		resp.LastError = es.LastError.String
-	}
-	if es.LastErrorAt.Valid {
-		resp.LastErrorAt = es.LastErrorAt.Time.Format(time.RFC3339)
-	}
-	if es.LastCheckAt.Valid {
-		resp.LastCheckAt = es.LastCheckAt.Time.Format(time.RFC3339)
-	}
-	if es.LastLatencyMS.Valid {
-		resp.LastLatencyMS = es.LastLatencyMS.Int64
-	}
-	if es.CreatedAt.Valid {
-		resp.CreatedAt = es.CreatedAt.Time.Format(time.RFC3339)
-	}
-	if es.UpdatedAt.Valid {
-		resp.UpdatedAt = es.UpdatedAt.Time.Format(time.RFC3339)
-	}
+	resp.LastError = nullStringValue(es.LastError)
+	resp.LastErrorAt = nullTimeToString(es.LastErrorAt)
+	resp.LastCheckAt = nullTimeToString(es.LastCheckAt)
+	resp.LastLatencyMS = nullInt64Value(es.LastLatencyMS)
+	resp.CreatedAt = nullTimeToString(es.CreatedAt)
+	resp.UpdatedAt = nullTimeToString(es.UpdatedAt)
 
 	return resp
 }

@@ -186,41 +186,19 @@ func (h *Handler) handleSearchDocuments(
 		return nil, searchDocumentsResponse{}, fmt.Errorf("searching documents: %w", err)
 	}
 
-	results := make([]documentSearchResult, 0, len(resp.Hits))
-	for _, hit := range resp.Hits {
-		var m map[string]any
-		if err := hit.DecodeInto(&m); err != nil {
-			continue
-		}
-		result := documentSearchResult{}
-		if v, ok := m["uuid"].(string); ok {
-			result.UUID = v
-		}
-		if v, ok := m["title"].(string); ok {
-			result.Title = v
-		}
-		if v, ok := m["file_type"].(string); ok {
-			result.FileType = v
-		}
-		if v, ok := m["description"].(string); ok {
-			result.Description = v
-		}
-		if rawTags, ok := m["tags"].([]any); ok {
-			tags := make([]string, 0, len(rawTags))
-			for _, t := range rawTags {
-				if s, ok := t.(string); ok {
-					tags = append(tags, s)
-				}
-			}
-			result.Tags = tags
-		}
-		if v, ok := m["word_count"].(float64); ok {
-			result.ContentLength = v
+	normalized := search.NormalizeHits(resp.Hits, "document")
+	results := make([]documentSearchResult, 0, len(normalized))
+	for _, sr := range normalized {
+		result := documentSearchResult{
+			UUID:          sr.UUID,
+			Title:         sr.Title,
+			Description:   sr.Description,
+			FileType:      search.ExtraString(sr.Extra, "file_type"),
+			Tags:          search.ExtraStringSlice(sr.Extra, "tags"),
+			ContentLength: search.ExtraFloat64(sr.Extra, "word_count"),
 		}
 		if input.IncludeContent {
-			if v, ok := m["content"].(string); ok {
-				result.Content = v
-			}
+			result.Content = search.ExtraString(sr.Extra, "content")
 		}
 		results = append(results, result)
 	}

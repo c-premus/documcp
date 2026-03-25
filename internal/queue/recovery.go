@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
@@ -30,6 +31,9 @@ func RecoverStuckDocuments(ctx context.Context, inserter JobInserter, finder Doc
 	if finder == nil || inserter == nil {
 		return
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 
 	// Re-dispatch extraction for documents stuck in "uploaded" state.
 	uploaded, err := finder.FindByStatus(ctx, "uploaded")

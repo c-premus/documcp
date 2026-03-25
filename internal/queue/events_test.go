@@ -12,7 +12,7 @@ import (
 func TestNewEventBus(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus()
+	eb := NewEventBus(discardLogger())
 	require.NotNil(t, eb)
 	assert.NotNil(t, eb.subscribers)
 	assert.Empty(t, eb.subscribers)
@@ -21,7 +21,7 @@ func TestNewEventBus(t *testing.T) {
 func TestEventBus_Subscribe(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus()
+	eb := NewEventBus(discardLogger())
 	ch := eb.Subscribe("sub-1")
 
 	require.NotNil(t, ch)
@@ -31,7 +31,7 @@ func TestEventBus_Subscribe(t *testing.T) {
 func TestEventBus_Subscribe_multipleSubscribers(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus()
+	eb := NewEventBus(discardLogger())
 	ch1 := eb.Subscribe("sub-1")
 	ch2 := eb.Subscribe("sub-2")
 
@@ -43,7 +43,7 @@ func TestEventBus_Subscribe_multipleSubscribers(t *testing.T) {
 func TestEventBus_Publish_deliversToSubscriber(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus()
+	eb := NewEventBus(discardLogger())
 	ch := eb.Subscribe("sub-1")
 
 	event := Event{
@@ -70,7 +70,7 @@ func TestEventBus_Publish_deliversToSubscriber(t *testing.T) {
 func TestEventBus_Publish_deliversToMultipleSubscribers(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus()
+	eb := NewEventBus(discardLogger())
 	ch1 := eb.Subscribe("sub-1")
 	ch2 := eb.Subscribe("sub-2")
 	ch3 := eb.Subscribe("sub-3")
@@ -98,7 +98,7 @@ func TestEventBus_Publish_deliversToMultipleSubscribers(t *testing.T) {
 func TestEventBus_Unsubscribe(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus()
+	eb := NewEventBus(discardLogger())
 	ch := eb.Subscribe("sub-1")
 
 	eb.Unsubscribe("sub-1")
@@ -116,7 +116,7 @@ func TestEventBus_Unsubscribe(t *testing.T) {
 func TestEventBus_Unsubscribe_nonexistent(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus()
+	eb := NewEventBus(discardLogger())
 	// Should not panic when unsubscribing a non-existent ID.
 	assert.NotPanics(t, func() {
 		eb.Unsubscribe("does-not-exist")
@@ -126,7 +126,7 @@ func TestEventBus_Unsubscribe_nonexistent(t *testing.T) {
 func TestEventBus_Unsubscribe_removesFromMap(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus()
+	eb := NewEventBus(discardLogger())
 	eb.Subscribe("sub-1")
 	eb.Subscribe("sub-2")
 
@@ -142,7 +142,7 @@ func TestEventBus_Unsubscribe_removesFromMap(t *testing.T) {
 func TestEventBus_Publish_dropsEventForSlowSubscriber(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus()
+	eb := NewEventBus(discardLogger())
 	ch := eb.Subscribe("slow")
 
 	// Fill the channel buffer (capacity is 64).
@@ -178,7 +178,7 @@ func TestEventBus_Publish_dropsEventForSlowSubscriber(t *testing.T) {
 func TestEventBus_Publish_noSubscribersDoesNotPanic(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus()
+	eb := NewEventBus(discardLogger())
 	assert.NotPanics(t, func() {
 		eb.Publish(Event{Type: EventJobCompleted, JobID: 1})
 	})
@@ -187,7 +187,7 @@ func TestEventBus_Publish_noSubscribersDoesNotPanic(t *testing.T) {
 func TestEventBus_ConcurrentPublishSubscribe(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus()
+	eb := NewEventBus(discardLogger())
 	const numGoroutines = 20
 	const numEvents = 50
 
@@ -234,7 +234,7 @@ func TestEventBus_Close(t *testing.T) {
 	t.Run("closes all subscriber channels", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus()
+		eb := NewEventBus(discardLogger())
 		ch1 := eb.Subscribe("sub-1")
 		ch2 := eb.Subscribe("sub-2")
 		ch3 := eb.Subscribe("sub-3")
@@ -257,7 +257,7 @@ func TestEventBus_Close(t *testing.T) {
 	t.Run("empties the subscriber map", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus()
+		eb := NewEventBus(discardLogger())
 		eb.Subscribe("sub-a")
 		eb.Subscribe("sub-b")
 
@@ -271,14 +271,14 @@ func TestEventBus_Close(t *testing.T) {
 	t.Run("close on empty bus does not panic", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus()
+		eb := NewEventBus(discardLogger())
 		assert.NotPanics(t, func() { eb.Close() })
 	})
 
 	t.Run("publish after close does not panic or block", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus()
+		eb := NewEventBus(discardLogger())
 		eb.Subscribe("sub-1")
 		eb.Close()
 

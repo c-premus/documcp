@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -135,52 +134,16 @@ func (h *Handler) handleUnifiedSearch(
 	processingMs := int(time.Since(start).Milliseconds())
 
 	// Build result list from federated hits.
-	results := make([]unifiedSearchResult, 0, len(resp.Hits))
-
-	for _, hit := range resp.Hits {
-		var m map[string]any
-		if err := hit.DecodeInto(&m); err != nil {
-			slog.WarnContext(ctx, "skipping malformed search hit", "error", err)
-			continue
-		}
-
-		// Determine source from the federation index.
-		source := ""
-		if idx, ok := m["_federation"].(map[string]any); ok {
-			if idxUID, ok := idx["indexUid"].(string); ok {
-				source = indexToSource(idxUID)
-			}
-		}
-		if source == "" {
-			// Fallback: check known fields.
-			if _, ok := m["file_type"]; ok {
-				source = "document"
-			} else if _, ok := m["article_count"]; ok {
-				source = "zim_archive"
-			} else if _, ok := m["readme_content"]; ok {
-				source = "git_template"
-			}
-		}
-
-		result := unifiedSearchResult{
-			Source: source,
-		}
-		if v, ok := m["uuid"].(string); ok {
-			result.UUID = v
-		}
-		if v, ok := m["title"].(string); ok {
-			result.Title = v
-		} else if v, ok := m["name"].(string); ok {
-			result.Title = v
-		}
-		if v, ok := m["description"].(string); ok {
-			result.Description = v
-		}
-		if v, ok := m["_rankingScore"].(float64); ok {
-			result.Score = v
-		}
-
-		results = append(results, result)
+	normalized := search.NormalizeFederatedHits(resp.Hits)
+	results := make([]unifiedSearchResult, 0, len(normalized))
+	for _, sr := range normalized {
+		results = append(results, unifiedSearchResult{
+			Source:      indexToSource(sr.Source),
+			UUID:        sr.UUID,
+			Title:       sr.Title,
+			Description: sr.Description,
+			Score:       sr.Score,
+		})
 	}
 
 	return nil, unifiedSearchResponse{

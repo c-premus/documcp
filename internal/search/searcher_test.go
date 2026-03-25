@@ -677,3 +677,281 @@ func TestSearchResult_JSONRoundTrip(t *testing.T) {
 		t.Errorf("Score = %f, want %f", decoded.Score, original.Score)
 	}
 }
+
+func TestExtraString(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		extra map[string]any
+		key   string
+		want  string
+	}{
+		{"present with correct type", map[string]any{"k": "hello"}, "k", "hello"},
+		{"present with wrong type", map[string]any{"k": 42}, "k", ""},
+		{"key absent", map[string]any{"other": "val"}, "k", ""},
+		{"nil map", nil, "k", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := search.ExtraString(tt.extra, tt.key); got != tt.want {
+				t.Errorf("ExtraString() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtraFloat64(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		extra map[string]any
+		key   string
+		want  float64
+	}{
+		{"present with correct type", map[string]any{"k": 3.14}, "k", 3.14},
+		{"present with wrong type", map[string]any{"k": "nope"}, "k", 0},
+		{"key absent", map[string]any{"other": 1.0}, "k", 0},
+		{"nil map", nil, "k", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := search.ExtraFloat64(tt.extra, tt.key); got != tt.want {
+				t.Errorf("ExtraFloat64() = %f, want %f", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtraInt(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		extra map[string]any
+		key   string
+		want  int
+	}{
+		{"present with float64", map[string]any{"k": float64(7)}, "k", 7},
+		{"present with wrong type", map[string]any{"k": "seven"}, "k", 0},
+		{"key absent", map[string]any{}, "k", 0},
+		{"nil map", nil, "k", 0},
+		{"truncates decimal", map[string]any{"k": 7.9}, "k", 7},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := search.ExtraInt(tt.extra, tt.key); got != tt.want {
+				t.Errorf("ExtraInt() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtraStringSlice(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		extra map[string]any
+		key   string
+		want  []string
+	}{
+		{
+			"present with correct type",
+			map[string]any{"k": []any{"a", "b", "c"}},
+			"k",
+			[]string{"a", "b", "c"},
+		},
+		{
+			"mixed types filters non-strings",
+			map[string]any{"k": []any{"a", 42, "b"}},
+			"k",
+			[]string{"a", "b"},
+		},
+		{
+			"present with wrong type",
+			map[string]any{"k": "not-a-slice"},
+			"k",
+			nil,
+		},
+		{"key absent", map[string]any{}, "k", nil},
+		{"nil map", nil, "k", nil},
+		{
+			"empty array",
+			map[string]any{"k": []any{}},
+			"k",
+			[]string{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := search.ExtraStringSlice(tt.extra, tt.key)
+			if tt.want == nil {
+				if got != nil {
+					t.Errorf("ExtraStringSlice() = %v, want nil", got)
+				}
+				return
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("ExtraStringSlice() len = %d, want %d", len(got), len(tt.want))
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("ExtraStringSlice()[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestNormalizeFederatedHits(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		hits      meilisearch.Hits
+		wantLen   int
+		wantFirst *search.SearchResult
+	}{
+		{
+			name:    "nil hits returns empty slice",
+			hits:    nil,
+			wantLen: 0,
+		},
+		{
+			name:    "empty hits returns empty slice",
+			hits:    meilisearch.Hits{},
+			wantLen: 0,
+		},
+		{
+			name: "hit with federation metadata",
+			hits: meilisearch.Hits{
+				makeHit(map[string]any{
+					"uuid":          "fed-1",
+					"title":         "Federated Doc",
+					"description":   "A doc",
+					"_rankingScore": 0.9,
+					"_federation":   map[string]any{"indexUid": "documents"},
+				}),
+			},
+			wantLen: 1,
+			wantFirst: &search.SearchResult{
+				UUID:        "fed-1",
+				Title:       "Federated Doc",
+				Description: "A doc",
+				Source:      "documents",
+				Score:       0.9,
+			},
+		},
+		{
+			name: "hit without federation has empty source",
+			hits: meilisearch.Hits{
+				makeHit(map[string]any{
+					"uuid":  "no-fed",
+					"title": "No Federation",
+				}),
+			},
+			wantLen: 1,
+			wantFirst: &search.SearchResult{
+				UUID:   "no-fed",
+				Title:  "No Federation",
+				Source: "",
+			},
+		},
+		{
+			name: "name fallback when title absent",
+			hits: meilisearch.Hits{
+				makeHit(map[string]any{
+					"uuid":        "name-fb",
+					"name":        "Template Name",
+					"_federation": map[string]any{"indexUid": "git_templates"},
+				}),
+			},
+			wantLen: 1,
+			wantFirst: &search.SearchResult{
+				UUID:   "name-fb",
+				Title:  "Template Name",
+				Source: "git_templates",
+			},
+		},
+		{
+			name: "multiple hits preserves order",
+			hits: meilisearch.Hits{
+				makeHit(map[string]any{"uuid": "first", "title": "First", "_federation": map[string]any{"indexUid": "documents"}}),
+				makeHit(map[string]any{"uuid": "second", "name": "Second", "_federation": map[string]any{"indexUid": "zim_archives"}}),
+			},
+			wantLen: 2,
+			wantFirst: &search.SearchResult{
+				UUID:   "first",
+				Title:  "First",
+				Source: "documents",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			results := search.NormalizeFederatedHits(tt.hits)
+
+			if len(results) != tt.wantLen {
+				t.Fatalf("NormalizeFederatedHits() returned %d results, want %d", len(results), tt.wantLen)
+			}
+
+			if tt.wantFirst == nil {
+				return
+			}
+
+			got := results[0]
+			want := *tt.wantFirst
+
+			if got.UUID != want.UUID {
+				t.Errorf("UUID = %q, want %q", got.UUID, want.UUID)
+			}
+			if got.Title != want.Title {
+				t.Errorf("Title = %q, want %q", got.Title, want.Title)
+			}
+			if got.Description != want.Description {
+				t.Errorf("Description = %q, want %q", got.Description, want.Description)
+			}
+			if got.Source != want.Source {
+				t.Errorf("Source = %q, want %q", got.Source, want.Source)
+			}
+			if got.Score != want.Score {
+				t.Errorf("Score = %f, want %f", got.Score, want.Score)
+			}
+		})
+	}
+}
+
+func TestNormalizeFederatedHits_ExtraPopulated(t *testing.T) {
+	t.Parallel()
+
+	hits := meilisearch.Hits{
+		makeHit(map[string]any{
+			"uuid":        "extra-fed",
+			"title":       "With Extra",
+			"file_type":   "pdf",
+			"_federation": map[string]any{"indexUid": "documents"},
+		}),
+	}
+
+	results := search.NormalizeFederatedHits(hits)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	extra := results[0].Extra
+	if extra == nil {
+		t.Fatal("Extra map is nil")
+	}
+	if _, ok := extra["file_type"]; !ok {
+		t.Error("Extra should contain 'file_type' key")
+	}
+}

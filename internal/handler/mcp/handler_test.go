@@ -2305,16 +2305,17 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 		}
 	})
 
-	t.Run("detects source from document fallback field", func(t *testing.T) {
+	t.Run("detects source from document federation metadata", func(t *testing.T) {
 		t.Parallel()
 		s := &mockSearcher{
 			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
 				return &meilisearch.MultiSearchResponse{
 					Hits: meilisearch.Hits{
 						makeHit(map[string]any{
-							"uuid":      "fallback-doc",
-							"title":     "Fallback Doc",
-							"file_type": "markdown",
+							"uuid":        "fallback-doc",
+							"title":       "Fallback Doc",
+							"file_type":   "markdown",
+							"_federation": map[string]any{"indexUid": "documents"},
 						}),
 					},
 				}, nil
@@ -2337,7 +2338,7 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 		}
 	})
 
-	t.Run("detects source from zim_archive fallback field", func(t *testing.T) {
+	t.Run("detects source from zim_archive federation metadata", func(t *testing.T) {
 		t.Parallel()
 		s := &mockSearcher{
 			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
@@ -2347,6 +2348,7 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 							"uuid":          "fallback-zim",
 							"title":         "Fallback ZIM",
 							"article_count": float64(100),
+							"_federation":   map[string]any{"indexUid": "zim_archives"},
 						}),
 					},
 				}, nil
@@ -2369,7 +2371,7 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 		}
 	})
 
-	t.Run("detects source from git_template fallback field", func(t *testing.T) {
+	t.Run("detects source from git_template federation metadata", func(t *testing.T) {
 		t.Parallel()
 		s := &mockSearcher{
 			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
@@ -2379,6 +2381,7 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 							"uuid":           "fallback-git",
 							"title":          "Fallback Git",
 							"readme_content": "# README",
+							"_federation":    map[string]any{"indexUid": "git_templates"},
 						}),
 					},
 				}, nil

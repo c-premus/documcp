@@ -78,7 +78,9 @@ func Sync(ctx context.Context, params SyncParams) error {
 	// 1. Validate repository URL.
 	if err := ValidateRepositoryURL(tmpl.RepositoryURL); err != nil {
 		syncErr := fmt.Sprintf("invalid repository URL: %v", err)
-		_ = params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", "", 0, 0, syncErr)
+		if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", "", 0, 0, syncErr); statusErr != nil {
+			logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
+		}
 		return fmt.Errorf("validating repository URL: %w", err)
 	}
 
@@ -90,7 +92,9 @@ func Sync(ctx context.Context, params SyncParams) error {
 		// Existing clone — pull latest.
 		if err := params.Client.Pull(ctx, dest, tmpl.Token); err != nil {
 			syncErr := fmt.Sprintf("pull failed: %v", err)
-			_ = params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", "", 0, 0, syncErr)
+			if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", "", 0, 0, syncErr); statusErr != nil {
+				logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
+			}
 			return fmt.Errorf("pulling template repo: %w", err)
 		}
 		repoDir = dest
@@ -104,7 +108,9 @@ func Sync(ctx context.Context, params SyncParams) error {
 		})
 		if err != nil {
 			syncErr := fmt.Sprintf("clone failed: %v", err)
-			_ = params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", "", 0, 0, syncErr)
+			if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", "", 0, 0, syncErr); statusErr != nil {
+				logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
+			}
 			return fmt.Errorf("cloning template repo: %w", err)
 		}
 		repoDir = dir
@@ -114,7 +120,9 @@ func Sync(ctx context.Context, params SyncParams) error {
 	commitSHA, err := params.Client.LatestCommitSHA(ctx, repoDir)
 	if err != nil {
 		syncErr := fmt.Sprintf("rev-parse failed: %v", err)
-		_ = params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", "", 0, 0, syncErr)
+		if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", "", 0, 0, syncErr); statusErr != nil {
+			logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
+		}
 		return fmt.Errorf("getting latest commit SHA: %w", err)
 	}
 
@@ -131,7 +139,9 @@ func Sync(ctx context.Context, params SyncParams) error {
 	files, err := params.Client.ExtractFiles(repoDir, DefaultMaxFileSize, DefaultMaxTotalSize)
 	if err != nil {
 		syncErr := fmt.Sprintf("file extraction failed: %v", err)
-		_ = params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", commitSHA, 0, 0, syncErr)
+		if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", commitSHA, 0, 0, syncErr); statusErr != nil {
+			logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
+		}
 		return fmt.Errorf("extracting template files: %w", err)
 	}
 
@@ -149,7 +159,9 @@ func Sync(ctx context.Context, params SyncParams) error {
 	// 7. Replace files in DB.
 	if err := params.Repo.ReplaceFiles(ctx, tmpl.ID, files); err != nil {
 		syncErr := fmt.Sprintf("replacing files failed: %v", err)
-		_ = params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", commitSHA, len(files), totalSize, syncErr)
+		if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", commitSHA, len(files), totalSize, syncErr); statusErr != nil {
+			logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
+		}
 		return fmt.Errorf("replacing template files: %w", err)
 	}
 

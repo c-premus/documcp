@@ -3,9 +3,8 @@ package api
 import (
 	"log/slog"
 	"net/http"
-	"strconv"
+	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 
@@ -47,12 +46,7 @@ func (h *QueueHandler) Stats(w http.ResponseWriter, r *http.Request) {
 func (h *QueueHandler) ListFailed(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	limit := 50
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
-			limit = parsed
-		}
-	}
+	limit, _ := parsePagination(r, 50, 100)
 
 	params := river.NewJobListParams().
 		States(rivertype.JobStateDiscarded, rivertype.JobStateCancelled, rivertype.JobStateRetryable).
@@ -85,7 +79,7 @@ func (h *QueueHandler) ListFailed(w http.ResponseWriter, r *http.Request) {
 			State:       j.State,
 			Attempt:     j.Attempt,
 			MaxAttempts: j.MaxAttempts,
-			CreatedAt:   j.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			CreatedAt:   j.CreatedAt.Format(time.RFC3339),
 			Errors:      j.Errors,
 		})
 	}
@@ -98,9 +92,8 @@ func (h *QueueHandler) ListFailed(w http.ResponseWriter, r *http.Request) {
 
 // RetryFailed handles POST /api/admin/queue/failed/{id}/retry — retries a specific job.
 func (h *QueueHandler) RetryFailed(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
-		errorResponse(w, http.StatusBadRequest, "invalid job id")
+	id, ok := parseIDParam(w, r, "id", "job id")
+	if !ok {
 		return
 	}
 
@@ -118,9 +111,8 @@ func (h *QueueHandler) RetryFailed(w http.ResponseWriter, r *http.Request) {
 
 // DeleteFailed handles DELETE /api/admin/queue/failed/{id} — cancels a failed job.
 func (h *QueueHandler) DeleteFailed(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
-		errorResponse(w, http.StatusBadRequest, "invalid job id")
+	id, ok := parseIDParam(w, r, "id", "job id")
+	if !ok {
 		return
 	}
 

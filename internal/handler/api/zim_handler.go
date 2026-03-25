@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -113,18 +111,7 @@ func (h *ZimHandler) List(w http.ResponseWriter, r *http.Request) {
 	category := r.URL.Query().Get("category")
 	language := r.URL.Query().Get("language")
 
-	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
-	if perPage <= 0 {
-		perPage = 50
-	}
-	if perPage > 100 {
-		perPage = 100
-	}
-
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	if offset < 0 {
-		offset = 0
-	}
+	perPage, offset := parsePaginationParam(r, "per_page", 50, 100)
 
 	total, err := h.repo.CountFiltered(r.Context(), category, language, query)
 	if err != nil {
@@ -145,14 +132,7 @@ func (h *ZimHandler) List(w http.ResponseWriter, r *http.Request) {
 		items = append(items, toZimArchiveResponse(&archives[i]))
 	}
 
-	jsonResponse(w, http.StatusOK, map[string]any{
-		"data": items,
-		"meta": map[string]any{
-			"total":  total,
-			"limit":  perPage,
-			"offset": offset,
-		},
-	})
+	jsonResponse(w, http.StatusOK, listResponse(items, total, perPage, offset))
 }
 
 // Show handles GET /api/zim/archives/{archive} -- get a single ZIM archive by name.
@@ -192,13 +172,7 @@ func (h *ZimHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit <= 0 {
-		limit = 10
-	}
-	if limit > 100 {
-		limit = 100
-	}
+	limit, _ := parsePagination(r, 10, 100)
 
 	results, err := kiwixClient.Search(r.Context(), archiveName, query, "fulltext", limit)
 	if err != nil {
@@ -244,13 +218,7 @@ func (h *ZimHandler) Suggest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit <= 0 {
-		limit = 10
-	}
-	if limit > 50 {
-		limit = 50
-	}
+	limit, _ := parsePagination(r, 10, 50)
 
 	results, err := kiwixClient.Search(r.Context(), archiveName, query, "suggest", limit)
 	if err != nil {
@@ -333,21 +301,11 @@ func toZimArchiveResponse(za *model.ZimArchive) zimArchiveResponse {
 		Tags:          tags,
 	}
 
-	if za.Description.Valid {
-		resp.Description = za.Description.String
-	}
-	if za.Category.Valid {
-		resp.Category = za.Category.String
-	}
-	if za.Creator.Valid {
-		resp.Creator = za.Creator.String
-	}
-	if za.Publisher.Valid {
-		resp.Publisher = za.Publisher.String
-	}
-	if za.LastSyncedAt.Valid {
-		resp.LastSyncedAt = za.LastSyncedAt.Time.Format(time.RFC3339)
-	}
+	resp.Description = nullStringValue(za.Description)
+	resp.Category = nullStringValue(za.Category)
+	resp.Creator = nullStringValue(za.Creator)
+	resp.Publisher = nullStringValue(za.Publisher)
+	resp.LastSyncedAt = nullTimeToString(za.LastSyncedAt)
 
 	return resp
 }

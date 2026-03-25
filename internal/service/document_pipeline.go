@@ -183,7 +183,9 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 	}
 
 	// Dispatch background extraction job.
-	p.dispatchExtraction(ctx, doc.ID, docUUID)
+	if dispatchErr := p.dispatchExtraction(ctx, doc.ID, docUUID); dispatchErr != nil {
+		return nil, fmt.Errorf("uploading document: %w", dispatchErr)
+	}
 
 	created, err := p.repo.FindByID(ctx, doc.ID)
 	if err != nil {
@@ -235,7 +237,9 @@ func (p *DocumentPipeline) ProcessDocument(ctx context.Context, docID int64) err
 	)
 
 	// Dispatch indexing job.
-	p.dispatchIndexing(ctx, doc)
+	if err := p.dispatchIndexing(ctx, doc); err != nil {
+		return fmt.Errorf("processing document %d: %w", docID, err)
+	}
 
 	return nil
 }
@@ -297,31 +301,33 @@ func (p *DocumentPipeline) IndexDocument(ctx context.Context, doc *model.Documen
 }
 
 // dispatchExtraction enqueues a document extraction job via River.
-func (p *DocumentPipeline) dispatchExtraction(ctx context.Context, docID int64, docUUID string) {
+func (p *DocumentPipeline) dispatchExtraction(ctx context.Context, docID int64, docUUID string) error {
 	if p.inserter == nil {
-		return
+		return nil
 	}
 
 	if _, err := p.inserter.Insert(ctx, queue.DocumentExtractArgs{
 		DocumentID: docID,
 		DocUUID:    docUUID,
 	}, nil); err != nil {
-		p.logger.Error("failed to dispatch extraction job", "doc_id", docID, "uuid", docUUID, "error", err)
+		return fmt.Errorf("dispatching extraction job for document %s: %w", docUUID, err)
 	}
+	return nil
 }
 
 // dispatchIndexing enqueues a document indexing job via River.
-func (p *DocumentPipeline) dispatchIndexing(ctx context.Context, doc *model.Document) {
+func (p *DocumentPipeline) dispatchIndexing(ctx context.Context, doc *model.Document) error {
 	if p.inserter == nil || p.indexer == nil {
-		return
+		return nil
 	}
 
 	if _, err := p.inserter.Insert(ctx, queue.DocumentIndexArgs{
 		DocumentID: doc.ID,
 		DocUUID:    doc.UUID,
 	}, nil); err != nil {
-		p.logger.Error("failed to dispatch indexing job", "doc_id", doc.ID, "uuid", doc.UUID, "error", err)
+		return fmt.Errorf("dispatching indexing job for document %d: %w", doc.ID, err)
 	}
+	return nil
 }
 
 // IndexDocumentByID fetches a document by ID and indexes it in Meilisearch.

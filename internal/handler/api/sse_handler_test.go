@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,7 +26,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func newTestSSEHandler() (*SSEHandler, *queue.EventBus) {
-	eb := queue.NewEventBus()
+	eb := queue.NewEventBus(slog.New(slog.DiscardHandler))
 	h := NewSSEHandler(eb, 15*time.Second)
 	return h, eb
 }
@@ -145,7 +146,7 @@ func publishUntilReady(t *testing.T, eb *queue.EventBus, rec *sseRecorder, event
 func TestNewSSEHandler(t *testing.T) {
 	t.Parallel()
 
-	eb := queue.NewEventBus()
+	eb := queue.NewEventBus(slog.New(slog.DiscardHandler))
 	h := NewSSEHandler(eb, 15*time.Second)
 
 	assert.NotNil(t, h, "NewSSEHandler should return a non-nil handler")

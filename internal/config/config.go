@@ -441,7 +441,7 @@ func Load() (*Config, error) {
 }
 
 // Validate checks that all required configuration fields are set.
-func (c *Config) Validate() error {
+func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently branchy
 	var errs []string
 
 	// --- Always required ---
@@ -470,6 +470,23 @@ func (c *Config) Validate() error {
 
 	if c.OTEL.Enabled && c.OTEL.Endpoint == "" {
 		errs = append(errs, "OTEL_EXPORTER_OTLP_ENDPOINT is required when OTEL_ENABLED=true")
+	}
+
+	// --- Numeric range validation ---
+	if c.Server.Port < 1 || c.Server.Port > 65535 {
+		errs = append(errs, "SERVER_PORT must be between 1 and 65535")
+	}
+	if c.Server.MaxBodySize <= 0 {
+		errs = append(errs, "SERVER_MAX_BODY_SIZE must be positive")
+	}
+	if c.Database.MaxOpenConns > 0 && c.Database.MaxIdleConns > c.Database.MaxOpenConns {
+		errs = append(errs, "DB_MAX_IDLE_CONNS must not exceed DB_MAX_OPEN_CONNS")
+	}
+	if c.Git.MaxFileSize <= 0 {
+		errs = append(errs, "GIT_MAX_FILE_SIZE must be positive")
+	}
+	if c.Git.MaxTotalSize <= 0 {
+		errs = append(errs, "GIT_MAX_TOTAL_SIZE must be positive")
 	}
 
 	// --- Production requirements ---
