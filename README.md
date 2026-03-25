@@ -1,30 +1,27 @@
 # DocuMCP
 
-A documentation server that exposes knowledge bases through the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP).
+A documentation server that exposes knowledge bases through the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), enabling AI agents to search, read, and manage documentation.
 
-DocuMCP gives AI agents structured access to your documentation via MCP tools and prompts. It handles document ingestion, full-text search, OAuth 2.1 authorization, and integrates with external sources like Confluence, ZIM archives, and Git repositories. This is a Go rewrite of the original [PHP/Laravel version](https://github.com/chris/DocuMCP), targeting single-binary deployment with lower resource usage.
+DocuMCP gives AI agents structured access to your documentation via MCP tools and prompts. It handles document ingestion, full-text search, and OAuth 2.1 authorization. Written in Go for single-binary deployment with low resource usage.
 
 ## Features
 
-- **MCP Server** -- 18 tools and 7 prompts via the official Go MCP SDK. Agents can search, read, create, update, and delete documents.
-- **OAuth 2.1 Authorization Server** -- PKCE, device authorization (RFC 8628), dynamic client registration (RFC 7591), and RFC 9728 Protected Resource Metadata for automatic discovery.
+- **MCP Server** -- 15 tools and 6 prompts via the official [Go MCP SDK](https://github.com/modelcontextprotocol/go-sdk). Search, read, create, update, and delete documents. Federated search across documents, ZIM archives, and Git templates in a single query.
+- **OAuth 2.1 Authorization Server** -- PKCE, device authorization ([RFC 8628](https://datatracker.ietf.org/doc/html/rfc8628)), dynamic client registration ([RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591)), and [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) Protected Resource Metadata for automatic discovery.
 - **Document Pipeline** -- Upload PDF, DOCX, XLSX, HTML, or Markdown. Text is extracted, indexed in Meilisearch, and searchable within seconds.
-- **Federated Search** -- Query across four Meilisearch indexes (documents, ZIM archives, Confluence spaces, Git templates) in a single request.
-- **External Integrations** -- Sync content from Confluence, Kiwix ZIM archives, and Git template repositories.
-- **Admin UI** -- Vue 3 SPA for managing documents, users, OAuth clients, and external services.
-- **Observability** -- OpenTelemetry tracing, Prometheus metrics (9 collectors), and structured logging with `slog`.
+- **External Integrations** -- Kiwix ZIM archives (federated article search) and Git template repositories.
+- **Background Jobs** -- [River](https://riverqueue.com/) Postgres-native job queue with 11 worker types, 3 priority queues, and 8 periodic schedules.
+- **Admin UI** -- Vue 3 + TypeScript SPA for managing documents, users, OAuth clients, external services, and queue status.
+- **Observability** -- OpenTelemetry tracing (OTLP), Prometheus metrics (15 collectors), and structured logging with `slog`.
 - **OIDC Authentication** -- User login via any OpenID Connect provider.
 
 ## Quick Start
 
 Docker Compose is the fastest way to run DocuMCP. The stack includes the application, PostgreSQL 17, Meilisearch v1.12, and Traefik v3.4.
 
-1. Clone the repository and create a `.env` file:
+1. Create a `.env` file:
 
 ```bash
-git clone https://github.com/chris/DocuMCP-go.git
-cd DocuMCP-go
-
 cat > .env <<EOF
 DB_DATABASE=documcp
 DB_USERNAME=documcp
@@ -45,12 +42,14 @@ docker compose up -d
 
 3. The application is available at `https://documcp.example.com` (or `http://localhost:8080` without Traefik).
 
+See `docs/OAUTH_CLIENT_GUIDE.md` for connecting AI agents and CLI tools.
+
 ## Development
 
 ### Prerequisites
 
-- Go 1.25
-- Node.js 22 (frontend build)
+- Go 1.26.1
+- Node.js 22 (frontend)
 - PostgreSQL
 - Meilisearch
 - `poppler-utils` (PDF text extraction)
@@ -66,17 +65,18 @@ go build ./...
 ### Test
 
 ```bash
-go test ./...              # All tests
-go test -race ./...        # With race detection
-go test -cover ./...       # With coverage
+go test ./...                        # All tests
+go test -race ./...                  # With race detection
+go test -cover ./...                 # With coverage
+go test -tags integration ./...      # Integration tests (needs Docker)
 ```
 
 ### Code Quality
 
 ```bash
-gofmt -w .                 # Format
-goimports -w .             # Fix imports
-golangci-lint run          # Lint (v2.9.0)
+gofmt -w .                           # Format
+goimports -w .                       # Fix imports
+golangci-lint run                    # Lint (v2.11.3)
 ```
 
 ### Frontend
@@ -84,8 +84,10 @@ golangci-lint run          # Lint (v2.9.0)
 ```bash
 cd frontend
 npm ci
-npm run build              # Production build -> web/frontend/dist
+npm run build              # OpenAPI codegen + vue-tsc + Vite build -> web/frontend/dist/
 npm run dev                # Dev server with HMR
+npm run test               # Vitest
+npm run lint               # vue-tsc + ESLint
 ```
 
 ## Architecture
@@ -93,30 +95,55 @@ npm run dev                # Dev server with HMR
 ```
 cmd/server/              Entry point
 internal/
-  auth/oauth/            OAuth 2.1 server (PKCE, device flow, token management)
+  action/                Single-responsibility business actions
+  auth/oauth/            OAuth 2.1 server (PKCE, device flow, dynamic registration)
   auth/oidc/             OIDC client for user authentication
-  client/confluence/     Confluence API client and sync
-  client/kiwix/          ZIM archive reader and sync
+  client/kiwix/          ZIM archive reader (Kiwix)
   client/git/            Git template repository sync
   crypto/                AES-256-GCM encryption for secrets at rest
   database/              PostgreSQL connection and migrations (goose)
   dto/                   Data transfer objects
   extractor/             Text extraction (PDF, DOCX, XLSX, HTML, Markdown)
+  handler/api/           REST API handlers
   handler/mcp/           MCP tool and prompt handlers
   handler/oauth/         OAuth endpoint handlers
   model/                 Domain models
   observability/         Tracing, metrics, structured logging
+  queue/                 River job queue (workers, events, periodic jobs)
   repository/            Data access layer (sqlx, handwritten SQL)
-  search/                Meilisearch client and indexer
+  search/                Meilisearch client, indexer, and searcher
   server/                HTTP server setup and routing (chi v5)
-  service/               Business logic
-  testutil/              Test helpers and builders
-frontend/                Vue 3 + TypeScript SPA (admin panel)
+  service/               Business logic orchestration
+  stringutil/            Shared string utilities
+frontend/                Vue 3 + TypeScript SPA source (admin panel)
+web/frontend/            Embedded SPA (//go:embed dist/)
 migrations/              SQL migration files (goose)
 docs/contracts/          OpenAPI spec, MCP contract, database schema
 ```
 
-The application uses constructor injection throughout. Repositories accept `sqlx.DB`, services accept repository interfaces, and handlers accept services. Background jobs (document extraction, search indexing, periodic sync) run via River, a Postgres-native job queue.
+The application uses constructor injection throughout. Repositories accept `sqlx.DB`, services accept repository interfaces, and handlers accept services. Background jobs run via River, a Postgres-native job queue.
+
+## MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `search_documents` | Full-text search across documents |
+| `read_document` | Retrieve document content by UUID |
+| `create_document` | Create a new document |
+| `update_document` | Modify document metadata |
+| `delete_document` | Remove a document |
+| `unified_search` | Cross-source search (documents, ZIM, Git templates) |
+| `list_zim_archives` | List available ZIM archives |
+| `search_zim` | Search within a specific ZIM archive |
+| `read_zim_article` | Retrieve a ZIM article |
+| `list_git_templates` | List available Git templates |
+| `search_git_templates` | Search across template READMEs |
+| `get_template_structure` | View folder tree and variables |
+| `get_template_file` | Retrieve a file with variable substitution |
+| `get_deployment_guide` | Deployment instructions with essential files |
+| `download_template` | Download template as base64-encoded archive |
+
+ZIM and Git template tools are registered conditionally based on whether the corresponding external services are configured.
 
 ## Configuration
 
@@ -134,7 +161,7 @@ The application uses constructor injection throughout. Repositories accept `sqlx
 | `OIDC_CLIENT_ID` | No | -- | OIDC client ID |
 | `OIDC_CLIENT_SECRET` | No | -- | OIDC client secret |
 | `OIDC_REDIRECT_URI` | No | -- | OIDC callback URL |
-| `OAUTH_SESSION_SECRET` | Yes | -- | Session secret (min 32 bytes); also derives CSRF and token HMAC keys via HKDF |
+| `OAUTH_SESSION_SECRET` | Yes | -- | Session secret (min 32 bytes); derives CSRF and token HMAC keys via HKDF |
 | `ENCRYPTION_KEY` | No | -- | 32-byte key for AES-256-GCM encryption of stored Git tokens |
 | `SERVER_HOST` | No | `0.0.0.0` | Listen address |
 | `SERVER_PORT` | No | `8080` | Listen port |
@@ -145,9 +172,12 @@ The application uses constructor injection throughout. Repositories accept `sqlx
 | `INTERNAL_API_TOKEN` | No | -- | Token for internal API endpoints |
 | `APP_URL` | No | `http://localhost` | Public application URL |
 | `TRUSTED_PROXIES` | No | -- | CIDR ranges for trusted reverse proxies |
+| `KIWIX_FEDERATED_SEARCH_TIMEOUT` | No | `3s` | Deadline for Kiwix fan-out during unified search |
+| `KIWIX_FEDERATED_MAX_ARCHIVES` | No | `10` | Max archives to search in parallel |
+| `KIWIX_FEDERATED_PER_ARCHIVE_LIMIT` | No | `3` | Max results per archive |
 
-For a complete configuration reference, see `docs/contracts/configuration-schema.yaml`.
+For a complete reference, see `docs/contracts/configuration-schema.yaml`.
 
 ## License
 
-TBD
+[MIT](LICENSE)
