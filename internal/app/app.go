@@ -411,6 +411,10 @@ func New(cfg *config.Config) (*App, error) {
 		GitTemplateRepo:     gitTemplateRepo,
 		ZimEnabled:          true,
 		GitTemplatesEnabled: true,
+
+		FederatedSearchTimeout:   cfg.Kiwix.FederatedSearchTimeout,
+		FederatedMaxArchives:     cfg.Kiwix.FederatedMaxArchives,
+		FederatedPerArchiveLimit: cfg.Kiwix.FederatedPerArchiveLimit,
 	}
 	mcpCfg.KiwixFactory = kiwixFactory
 	if searcher != nil {

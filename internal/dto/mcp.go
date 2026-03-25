@@ -115,7 +115,7 @@ type DownloadTemplateInput struct {
 // UnifiedSearchInput holds parameters for searching across all content sources.
 type UnifiedSearchInput struct {
 	Query  string   `json:"query" jsonschema:"Search text (1-255 characters),required"`
-	Types  []string `json:"types,omitempty" jsonschema:"Filter to specific content types: document, git_template, zim_archive"`
+	Types  []string `json:"types,omitempty" jsonschema:"Filter to specific content types: document, git_template, zim_archive, zim_article"`
 	Limit  int      `json:"limit,omitempty" jsonschema:"Max results across all sources (default 20, max 100)"`
 	Offset int      `json:"offset,omitempty" jsonschema:"Pagination offset (default 0)"`
 }

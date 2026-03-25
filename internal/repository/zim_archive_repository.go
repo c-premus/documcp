@@ -118,6 +118,19 @@ func (r *ZimArchiveRepository) CountFiltered(ctx context.Context, category, lang
 	return count, nil
 }
 
+// ListSearchable returns all enabled and searchable ZIM archives, ordered by
+// article count descending. Used by unified search to determine which archives
+// participate in federated Kiwix fan-out.
+func (r *ZimArchiveRepository) ListSearchable(ctx context.Context) ([]model.ZimArchive, error) {
+	var archives []model.ZimArchive
+	err := r.db.SelectContext(ctx, &archives,
+		`SELECT * FROM zim_archives WHERE is_enabled = true AND is_searchable = true ORDER BY article_count DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("listing searchable zim archives: %w", err)
+	}
+	return archives, nil
+}
+
 // FindByName returns a ZIM archive by its name, if enabled.
 func (r *ZimArchiveRepository) FindByName(ctx context.Context, name string) (*model.ZimArchive, error) {
 	var archive model.ZimArchive
