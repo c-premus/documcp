@@ -185,26 +185,30 @@ func (h *Handler) handleSearchQueryBuilder(_ context.Context, req *mcp.GetPrompt
 
 	assistantText := `You are a search query optimization assistant with access to the DocuMCP knowledge base.
 
-**Available tool:** search_documents (full-text search with filters for file type, tags, and pagination)
+**Available tools:**
+- unified_search: Search across ALL sources (documents, ZIM archives, git templates, ZIM article content) in one request. Supports a ` + "`types`" + ` filter to narrow by source.
+- search_documents: Full-text search within uploaded documents with filters for file type, tags, and pagination.
 
 ## Query optimization tips
 
-1. **Start broad, then narrow.** Begin with general terms, then add specificity.
+1. **Start broad, then narrow.** Use unified_search first for cross-source discovery, then search_documents for targeted results.
 2. **Use key terms, not full sentences.** Extract the most meaningful 2-4 words.
 3. **Try synonyms and related terms.** Technical concepts often have multiple names.
-4. **Leverage filters.** Use file_type and tag filters to reduce noise.
+4. **Leverage filters.** Use file_type and tag filters on search_documents to reduce noise. Use the types filter on unified_search to limit sources.
 5. **Iterate.** Review initial results, then refine based on what you find.
 
 ## Search strategy
 
+- Start with unified_search for a broad overview across all sources.
+- Follow up with search_documents for document-specific deep dives using file_type and tag filters.
 - Run 2-3 queries with different term combinations.
-- Use the file_type filter if the user has preferences (e.g., "markdown" for docs, "pdf" for reports).
 - Review result snippets before reading full documents.
 - Summarize findings and suggest follow-up queries if needed.
 
 ## Example tool calls
 
 ` + "```" + `
+unified_search(query: "kubernetes deployment strategy", limit: 10)
 search_documents(query: "kubernetes deployment strategy", file_type: "markdown")
 search_documents(query: "k8s rollout canary blue-green", tags: ["devops", "infrastructure"])
 ` + "```"
@@ -238,7 +242,7 @@ func (h *Handler) handleKnowledgeBaseBuilder(_ context.Context, req *mcp.GetProm
 	assistantText := fmt.Sprintf(`You are a knowledge base content builder with access to the DocuMCP knowledge base.
 
 **Available tools:**
-- create_document: Create new documents (markdown, pdf, docx, xlsx, html)
+- create_document: Create new documents (markdown or html). Content is auto-indexed for search.
 - update_document: Modify existing document metadata (title, description, tags, visibility)
 - search_documents: Search existing content to avoid duplication and find related documents
 
@@ -327,22 +331,22 @@ search_git_templates(query: "memory bank setup")
 Review the template structure and required variables.
 
 `+"```"+`
-get_template_structure(template_id: "...")
+get_template_structure(uuid: "...")
 `+"```"+`
 
 ### Step 3: Configure
 Retrieve key files and help the user fill in required variables.
 
 `+"```"+`
-get_template_file(template_id: "...", file_path: "CLAUDE.md", variables: {"project_name": "my-app"})
+get_template_file(uuid: "...", path: "CLAUDE.md", variables: "{\"project_name\": \"my-app\"}")
 `+"```"+`
 
 ### Step 4: Deploy
 Provide the full deployment guide or download the template archive.
 
 `+"```"+`
-get_deployment_guide(template_id: "...")
-download_template(template_id: "...")
+get_deployment_guide(uuid: "...")
+download_template(uuid: "...")
 `+"```"+`
 
 ## Depth guidance
@@ -405,19 +409,19 @@ list_zim_archives(category: "devdocs")
 `+"```"+`
 
 ### Step 2: Search for content
-Use "suggest" mode for quick title lookups, "fulltext" for deeper searches.
+Use "fulltext" (default) for content searches, "suggest" for fast title lookups.
 
 `+"```"+`
-search_zim(archive_id: "...", query: "topic", mode: "suggest")
-search_zim(archive_id: "...", query: "topic details", mode: "fulltext")
+search_zim(archive: "devdocs_en_laravel", query: "topic", search_type: "fulltext")
+search_zim(archive: "wikipedia_en", query: "topic", search_type: "suggest")
 `+"```"+`
 
 ### Step 3: Read and analyze
 Retrieve the most relevant articles. Use summary_only for quick scans.
 
 `+"```"+`
-read_zim_article(archive_id: "...", path: "/article", summary_only: true)
-read_zim_article(archive_id: "...", path: "/article", max_paragraphs: 10)
+read_zim_article(archive: "devdocs_en_laravel", path: "/article", summary_only: true)
+read_zim_article(archive: "wikipedia_en", path: "/article", max_paragraphs: 10)
 `+"```"+`
 
 ### Step 4: Synthesize
@@ -461,22 +465,22 @@ func (h *Handler) handleCrossSourceResearch(_ context.Context, req *mcp.GetPromp
 
 **Available tool groups:**
 
+**Unified Search (always available):**
+- unified_search: Search across ALL sources in one request. Use the `+"`types`"+` filter to narrow: document, git_template, zim_archive, zim_article.
+
 **Documents (always available):**
 - search_documents: Full-text search with file type and tag filters
 - read_document: Retrieve document content by UUID
 
 **ZIM Archives (if enabled):**
 - list_zim_archives: List offline archives (DevDocs, Wikipedia, Stack Exchange)
-- search_zim: Search within archives (suggest or fulltext mode)
-- read_zim_article: Retrieve article content
+- search_zim: Search within a specific archive (archive, query, search_type: fulltext or suggest)
+- read_zim_article: Retrieve article content (archive, path, summary_only, max_paragraphs)
 
 **Git Templates (if enabled):**
 - list_git_templates: List project templates
 - search_git_templates: Search template metadata and READMEs
-- get_template_structure: View template folder tree and variables
-
-**Unified Search (always available):**
-- unified_search: Search across ALL sources in one request
+- get_template_structure: View template folder tree and variables (uuid)
 
 **Research depth:** %s
 **Sources to search:** %s
@@ -484,17 +488,28 @@ func (h *Handler) handleCrossSourceResearch(_ context.Context, req *mcp.GetPromp
 ## Cross-source research workflow
 
 ### Step 1: Broad discovery
-Start with unified_search to get an overview across all sources.
+Start with unified_search to get an overview across all sources. Use the types filter to focus.
 
 `+"```"+`
 unified_search(query: "topic keywords", limit: 10)
+unified_search(query: "topic keywords", types: ["document", "zim_article"], limit: 10)
 `+"```"+`
 
 ### Step 2: Source-specific deep dives
 Use source-specific tools for detailed searches in promising sources.
 
+`+"```"+`
+search_documents(query: "topic", file_type: "markdown")
+search_zim(archive: "devdocs_en_laravel", query: "topic", search_type: "fulltext")
+`+"```"+`
+
 ### Step 3: Read and collect
 Retrieve full content from the most relevant results in each source.
+
+`+"```"+`
+read_document(uuid: "...")
+read_zim_article(archive: "...", path: "/article")
+`+"```"+`
 
 ### Step 4: Cross-reference and synthesize
 Compare information across sources, noting agreements, contradictions, and unique insights from each source.
