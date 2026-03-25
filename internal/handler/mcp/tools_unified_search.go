@@ -285,9 +285,9 @@ func (h *Handler) searchKiwixArchives(ctx context.Context, query string, perArch
 	// Filter to Meilisearch-selected archives when available.
 	if len(selectedNames) > 0 {
 		filtered := archives[:0]
-		for _, a := range archives {
-			if selectedNames[a.Name] {
-				filtered = append(filtered, a)
+		for i := range archives {
+			if selectedNames[archives[i].Name] {
+				filtered = append(filtered, archives[i])
 			}
 		}
 		if len(filtered) > 0 {
