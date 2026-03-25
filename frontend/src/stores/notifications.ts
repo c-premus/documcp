@@ -30,7 +30,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
   }
 
   function remove(id: string) {
-    notifications.value = notifications.value.filter(n => n.id !== id)
+    notifications.value = notifications.value.filter((n) => n.id !== id)
   }
 
   function clear() {

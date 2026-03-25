@@ -27,7 +27,6 @@ export interface FailedJob {
   readonly errors?: AttemptError[]
 }
 
-
 export const useQueueStore = defineStore('queue', () => {
   const stats = ref<QueueStats | null>(null)
   const failedJobs = ref<FailedJob[]>([])
@@ -37,7 +36,7 @@ export const useQueueStore = defineStore('queue', () => {
   async function fetchStats(): Promise<QueueStats> {
     loading.value = true
     try {
-      const response = await apiFetch<{data: QueueStats}>('/api/admin/queue/stats')
+      const response = await apiFetch<{ data: QueueStats }>('/api/admin/queue/stats')
       stats.value = response.data
       return response.data
     } finally {
@@ -45,11 +44,15 @@ export const useQueueStore = defineStore('queue', () => {
     }
   }
 
-  async function fetchFailedJobs(limit?: number): Promise<{data: FailedJob[], meta: {count: number}}> {
+  async function fetchFailedJobs(
+    limit?: number,
+  ): Promise<{ data: FailedJob[]; meta: { count: number } }> {
     loading.value = true
     try {
       const qs = limit ? `?limit=${limit}` : ''
-      const data = await apiFetch<{data: FailedJob[], meta: {count: number}}>(`/api/admin/queue/failed${qs}`)
+      const data = await apiFetch<{ data: FailedJob[]; meta: { count: number } }>(
+        `/api/admin/queue/failed${qs}`,
+      )
       failedJobs.value = data.data
       failedCount.value = data.meta.count
       return data

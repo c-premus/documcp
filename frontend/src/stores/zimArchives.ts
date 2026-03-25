@@ -62,7 +62,6 @@ interface ArticleResponse {
   readonly data: ZimArticle
 }
 
-
 export const useZimArchivesStore = defineStore('zimArchives', () => {
   const archives = ref<ZimArchive[]>([])
   const total = ref(0)
@@ -96,12 +95,18 @@ export const useZimArchivesStore = defineStore('zimArchives', () => {
     }
   }
 
-  async function searchArticles(archive: string, q: string, limit?: number): Promise<ZimSearchResult[]> {
+  async function searchArticles(
+    archive: string,
+    q: string,
+    limit?: number,
+  ): Promise<ZimSearchResult[]> {
     searchLoading.value = true
     error.value = null
     try {
       const query = buildQuery({ q, limit })
-      const response = await apiFetch<SearchResponse>(`/api/zim/archives/${encodeURIComponent(archive)}/search${query}`)
+      const response = await apiFetch<SearchResponse>(
+        `/api/zim/archives/${encodeURIComponent(archive)}/search${query}`,
+      )
       searchResults.value = response.data
       return response.data
     } catch (e) {

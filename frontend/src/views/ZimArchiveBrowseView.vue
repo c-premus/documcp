@@ -92,24 +92,38 @@ function handleResultClick(result: ZimSearchResult): void {
 
         <!-- Search loading -->
         <div v-if="store.searchLoading" class="flex items-center justify-center py-8">
-          <div class="h-6 w-6 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400" />
+          <div
+            class="h-6 w-6 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400"
+          />
         </div>
 
         <!-- Search results -->
-        <ul v-else-if="store.searchResults.length > 0" class="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface overflow-hidden">
+        <ul
+          v-else-if="store.searchResults.length > 0"
+          class="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface overflow-hidden"
+        >
           <li
             v-for="result in store.searchResults"
             :key="result.path"
             class="px-4 py-3 hover:bg-bg-hover cursor-pointer"
             @click="handleResultClick(result)"
           >
-            <p class="text-sm font-medium text-indigo-600 dark:text-indigo-400">{{ result.title }}</p>
-            <p v-if="result.snippet" class="mt-1 text-xs text-text-muted line-clamp-2" v-html="DOMPurify.sanitize(result.snippet)" />
+            <p class="text-sm font-medium text-indigo-600 dark:text-indigo-400">
+              {{ result.title }}
+            </p>
+            <p
+              v-if="result.snippet"
+              class="mt-1 text-xs text-text-muted line-clamp-2"
+              v-html="DOMPurify.sanitize(result.snippet)"
+            />
           </li>
         </ul>
 
         <!-- Empty search state -->
-        <div v-else-if="searchQuery.trim() !== '' && !store.searchLoading" class="text-center py-8 text-sm text-text-muted">
+        <div
+          v-else-if="searchQuery.trim() !== '' && !store.searchLoading"
+          class="text-center py-8 text-sm text-text-muted"
+        >
           No results found.
         </div>
 
@@ -122,11 +136,16 @@ function handleResultClick(result: ZimSearchResult): void {
       <div class="lg:col-span-2">
         <!-- Article loading -->
         <div v-if="store.articleLoading" class="flex items-center justify-center py-12">
-          <div class="h-8 w-8 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400" />
+          <div
+            class="h-8 w-8 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400"
+          />
         </div>
 
         <!-- Article content -->
-        <div v-else-if="store.currentArticle !== null" class="rounded-lg border border-border-default bg-bg-surface p-6">
+        <div
+          v-else-if="store.currentArticle !== null"
+          class="rounded-lg border border-border-default bg-bg-surface p-6"
+        >
           <h2 class="text-xl font-bold text-text-primary mb-4">{{ store.currentArticle.title }}</h2>
 
           <!-- HTML content -->
@@ -137,11 +156,16 @@ function handleResultClick(result: ZimSearchResult): void {
           />
 
           <!-- Plain text content -->
-          <pre v-else class="whitespace-pre-wrap text-sm text-text-secondary font-mono">{{ store.currentArticle.content }}</pre>
+          <pre v-else class="whitespace-pre-wrap text-sm text-text-secondary font-mono">{{
+            store.currentArticle.content
+          }}</pre>
         </div>
 
         <!-- No article selected -->
-        <div v-else class="flex flex-col items-center justify-center py-16 text-center rounded-lg border border-dashed border-border-input bg-bg-surface-alt">
+        <div
+          v-else
+          class="flex flex-col items-center justify-center py-16 text-center rounded-lg border border-dashed border-border-input bg-bg-surface-alt"
+        >
           <p class="text-sm text-text-muted">Search and select an article to view its content.</p>
         </div>
       </div>

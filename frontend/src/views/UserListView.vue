@@ -81,10 +81,14 @@ async function fetchUsers(): Promise<void> {
   }
 }
 
-watch([searchQuery], () => {
-  page.value = 1
-  fetchUsers()
-}, { immediate: true })
+watch(
+  [searchQuery],
+  () => {
+    page.value = 1
+    fetchUsers()
+  },
+  { immediate: true },
+)
 
 watch([page, perPage], () => {
   fetchUsers()
@@ -92,10 +96,9 @@ watch([page, perPage], () => {
 
 async function handleToggleAdmin(user: User): Promise<void> {
   try {
-    const response = await apiFetch<SingleResponse>(
-      `/api/admin/users/${user.id}/toggle-admin`,
-      { method: 'POST' },
-    )
+    const response = await apiFetch<SingleResponse>(`/api/admin/users/${user.id}/toggle-admin`, {
+      method: 'POST',
+    })
     const index = users.value.findIndex((u) => u.id === user.id)
     if (index !== -1) {
       users.value[index] = response.data
@@ -172,26 +175,31 @@ const columns: ColumnDef<User, unknown>[] = [
     meta: { className: 'w-20' },
     cell: ({ row }) => {
       const user = row.original
-      return h(Switch, {
-        'modelValue': user.is_admin,
-        'class': [
-          'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2',
-          user.is_admin ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600',
-        ],
-        'onClick': (event: MouseEvent) => {
-          event.stopPropagation()
-        },
-        'onUpdate:modelValue': () => {
-          handleToggleAdmin(user)
-        },
-      }, {
-        default: () => h('span', {
+      return h(
+        Switch,
+        {
+          modelValue: user.is_admin,
           class: [
-            'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-            user.is_admin ? 'translate-x-5' : 'translate-x-0',
+            'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2',
+            user.is_admin ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600',
           ],
-        }),
-      })
+          onClick: (event: MouseEvent) => {
+            event.stopPropagation()
+          },
+          'onUpdate:modelValue': () => {
+            handleToggleAdmin(user)
+          },
+        },
+        {
+          default: () =>
+            h('span', {
+              class: [
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                user.is_admin ? 'translate-x-5' : 'translate-x-0',
+              ],
+            }),
+        },
+      )
     },
   },
   {

@@ -5,7 +5,11 @@ const open = ref(false)
 export function useSidebar() {
   return {
     open,
-    toggle: () => { open.value = !open.value },
-    close: () => { open.value = false },
+    toggle: () => {
+      open.value = !open.value
+    },
+    close: () => {
+      open.value = false
+    },
   }
 }

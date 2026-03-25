@@ -56,7 +56,6 @@ interface RevokeResponse {
   readonly message: string
 }
 
-
 export const useOAuthClientsStore = defineStore('oauthClients', () => {
   const clients = ref<OAuthClient[]>([])
   const total = ref(0)

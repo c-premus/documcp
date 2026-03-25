@@ -9,8 +9,7 @@ export const authGuard: NavigationGuard = async (to, _from, next) => {
   }
 
   if (!auth.isAuthenticated) {
-    window.location.href =
-      '/auth/login?redirect=' + encodeURIComponent('/admin' + to.fullPath)
+    window.location.href = '/auth/login?redirect=' + encodeURIComponent('/admin' + to.fullPath)
     return
   }
 

@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue'
-import { Bars3Icon, ChevronDownIcon, SunIcon, MoonIcon, ComputerDesktopIcon } from '@heroicons/vue/24/outline'
+import {
+  Bars3Icon,
+  ChevronDownIcon,
+  SunIcon,
+  MoonIcon,
+  ComputerDesktopIcon,
+} from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth'
 import { useSSEStore } from '@/stores/sse'
 import { useTheme } from '@/composables/useTheme'
@@ -14,14 +20,16 @@ const logoSrc = `${import.meta.env.BASE_URL}logo-concept-1-transparent.svg`
 </script>
 
 <template>
-  <header class="fixed top-0 left-0 right-0 z-20 h-16 bg-bg-surface border-b border-border-default px-4">
+  <header
+    class="fixed top-0 left-0 right-0 z-20 h-16 bg-bg-surface border-b border-border-default px-4"
+  >
     <div class="flex h-full items-center justify-between">
       <div class="flex items-center gap-3">
         <button
           type="button"
           class="lg:hidden -m-2 p-2 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
-          @click="sidebar.toggle()"
           aria-label="Open navigation"
+          @click="sidebar.toggle()"
         >
           <Bars3Icon class="h-6 w-6" aria-hidden="true" />
         </button>
@@ -29,7 +37,7 @@ const logoSrc = `${import.meta.env.BASE_URL}logo-concept-1-transparent.svg`
         <span class="hidden sm:inline text-lg font-semibold text-text-primary">DocuMCP</span>
       </div>
 
-      <Menu as="div" class="relative" v-if="auth.user">
+      <Menu v-if="auth.user" as="div" class="relative">
         <MenuButton
           class="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors cursor-pointer"
         >
@@ -37,7 +45,9 @@ const logoSrc = `${import.meta.env.BASE_URL}logo-concept-1-transparent.svg`
             class="inline-block h-2 w-2 rounded-full shrink-0"
             :class="sse.connected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"
             role="status"
-            :aria-label="sse.connected ? 'Connected to live updates' : 'Disconnected from live updates'"
+            :aria-label="
+              sse.connected ? 'Connected to live updates' : 'Disconnected from live updates'
+            "
           />
           <span aria-live="polite" class="sr-only">
             {{ sse.connected ? 'Connected to live updates' : 'Disconnected from live updates' }}
@@ -57,12 +67,18 @@ const logoSrc = `${import.meta.env.BASE_URL}logo-concept-1-transparent.svg`
 
           <!-- Theme selector -->
           <div class="px-3 py-2 border-b border-border-default">
-            <p class="text-xs font-semibold uppercase tracking-wider text-text-disabled mb-1">Theme</p>
+            <p class="text-xs font-semibold uppercase tracking-wider text-text-disabled mb-1">
+              Theme
+            </p>
             <div class="flex flex-col">
               <button
                 type="button"
                 class="w-full rounded-md px-3 py-1.5 text-xs flex items-center gap-2 transition-colors cursor-pointer"
-                :class="mode === 'light' ? 'bg-bg-active text-text-primary' : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'"
+                :class="
+                  mode === 'light'
+                    ? 'bg-bg-active text-text-primary'
+                    : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
+                "
                 @click="setMode('light')"
               >
                 <SunIcon class="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -71,7 +87,11 @@ const logoSrc = `${import.meta.env.BASE_URL}logo-concept-1-transparent.svg`
               <button
                 type="button"
                 class="w-full rounded-md px-3 py-1.5 text-xs flex items-center gap-2 transition-colors cursor-pointer"
-                :class="mode === 'dark' ? 'bg-bg-active text-text-primary' : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'"
+                :class="
+                  mode === 'dark'
+                    ? 'bg-bg-active text-text-primary'
+                    : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
+                "
                 @click="setMode('dark')"
               >
                 <MoonIcon class="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -80,7 +100,11 @@ const logoSrc = `${import.meta.env.BASE_URL}logo-concept-1-transparent.svg`
               <button
                 type="button"
                 class="w-full rounded-md px-3 py-1.5 text-xs flex items-center gap-2 transition-colors cursor-pointer"
-                :class="mode === 'system' ? 'bg-bg-active text-text-primary' : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'"
+                :class="
+                  mode === 'system'
+                    ? 'bg-bg-active text-text-primary'
+                    : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
+                "
                 @click="setMode('system')"
               >
                 <ComputerDesktopIcon class="h-4 w-4 shrink-0" aria-hidden="true" />

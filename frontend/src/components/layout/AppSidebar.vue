@@ -30,9 +30,7 @@ const sse = useSSEStore()
 const sidebar = useSidebar()
 const logoSrc = `${import.meta.env.BASE_URL}logo-concept-1-transparent.svg`
 
-const mainNavItems: readonly NavItem[] = [
-  { name: 'Dashboard', to: '/dashboard', icon: HomeIcon },
-]
+const mainNavItems: readonly NavItem[] = [{ name: 'Dashboard', to: '/dashboard', icon: HomeIcon }]
 
 const documentNavItems: readonly NavItem[] = [
   { name: 'Document List', to: '/documents', icon: DocumentTextIcon },
@@ -53,12 +51,18 @@ const adminNavItems: readonly NavItem[] = [
 
 function isActive(path: string): boolean {
   if (path === '/documents') {
-    return route.path === '/documents' || route.path.startsWith('/documents/') && !route.path.startsWith('/documents/trash')
+    return (
+      route.path === '/documents' ||
+      (route.path.startsWith('/documents/') && !route.path.startsWith('/documents/trash'))
+    )
   }
   return route.path.startsWith(path)
 }
 
-watch(() => route.path, () => sidebar.close())
+watch(
+  () => route.path,
+  () => sidebar.close(),
+)
 </script>
 
 <template>
@@ -89,7 +93,9 @@ watch(() => route.path, () => sidebar.close())
           leave-from="translate-x-0"
           leave-to="-translate-x-full"
         >
-          <DialogPanel class="relative flex w-72 max-w-[85vw] flex-col bg-bg-surface border-r border-border-default">
+          <DialogPanel
+            class="relative flex w-72 max-w-[85vw] flex-col bg-bg-surface border-r border-border-default"
+          >
             <!-- Drawer header row -->
             <div class="flex items-center justify-between px-4 py-4 border-b border-border-default">
               <div class="flex items-center gap-3">
@@ -99,8 +105,8 @@ watch(() => route.path, () => sidebar.close())
               <button
                 type="button"
                 class="-m-2 p-2 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
-                @click="sidebar.close()"
                 aria-label="Close navigation"
+                @click="sidebar.close()"
               >
                 <XMarkIcon class="h-6 w-6" aria-hidden="true" />
               </button>
@@ -129,7 +135,11 @@ watch(() => route.path, () => sidebar.close())
 
               <!-- Documents -->
               <div class="my-4 mx-3 border-t border-border-default" />
-              <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">Documents</p>
+              <p
+                class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled"
+              >
+                Documents
+              </p>
               <ul class="space-y-1 px-3">
                 <li v-for="item in documentNavItems" :key="item.to">
                   <router-link
@@ -150,7 +160,11 @@ watch(() => route.path, () => sidebar.close())
 
               <!-- Content Sources -->
               <div class="my-4 mx-3 border-t border-border-default" />
-              <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">Content Sources</p>
+              <p
+                class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled"
+              >
+                Content Sources
+              </p>
               <ul class="space-y-1 px-3">
                 <li v-for="item in contentNavItems" :key="item.to">
                   <router-link
@@ -172,7 +186,11 @@ watch(() => route.path, () => sidebar.close())
               <!-- Administration -->
               <template v-if="auth.isAdmin">
                 <div class="my-4 mx-3 border-t border-border-default" />
-                <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">Administration</p>
+                <p
+                  class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled"
+                >
+                  Administration
+                </p>
                 <ul class="space-y-1 px-3">
                   <li v-for="item in adminNavItems" :key="item.to">
                     <router-link
@@ -194,7 +212,9 @@ watch(() => route.path, () => sidebar.close())
             </div>
 
             <!-- SSE status footer -->
-            <div class="border-t border-border-default px-4 py-3 flex items-center gap-2 text-xs text-text-muted">
+            <div
+              class="border-t border-border-default px-4 py-3 flex items-center gap-2 text-xs text-text-muted"
+            >
               <span
                 class="inline-block h-2 w-2 rounded-full shrink-0"
                 :class="sse.connected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"
@@ -209,7 +229,10 @@ watch(() => route.path, () => sidebar.close())
   </TransitionRoot>
 
   <!-- Desktop Sidebar -->
-  <nav aria-label="Main navigation" class="hidden lg:flex w-64 fixed top-16 bottom-0 left-0 bg-bg-surface border-r border-border-default flex-col">
+  <nav
+    aria-label="Main navigation"
+    class="hidden lg:flex w-64 fixed top-16 bottom-0 left-0 bg-bg-surface border-r border-border-default flex-col"
+  >
     <div class="flex-1 overflow-y-auto py-4">
       <!-- Main -->
       <ul class="space-y-1 px-3">
@@ -232,7 +255,9 @@ watch(() => route.path, () => sidebar.close())
 
       <!-- Documents -->
       <div class="my-4 mx-3 border-t border-border-default" />
-      <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">Documents</p>
+      <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">
+        Documents
+      </p>
       <ul class="space-y-1 px-3">
         <li v-for="item in documentNavItems" :key="item.to">
           <router-link
@@ -253,7 +278,9 @@ watch(() => route.path, () => sidebar.close())
 
       <!-- Content Sources -->
       <div class="my-4 mx-3 border-t border-border-default" />
-      <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">Content Sources</p>
+      <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">
+        Content Sources
+      </p>
       <ul class="space-y-1 px-3">
         <li v-for="item in contentNavItems" :key="item.to">
           <router-link
@@ -275,7 +302,9 @@ watch(() => route.path, () => sidebar.close())
       <!-- Administration -->
       <template v-if="auth.isAdmin">
         <div class="my-4 mx-3 border-t border-border-default" />
-        <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">Administration</p>
+        <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">
+          Administration
+        </p>
         <ul class="space-y-1 px-3">
           <li v-for="item in adminNavItems" :key="item.to">
             <router-link

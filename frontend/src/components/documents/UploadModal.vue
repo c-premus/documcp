@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import {
-  Dialog,
-  DialogPanel,
-  DialogTitle,
-  Switch,
-} from '@headlessui/vue'
+import { Dialog, DialogPanel, DialogTitle, Switch } from '@headlessui/vue'
 import { CloudArrowUpIcon, DocumentIcon } from '@heroicons/vue/24/outline'
 import { useDocumentsStore } from '@/stores/documents'
 import { toast } from 'vue-sonner'
@@ -29,20 +24,23 @@ const error = ref<string | null>(null)
 const dragActive = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
-watch(() => props.open, (isOpen) => {
-  if (!isOpen) {
-    step.value = 1
-    file.value = null
-    title.value = ''
-    description.value = ''
-    tags.value = ''
-    isPublic.value = false
-    analyzing.value = false
-    uploading.value = false
-    error.value = null
-    dragActive.value = false
-  }
-})
+watch(
+  () => props.open,
+  (isOpen) => {
+    if (!isOpen) {
+      step.value = 1
+      file.value = null
+      title.value = ''
+      description.value = ''
+      tags.value = ''
+      isPublic.value = false
+      analyzing.value = false
+      uploading.value = false
+      error.value = null
+      dragActive.value = false
+    }
+  },
+)
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) {
@@ -193,7 +191,11 @@ function retry(): void {
 
             <div
               class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors cursor-pointer"
-              :class="dragActive ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-border-input hover:border-text-disabled'"
+              :class="
+                dragActive
+                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
+                  : 'border-border-input hover:border-text-disabled'
+              "
               @click="openFilePicker"
               @drop.prevent="onDrop"
               @dragover.prevent="onDragOver"
@@ -201,11 +203,12 @@ function retry(): void {
             >
               <CloudArrowUpIcon class="h-10 w-10 text-text-disabled mb-3" aria-hidden="true" />
               <p class="text-sm text-text-muted">
-                <span class="font-semibold text-indigo-600 dark:text-indigo-400">Click to upload</span> or drag and drop
+                <span class="font-semibold text-indigo-600 dark:text-indigo-400"
+                  >Click to upload</span
+                >
+                or drag and drop
               </p>
-              <p class="mt-1 text-xs text-text-muted">
-                PDF, DOCX, XLSX, HTML, MD, TXT up to 50 MB
-              </p>
+              <p class="mt-1 text-xs text-text-muted">PDF, DOCX, XLSX, HTML, MD, TXT up to 50 MB</p>
             </div>
 
             <div v-if="file" class="mt-4 flex items-center gap-3 rounded-md bg-bg-surface-alt p-3">
@@ -216,7 +219,9 @@ function retry(): void {
               </div>
             </div>
 
-            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">
+              {{ error }}
+            </p>
 
             <div class="mt-5 flex justify-end gap-3">
               <button
@@ -250,7 +255,9 @@ function retry(): void {
           <div v-if="step === 2">
             <div class="space-y-4">
               <div>
-                <label for="upload-title" class="block text-sm font-medium text-text-secondary">Title</label>
+                <label for="upload-title" class="block text-sm font-medium text-text-secondary"
+                  >Title</label
+                >
                 <input
                   id="upload-title"
                   v-model="title"
@@ -260,7 +267,11 @@ function retry(): void {
               </div>
 
               <div>
-                <label for="upload-description" class="block text-sm font-medium text-text-secondary">Description</label>
+                <label
+                  for="upload-description"
+                  class="block text-sm font-medium text-text-secondary"
+                  >Description</label
+                >
                 <textarea
                   id="upload-description"
                   v-model="description"
@@ -270,7 +281,9 @@ function retry(): void {
               </div>
 
               <div>
-                <label for="upload-tags" class="block text-sm font-medium text-text-secondary">Tags</label>
+                <label for="upload-tags" class="block text-sm font-medium text-text-secondary"
+                  >Tags</label
+                >
                 <input
                   id="upload-tags"
                   v-model="tags"
@@ -295,7 +308,9 @@ function retry(): void {
               </div>
             </div>
 
-            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">
+              {{ error }}
+            </p>
 
             <div class="mt-5 flex justify-end gap-3">
               <button
@@ -318,7 +333,9 @@ function retry(): void {
           <!-- Step 3: Uploading -->
           <div v-if="step === 3">
             <div v-if="uploading && !error" class="flex flex-col items-center py-8">
-              <div class="h-10 w-10 animate-spin rounded-full border-4 border-border-default border-t-indigo-600 dark:border-t-indigo-400" />
+              <div
+                class="h-10 w-10 animate-spin rounded-full border-4 border-border-default border-t-indigo-600 dark:border-t-indigo-400"
+              />
               <p class="mt-4 text-sm text-text-muted">Uploading document...</p>
             </div>
 

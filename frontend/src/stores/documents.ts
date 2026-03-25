@@ -77,7 +77,6 @@ interface TrashResponse {
   readonly total: number
 }
 
-
 export const useDocumentsStore = defineStore('documents', () => {
   const documents = ref<Document[]>([])
   const currentDocument = ref<Document | null>(null)

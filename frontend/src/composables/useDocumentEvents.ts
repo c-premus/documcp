@@ -8,14 +8,14 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { toast } from 'vue-sonner'
 
 const schedulerMessages: Record<string, string> = {
-  'sync_kiwix': 'Kiwix sync completed',
-  'sync_git_templates': 'Git template sync completed',
-  'cleanup_oauth_tokens': 'OAuth token cleanup completed',
-  'health_check_services': 'Service health checks completed',
-  'cleanup_orphaned_files': 'Orphaned files cleanup completed',
-  'verify_search_indexes': 'Search index verification completed',
-  'purge_soft_deleted': 'Soft-deleted records purged',
-  'cleanup_zim_archives': 'ZIM archive cleanup completed',
+  sync_kiwix: 'Kiwix sync completed',
+  sync_git_templates: 'Git template sync completed',
+  cleanup_oauth_tokens: 'OAuth token cleanup completed',
+  health_check_services: 'Service health checks completed',
+  cleanup_orphaned_files: 'Orphaned files cleanup completed',
+  verify_search_indexes: 'Search index verification completed',
+  purge_soft_deleted: 'Soft-deleted records purged',
+  cleanup_zim_archives: 'ZIM archive cleanup completed',
 }
 
 export function useDocumentEvents() {

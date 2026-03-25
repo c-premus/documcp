@@ -47,10 +47,14 @@ async function fetchServices(): Promise<void> {
   }
 }
 
-watch([typeFilter], () => {
-  page.value = 1
-  fetchServices()
-}, { immediate: true })
+watch(
+  [typeFilter],
+  () => {
+    page.value = 1
+    fetchServices()
+  },
+  { immediate: true },
+)
 
 watch([page, perPage], () => {
   fetchServices()
@@ -142,7 +146,10 @@ async function handleHealthCheck(service: ExternalService): Promise<void> {
   }
 }
 
-async function handleMovePriority(service: ExternalService, direction: 'up' | 'down'): Promise<void> {
+async function handleMovePriority(
+  service: ExternalService,
+  direction: 'up' | 'down',
+): Promise<void> {
   const sorted = [...store.services].sort((a, b) => a.priority - b.priority)
   const currentIndex = sorted.findIndex((s) => s.uuid === service.uuid)
   if (currentIndex === -1) {
@@ -290,26 +297,31 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
     meta: { className: 'w-20 hidden sm:table-cell' },
     cell: ({ row }) => {
       const service = row.original
-      return h(Switch, {
-        'modelValue': service.is_enabled,
-        'class': [
-          'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2',
-          service.is_enabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600',
-        ],
-        'onClick': (event: MouseEvent) => {
-          event.stopPropagation()
-        },
-        'onUpdate:modelValue': () => {
-          handleToggleEnabled(service)
-        },
-      }, {
-        default: () => h('span', {
+      return h(
+        Switch,
+        {
+          modelValue: service.is_enabled,
           class: [
-            'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-            service.is_enabled ? 'translate-x-5' : 'translate-x-0',
+            'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2',
+            service.is_enabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600',
           ],
-        }),
-      })
+          onClick: (event: MouseEvent) => {
+            event.stopPropagation()
+          },
+          'onUpdate:modelValue': () => {
+            handleToggleEnabled(service)
+          },
+        },
+        {
+          default: () =>
+            h('span', {
+              class: [
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                service.is_enabled ? 'translate-x-5' : 'translate-x-0',
+              ],
+            }),
+        },
+      )
     },
   },
   {

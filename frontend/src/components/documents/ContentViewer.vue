@@ -21,6 +21,14 @@ const renderedContent = computed(() => {
 </script>
 
 <template>
-  <div v-if="renderedContent" class="prose prose-sm dark:prose-invert max-w-none" v-html="renderedContent" />
-  <pre v-else class="whitespace-pre-wrap text-sm text-text-secondary font-mono bg-bg-surface-alt p-4 rounded-lg">{{ content }}</pre>
+  <div
+    v-if="renderedContent"
+    class="prose prose-sm dark:prose-invert max-w-none"
+    v-html="renderedContent"
+  />
+  <pre
+    v-else
+    class="whitespace-pre-wrap text-sm text-text-secondary font-mono bg-bg-surface-alt p-4 rounded-lg"
+    >{{ content }}</pre
+  >
 </template>
