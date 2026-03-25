@@ -231,7 +231,7 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 
 	// Validate timestamp (10 minute expiry)
 	pendingTimestamp, _ := pending["timestamp"].(int64)
-	if time.Now().Unix()-pendingTimestamp > 600 {
+	if time.Now().Unix()-pendingTimestamp > pendingStateMaxAge {
 		http.Error(w, "OAuth request expired. Please restart the authorization flow.", http.StatusBadRequest)
 		return
 	}
@@ -275,6 +275,10 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
+
+// pendingStateMaxAge is the maximum age (in seconds) for pending OAuth state
+// stored in the session (authorization code flow and device code flow).
+const pendingStateMaxAge = 600 // 10 minutes
 
 const consentHTML = `<!DOCTYPE html>
 <html>

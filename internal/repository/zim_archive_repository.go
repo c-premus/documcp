@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 
@@ -152,18 +153,23 @@ func (r *ZimArchiveRepository) FindDisabled(ctx context.Context) ([]model.ZimArc
 
 // ListAll returns all ZIM archives (including disabled) with optional search query.
 func (r *ZimArchiveRepository) ListAll(ctx context.Context, query string, limit int) ([]model.ZimArchive, error) {
-	q := `SELECT * FROM zim_archives WHERE 1=1`
-	args := []any{}
+	var conditions []string
+	var args []any
 	argIdx := 1
 
 	if query != "" {
-		q += fmt.Sprintf(` AND (name ILIKE $%d OR title ILIKE $%d)`, argIdx, argIdx+1)
+		conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR title ILIKE $%d)", argIdx, argIdx+1))
 		likeQuery := "%" + query + "%"
 		args = append(args, likeQuery, likeQuery)
 		argIdx += 2
 	}
 
-	q += ` ORDER BY name`
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	q := `SELECT * FROM zim_archives` + whereClause + ` ORDER BY name`
 	if limit > 0 {
 		q += fmt.Sprintf(` LIMIT $%d`, argIdx)
 		args = append(args, limit)
