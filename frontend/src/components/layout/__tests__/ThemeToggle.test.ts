@@ -4,7 +4,7 @@ import { ref, computed } from 'vue'
 
 const mockMode = ref<'light' | 'dark' | 'system'>('system')
 const mockToggle = vi.fn()
-const mockResolved = computed(() => mockMode.value === 'system' ? 'light' : mockMode.value)
+const mockResolved = computed(() => (mockMode.value === 'system' ? 'light' : mockMode.value))
 const mockSetMode = vi.fn()
 
 vi.mock('@/composables/useTheme', () => ({

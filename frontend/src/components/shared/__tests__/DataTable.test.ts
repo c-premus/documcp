@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { h, nextTick } from 'vue'
 import DataTable from '@/components/shared/DataTable.vue'
@@ -21,8 +21,11 @@ const sampleData: TestRow[] = [
   { id: 2, name: 'Bob', email: 'bob@example.com' },
 ]
 
-function mountTable(props: Record<string, unknown> = {}, slots: Record<string, () => unknown> = {}) {
-  return mount(DataTable as ReturnType<typeof import('vue')['defineComponent']>, {
+function mountTable(
+  props: Record<string, unknown> = {},
+  slots: Record<string, () => unknown> = {},
+) {
+  return mount(DataTable as ReturnType<(typeof import('vue'))['defineComponent']>, {
     props: { data: sampleData, columns, ...props },
     slots,
   })
@@ -70,10 +73,7 @@ describe('DataTable', () => {
   })
 
   it('renders custom empty slot when no data', () => {
-    const wrapper = mountTable(
-      { data: [] },
-      { empty: () => h('span', 'Nothing here') },
-    )
+    const wrapper = mountTable({ data: [] }, { empty: () => h('span', 'Nothing here') })
 
     expect(wrapper.text()).toContain('Nothing here')
   })

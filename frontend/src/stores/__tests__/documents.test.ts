@@ -285,6 +285,101 @@ describe('documents store', () => {
     })
   })
 
+  describe('analyzeDocument', () => {
+    it('POSTs FormData to /api/documents/analyze', async () => {
+      const analyzeResult = {
+        title: 'Detected Title',
+        description: 'Detected description',
+        tags: ['auto'],
+        word_count: 500,
+        reading_time: 3,
+        language: 'en',
+      }
+      stubFetch({ data: analyzeResult })
+
+      const store = useDocumentsStore()
+      const formData = new FormData()
+      formData.append('file', new Blob(['content']), 'test.md')
+
+      const result = await store.analyzeDocument(formData)
+
+      expect(fetch).toHaveBeenCalledWith('/api/documents/analyze', {
+        method: 'POST',
+        body: formData,
+      })
+      expect(result).toEqual(analyzeResult)
+    })
+
+    it('sets error on failure', async () => {
+      stubFetch({ message: 'Unsupported file type' }, false)
+
+      const store = useDocumentsStore()
+      await expect(store.analyzeDocument(new FormData())).rejects.toThrow('Unsupported file type')
+
+      expect(store.error).toBe('Unsupported file type')
+    })
+  })
+
+  describe('bulkPurge', () => {
+    it('DELETEs with older_than_days query param', async () => {
+      stubFetch({ message: 'Purged 5 documents', count: 5 })
+
+      const store = useDocumentsStore()
+      const result = await store.bulkPurge(30)
+
+      expect(fetch).toHaveBeenCalledWith('/api/admin/documents/purge?older_than_days=30', {
+        method: 'DELETE',
+      })
+      expect(result).toEqual({ message: 'Purged 5 documents', count: 5 })
+    })
+
+    it('sets error on failure', async () => {
+      stubFetch({ message: 'Forbidden' }, false)
+
+      const store = useDocumentsStore()
+      await expect(store.bulkPurge(7)).rejects.toThrow('Forbidden')
+
+      expect(store.error).toBe('Forbidden')
+      expect(store.loading).toBe(false)
+    })
+  })
+
+  describe('fetchDeletedDocuments', () => {
+    it('calls correct URL with query params and sets documents/total', async () => {
+      const docs = [mockDocument({ uuid: 'del-1' }), mockDocument({ uuid: 'del-2' })]
+      stubFetch({ data: docs, total: 2 })
+
+      const store = useDocumentsStore()
+      await store.fetchDeletedDocuments({ limit: 10, offset: 0 })
+
+      const calledUrl = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]![0] as string
+      expect(calledUrl).toContain('/api/documents/trash?')
+      expect(calledUrl).toContain('limit=10')
+      expect(calledUrl).toContain('offset=0')
+      expect(store.documents).toEqual(docs)
+      expect(store.total).toBe(2)
+    })
+
+    it('calls URL without query when no params', async () => {
+      stubFetch({ data: [], total: 0 })
+
+      const store = useDocumentsStore()
+      await store.fetchDeletedDocuments()
+
+      expect(fetch).toHaveBeenCalledWith('/api/documents/trash', undefined)
+    })
+
+    it('sets error on failure', async () => {
+      stubFetch({ message: 'Server error' }, false)
+
+      const store = useDocumentsStore()
+      await expect(store.fetchDeletedDocuments()).rejects.toThrow('Server error')
+
+      expect(store.error).toBe('Server error')
+      expect(store.loading).toBe(false)
+    })
+  })
+
   describe('error handling', () => {
     it('uses statusText when response body has no message', async () => {
       vi.stubGlobal(
