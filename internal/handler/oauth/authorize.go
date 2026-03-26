@@ -1,6 +1,7 @@
 package oauthhandler
 
 import (
+	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -84,21 +85,13 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// PKCE enforcement for public clients
-	if client.TokenEndpointAuthMethod == "none" {
-		if codeChallenge == "" {
-			oauthError(w, http.StatusBadRequest, "invalid_request", "PKCE code_challenge required for public clients")
-			return
-		}
-		if codeChallengeMethod == "" {
-			oauthError(w, http.StatusBadRequest, "invalid_request", "PKCE code_challenge_method required for public clients")
-			return
-		}
-	}
-
-	// Global PKCE enforcement when configured
-	if h.oauthCfg.RequirePKCE && codeChallenge == "" {
+	// PKCE is always required per OAuth 2.1 (RFC 9700, Section 7.5.2).
+	if codeChallenge == "" {
 		oauthError(w, http.StatusBadRequest, "invalid_request", "PKCE code_challenge required")
+		return
+	}
+	if codeChallengeMethod == "" {
+		oauthError(w, http.StatusBadRequest, "invalid_request", "PKCE code_challenge_method required")
 		return
 	}
 
@@ -210,7 +203,7 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 
 	// Validate nonce
 	pendingNonce, _ := pending["nonce"].(string)
-	if reqNonce == "" || reqNonce != pendingNonce {
+	if reqNonce == "" || subtle.ConstantTimeCompare([]byte(reqNonce), []byte(pendingNonce)) != 1 {
 		http.Error(w, "Invalid authorization request. Please restart the authorization flow.", http.StatusBadRequest)
 		return
 	}

@@ -142,7 +142,7 @@ func New(cfg *config.Config) (*App, error) {
 	sessionStore.Options = &sessions.Options{
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   cfg.App.Env == "production",
+		Secure:   strings.HasPrefix(cfg.App.URL, "https://"),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(cfg.OAuth.SessionMaxAge.Seconds()),
 	}

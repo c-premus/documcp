@@ -35,6 +35,7 @@ type OAuthRepo interface {
 	FindAccessTokenByID(ctx context.Context, id int64) (*model.OAuthAccessToken, error)
 	FindAccessTokenByToken(ctx context.Context, tokenHash string) (*model.OAuthAccessToken, error)
 	RevokeAccessToken(ctx context.Context, id int64) error
+	RevokeTokenPair(ctx context.Context, accessTokenID, refreshTokenID int64) error
 	// Refresh Tokens
 	CreateRefreshToken(ctx context.Context, token *model.OAuthRefreshToken) error
 	FindRefreshTokenByToken(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error)
@@ -435,12 +436,9 @@ func (s *Service) RefreshAccessToken(ctx context.Context, params RefreshTokenPar
 		return nil, errors.New("refresh token does not belong to this client")
 	}
 
-	// Revoke old tokens (rotation)
-	if err := s.repo.RevokeAccessToken(ctx, accessToken.ID); err != nil {
-		return nil, fmt.Errorf("revoking old access token: %w", err)
-	}
-	if err := s.repo.RevokeRefreshToken(ctx, refreshToken.ID); err != nil {
-		return nil, fmt.Errorf("revoking old refresh token: %w", err)
+	// Atomically revoke old tokens (rotation) to prevent TOCTOU race conditions.
+	if err := s.repo.RevokeTokenPair(ctx, accessToken.ID, refreshToken.ID); err != nil {
+		return nil, fmt.Errorf("revoking old token pair: %w", err)
 	}
 
 	// Use original scope unless a narrower scope is requested.

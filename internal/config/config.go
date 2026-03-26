@@ -124,7 +124,6 @@ type OAuthConfig struct {
 	RefreshTokenLifetime    time.Duration `mapstructure:"oauth_refresh_token_lifetime"`
 	DeviceCodeLifetime      time.Duration `mapstructure:"oauth_device_code_lifetime"`
 	DeviceCodeInterval      time.Duration `mapstructure:"oauth_device_polling_interval"`
-	RequirePKCE             bool          `mapstructure:"oauth_pkce_required"`
 	SessionSecret           string        `mapstructure:"oauth_session_secret"`
 	SessionSecretPrevious   string        `mapstructure:"oauth_session_secret_previous"`
 	SessionMaxAge           time.Duration `mapstructure:"oauth_session_max_age"`
@@ -238,7 +237,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oauth_refresh_token_lifetime", 30*24*time.Hour)
 	v.SetDefault("oauth_device_code_lifetime", 10*time.Minute)
 	v.SetDefault("oauth_device_polling_interval", 5*time.Second)
-	v.SetDefault("oauth_pkce_required", true)
+
 	v.SetDefault("oauth_session_secret", "")
 	v.SetDefault("oauth_session_secret_previous", "")
 	v.SetDefault("oauth_session_max_age", 30*24*time.Hour)
@@ -392,7 +391,6 @@ func Load() (*Config, error) {
 		RefreshTokenLifetime:    v.GetDuration("oauth_refresh_token_lifetime"),
 		DeviceCodeLifetime:      v.GetDuration("oauth_device_code_lifetime"),
 		DeviceCodeInterval:      v.GetDuration("oauth_device_polling_interval"),
-		RequirePKCE:             v.GetBool("oauth_pkce_required"),
 		SessionSecret:           v.GetString("oauth_session_secret"),
 		SessionSecretPrevious:   v.GetString("oauth_session_secret_previous"),
 		SessionMaxAge:           v.GetDuration("oauth_session_max_age"),
@@ -522,6 +520,12 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	}
 	if isProd && c.App.Debug {
 		errs = append(errs, "APP_DEBUG should not be enabled in production")
+	}
+	if isProd && c.OAuth.RegistrationEnabled && !c.OAuth.RegistrationRequireAuth {
+		errs = append(errs, "OAUTH_REGISTRATION_REQUIRE_AUTH must be true when registration is enabled in production")
+	}
+	if isProd && c.OAuth.HKDFSalt == "DocuMCP-go-v1" {
+		errs = append(errs, "HKDF_SALT must be changed from the default value in production")
 	}
 
 	if len(errs) > 0 {

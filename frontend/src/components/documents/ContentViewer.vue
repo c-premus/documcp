@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { marked } from 'marked'
-import DOMPurify from 'dompurify'
+import { sanitizeHTML } from '@/utils/sanitize'
 
 const props = defineProps<{
   readonly content: string
@@ -11,10 +11,10 @@ const props = defineProps<{
 const renderedContent = computed(() => {
   const ft = props.fileType.toLowerCase()
   if (ft === 'markdown' || ft === 'md') {
-    return DOMPurify.sanitize(marked.parse(props.content) as string)
+    return sanitizeHTML(marked.parse(props.content) as string)
   }
   if (ft === 'html' || ft === 'htm') {
-    return DOMPurify.sanitize(props.content)
+    return sanitizeHTML(props.content)
   }
   return null
 })

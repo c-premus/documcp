@@ -199,7 +199,10 @@ func (s *Server) RegisterRoutes(deps Deps) {
 
 	// Session-based auth endpoint (no bearer token, uses session cookie)
 	if deps.AuthHandler != nil {
-		r.Get("/api/auth/me", deps.AuthHandler.Me)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitByIP(60, time.Minute))
+			r.Get("/api/auth/me", deps.AuthHandler.Me)
+		})
 		s.logger.Info("auth/me endpoint registered", "path", "/api/auth/me")
 	}
 

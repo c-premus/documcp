@@ -38,6 +38,7 @@ type mockOAuthRepo struct {
 	FindAccessTokenByIDFunc    func(ctx context.Context, id int64) (*model.OAuthAccessToken, error)
 	FindAccessTokenByTokenFunc func(ctx context.Context, tokenHash string) (*model.OAuthAccessToken, error)
 	RevokeAccessTokenFunc      func(ctx context.Context, id int64) error
+	RevokeTokenPairFunc        func(ctx context.Context, accessTokenID, refreshTokenID int64) error
 	// Refresh Tokens
 	CreateRefreshTokenFunc                func(ctx context.Context, token *model.OAuthRefreshToken) error
 	FindRefreshTokenByTokenFunc           func(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error)
@@ -126,6 +127,13 @@ func (m *mockOAuthRepo) FindAccessTokenByToken(ctx context.Context, tokenHash st
 func (m *mockOAuthRepo) RevokeAccessToken(ctx context.Context, id int64) error {
 	if m.RevokeAccessTokenFunc != nil {
 		return m.RevokeAccessTokenFunc(ctx, id)
+	}
+	return nil
+}
+
+func (m *mockOAuthRepo) RevokeTokenPair(ctx context.Context, accessTokenID, refreshTokenID int64) error {
+	if m.RevokeTokenPairFunc != nil {
+		return m.RevokeTokenPairFunc(ctx, accessTokenID, refreshTokenID)
 	}
 	return nil
 }
@@ -1248,14 +1256,11 @@ func TestRefreshAccessToken(t *testing.T) {
 				}
 				return nil, sql.ErrNoRows
 			},
-			RevokeAccessTokenFunc: func(_ context.Context, id int64) error {
-				if id == 300 {
+			RevokeTokenPairFunc: func(_ context.Context, accessID, refreshID int64) error {
+				if accessID == 300 {
 					oldAccessRevoked = true
 				}
-				return nil
-			},
-			RevokeRefreshTokenFunc: func(_ context.Context, id int64) error {
-				if id == 500 {
+				if refreshID == 500 {
 					oldRefreshRevoked = true
 				}
 				return nil

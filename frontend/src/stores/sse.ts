@@ -13,24 +13,47 @@ export const useSSEStore = defineStore('sse', () => {
   const connected = ref(false)
   const lastEvent = ref<SSEEvent | null>(null)
   let eventSource: EventSource | null = null
+  let reconnectDelay = 1000
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  let currentUrl = '/api/admin/events/stream'
   const listeners = new Map<string, Set<(event: SSEEvent) => void>>()
 
   function connect(url = '/api/admin/events/stream') {
     if (eventSource !== null) return // already connected
+    currentUrl = url
 
-    eventSource = new EventSource(url)
+    eventSource = new EventSource(url, { withCredentials: true })
 
     eventSource.onopen = () => {
       connected.value = true
+      reconnectDelay = 1000 // reset backoff on successful connection
     }
     eventSource.onerror = () => {
       connected.value = false
+      eventSource?.close()
+      eventSource = null
+      scheduleReconnect()
     }
     eventSource.onmessage = (e: MessageEvent) => {
-      const event = JSON.parse(e.data as string) as SSEEvent
+      let event: SSEEvent
+      try {
+        event = JSON.parse(e.data as string) as SSEEvent
+      } catch {
+        return // ignore malformed messages
+      }
+      if (typeof event.type !== 'string') return
       lastEvent.value = event
       listeners.get(event.type)?.forEach((fn) => fn(event))
     }
+  }
+
+  function scheduleReconnect() {
+    if (reconnectTimer !== null) return
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      reconnectDelay = Math.min(reconnectDelay * 2, 30000) // exponential backoff, cap 30s
+      connect(currentUrl)
+    }, reconnectDelay)
   }
 
   /**
@@ -48,6 +71,10 @@ export const useSSEStore = defineStore('sse', () => {
   }
 
   function disconnect() {
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
     eventSource?.close()
     eventSource = null
     connected.value = false

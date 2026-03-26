@@ -34,6 +34,11 @@ func MatchRedirectURI(requestURI string, registeredURIs []string) bool {
 	return false
 }
 
+// IsLoopbackHost checks if a hostname is a loopback address (localhost, 127.0.0.1, [::1]).
+func IsLoopbackHost(hostname string) bool {
+	return isLoopback(hostname)
+}
+
 // isLoopback checks if a hostname is a loopback address (localhost, 127.0.0.1, [::1]).
 func isLoopback(hostname string) bool {
 	if hostname == "localhost" {

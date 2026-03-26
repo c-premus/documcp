@@ -130,6 +130,10 @@ func (m *mockOAuthRepo) RevokeAccessToken(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (m *mockOAuthRepo) RevokeTokenPair(_ context.Context, _, _ int64) error {
+	return nil
+}
+
 func (m *mockOAuthRepo) CreateRefreshToken(ctx context.Context, token *model.OAuthRefreshToken) error {
 	if m.createRefreshTokenFn != nil {
 		return m.createRefreshTokenFn(ctx, token)

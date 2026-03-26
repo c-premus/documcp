@@ -64,8 +64,14 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	// Validate each redirect URI
 	for _, uri := range req.RedirectURIs {
-		if _, err := url.ParseRequestURI(uri); err != nil {
+		parsed, err := url.ParseRequestURI(uri)
+		if err != nil {
 			oauthError(w, http.StatusBadRequest, "invalid_client_metadata", "The redirect_uris.0 field must be a valid URL.")
+			return
+		}
+		// OAuth 2.1: redirect URIs must use HTTPS unless targeting a loopback address.
+		if parsed.Scheme != "https" && !oauth.IsLoopbackHost(parsed.Hostname()) {
+			oauthError(w, http.StatusBadRequest, "invalid_client_metadata", "Redirect URIs must use HTTPS for non-loopback hosts.")
 			return
 		}
 	}

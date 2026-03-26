@@ -11,12 +11,34 @@ import (
 	"github.com/meilisearch/meilisearch-go"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
 	"github.com/c-premus/documcp/internal/client/kiwix"
 	"github.com/c-premus/documcp/internal/dto"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/search"
 	"github.com/c-premus/documcp/internal/service"
 )
+
+// mcpToken returns an access token with all MCP scopes for use in test contexts.
+func mcpToken() *model.OAuthAccessToken {
+	return &model.OAuthAccessToken{
+		Scope: sql.NullString{String: "mcp:access mcp:read mcp:write", Valid: true},
+	}
+}
+
+// ctxWithAdminUser returns a context with an admin user and bearer token,
+// simulating an authenticated bearer-token request to MCP tools.
+func ctxWithAdminUser() context.Context {
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, authmiddleware.UserContextKey, &model.User{ID: 1, IsAdmin: true})
+	ctx = context.WithValue(ctx, authmiddleware.AccessTokenContextKey, mcpToken())
+	return ctx
+}
+
+// ctxWithTokenOnly returns a context with a bearer token but no user (M2M flow).
+func ctxWithTokenOnly() context.Context {
+	return context.WithValue(context.Background(), authmiddleware.AccessTokenContextKey, mcpToken())
+}
 
 // makeMCPHit builds a meilisearch.Hit from a plain map for test convenience.
 func makeMCPHit(m map[string]any) meilisearch.Hit {
@@ -291,7 +313,7 @@ func TestNew(t *testing.T) {
 // ===== Document tool handler tests =====
 
 func TestHandleReadDocument(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("returns document with content and tags", func(t *testing.T) {
 		docSvc := &mockDocumentService{
@@ -441,10 +463,58 @@ func TestHandleReadDocument(t *testing.T) {
 			t.Fatal("expected error")
 		}
 	})
+
+	t.Run("M2M token (no user) can read public document", func(t *testing.T) {
+		m2mCtx := ctxWithTokenOnly() // bearer token but no user
+		docSvc := &mockDocumentService{
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.Document, error) {
+				return &model.Document{ID: 1, UUID: uuid, Title: "Public", FileType: "md", IsPublic: true}, nil
+			},
+			tagsForDocFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
+				return nil, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{docSvc: docSvc})
+
+		_, resp, err := h.handleReadDocument(m2mCtx, nil, dto.ReadDocumentInput{UUID: "pub-1"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !resp.Success {
+			t.Error("expected Success=true for public document with M2M token")
+		}
+	})
+
+	t.Run("M2M token (no user) cannot read private document", func(t *testing.T) {
+		m2mCtx := ctxWithTokenOnly() // bearer token but no user
+		docSvc := &mockDocumentService{
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.Document, error) {
+				return &model.Document{ID: 2, UUID: uuid, Title: "Private", FileType: "md", IsPublic: false}, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{docSvc: docSvc})
+
+		_, _, err := h.handleReadDocument(m2mCtx, nil, dto.ReadDocumentInput{UUID: "priv-1"})
+		if err == nil {
+			t.Fatal("expected error for private document with M2M token")
+		}
+	})
 }
 
 func TestHandleCreateDocument(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("creates document successfully", func(t *testing.T) {
 		docSvc := &mockDocumentService{
@@ -511,7 +581,7 @@ func TestHandleCreateDocument(t *testing.T) {
 }
 
 func TestHandleUpdateDocument(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("updates document successfully", func(t *testing.T) {
 		docSvc := &mockDocumentService{
@@ -568,7 +638,7 @@ func TestHandleUpdateDocument(t *testing.T) {
 }
 
 func TestHandleDeleteDocument(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("deletes document successfully", func(t *testing.T) {
 		docSvc := &mockDocumentService{
@@ -618,7 +688,7 @@ func TestHandleDeleteDocument(t *testing.T) {
 }
 
 func TestHandleSearchDocuments(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("returns not configured when searcher is nil", func(t *testing.T) {
 		h := newHandlerWithMocks(struct {
@@ -731,7 +801,7 @@ func TestHandleSearchDocuments(t *testing.T) {
 // ===== ZIM tool handler tests =====
 
 func TestHandleListZimArchives(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("returns archives successfully", func(t *testing.T) {
 		repo := &mockZimArchiveRepo{
@@ -827,7 +897,7 @@ func TestHandleListZimArchives(t *testing.T) {
 }
 
 func TestHandleSearchZim(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("returns not configured when client is nil", func(t *testing.T) {
 		h := newHandlerWithMocks(struct {
@@ -952,7 +1022,7 @@ func TestHandleSearchZim(t *testing.T) {
 }
 
 func TestHandleReadZimArticle(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("returns not configured when client is nil", func(t *testing.T) {
 		h := newHandlerWithMocks(struct {
@@ -1058,7 +1128,7 @@ func TestHandleReadZimArticle(t *testing.T) {
 // ===== Git template tool handler tests =====
 
 func TestHandleListGitTemplates(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("returns templates successfully", func(t *testing.T) {
 		repo := &mockGitTemplateRepo{
@@ -1158,7 +1228,7 @@ func TestHandleListGitTemplates(t *testing.T) {
 }
 
 func TestHandleSearchGitTemplates(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("falls back to DB search when searcher is nil", func(t *testing.T) {
 		repo := &mockGitTemplateRepo{
@@ -1408,7 +1478,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 }
 
 func TestHandleGetTemplateStructure(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("returns template structure with variables", func(t *testing.T) {
 		repo := &mockGitTemplateRepo{
@@ -1508,7 +1578,7 @@ func TestHandleGetTemplateStructure(t *testing.T) {
 }
 
 func TestHandleGetTemplateFile(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("returns file with variable substitution", func(t *testing.T) {
 		repo := &mockGitTemplateRepo{
@@ -1668,7 +1738,7 @@ func TestHandleGetTemplateFile(t *testing.T) {
 }
 
 func TestHandleGetDeploymentGuide(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("returns deployment guide with essential files only", func(t *testing.T) {
 		repo := &mockGitTemplateRepo{
@@ -1771,7 +1841,7 @@ func TestHandleGetDeploymentGuide(t *testing.T) {
 }
 
 func TestHandleDownloadTemplate(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("returns zip archive by default", func(t *testing.T) {
 		repo := &mockGitTemplateRepo{
@@ -1905,7 +1975,7 @@ func TestHandleDownloadTemplate(t *testing.T) {
 // ===== Unified search handler tests =====
 
 func TestHandleUnifiedSearch(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("returns not configured when searcher is nil", func(t *testing.T) {
 		h := newHandlerWithMocks(struct {
@@ -2061,7 +2131,7 @@ func makeHit(m map[string]any) meilisearch.Hit {
 
 func TestHandleSearchDocumentsResults(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("returns populated results from hits", func(t *testing.T) {
 		t.Parallel()
@@ -2265,7 +2335,7 @@ func TestHandleSearchDocumentsResults(t *testing.T) {
 
 func TestHandleUnifiedSearchResults(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("returns populated results from hits", func(t *testing.T) {
 		t.Parallel()

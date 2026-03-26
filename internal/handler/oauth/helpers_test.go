@@ -121,6 +121,10 @@ func (m *mockOAuthRepo) RevokeAccessToken(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (m *mockOAuthRepo) RevokeTokenPair(_ context.Context, _, _ int64) error {
+	return nil
+}
+
 func (m *mockOAuthRepo) CreateRefreshToken(ctx context.Context, token *model.OAuthRefreshToken) error {
 	if m.CreateRefreshTokenFunc != nil {
 		return m.CreateRefreshTokenFunc(ctx, token)
@@ -236,7 +240,6 @@ func defaultOAuthConfig() config.OAuthConfig {
 		RefreshTokenLifetime:    30 * 24 * time.Hour,
 		DeviceCodeLifetime:      15 * time.Minute,
 		DeviceCodeInterval:      5 * time.Second,
-		RequirePKCE:             false,
 		RegistrationEnabled:     true,
 		RegistrationRequireAuth: false,
 	}

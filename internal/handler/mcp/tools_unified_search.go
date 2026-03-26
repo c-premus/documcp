@@ -114,9 +114,15 @@ func (h *Handler) handleUnifiedSearch(
 		}
 	}
 
-	// Non-admin users can only see their own documents and public documents.
+	// Restrict document visibility based on authentication context.
+	// M2M tokens (no user) see only public documents; non-admin users see own + public.
 	var indexFilters map[string]string
-	if user, _ := authmiddleware.UserFromContext(ctx); user != nil && !user.IsAdmin {
+	user, _ := authmiddleware.UserFromContext(ctx)
+	if user == nil {
+		indexFilters = map[string]string{
+			search.IndexDocuments: "is_public = true",
+		}
+	} else if !user.IsAdmin {
 		indexFilters = map[string]string{
 			search.IndexDocuments: fmt.Sprintf("(user_id = %d OR is_public = true)", user.ID),
 		}

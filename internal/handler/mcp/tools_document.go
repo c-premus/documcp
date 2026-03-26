@@ -171,8 +171,12 @@ func (h *Handler) handleSearchDocuments(
 		}
 	}
 
-	// Non-admin users can only search their own documents and public documents.
-	if user, _ := authmiddleware.UserFromContext(ctx); user != nil && !user.IsAdmin {
+	// Restrict document visibility based on authentication context.
+	// M2M tokens (no user) see only public documents; non-admin users see own + public.
+	user, _ := authmiddleware.UserFromContext(ctx)
+	if user == nil {
+		filters = append(filters, "is_public = true")
+	} else if !user.IsAdmin {
 		filters = append(filters, fmt.Sprintf("(user_id = %d OR is_public = true)", user.ID))
 	}
 
@@ -224,8 +228,14 @@ func (h *Handler) handleReadDocument(
 		return nil, readDocumentResponse{}, fmt.Errorf("finding document: %w", err)
 	}
 
-	// Non-admin users can only read their own documents or public documents.
-	if user, _ := authmiddleware.UserFromContext(ctx); user != nil && !user.IsAdmin {
+	// Restrict document visibility based on authentication context.
+	// M2M tokens (no user) see only public documents; non-admin users see own + public.
+	user, _ := authmiddleware.UserFromContext(ctx)
+	if user == nil {
+		if !doc.IsPublic {
+			return nil, readDocumentResponse{}, errors.New("document not found")
+		}
+	} else if !user.IsAdmin {
 		if !doc.IsPublic && (!doc.UserID.Valid || doc.UserID.Int64 != user.ID) {
 			return nil, readDocumentResponse{}, errors.New("document not found")
 		}
@@ -361,7 +371,10 @@ func (h *Handler) checkDocumentOwnership(ctx context.Context, uuid string) error
 	}
 
 	user, _ := authmiddleware.UserFromContext(ctx)
-	if user != nil && !user.IsAdmin {
+	if user == nil {
+		// M2M tokens (no user context) cannot modify documents.
+		return errors.New("document not found")
+	} else if !user.IsAdmin {
 		if !doc.UserID.Valid || doc.UserID.Int64 != user.ID {
 			return errors.New("document not found")
 		}
