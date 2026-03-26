@@ -25,6 +25,26 @@ import (
 	"github.com/c-premus/documcp/internal/service"
 )
 
+// safeStoragePath validates that filePath resolves inside storagePath,
+// preventing path-traversal attacks via manipulated DB values.
+// Returns the joined absolute path or an error.
+func safeStoragePath(storagePath, filePath string) (string, error) {
+	fullPath := filepath.Join(storagePath, filePath)
+
+	absStorage, err := filepath.Abs(storagePath)
+	if err != nil {
+		return "", fmt.Errorf("resolving storage root: %w", err)
+	}
+	absPath, err := filepath.Abs(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("resolving target path: %w", err)
+	}
+	if !strings.HasPrefix(absPath, absStorage+string(os.PathSeparator)) {
+		return "", fmt.Errorf("path %q escapes storage root", filePath)
+	}
+	return absPath, nil
+}
+
 // documentPipeline defines the pipeline methods used by DocumentHandler.
 type documentPipeline interface {
 	FindByUUID(ctx context.Context, uuid string) (*model.Document, error)
@@ -362,18 +382,16 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fullPath := filepath.Join(h.pipeline.StoragePath(), doc.FilePath)
-
-	absStorage, _ := filepath.Abs(h.pipeline.StoragePath())
-	absPath, _ := filepath.Abs(fullPath)
-	if !strings.HasPrefix(absPath, absStorage+string(os.PathSeparator)) {
+	safePath, err := safeStoragePath(h.pipeline.StoragePath(), doc.FilePath)
+	if err != nil {
+		h.logger.Error("path traversal check failed", "file_path", doc.FilePath, "error", err)
 		errorResponse(w, http.StatusForbidden, "access denied")
 		return
 	}
 
-	f, err := os.Open(fullPath)
+	f, err := os.Open(safePath)
 	if err != nil {
-		h.logger.Error("opening document file", "path", fullPath, "error", err)
+		h.logger.Error("opening document file", "path", safePath, "error", err)
 		errorResponse(w, http.StatusNotFound, "file not found")
 		return
 	}
@@ -381,7 +399,7 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 
 	info, err := f.Stat()
 	if err != nil {
-		h.logger.Error("stat document file", "path", fullPath, "error", err)
+		h.logger.Error("stat document file", "path", safePath, "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to read file info")
 		return
 	}
@@ -716,9 +734,11 @@ func (h *DocumentHandler) Purge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if filePath != "" {
-		fullPath := filepath.Join(h.pipeline.StoragePath(), filePath)
-		if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
-			h.logger.Error("removing file after purge", "path", fullPath, "error", err)
+		safePath, pathErr := safeStoragePath(h.pipeline.StoragePath(), filePath)
+		if pathErr != nil {
+			h.logger.Error("path traversal check failed during purge", "file_path", filePath, "error", pathErr)
+		} else if err := os.Remove(safePath); err != nil && !os.IsNotExist(err) {
+			h.logger.Error("removing file after purge", "path", safePath, "error", err)
 		}
 	}
 
@@ -759,9 +779,13 @@ func (h *DocumentHandler) BulkPurge(w http.ResponseWriter, r *http.Request) {
 
 	for _, p := range paths {
 		if p.FilePath != "" {
-			fullPath := filepath.Join(h.pipeline.StoragePath(), p.FilePath)
-			if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
-				h.logger.Error("removing file after bulk purge", "path", fullPath, "error", err)
+			safePath, pathErr := safeStoragePath(h.pipeline.StoragePath(), p.FilePath)
+			if pathErr != nil {
+				h.logger.Error("path traversal check failed during bulk purge", "file_path", p.FilePath, "error", pathErr)
+				continue
+			}
+			if err := os.Remove(safePath); err != nil && !os.IsNotExist(err) {
+				h.logger.Error("removing file after bulk purge", "path", safePath, "error", err)
 			}
 		}
 	}
