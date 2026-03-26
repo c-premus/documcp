@@ -313,7 +313,7 @@ func (w *CleanupOrphanedFilesWorker) Work(ctx context.Context, _ *river.Job[Clea
 		if err != nil {
 			return err
 		}
-		if d.IsDir() {
+		if d.IsDir() || d.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
 		if !activeSet[path] {

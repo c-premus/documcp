@@ -255,7 +255,7 @@ linters:
           - gosec
         text: "G304"
 
-      # gocyclo: app.New (CC 34) and routes.RegisterRoutes (CC 42) are dependency-
+      # gocyclo: app.New (CC 32) and routes.RegisterRoutes (CC 37) are dependency-
       # injection wiring functions. Their cyclomatic complexity is proportional to
       # the number of components wired and routes registered, not to conditional
       # logic complexity. Extracting sub-functions would not reduce true CC because
@@ -363,13 +363,11 @@ linters:
           - gosec
         text: "G705"
 
-      # gosec G703: Path traversal via taint analysis. The path is validated
-      # against the storage root (absPath must have absStorage as prefix) before
-      # the os.Open call. The false positive arises because gosec does not model
-      # the filepath.Abs + strings.HasPrefix guard above the flagged line.
-      # The second instance (tmpFile.Name()) uses a path from os.CreateTemp,
-      # not from user input. The purge instance (line 736) uses a DB-stored path
-      # joined with the server-controlled storage directory.
+      # gosec G703: Path traversal via taint analysis. All file-system operations
+      # (Download, Purge, BulkPurge) validate the path against the storage root
+      # via safeStoragePath() before os.Open/os.Remove. The Analyze endpoint uses
+      # tmpFile.Name() from os.CreateTemp, not user input. gosec flags these
+      # because its taint analysis does not model the guard.
       - path: internal/handler/api/document_handler\.go
         linters:
           - gosec
