@@ -134,7 +134,6 @@ func TestLoad_Defaults(t *testing.T) {
 		{"OAuth.RefreshTokenLifetime", cfg.OAuth.RefreshTokenLifetime, 30 * 24 * time.Hour},
 		{"OAuth.DeviceCodeLifetime", cfg.OAuth.DeviceCodeLifetime, 10 * time.Minute},
 		{"OAuth.DeviceCodeInterval", cfg.OAuth.DeviceCodeInterval, 5 * time.Second},
-		{"OAuth.RequirePKCE", cfg.OAuth.RequirePKCE, true},
 
 		// Storage
 		{"Storage.Driver", cfg.Storage.Driver, "local"},
@@ -209,7 +208,6 @@ func TestLoad_EnvOverrides(t *testing.T) {
 		{"Database.Password", cfg.Database.Password, "secret"},
 		{"Server.Port", cfg.Server.Port, 9090},
 		{"OTEL.Enabled", cfg.OTEL.Enabled, true},
-		{"OAuth.RequirePKCE", cfg.OAuth.RequirePKCE, false},
 		{"DocuMCP.ServerName", cfg.DocuMCP.ServerName, "MyMCP"},
 	}
 

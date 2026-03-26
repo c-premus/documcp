@@ -135,7 +135,15 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		// so the user can log in (the Save below will overwrite the bad cookie).
 		h.logger.Warn("session decode error in login, using fresh session", "error", err)
 	}
+	nonce, err := generateState() // reuse same 32-byte random generation
+	if err != nil {
+		h.logger.Error("generating OIDC nonce", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
 	session.Values["oidc_state"] = state
+	session.Values["oidc_nonce"] = nonce
 
 	// Preserve redirect destination (validated to prevent open redirect).
 	redirect := r.URL.Query().Get("redirect")
@@ -149,7 +157,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, h.oauth2Config.AuthCodeURL(state), http.StatusFound)
+	http.Redirect(w, r, h.oauth2Config.AuthCodeURL(state, oauth2.SetAuthURLParam("nonce", nonce)), http.StatusFound)
 }
 
 // Callback handles GET /auth/callback — processes the OIDC callback.
@@ -167,7 +175,9 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid state parameter", http.StatusBadRequest)
 		return
 	}
+	expectedNonce, _ := session.Values["oidc_nonce"].(string)
 	delete(session.Values, "oidc_state")
+	delete(session.Values, "oidc_nonce")
 
 	// Exchange code for token
 	oauth2Token, err := h.oauth2Config.Exchange(r.Context(), r.URL.Query().Get("code"))
@@ -198,9 +208,17 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		Email  string   `json:"email"`
 		Name   string   `json:"name"`
 		Groups []string `json:"groups"`
+		Nonce  string   `json:"nonce"`
 	}
 	if err = idToken.Claims(&claims); err != nil {
 		h.logger.Error("parsing ID token claims", "error", err)
+		http.Error(w, "Authentication failed", http.StatusUnauthorized)
+		return
+	}
+
+	// Verify nonce to prevent ID token replay attacks (OIDC Core 3.1.3.7).
+	if expectedNonce == "" || subtle.ConstantTimeCompare([]byte(claims.Nonce), []byte(expectedNonce)) != 1 {
+		h.logger.Error("OIDC nonce mismatch", "expected_present", expectedNonce != "", "got_present", claims.Nonce != "")
 		http.Error(w, "Authentication failed", http.StatusUnauthorized)
 		return
 	}

@@ -216,6 +216,29 @@ func (r *OAuthRepository) FindRefreshTokenByToken(ctx context.Context, tokenHash
 	return &token, nil
 }
 
+// RevokeTokenPair atomically revokes an access token and its refresh token in a single transaction.
+func (r *OAuthRepository) RevokeTokenPair(ctx context.Context, accessTokenID, refreshTokenID int64) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning token revocation tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE oauth_access_tokens SET revoked = true, updated_at = NOW() WHERE id = $1`, accessTokenID); err != nil {
+		return fmt.Errorf("revoking access token %d: %w", accessTokenID, err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE oauth_refresh_tokens SET revoked = true, updated_at = NOW() WHERE id = $1`, refreshTokenID); err != nil {
+		return fmt.Errorf("revoking refresh token %d: %w", refreshTokenID, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing token revocation: %w", err)
+	}
+	return nil
+}
+
 // RevokeRefreshToken marks a refresh token as revoked.
 func (r *OAuthRepository) RevokeRefreshToken(ctx context.Context, id int64) error {
 	result, err := r.db.ExecContext(ctx,

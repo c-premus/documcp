@@ -142,7 +142,8 @@ linters:
 
     paths:
       - vendor
-      - web/frontend/dist   # Compiled frontend assets embedded via go:embed; not Go code
+      - web/frontend/dist      # Compiled frontend assets embedded via go:embed; not Go code
+      - frontend/node_modules  # npm dependencies (flatted ships Go code)
       - third_party
 
     rules:

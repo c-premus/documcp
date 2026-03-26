@@ -61,7 +61,9 @@ func (m *mockUserRepo) UpdateUser(ctx context.Context, user *model.User) error {
 }
 
 // setupMockOIDCProvider creates a test OIDC provider that serves discovery, JWKS, and token endpoints.
-func setupMockOIDCProvider(t *testing.T) (*httptest.Server, *rsa.PrivateKey) {
+// The returned nonce pointer should be set to the expected nonce before calling the token endpoint;
+// the mock will include it in the signed ID token claims.
+func setupMockOIDCProvider(t *testing.T) (*httptest.Server, *rsa.PrivateKey, *string) {
 	t.Helper()
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -73,6 +75,8 @@ func setupMockOIDCProvider(t *testing.T) (*httptest.Server, *rsa.PrivateKey) {
 
 	// We need a reference to the server URL before creating it (for issuer), so use a pointer.
 	var serverURL string
+	// Nonce shared between test and mock token endpoint — set before calling callback.
+	var expectedNonce string
 
 	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		discovery := map[string]any{
@@ -123,6 +127,7 @@ func setupMockOIDCProvider(t *testing.T) (*httptest.Server, *rsa.PrivateKey) {
 		extraClaims := map[string]any{
 			"email": "test@example.com",
 			"name":  "Test User",
+			"nonce": expectedNonce,
 		}
 
 		rawToken, err := josejwt.Signed(signer).Claims(claims).Claims(extraClaims).Serialize()
@@ -143,14 +148,16 @@ func setupMockOIDCProvider(t *testing.T) (*httptest.Server, *rsa.PrivateKey) {
 
 	server := httptest.NewServer(mux)
 	serverURL = server.URL
-	return server, privateKey
+	return server, privateKey, &expectedNonce
 }
 
 // newTestHandler creates a Handler backed by the mock OIDC provider.
-func newTestHandler(t *testing.T, repo UserRepo) (*Handler, *httptest.Server) {
+// Returns a nonce pointer — set *nonce before calling Callback so the mock
+// token endpoint includes it in the signed ID token.
+func newTestHandler(t *testing.T, repo UserRepo) (*Handler, *httptest.Server, *string) {
 	t.Helper()
 
-	mockServer, _ := setupMockOIDCProvider(t)
+	mockServer, _, noncePtr := setupMockOIDCProvider(t)
 
 	// Use go-oidc insecure issuer context for test servers (HTTP).
 	ctx := gooidc.InsecureIssuerURLContext(context.Background(), mockServer.URL)
@@ -179,7 +186,32 @@ func newTestHandler(t *testing.T, repo UserRepo) (*Handler, *httptest.Server) {
 	if h == nil {
 		t.Fatal("OIDC handler is nil")
 	}
-	return h, mockServer
+	return h, mockServer, noncePtr
+}
+
+// doLogin calls h.Login and returns state, nonce, and cookies. It also sets
+// *noncePtr so the mock token endpoint includes the nonce in the ID token.
+func doLogin(t *testing.T, h *Handler, noncePtr *string) (state string, cookies []*http.Cookie) {
+	t.Helper()
+	loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
+	loginW := httptest.NewRecorder()
+	h.Login(loginW, loginReq)
+
+	location := loginW.Header().Get("Location")
+	parsed, err := parseRedirectURL(location)
+	if err != nil {
+		t.Fatalf("parsing login redirect URL: %v", err)
+	}
+	state = parsed.Query().Get("state")
+	if state == "" {
+		t.Fatal("expected state in login redirect URL")
+	}
+	nonce := parsed.Query().Get("nonce")
+	if nonce == "" {
+		t.Fatal("expected nonce in login redirect URL")
+	}
+	*noncePtr = nonce
+	return state, loginW.Result().Cookies()
 }
 
 func TestNew(t *testing.T) {
@@ -225,7 +257,7 @@ func TestNew(t *testing.T) {
 	})
 
 	t.Run("creates handler with valid config", func(t *testing.T) {
-		h, server := newTestHandler(t, &mockUserRepo{})
+		h, server, _ := newTestHandler(t, &mockUserRepo{})
 		defer server.Close()
 		if h == nil {
 			t.Fatal("expected non-nil handler")
@@ -263,7 +295,7 @@ func TestIsSafeRedirect(t *testing.T) {
 
 func TestLogin(t *testing.T) {
 	repo := &mockUserRepo{}
-	h, server := newTestHandler(t, repo)
+	h, server, _ := newTestHandler(t, repo)
 	defer server.Close()
 
 	t.Run("redirects to OIDC provider", func(t *testing.T) {
@@ -328,7 +360,7 @@ func TestLogin(t *testing.T) {
 func TestCallback(t *testing.T) {
 	t.Run("rejects missing state", func(t *testing.T) {
 		repo := &mockUserRepo{}
-		h, server := newTestHandler(t, repo)
+		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 
 		req := httptest.NewRequest(http.MethodGet, "/auth/callback?code=VALID", http.NoBody)
@@ -343,17 +375,13 @@ func TestCallback(t *testing.T) {
 
 	t.Run("rejects invalid state", func(t *testing.T) {
 		repo := &mockUserRepo{}
-		h, server := newTestHandler(t, repo)
+		h, server, noncePtr := newTestHandler(t, repo)
 		defer server.Close()
 
-		// First do a login to set the state in session.
-		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
-		loginW := httptest.NewRecorder()
-		h.Login(loginW, loginReq)
-
-		// Use the session cookie from login but with wrong state.
+		state, cookies := doLogin(t, h, noncePtr)
+		_ = state // intentionally using wrong state
 		req := httptest.NewRequest(http.MethodGet, "/auth/callback?code=VALID&state=WRONG", http.NoBody)
-		for _, c := range loginW.Result().Cookies() {
+		for _, c := range cookies {
 			req.AddCookie(c)
 		}
 		w := httptest.NewRecorder()
@@ -374,26 +402,13 @@ func TestCallback(t *testing.T) {
 				return nil
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, noncePtr := newTestHandler(t, repo)
 		defer server.Close()
 
-		// Step 1: Login to get state.
-		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
-		loginW := httptest.NewRecorder()
-		h.Login(loginW, loginReq)
-
-		// Extract state from redirect URL.
-		location := loginW.Header().Get("Location")
-		parsed, _ := parseRedirectURL(location)
-		state := parsed.Query().Get("state")
-		if state == "" {
-			t.Fatal("expected state in redirect URL")
-		}
-
-		// Step 2: Callback with the correct state and a valid code.
+		state, cookies := doLogin(t, h, noncePtr)
 		callbackURL := "/auth/callback?code=test-auth-code&state=" + state
 		req := httptest.NewRequest(http.MethodGet, callbackURL, http.NoBody)
-		for _, c := range loginW.Result().Cookies() {
+		for _, c := range cookies {
 			req.AddCookie(c)
 		}
 		w := httptest.NewRecorder()
@@ -443,21 +458,13 @@ func TestCallback(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, noncePtr := newTestHandler(t, repo)
 		defer server.Close()
 
-		// Login to get state.
-		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
-		loginW := httptest.NewRecorder()
-		h.Login(loginW, loginReq)
-
-		location := loginW.Header().Get("Location")
-		parsed, _ := parseRedirectURL(location)
-		state := parsed.Query().Get("state")
-
+		state, cookies := doLogin(t, h, noncePtr)
 		callbackURL := "/auth/callback?code=test-auth-code&state=" + state
 		req := httptest.NewRequest(http.MethodGet, callbackURL, http.NoBody)
-		for _, c := range loginW.Result().Cookies() {
+		for _, c := range cookies {
 			req.AddCookie(c)
 		}
 		w := httptest.NewRecorder()
@@ -488,21 +495,13 @@ func TestCallback(t *testing.T) {
 				return nil
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, noncePtr := newTestHandler(t, repo)
 		defer server.Close()
 
-		// Login to get state.
-		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
-		loginW := httptest.NewRecorder()
-		h.Login(loginW, loginReq)
-
-		location := loginW.Header().Get("Location")
-		parsed, _ := parseRedirectURL(location)
-		state := parsed.Query().Get("state")
-
+		state, cookies := doLogin(t, h, noncePtr)
 		callbackURL := "/auth/callback?code=test-auth-code&state=" + state
 		req := httptest.NewRequest(http.MethodGet, callbackURL, http.NoBody)
-		for _, c := range loginW.Result().Cookies() {
+		for _, c := range cookies {
 			req.AddCookie(c)
 		}
 		w := httptest.NewRecorder()
@@ -528,10 +527,10 @@ func TestCallback(t *testing.T) {
 				return nil
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, noncePtr := newTestHandler(t, repo)
 		defer server.Close()
 
-		// Login with redirect param.
+		// Login with redirect param — cannot use doLogin because of custom query.
 		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login?redirect=/admin/documents", http.NoBody)
 		loginW := httptest.NewRecorder()
 		h.Login(loginW, loginReq)
@@ -539,6 +538,7 @@ func TestCallback(t *testing.T) {
 		location := loginW.Header().Get("Location")
 		parsed, _ := parseRedirectURL(location)
 		state := parsed.Query().Get("state")
+		*noncePtr = parsed.Query().Get("nonce")
 
 		callbackURL := "/auth/callback?code=test-auth-code&state=" + state
 		req := httptest.NewRequest(http.MethodGet, callbackURL, http.NoBody)
@@ -567,6 +567,7 @@ func TestCallback(t *testing.T) {
 		}
 
 		var serverURL string
+		var expectedNonce string
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 			discovery := map[string]any{
@@ -601,9 +602,10 @@ func TestCallback(t *testing.T) {
 				Expiry:    josejwt.NewNumericDate(now.Add(1 * time.Hour)),
 				NotBefore: josejwt.NewNumericDate(now.Add(-1 * time.Minute)),
 			}
-			// No email claim!
+			// No email claim — but include nonce so nonce validation passes.
 			extraClaims := map[string]any{
-				"name": "No Email User",
+				"name":  "No Email User",
+				"nonce": expectedNonce,
 			}
 			rawToken, _ := josejwt.Signed(signer).Claims(claims).Claims(extraClaims).Serialize()
 			tokenResponse := map[string]any{
@@ -639,7 +641,7 @@ func TestCallback(t *testing.T) {
 			t.Fatalf("creating handler: %v", err)
 		}
 
-		// Login to get state.
+		// Login to get state and nonce.
 		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
 		loginW := httptest.NewRecorder()
 		h.Login(loginW, loginReq)
@@ -647,6 +649,7 @@ func TestCallback(t *testing.T) {
 		location := loginW.Header().Get("Location")
 		parsed, _ := parseRedirectURL(location)
 		state := parsed.Query().Get("state")
+		expectedNonce = parsed.Query().Get("nonce")
 
 		callbackURL := "/auth/callback?code=test-auth-code&state=" + state
 		req := httptest.NewRequest(http.MethodGet, callbackURL, http.NoBody)
@@ -767,20 +770,13 @@ func TestCallback(t *testing.T) {
 				return errors.New("database error")
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, noncePtr := newTestHandler(t, repo)
 		defer server.Close()
 
-		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
-		loginW := httptest.NewRecorder()
-		h.Login(loginW, loginReq)
-
-		location := loginW.Header().Get("Location")
-		parsed, _ := parseRedirectURL(location)
-		state := parsed.Query().Get("state")
-
+		state, cookies := doLogin(t, h, noncePtr)
 		callbackURL := "/auth/callback?code=test-auth-code&state=" + state
 		req := httptest.NewRequest(http.MethodGet, callbackURL, http.NoBody)
-		for _, c := range loginW.Result().Cookies() {
+		for _, c := range cookies {
 			req.AddCookie(c)
 		}
 		w := httptest.NewRecorder()
@@ -796,7 +792,7 @@ func TestCallback(t *testing.T) {
 func TestLogout(t *testing.T) {
 	t.Run("clears session and redirects to root", func(t *testing.T) {
 		repo := &mockUserRepo{}
-		h, server := newTestHandler(t, repo)
+		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 
 		req := httptest.NewRequest(http.MethodPost, "/auth/logout", http.NoBody)
@@ -863,7 +859,7 @@ func TestFindOrCreateUser(t *testing.T) {
 				return nil
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 
 		user, err := h.findOrCreateUser(context.Background(), "sub-1", "new@example.com", "New Name", nil)
@@ -893,7 +889,7 @@ func TestFindOrCreateUser(t *testing.T) {
 				return nil
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 
 		user, err := h.findOrCreateUser(context.Background(), "new-sub", "user@example.com", "User", nil)
@@ -917,7 +913,7 @@ func TestFindOrCreateUser(t *testing.T) {
 				return nil
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 
 		user, err := h.findOrCreateUser(context.Background(), "brand-new-sub", "new@example.com", "New User", nil)
@@ -944,7 +940,7 @@ func TestFindOrCreateUser(t *testing.T) {
 				return nil, errors.New("database error")
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 
 		_, err := h.findOrCreateUser(context.Background(), "sub", "email@example.com", "Name", nil)
@@ -959,7 +955,7 @@ func TestFindOrCreateUser(t *testing.T) {
 				return nil, errors.New("database error")
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 
 		_, err := h.findOrCreateUser(context.Background(), "sub", "email@example.com", "Name", nil)
@@ -1011,7 +1007,7 @@ func TestFindOrCreateUserAdminGroups(t *testing.T) {
 				return nil
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 		h.adminGroups = []string{"documcp-admins"}
 
@@ -1036,7 +1032,7 @@ func TestFindOrCreateUserAdminGroups(t *testing.T) {
 				return nil
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 		h.adminGroups = []string{"documcp-admins"}
 
@@ -1061,7 +1057,7 @@ func TestFindOrCreateUserAdminGroups(t *testing.T) {
 				return nil
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 		// adminGroups is nil (default from newTestHandler)
 
@@ -1087,7 +1083,7 @@ func TestFindOrCreateUserAdminGroups(t *testing.T) {
 				return nil
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 		h.adminGroups = []string{"admins"}
 
@@ -1116,7 +1112,7 @@ func TestFindOrCreateUserAdminGroups(t *testing.T) {
 				return nil
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 		h.adminGroups = []string{"admins"}
 
@@ -1145,7 +1141,7 @@ func TestFindOrCreateUserAdminGroups(t *testing.T) {
 				return nil
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 		// adminGroups is nil (feature disabled)
 
@@ -1173,7 +1169,7 @@ func TestFindOrCreateUserAdminGroups(t *testing.T) {
 				return nil
 			},
 		}
-		h, server := newTestHandler(t, repo)
+		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 		h.adminGroups = []string{"admins"}
 

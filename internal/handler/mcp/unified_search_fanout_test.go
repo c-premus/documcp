@@ -336,7 +336,7 @@ func TestSearchKiwixArchives(t *testing.T) {
 
 func TestHandleUnifiedSearchFanOut(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := ctxWithAdminUser()
 
 	t.Run("merges Meilisearch and Kiwix results sorted by score", func(t *testing.T) {
 		t.Parallel()

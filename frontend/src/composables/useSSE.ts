@@ -14,25 +14,47 @@ export function useSSE(url = '/api/admin/events/stream') {
   const connected = ref(false)
   const lastEvent = ref<SSEEvent | null>(null)
   let eventSource: EventSource | null = null
+  let reconnectDelay = 1000
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   const listeners = new Map<string, Set<(event: SSEEvent) => void>>()
 
   function connect() {
-    eventSource = new EventSource(url)
+    if (eventSource !== null) return
+    eventSource = new EventSource(url, { withCredentials: true })
 
     eventSource.onopen = () => {
       connected.value = true
+      reconnectDelay = 1000
     }
     eventSource.onerror = () => {
       connected.value = false
+      eventSource?.close()
+      eventSource = null
+      scheduleReconnect()
     }
     eventSource.onmessage = (e: MessageEvent) => {
-      const event = JSON.parse(e.data as string) as SSEEvent
+      let event: SSEEvent
+      try {
+        event = JSON.parse(e.data as string) as SSEEvent
+      } catch {
+        return
+      }
+      if (typeof event.type !== 'string') return
       lastEvent.value = event
       const handlers = listeners.get(event.type)
       if (handlers) {
         handlers.forEach((fn) => fn(event))
       }
     }
+  }
+
+  function scheduleReconnect() {
+    if (reconnectTimer !== null) return
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      reconnectDelay = Math.min(reconnectDelay * 2, 30000)
+      connect()
+    }, reconnectDelay)
   }
 
   function on(eventType: string, handler: (event: SSEEvent) => void) {
@@ -43,6 +65,10 @@ export function useSSE(url = '/api/admin/events/stream') {
   }
 
   function disconnect() {
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
     eventSource?.close()
     eventSource = null
     connected.value = false

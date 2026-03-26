@@ -16,12 +16,12 @@ import (
 var errInsufficientScope = errors.New("insufficient scope")
 
 // requireMCPScope checks that the access token in the context has the given scope.
-// Returns nil if the scope is present or if the user is session-authenticated (no token).
+// MCP is bearer-only — fail closed if no token is present.
 func requireMCPScope(ctx context.Context, scope string) error {
 	token, ok := ctx.Value(authmiddleware.AccessTokenContextKey).(*model.OAuthAccessToken)
 	if !ok || token == nil {
-		// No token in context — should not happen for MCP (bearer-only), but be safe.
-		return nil
+		// No token in context — MCP requires bearer auth, fail closed.
+		return errInsufficientScope
 	}
 	tokenScope := ""
 	if token.Scope.Valid {

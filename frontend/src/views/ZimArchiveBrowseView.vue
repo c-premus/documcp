@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { toast } from 'vue-sonner'
-import DOMPurify from 'dompurify'
+import { sanitizeHTML } from '@/utils/sanitize'
 import { ArrowLeftIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline'
 
 import { useZimArchivesStore } from '../stores/zimArchives'
@@ -22,7 +22,7 @@ const sanitizedContent = computed(() => {
     return ''
   }
   if (store.currentArticle.mime_type.startsWith('text/html')) {
-    return DOMPurify.sanitize(store.currentArticle.content)
+    return sanitizeHTML(store.currentArticle.content)
   }
   return ''
 })
@@ -114,7 +114,7 @@ function handleResultClick(result: ZimSearchResult): void {
             <p
               v-if="result.snippet"
               class="mt-1 text-xs text-text-muted line-clamp-2"
-              v-html="DOMPurify.sanitize(result.snippet)"
+              v-html="sanitizeHTML(result.snippet)"
             />
           </li>
         </ul>

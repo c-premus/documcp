@@ -20,7 +20,8 @@ export async function apiFetch<T>(url: string, options?: RequestInit): Promise<T
   const res = await fetch(url, options)
   if (!res.ok) {
     const body = await res.json().catch(() => ({ message: res.statusText }))
-    throw new ApiError(res.status, body.message || res.statusText)
+    const msg = (body?.message || res.statusText).slice(0, 200)
+    throw new ApiError(res.status, msg)
   }
   return res.json() as Promise<T>
 }

@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -777,7 +778,11 @@ type templateArchiveEntry struct {
 func buildTemplateArchiveZip(w *bytes.Buffer, entries []templateArchiveEntry) error {
 	zw := zip.NewWriter(w)
 	for _, e := range entries {
-		fw, err := zw.Create(e.path)
+		clean := filepath.ToSlash(filepath.Clean(e.path))
+		if clean == ".." || strings.HasPrefix(clean, "../") || filepath.IsAbs(e.path) {
+			continue // skip paths that would escape the archive root
+		}
+		fw, err := zw.Create(clean)
 		if err != nil {
 			return fmt.Errorf("creating zip entry %q: %w", e.path, err)
 		}
@@ -797,8 +802,12 @@ func buildTemplateArchiveTarGz(w *bytes.Buffer, entries []templateArchiveEntry) 
 	tw := tar.NewWriter(gw)
 
 	for _, e := range entries {
+		clean := filepath.ToSlash(filepath.Clean(e.path))
+		if clean == ".." || strings.HasPrefix(clean, "../") || filepath.IsAbs(e.path) {
+			continue // skip paths that would escape the archive root
+		}
 		hdr := &tar.Header{
-			Name: e.path,
+			Name: clean,
 			Mode: 0o600,
 			Size: int64(len(e.content)),
 		}

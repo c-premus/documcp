@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Dialog, DialogPanel, DialogTitle } from '@headlessui/vue'
-import { ClipboardDocumentIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline'
+import {
+  ClipboardDocumentIcon,
+  ExclamationTriangleIcon,
+  EyeIcon,
+  EyeSlashIcon,
+} from '@heroicons/vue/24/outline'
 import { toast } from 'vue-sonner'
 
 defineProps<{
@@ -15,6 +20,7 @@ const emit = defineEmits<{
 }>()
 
 const copiedField = ref<string | null>(null)
+const showSecret = ref(false)
 
 async function copyToClipboard(value: string, fieldName: string): Promise<void> {
   try {
@@ -83,10 +89,19 @@ async function copyToClipboard(value: string, fieldName: string): Promise<void> 
               <div class="flex items-center gap-2">
                 <input
                   :value="clientSecret"
-                  type="text"
+                  :type="showSecret ? 'text' : 'password'"
                   readonly
                   class="block w-full rounded-md border-border-input bg-bg-surface-alt text-text-primary shadow-sm sm:text-sm font-mono"
                 />
+                <button
+                  type="button"
+                  class="shrink-0 rounded-md p-2 text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-bg-hover"
+                  :aria-label="showSecret ? 'Hide client secret' : 'Show client secret'"
+                  @click="showSecret = !showSecret"
+                >
+                  <EyeSlashIcon v-if="showSecret" class="h-5 w-5" />
+                  <EyeIcon v-else class="h-5 w-5" />
+                </button>
                 <button
                   type="button"
                   class="shrink-0 rounded-md p-2 text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-bg-hover"
