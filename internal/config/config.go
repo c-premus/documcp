@@ -26,8 +26,17 @@ type Config struct {
 	OTEL        OTELConfig
 	DocuMCP     DocuMCPConfig
 	Scheduler   SchedulerConfig
+	Queue       QueueConfig
 	Kiwix       KiwixConfig
 	Git         GitConfig
+}
+
+// QueueConfig holds River queue worker concurrency settings.
+type QueueConfig struct {
+	HighWorkers    int `mapstructure:"queue_high_workers"`
+	DefaultWorkers int `mapstructure:"queue_default_workers"`
+	LowWorkers     int `mapstructure:"queue_low_workers"`
+	HealthPort     int `mapstructure:"worker_health_port"`
 }
 
 // SchedulerConfig holds cron schedule expressions for background sync jobs.
@@ -275,6 +284,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("git_max_file_size", int64(1*1024*1024))
 	v.SetDefault("git_max_total_size", int64(10*1024*1024))
 
+	// Queue worker concurrency
+	v.SetDefault("queue_high_workers", 10)
+	v.SetDefault("queue_default_workers", 5)
+	v.SetDefault("queue_low_workers", 2)
+	v.SetDefault("worker_health_port", 9090)
+
 	// Scheduler
 	v.SetDefault("scheduler_enabled", false)
 	v.SetDefault("scheduler_kiwix_schedule", "0 */6 * * *")           // every 6 hours
@@ -432,6 +447,13 @@ func Load() (*Config, error) {
 	cfg.Git = GitConfig{
 		MaxFileSize:  v.GetInt64("git_max_file_size"),
 		MaxTotalSize: v.GetInt64("git_max_total_size"),
+	}
+
+	cfg.Queue = QueueConfig{
+		HighWorkers:    v.GetInt("queue_high_workers"),
+		DefaultWorkers: v.GetInt("queue_default_workers"),
+		LowWorkers:     v.GetInt("queue_low_workers"),
+		HealthPort:     v.GetInt("worker_health_port"),
 	}
 
 	cfg.Scheduler = SchedulerConfig{

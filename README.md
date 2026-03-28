@@ -93,7 +93,7 @@ npm run lint               # vue-tsc + ESLint
 ## Architecture
 
 ```
-cmd/server/              Entry point
+cmd/documcp/             Entry point (serve, worker, migrate, version)
 internal/
   action/                Single-responsibility business actions
   auth/oauth/            OAuth 2.1 server (PKCE, device flow, dynamic registration)
