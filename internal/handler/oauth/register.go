@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"slices"
 
 	"github.com/c-premus/documcp/internal/auth/oauth"
 )
@@ -46,6 +47,22 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		oauthError(w, http.StatusBadRequest, "invalid_client_metadata", "Invalid request body")
 		return
+	}
+
+	// Unauthenticated registration: constrain to public, read-only clients.
+	// Registration only produces a client_id — tokens still require full OAuth
+	// flow with user approval. Rate limits (10/hr, 50/day) mitigate table pollution.
+	if !h.oauthCfg.RegistrationRequireAuth {
+		// Reject device_code grant — weaker user binding than auth code flow.
+		if slices.Contains(req.GrantTypes, "urn:ietf:params:oauth:grant-type:device_code") {
+			oauthError(w, http.StatusBadRequest, "invalid_client_metadata",
+				"Device code grant is not available for unauthenticated registration.")
+			return
+		}
+		// Force public client — no secrets issued.
+		req.TokenEndpointAuthMethod = "none"
+		// Force read-only default scopes — ignore any requested scope.
+		req.Scope = ""
 	}
 
 	// Validate required fields

@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	authscope "github.com/c-premus/documcp/internal/auth/scope"
-	"github.com/c-premus/documcp/internal/config"
 	"github.com/c-premus/documcp/internal/model"
 )
 
@@ -241,7 +240,15 @@ func TestHandler_Register(t *testing.T) {
 
 	t.Run("returns error for invalid token_endpoint_auth_method", func(t *testing.T) {
 		t.Parallel()
-		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
+		repo := &mockOAuthRepo{
+			FindUserByIDFunc: func(_ context.Context, _ int64) (*model.User, error) {
+				return &model.User{ID: 42, IsAdmin: true}, nil
+			},
+		}
+		cfg := defaultOAuthConfig()
+		cfg.RegistrationRequireAuth = true
+		h, store := newHandlerWithRepoAndConfig(repo, cfg)
+		store.session.Values["user_id"] = int64(42)
 
 		body := `{"client_name":"My App","redirect_uris":["https://example.com/cb"],"token_endpoint_auth_method":"private_key_jwt"}`
 		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
@@ -357,12 +364,18 @@ func TestHandler_Register(t *testing.T) {
 	t.Run("happy path with confidential client includes client_secret", func(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
+			FindUserByIDFunc: func(_ context.Context, _ int64) (*model.User, error) {
+				return &model.User{ID: 42, IsAdmin: true}, nil
+			},
 			CreateClientFunc: func(_ context.Context, c *model.OAuthClient) error {
 				c.ID = 1
 				return nil
 			},
 		}
-		h, _ := newHandlerWithRepo(repo)
+		cfg := defaultOAuthConfig()
+		cfg.RegistrationRequireAuth = true
+		h, store := newHandlerWithRepoAndConfig(repo, cfg)
+		store.session.Values["user_id"] = int64(42)
 
 		body := `{"client_name":"My App","redirect_uris":["https://example.com/cb"],"token_endpoint_auth_method":"client_secret_post"}`
 		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
@@ -380,12 +393,18 @@ func TestHandler_Register(t *testing.T) {
 	t.Run("accepts valid grant types including device_code", func(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
+			FindUserByIDFunc: func(_ context.Context, _ int64) (*model.User, error) {
+				return &model.User{ID: 42, IsAdmin: true}, nil
+			},
 			CreateClientFunc: func(_ context.Context, c *model.OAuthClient) error {
 				c.ID = 1
 				return nil
 			},
 		}
-		h, _ := newHandlerWithRepo(repo)
+		cfg := defaultOAuthConfig()
+		cfg.RegistrationRequireAuth = true
+		h, store := newHandlerWithRepoAndConfig(repo, cfg)
+		store.session.Values["user_id"] = int64(42)
 
 		body := `{"client_name":"My App","redirect_uris":["https://example.com/cb"],"grant_types":["authorization_code","refresh_token","urn:ietf:params:oauth:grant-type:device_code"]}`
 		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
@@ -421,12 +440,18 @@ func TestHandler_Register(t *testing.T) {
 	t.Run("accepts client_secret_basic auth method", func(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
+			FindUserByIDFunc: func(_ context.Context, _ int64) (*model.User, error) {
+				return &model.User{ID: 42, IsAdmin: true}, nil
+			},
 			CreateClientFunc: func(_ context.Context, c *model.OAuthClient) error {
 				c.ID = 1
 				return nil
 			},
 		}
-		h, _ := newHandlerWithRepo(repo)
+		cfg := defaultOAuthConfig()
+		cfg.RegistrationRequireAuth = true
+		h, store := newHandlerWithRepoAndConfig(repo, cfg)
+		store.session.Values["user_id"] = int64(42)
 
 		body := `{"client_name":"My App","redirect_uris":["https://example.com/cb"],"token_endpoint_auth_method":"client_secret_basic"}`
 		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
@@ -441,24 +466,21 @@ func TestHandler_Register(t *testing.T) {
 		assert.NotEmpty(t, result["client_secret"])
 	})
 
-	t.Run("registration with scope and software fields", func(t *testing.T) {
+	t.Run("authenticated registration with scope and software fields", func(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
+			FindUserByIDFunc: func(_ context.Context, _ int64) (*model.User, error) {
+				return &model.User{ID: 42, IsAdmin: true}, nil
+			},
 			CreateClientFunc: func(_ context.Context, c *model.OAuthClient) error {
 				c.ID = 1
 				return nil
 			},
 		}
-		cfg := config.OAuthConfig{
-			AuthCodeLifetime:        defaultOAuthConfig().AuthCodeLifetime,
-			AccessTokenLifetime:     defaultOAuthConfig().AccessTokenLifetime,
-			RefreshTokenLifetime:    defaultOAuthConfig().RefreshTokenLifetime,
-			DeviceCodeLifetime:      defaultOAuthConfig().DeviceCodeLifetime,
-			DeviceCodeInterval:      defaultOAuthConfig().DeviceCodeInterval,
-			RegistrationEnabled:     true,
-			RegistrationRequireAuth: false,
-		}
-		h, _ := newHandlerWithRepoAndConfig(repo, cfg)
+		cfg := defaultOAuthConfig()
+		cfg.RegistrationRequireAuth = true
+		h, store := newHandlerWithRepoAndConfig(repo, cfg)
+		store.session.Values["user_id"] = int64(42)
 
 		body := `{"client_name":"My App","redirect_uris":["https://example.com/cb"],"scope":"mcp:access documents:read","software_id":"my-soft-id","software_version":"1.0.0"}`
 		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
@@ -470,5 +492,98 @@ func TestHandler_Register(t *testing.T) {
 		require.Equal(t, http.StatusCreated, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
 		assert.Equal(t, "mcp:access documents:read", result["scope"])
+	})
+
+	t.Run("unauthenticated registration forces public client", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			CreateClientFunc: func(_ context.Context, c *model.OAuthClient) error {
+				c.ID = 1
+				return nil
+			},
+		}
+		cfg := defaultOAuthConfig()
+		cfg.RegistrationRequireAuth = false
+		h, _ := newHandlerWithRepoAndConfig(repo, cfg)
+
+		body := `{"client_name":"My App","redirect_uris":["https://example.com/cb"],"token_endpoint_auth_method":"client_secret_basic"}`
+		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Register(rr, req)
+
+		require.Equal(t, http.StatusCreated, rr.Code)
+		result := decodeOAuthJSON(t, rr.Body)
+		assert.Equal(t, "none", result["token_endpoint_auth_method"])
+	})
+
+	t.Run("unauthenticated registration rejects device code grant", func(t *testing.T) {
+		t.Parallel()
+		cfg := defaultOAuthConfig()
+		cfg.RegistrationRequireAuth = false
+		h, _ := newHandlerWithRepoAndConfig(&mockOAuthRepo{}, cfg)
+
+		body := `{"client_name":"My App","redirect_uris":["https://example.com/cb"],"grant_types":["urn:ietf:params:oauth:grant-type:device_code"]}`
+		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Register(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		result := decodeOAuthJSON(t, rr.Body)
+		assert.Equal(t, "invalid_client_metadata", result["error"])
+		assert.Contains(t, result["error_description"], "Device code grant")
+	})
+
+	t.Run("unauthenticated registration ignores requested scope", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			CreateClientFunc: func(_ context.Context, c *model.OAuthClient) error {
+				c.ID = 1
+				return nil
+			},
+		}
+		cfg := defaultOAuthConfig()
+		cfg.RegistrationRequireAuth = false
+		h, _ := newHandlerWithRepoAndConfig(repo, cfg)
+
+		body := `{"client_name":"My App","redirect_uris":["https://example.com/cb"],"scope":"admin documents:write"}`
+		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Register(rr, req)
+
+		require.Equal(t, http.StatusCreated, rr.Code)
+		result := decodeOAuthJSON(t, rr.Body)
+		assert.Equal(t, authscope.DefaultScopes(), result["scope"])
+	})
+
+	t.Run("unauthenticated registration succeeds with valid request", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			CreateClientFunc: func(_ context.Context, c *model.OAuthClient) error {
+				c.ID = 1
+				return nil
+			},
+		}
+		cfg := defaultOAuthConfig()
+		cfg.RegistrationRequireAuth = false
+		h, _ := newHandlerWithRepoAndConfig(repo, cfg)
+
+		body := `{"client_name":"MCP Remote","redirect_uris":["https://example.com/cb"]}`
+		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Register(rr, req)
+
+		require.Equal(t, http.StatusCreated, rr.Code)
+		result := decodeOAuthJSON(t, rr.Body)
+		assert.Equal(t, "none", result["token_endpoint_auth_method"])
+		assert.Nil(t, result["client_secret"])
+		assert.NotEmpty(t, result["client_id"])
 	})
 }

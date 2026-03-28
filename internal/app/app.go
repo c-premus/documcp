@@ -371,7 +371,7 @@ func New(cfg *config.Config) (*App, error) {
 	}
 	zimH := apihandler.NewZimHandler(zimArchiveRepo, &apihandler.KiwixFactoryAdapter{Factory: kiwixFactory}, logger)
 	gitTemplateH := apihandler.NewGitTemplateHandler(gitTemplateRepo, riverClient, logger)
-	externalServiceH := apihandler.NewExternalServiceHandler(externalServiceSvc, externalServiceRepo, riverClient, logger)
+	externalServiceH := apihandler.NewExternalServiceHandler(externalServiceSvc, externalServiceRepo, riverClient, kiwixFactory, logger)
 	userH := apihandler.NewUserHandler(oauthRepo, logger)
 	oauthClientH := apihandler.NewOAuthClientHandler(oauthRepo, logger)
 
