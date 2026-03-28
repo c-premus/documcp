@@ -56,10 +56,17 @@ See `docs/OAUTH_CLIENT_GUIDE.md` for connecting AI agents and CLI tools.
 
 A devcontainer configuration is included for VS Code with all dependencies pre-installed.
 
-### Build
+### Build and Run
 
 ```bash
-go build ./...
+go build -o bin/documcp ./cmd/documcp    # Build binary
+
+# Cobra subcommands:
+go run ./cmd/documcp serve --with-worker # HTTP server + queue workers (dev default)
+go run ./cmd/documcp serve               # HTTP server only (River insert-only)
+go run ./cmd/documcp worker              # Queue workers only + health endpoint (:9090)
+go run ./cmd/documcp migrate             # Run database migrations and exit
+go run ./cmd/documcp version             # Print version info
 ```
 
 ### Test
@@ -110,7 +117,7 @@ internal/
   model/                 Domain models
   observability/         Tracing, metrics, structured logging
   queue/                 River job queue (workers, events, periodic jobs)
-  repository/            Data access layer (sqlx, handwritten SQL)
+  repository/            Data access layer (pgx, handwritten SQL)
   search/                Meilisearch client, indexer, and searcher
   server/                HTTP server setup and routing (chi v5)
   service/               Business logic orchestration
@@ -121,7 +128,7 @@ migrations/              SQL migration files (goose)
 docs/contracts/          OpenAPI spec, MCP contract, database schema
 ```
 
-The application uses constructor injection throughout. Repositories accept `sqlx.DB`, services accept repository interfaces, and handlers accept services. Background jobs run via River, a Postgres-native job queue.
+The application uses a single Cobra binary with `serve`, `worker`, and `migrate` subcommands for independent scaling. A shared Foundation holds dependencies (database pool, repositories, search). ServerApp handles HTTP; WorkerApp handles River queue processing. Repositories use `pgxpool.Pool` directly, services accept repository interfaces, and handlers accept services. Background jobs run via River, a Postgres-native job queue.
 
 ## MCP Tools
 
@@ -175,8 +182,12 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `KIWIX_FEDERATED_SEARCH_TIMEOUT` | No | `3s` | Deadline for Kiwix fan-out during unified search |
 | `KIWIX_FEDERATED_MAX_ARCHIVES` | No | `10` | Max archives to search in parallel |
 | `KIWIX_FEDERATED_PER_ARCHIVE_LIMIT` | No | `3` | Max results per archive |
+| `QUEUE_HIGH_WORKERS` | No | `10` | River queue concurrency for high-priority jobs |
+| `QUEUE_DEFAULT_WORKERS` | No | `5` | River queue concurrency for default jobs |
+| `QUEUE_LOW_WORKERS` | No | `2` | River queue concurrency for low-priority jobs |
+| `WORKER_HEALTH_PORT` | No | `9090` | Health endpoint port for worker-only mode |
 
-For a complete reference, see `docs/contracts/configuration-schema.yaml`.
+See `.env.example` for all ~60 configurable variables with defaults.
 
 ## License
 
