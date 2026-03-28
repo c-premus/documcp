@@ -25,12 +25,18 @@ type externalServiceJobInserter interface {
 	Insert(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
 }
 
+// kiwixCacheInvalidator invalidates the cached Kiwix client. Defined where consumed.
+type kiwixCacheInvalidator interface {
+	Invalidate()
+}
+
 // ExternalServiceHandler handles REST API endpoints for external services.
 type ExternalServiceHandler struct {
-	svc       *service.ExternalServiceService
-	reorderer externalServiceReorderer
-	inserter  externalServiceJobInserter
-	logger    *slog.Logger
+	svc        *service.ExternalServiceService
+	reorderer  externalServiceReorderer
+	inserter   externalServiceJobInserter
+	kiwixCache kiwixCacheInvalidator
+	logger     *slog.Logger
 }
 
 // NewExternalServiceHandler creates a new ExternalServiceHandler.
@@ -38,13 +44,15 @@ func NewExternalServiceHandler(
 	svc *service.ExternalServiceService,
 	reorderer externalServiceReorderer,
 	inserter externalServiceJobInserter,
+	kiwixCache kiwixCacheInvalidator,
 	logger *slog.Logger,
 ) *ExternalServiceHandler {
 	return &ExternalServiceHandler{
-		svc:       svc,
-		reorderer: reorderer,
-		inserter:  inserter,
-		logger:    logger,
+		svc:        svc,
+		reorderer:  reorderer,
+		inserter:   inserter,
+		kiwixCache: kiwixCache,
+		logger:     logger,
 	}
 }
 
@@ -154,9 +162,14 @@ func (h *ExternalServiceHandler) Create(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if h.inserter != nil && created.Type == "kiwix" {
-		if _, jobErr := h.inserter.Insert(r.Context(), queue.SyncKiwixArgs{}, nil); jobErr != nil {
-			h.logger.Warn("failed to enqueue sync after external service create", "type", created.Type, "error", jobErr)
+	if created.Type == "kiwix" {
+		if h.kiwixCache != nil {
+			h.kiwixCache.Invalidate()
+		}
+		if h.inserter != nil {
+			if _, jobErr := h.inserter.Insert(r.Context(), queue.SyncKiwixArgs{}, nil); jobErr != nil {
+				h.logger.Warn("failed to enqueue sync after external service create", "type", created.Type, "error", jobErr)
+			}
 		}
 	}
 
@@ -202,6 +215,17 @@ func (h *ExternalServiceHandler) Update(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if updated.Type == "kiwix" {
+		if h.kiwixCache != nil {
+			h.kiwixCache.Invalidate()
+		}
+		if h.inserter != nil {
+			if _, jobErr := h.inserter.Insert(r.Context(), queue.SyncKiwixArgs{}, nil); jobErr != nil {
+				h.logger.Warn("failed to enqueue sync after external service update", "type", updated.Type, "error", jobErr)
+			}
+		}
+	}
+
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"data":    toExternalServiceResponse(updated),
 		"message": "External service updated successfully.",
@@ -211,6 +235,9 @@ func (h *ExternalServiceHandler) Update(w http.ResponseWriter, r *http.Request) 
 // Delete handles DELETE /api/external-services/{uuid} -- delete an external service.
 func (h *ExternalServiceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	svcUUID := chi.URLParam(r, "uuid")
+
+	// Look up service type before deleting so we can invalidate cache if needed.
+	existing, lookupErr := h.svc.FindByUUID(r.Context(), svcUUID)
 
 	if err := h.svc.Delete(r.Context(), svcUUID); err != nil {
 		h.logger.Error("deleting external service", "uuid", svcUUID, "error", err)
@@ -224,6 +251,10 @@ func (h *ExternalServiceHandler) Delete(w http.ResponseWriter, r *http.Request) 
 		}
 		errorResponse(w, http.StatusInternalServerError, "failed to delete external service")
 		return
+	}
+
+	if lookupErr == nil && existing.Type == "kiwix" && h.kiwixCache != nil {
+		h.kiwixCache.Invalidate()
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]any{

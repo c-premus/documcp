@@ -521,9 +521,6 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	if isProd && c.App.Debug {
 		errs = append(errs, "APP_DEBUG should not be enabled in production")
 	}
-	if isProd && c.OAuth.RegistrationEnabled && !c.OAuth.RegistrationRequireAuth {
-		errs = append(errs, "OAUTH_REGISTRATION_REQUIRE_AUTH must be true when registration is enabled in production")
-	}
 	if isProd && c.OAuth.HKDFSalt == "DocuMCP-go-v1" {
 		errs = append(errs, "HKDF_SALT must be changed from the default value in production")
 	}

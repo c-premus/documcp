@@ -96,7 +96,7 @@ func (m *mockExternalServiceRepo) ReorderPriorities(ctx context.Context, service
 
 func newExternalServiceHandler(mock *mockExternalServiceRepo) *ExternalServiceHandler {
 	svc := service.NewExternalServiceService(mock, nil, nil, testLogger())
-	return NewExternalServiceHandler(svc, mock, nil, testLogger())
+	return NewExternalServiceHandler(svc, mock, nil, nil, testLogger())
 }
 
 func newTestExternalService(uuid string) *model.ExternalService {
@@ -1248,7 +1248,13 @@ func (m *mockJobInserter) Insert(ctx context.Context, args river.JobArgs, opts *
 // newExternalServiceHandlerWithInserter creates a handler with a non-nil inserter for sync tests.
 func newExternalServiceHandlerWithInserter(repo *mockExternalServiceRepo, ins externalServiceJobInserter) *ExternalServiceHandler {
 	svc := service.NewExternalServiceService(repo, nil, nil, testLogger())
-	return NewExternalServiceHandler(svc, repo, ins, testLogger())
+	return NewExternalServiceHandler(svc, repo, ins, nil, testLogger())
+}
+
+// newExternalServiceHandlerWithKiwixCache creates a handler with a kiwix cache invalidator.
+func newExternalServiceHandlerWithKiwixCache(repo *mockExternalServiceRepo, ins externalServiceJobInserter, cache kiwixCacheInvalidator) *ExternalServiceHandler {
+	svc := service.NewExternalServiceService(repo, nil, nil, testLogger())
+	return NewExternalServiceHandler(svc, repo, ins, cache, testLogger())
 }
 
 // ---------------------------------------------------------------------------
@@ -1575,4 +1581,199 @@ func TestExternalServiceHandler_HealthCheck_InternalError(t *testing.T) {
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Mock kiwix cache invalidator
+// ---------------------------------------------------------------------------
+
+type mockKiwixCacheInvalidator struct {
+	invalidateCalled bool
+}
+
+func (m *mockKiwixCacheInvalidator) Invalidate() {
+	m.invalidateCalled = true
+}
+
+// ---------------------------------------------------------------------------
+// Kiwix cache invalidation tests
+// ---------------------------------------------------------------------------
+
+func TestExternalServiceHandler_KiwixCacheInvalidation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Create with kiwix type invalidates cache", func(t *testing.T) {
+		t.Parallel()
+
+		mock := &mockExternalServiceRepo{
+			createFn: func(_ context.Context, svc *model.ExternalService) error {
+				svc.UUID = "new-kiwix"
+				return nil
+			},
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.ExternalService, error) {
+				es := newTestExternalService(uuid)
+				es.Type = "kiwix"
+				return es, nil
+			},
+		}
+		cache := &mockKiwixCacheInvalidator{}
+		h := newExternalServiceHandlerWithKiwixCache(mock, nil, cache)
+
+		reqBody := `{"name":"My Kiwix","type":"kiwix","base_url":"https://93.184.216.34"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/external-services", strings.NewReader(reqBody))
+		rr := httptest.NewRecorder()
+
+		h.Create(rr, req)
+
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusCreated)
+		}
+		if !cache.invalidateCalled {
+			t.Error("expected kiwix cache Invalidate to be called on kiwix create")
+		}
+	})
+
+	t.Run("Create with non-kiwix type does not invalidate cache", func(t *testing.T) {
+		t.Parallel()
+
+		mock := &mockExternalServiceRepo{
+			createFn: func(_ context.Context, svc *model.ExternalService) error {
+				svc.UUID = "new-confluence"
+				return nil
+			},
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.ExternalService, error) {
+				es := newTestExternalService(uuid)
+				es.Type = "confluence"
+				return es, nil
+			},
+		}
+		cache := &mockKiwixCacheInvalidator{}
+		h := newExternalServiceHandlerWithKiwixCache(mock, nil, cache)
+
+		reqBody := `{"name":"My Confluence","type":"confluence","base_url":"https://93.184.216.34"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/external-services", strings.NewReader(reqBody))
+		rr := httptest.NewRecorder()
+
+		h.Create(rr, req)
+
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusCreated)
+		}
+		if cache.invalidateCalled {
+			t.Error("expected kiwix cache Invalidate NOT to be called on non-kiwix create")
+		}
+	})
+
+	t.Run("Update with kiwix type invalidates cache and enqueues sync", func(t *testing.T) {
+		t.Parallel()
+
+		es := newTestExternalService("svc-kiwix-upd")
+		es.Type = "kiwix"
+		callCount := 0
+		mock := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.ExternalService, error) {
+				if uuid == "svc-kiwix-upd" {
+					callCount++
+					return es, nil
+				}
+				return nil, service.ErrNotFound
+			},
+			updateFn: func(_ context.Context, _ *model.ExternalService) error {
+				return nil
+			},
+		}
+		var insertedKind string
+		ins := &mockJobInserter{
+			insertFn: func(_ context.Context, args river.JobArgs, _ *river.InsertOpts) (*rivertype.JobInsertResult, error) {
+				insertedKind = args.Kind()
+				return &rivertype.JobInsertResult{}, nil
+			},
+		}
+		cache := &mockKiwixCacheInvalidator{}
+		h := newExternalServiceHandlerWithKiwixCache(mock, ins, cache)
+
+		reqBody := `{"name":"Updated Kiwix"}`
+		req := httptest.NewRequest(http.MethodPut, "/api/external-services/svc-kiwix-upd", strings.NewReader(reqBody))
+		req = chiContext(req, map[string]string{"uuid": "svc-kiwix-upd"})
+		rr := httptest.NewRecorder()
+
+		h.Update(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		if !cache.invalidateCalled {
+			t.Error("expected kiwix cache Invalidate to be called on kiwix update")
+		}
+		wantKind := (queue.SyncKiwixArgs{}).Kind()
+		if insertedKind != wantKind {
+			t.Errorf("inserted job kind = %q, want %q", insertedKind, wantKind)
+		}
+	})
+
+	t.Run("Delete with kiwix type invalidates cache", func(t *testing.T) {
+		t.Parallel()
+
+		es := newTestExternalService("svc-kiwix-del")
+		es.Type = "kiwix"
+		mock := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.ExternalService, error) {
+				if uuid == "svc-kiwix-del" {
+					return es, nil
+				}
+				return nil, service.ErrNotFound
+			},
+			deleteFn: func(_ context.Context, _ int64) error {
+				return nil
+			},
+		}
+		cache := &mockKiwixCacheInvalidator{}
+		h := newExternalServiceHandlerWithKiwixCache(mock, nil, cache)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/external-services/svc-kiwix-del", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "svc-kiwix-del"})
+		rr := httptest.NewRecorder()
+
+		h.Delete(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		if !cache.invalidateCalled {
+			t.Error("expected kiwix cache Invalidate to be called on kiwix delete")
+		}
+	})
+
+	t.Run("Delete with non-kiwix type does not invalidate cache", func(t *testing.T) {
+		t.Parallel()
+
+		es := newTestExternalService("svc-conf-del")
+		es.Type = "confluence"
+		mock := &mockExternalServiceRepo{
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.ExternalService, error) {
+				if uuid == "svc-conf-del" {
+					return es, nil
+				}
+				return nil, service.ErrNotFound
+			},
+			deleteFn: func(_ context.Context, _ int64) error {
+				return nil
+			},
+		}
+		cache := &mockKiwixCacheInvalidator{}
+		h := newExternalServiceHandlerWithKiwixCache(mock, nil, cache)
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/external-services/svc-conf-del", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "svc-conf-del"})
+		rr := httptest.NewRecorder()
+
+		h.Delete(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		if cache.invalidateCalled {
+			t.Error("expected kiwix cache Invalidate NOT to be called on non-kiwix delete")
+		}
+	})
 }
