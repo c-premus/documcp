@@ -7,19 +7,20 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/jmoiron/sqlx"
+	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/c-premus/documcp/internal/database"
 	"github.com/c-premus/documcp/internal/model"
 )
 
 // OAuthRepository handles OAuth-related persistence for clients, tokens, codes, and users.
 type OAuthRepository struct {
-	db     *sqlx.DB
+	db     *pgxpool.Pool
 	logger *slog.Logger
 }
 
 // NewOAuthRepository creates a new OAuthRepository.
-func NewOAuthRepository(db *sqlx.DB, logger *slog.Logger) *OAuthRepository {
+func NewOAuthRepository(db *pgxpool.Pool, logger *slog.Logger) *OAuthRepository {
 	return &OAuthRepository{db: db, logger: logger}
 }
 
@@ -29,7 +30,7 @@ func NewOAuthRepository(db *sqlx.DB, logger *slog.Logger) *OAuthRepository {
 
 // CreateClient inserts a new OAuth client and sets the generated ID and timestamps.
 func (r *OAuthRepository) CreateClient(ctx context.Context, client *model.OAuthClient) error {
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.QueryRow(ctx,
 		`INSERT INTO oauth_clients (
 			client_id, client_secret, client_secret_expires_at, client_name,
 			software_id, software_version, redirect_uris, grant_types,
@@ -54,8 +55,7 @@ func (r *OAuthRepository) CreateClient(ctx context.Context, client *model.OAuthC
 
 // FindClientByClientID returns an active OAuth client by its public client_id.
 func (r *OAuthRepository) FindClientByClientID(ctx context.Context, clientID string) (*model.OAuthClient, error) {
-	var client model.OAuthClient
-	err := r.db.GetContext(ctx, &client,
+	client, err := database.Get[model.OAuthClient](ctx, r.db,
 		`SELECT * FROM oauth_clients WHERE client_id = $1 AND is_active = true`, clientID)
 	if err != nil {
 		return nil, fmt.Errorf("finding oauth client by client_id %s: %w", clientID, err)
@@ -65,8 +65,7 @@ func (r *OAuthRepository) FindClientByClientID(ctx context.Context, clientID str
 
 // FindClientByID returns an OAuth client by its primary key.
 func (r *OAuthRepository) FindClientByID(ctx context.Context, id int64) (*model.OAuthClient, error) {
-	var client model.OAuthClient
-	err := r.db.GetContext(ctx, &client,
+	client, err := database.Get[model.OAuthClient](ctx, r.db,
 		`SELECT * FROM oauth_clients WHERE id = $1`, id)
 	if err != nil {
 		return nil, fmt.Errorf("finding oauth client by id %d: %w", id, err)
@@ -80,7 +79,7 @@ func (r *OAuthRepository) FindClientByID(ctx context.Context, id int64) (*model.
 
 // CreateAuthorizationCode inserts a new authorization code and sets the generated ID and timestamps.
 func (r *OAuthRepository) CreateAuthorizationCode(ctx context.Context, code *model.OAuthAuthorizationCode) error {
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.QueryRow(ctx,
 		`INSERT INTO oauth_authorization_codes (
 			code, client_id, user_id, redirect_uri, scope,
 			code_challenge, code_challenge_method, expires_at, revoked,
@@ -101,8 +100,7 @@ func (r *OAuthRepository) CreateAuthorizationCode(ctx context.Context, code *mod
 
 // FindAuthorizationCodeByCode returns a non-revoked authorization code by its hash.
 func (r *OAuthRepository) FindAuthorizationCodeByCode(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error) {
-	var code model.OAuthAuthorizationCode
-	err := r.db.GetContext(ctx, &code,
+	code, err := database.Get[model.OAuthAuthorizationCode](ctx, r.db,
 		`SELECT * FROM oauth_authorization_codes WHERE code = $1 AND revoked = false`, codeHash)
 	if err != nil {
 		return nil, fmt.Errorf("finding authorization code: %w", err)
@@ -113,12 +111,12 @@ func (r *OAuthRepository) FindAuthorizationCodeByCode(ctx context.Context, codeH
 // RevokeAuthorizationCode atomically marks an authorization code as revoked.
 // Returns sql.ErrNoRows if the code was already revoked (prevents double-exchange).
 func (r *OAuthRepository) RevokeAuthorizationCode(ctx context.Context, id int64) error {
-	result, err := r.db.ExecContext(ctx,
+	tag, err := r.db.Exec(ctx,
 		`UPDATE oauth_authorization_codes SET revoked = true, updated_at = NOW() WHERE id = $1 AND revoked = false`, id)
 	if err != nil {
 		return fmt.Errorf("revoking authorization code %d: %w", id, err)
 	}
-	n, _ := result.RowsAffected()
+	n := tag.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("authorization code %d already consumed: %w", id, sql.ErrNoRows)
 	}
@@ -131,7 +129,7 @@ func (r *OAuthRepository) RevokeAuthorizationCode(ctx context.Context, id int64)
 
 // CreateAccessToken inserts a new access token and sets the generated ID and timestamps.
 func (r *OAuthRepository) CreateAccessToken(ctx context.Context, token *model.OAuthAccessToken) error {
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.QueryRow(ctx,
 		`INSERT INTO oauth_access_tokens (
 			token, client_id, user_id, scope, expires_at, revoked,
 			created_at, updated_at
@@ -149,8 +147,7 @@ func (r *OAuthRepository) CreateAccessToken(ctx context.Context, token *model.OA
 
 // FindAccessTokenByID returns an access token by its primary key.
 func (r *OAuthRepository) FindAccessTokenByID(ctx context.Context, id int64) (*model.OAuthAccessToken, error) {
-	var token model.OAuthAccessToken
-	err := r.db.GetContext(ctx, &token,
+	token, err := database.Get[model.OAuthAccessToken](ctx, r.db,
 		`SELECT * FROM oauth_access_tokens WHERE id = $1`, id)
 	if err != nil {
 		return nil, fmt.Errorf("finding access token by id %d: %w", id, err)
@@ -160,8 +157,7 @@ func (r *OAuthRepository) FindAccessTokenByID(ctx context.Context, id int64) (*m
 
 // FindAccessTokenByToken returns a valid (non-revoked, non-expired) access token by its hash.
 func (r *OAuthRepository) FindAccessTokenByToken(ctx context.Context, tokenHash string) (*model.OAuthAccessToken, error) {
-	var token model.OAuthAccessToken
-	err := r.db.GetContext(ctx, &token,
+	token, err := database.Get[model.OAuthAccessToken](ctx, r.db,
 		`SELECT * FROM oauth_access_tokens WHERE token = $1 AND revoked = false AND expires_at > NOW()`, tokenHash)
 	if err != nil {
 		return nil, fmt.Errorf("finding access token: %w", err)
@@ -171,12 +167,12 @@ func (r *OAuthRepository) FindAccessTokenByToken(ctx context.Context, tokenHash 
 
 // RevokeAccessToken marks an access token as revoked.
 func (r *OAuthRepository) RevokeAccessToken(ctx context.Context, id int64) error {
-	result, err := r.db.ExecContext(ctx,
+	tag, err := r.db.Exec(ctx,
 		`UPDATE oauth_access_tokens SET revoked = true, updated_at = NOW() WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("revoking access token %d: %w", id, err)
 	}
-	n, _ := result.RowsAffected()
+	n := tag.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("access token %d not found: %w", id, sql.ErrNoRows)
 	}
@@ -189,7 +185,7 @@ func (r *OAuthRepository) RevokeAccessToken(ctx context.Context, id int64) error
 
 // CreateRefreshToken inserts a new refresh token and sets the generated ID and timestamps.
 func (r *OAuthRepository) CreateRefreshToken(ctx context.Context, token *model.OAuthRefreshToken) error {
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.QueryRow(ctx,
 		`INSERT INTO oauth_refresh_tokens (
 			token, access_token_id, expires_at, revoked,
 			created_at, updated_at
@@ -207,8 +203,7 @@ func (r *OAuthRepository) CreateRefreshToken(ctx context.Context, token *model.O
 
 // FindRefreshTokenByToken returns a valid (non-revoked, non-expired) refresh token by its hash.
 func (r *OAuthRepository) FindRefreshTokenByToken(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error) {
-	var token model.OAuthRefreshToken
-	err := r.db.GetContext(ctx, &token,
+	token, err := database.Get[model.OAuthRefreshToken](ctx, r.db,
 		`SELECT * FROM oauth_refresh_tokens WHERE token = $1 AND revoked = false AND expires_at > NOW()`, tokenHash)
 	if err != nil {
 		return nil, fmt.Errorf("finding refresh token: %w", err)
@@ -218,22 +213,22 @@ func (r *OAuthRepository) FindRefreshTokenByToken(ctx context.Context, tokenHash
 
 // RevokeTokenPair atomically revokes an access token and its refresh token in a single transaction.
 func (r *OAuthRepository) RevokeTokenPair(ctx context.Context, accessTokenID, refreshTokenID int64) error {
-	tx, err := r.db.BeginTxx(ctx, nil)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("beginning token revocation tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
 
-	if _, err := tx.ExecContext(ctx,
+	if _, err := tx.Exec(ctx,
 		`UPDATE oauth_access_tokens SET revoked = true, updated_at = NOW() WHERE id = $1`, accessTokenID); err != nil {
 		return fmt.Errorf("revoking access token %d: %w", accessTokenID, err)
 	}
-	if _, err := tx.ExecContext(ctx,
+	if _, err := tx.Exec(ctx,
 		`UPDATE oauth_refresh_tokens SET revoked = true, updated_at = NOW() WHERE id = $1`, refreshTokenID); err != nil {
 		return fmt.Errorf("revoking refresh token %d: %w", refreshTokenID, err)
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("committing token revocation: %w", err)
 	}
 	return nil
@@ -241,12 +236,12 @@ func (r *OAuthRepository) RevokeTokenPair(ctx context.Context, accessTokenID, re
 
 // RevokeRefreshToken marks a refresh token as revoked.
 func (r *OAuthRepository) RevokeRefreshToken(ctx context.Context, id int64) error {
-	result, err := r.db.ExecContext(ctx,
+	tag, err := r.db.Exec(ctx,
 		`UPDATE oauth_refresh_tokens SET revoked = true, updated_at = NOW() WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("revoking refresh token %d: %w", id, err)
 	}
-	n, _ := result.RowsAffected()
+	n := tag.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("refresh token %d not found: %w", id, sql.ErrNoRows)
 	}
@@ -255,7 +250,7 @@ func (r *OAuthRepository) RevokeRefreshToken(ctx context.Context, id int64) erro
 
 // RevokeRefreshTokenByAccessTokenID revokes all refresh tokens associated with an access token.
 func (r *OAuthRepository) RevokeRefreshTokenByAccessTokenID(ctx context.Context, accessTokenID int64) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.db.Exec(ctx,
 		`UPDATE oauth_refresh_tokens SET revoked = true, updated_at = NOW() WHERE access_token_id = $1`, accessTokenID)
 	if err != nil {
 		return fmt.Errorf("revoking refresh tokens for access token %d: %w", accessTokenID, err)
@@ -269,7 +264,7 @@ func (r *OAuthRepository) RevokeRefreshTokenByAccessTokenID(ctx context.Context,
 
 // CreateDeviceCode inserts a new device code and sets the generated ID and timestamps.
 func (r *OAuthRepository) CreateDeviceCode(ctx context.Context, dc *model.OAuthDeviceCode) error {
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.QueryRow(ctx,
 		`INSERT INTO oauth_device_codes (
 			device_code, user_code, client_id, user_id, scope,
 			verification_uri, verification_uri_complete, interval,
@@ -293,8 +288,7 @@ func (r *OAuthRepository) CreateDeviceCode(ctx context.Context, dc *model.OAuthD
 
 // FindDeviceCodeByDeviceCode returns a device code by its hash.
 func (r *OAuthRepository) FindDeviceCodeByDeviceCode(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error) {
-	var dc model.OAuthDeviceCode
-	err := r.db.GetContext(ctx, &dc,
+	dc, err := database.Get[model.OAuthDeviceCode](ctx, r.db,
 		`SELECT * FROM oauth_device_codes WHERE device_code = $1`, deviceCodeHash)
 	if err != nil {
 		return nil, fmt.Errorf("finding device code: %w", err)
@@ -305,8 +299,7 @@ func (r *OAuthRepository) FindDeviceCodeByDeviceCode(ctx context.Context, device
 // FindDeviceCodeByUserCode returns a pending, non-expired device code by its user code.
 // The comparison normalizes the user code by removing dashes and ignoring case.
 func (r *OAuthRepository) FindDeviceCodeByUserCode(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error) {
-	var dc model.OAuthDeviceCode
-	err := r.db.GetContext(ctx, &dc,
+	dc, err := database.Get[model.OAuthDeviceCode](ctx, r.db,
 		`SELECT * FROM oauth_device_codes
 		WHERE UPPER(REPLACE(user_code, '-', '')) = UPPER(REPLACE($1, '-', ''))
 			AND status = 'pending' AND expires_at > NOW()`, userCode)
@@ -320,11 +313,11 @@ func (r *OAuthRepository) FindDeviceCodeByUserCode(ctx context.Context, userCode
 func (r *OAuthRepository) UpdateDeviceCodeStatus(ctx context.Context, id int64, status string, userID *int64) error {
 	var err error
 	if userID != nil {
-		_, err = r.db.ExecContext(ctx,
+		_, err = r.db.Exec(ctx,
 			`UPDATE oauth_device_codes SET status = $1, user_id = $2, updated_at = NOW() WHERE id = $3`,
 			status, *userID, id)
 	} else {
-		_, err = r.db.ExecContext(ctx,
+		_, err = r.db.Exec(ctx,
 			`UPDATE oauth_device_codes SET status = $1, updated_at = NOW() WHERE id = $2`,
 			status, id)
 	}
@@ -336,13 +329,13 @@ func (r *OAuthRepository) UpdateDeviceCodeStatus(ctx context.Context, id int64, 
 
 // UpdateDeviceCodeLastPolled updates the last_polled_at timestamp and polling interval.
 func (r *OAuthRepository) UpdateDeviceCodeLastPolled(ctx context.Context, id int64, interval int) error {
-	result, err := r.db.ExecContext(ctx,
+	tag, err := r.db.Exec(ctx,
 		`UPDATE oauth_device_codes SET last_polled_at = NOW(), interval = $1, updated_at = NOW() WHERE id = $2`,
 		interval, id)
 	if err != nil {
 		return fmt.Errorf("updating device code %d last polled: %w", id, err)
 	}
-	n, _ := result.RowsAffected()
+	n := tag.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("device code %d not found: %w", id, sql.ErrNoRows)
 	}
@@ -355,8 +348,7 @@ func (r *OAuthRepository) UpdateDeviceCodeLastPolled(ctx context.Context, id int
 
 // FindUserByID returns a user by its primary key.
 func (r *OAuthRepository) FindUserByID(ctx context.Context, id int64) (*model.User, error) {
-	var user model.User
-	err := r.db.GetContext(ctx, &user,
+	user, err := database.Get[model.User](ctx, r.db,
 		`SELECT * FROM users WHERE id = $1`, id)
 	if err != nil {
 		return nil, fmt.Errorf("finding user by id %d: %w", id, err)
@@ -366,8 +358,7 @@ func (r *OAuthRepository) FindUserByID(ctx context.Context, id int64) (*model.Us
 
 // FindUserByEmail returns a user by their email address.
 func (r *OAuthRepository) FindUserByEmail(ctx context.Context, email string) (*model.User, error) {
-	var user model.User
-	err := r.db.GetContext(ctx, &user,
+	user, err := database.Get[model.User](ctx, r.db,
 		`SELECT * FROM users WHERE email = $1`, email)
 	if err != nil {
 		return nil, fmt.Errorf("finding user by email %s: %w", email, err)
@@ -377,8 +368,7 @@ func (r *OAuthRepository) FindUserByEmail(ctx context.Context, email string) (*m
 
 // FindUserByOIDCSub returns a user by their OIDC subject identifier.
 func (r *OAuthRepository) FindUserByOIDCSub(ctx context.Context, sub string) (*model.User, error) {
-	var user model.User
-	err := r.db.GetContext(ctx, &user,
+	user, err := database.Get[model.User](ctx, r.db,
 		`SELECT * FROM users WHERE oidc_sub = $1`, sub)
 	if err != nil {
 		return nil, fmt.Errorf("finding user by oidc_sub %s: %w", sub, err)
@@ -388,7 +378,7 @@ func (r *OAuthRepository) FindUserByOIDCSub(ctx context.Context, sub string) (*m
 
 // CreateUser inserts a new user and sets the generated ID and timestamps.
 func (r *OAuthRepository) CreateUser(ctx context.Context, user *model.User) error {
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.QueryRow(ctx,
 		`INSERT INTO users (
 			name, email, oidc_sub, oidc_provider, email_verified_at,
 			is_admin, password, remember_token,
@@ -409,7 +399,7 @@ func (r *OAuthRepository) CreateUser(ctx context.Context, user *model.User) erro
 
 // UpdateUser updates a user's profile fields.
 func (r *OAuthRepository) UpdateUser(ctx context.Context, user *model.User) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.db.Exec(ctx,
 		`UPDATE users SET
 			name = $1, email = $2, oidc_sub = $3, oidc_provider = $4, updated_at = NOW()
 		WHERE id = $5`,
@@ -435,7 +425,7 @@ func (r *OAuthRepository) ListUsers(ctx context.Context, query string, limit, of
 
 	countQuery := "SELECT COUNT(*) FROM users WHERE " + where
 	var total int
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("counting users: %w", err)
 	}
 
@@ -449,8 +439,8 @@ func (r *OAuthRepository) ListUsers(ctx context.Context, query string, limit, of
 	)
 	args = append(args, limit, offset)
 
-	var users []model.User
-	if err := r.db.SelectContext(ctx, &users, selectQuery, args...); err != nil {
+	users, err := database.Select[model.User](ctx, r.db, selectQuery, args...)
+	if err != nil {
 		return nil, 0, fmt.Errorf("listing users: %w", err)
 	}
 	return users, total, nil
@@ -458,7 +448,7 @@ func (r *OAuthRepository) ListUsers(ctx context.Context, query string, limit, of
 
 // ToggleAdmin toggles the is_admin flag for a user.
 func (r *OAuthRepository) ToggleAdmin(ctx context.Context, userID int64) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.db.Exec(ctx,
 		`UPDATE users SET is_admin = NOT is_admin, updated_at = NOW() WHERE id = $1`, userID)
 	if err != nil {
 		return fmt.Errorf("toggling admin for user %d: %w", userID, err)
@@ -468,7 +458,7 @@ func (r *OAuthRepository) ToggleAdmin(ctx context.Context, userID int64) error {
 
 // DeleteUser hard-deletes a user by ID.
 func (r *OAuthRepository) DeleteUser(ctx context.Context, userID int64) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	_, err := r.db.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
 	if err != nil {
 		return fmt.Errorf("deleting user %d: %w", userID, err)
 	}
@@ -490,7 +480,7 @@ func (r *OAuthRepository) ListClients(ctx context.Context, query string, limit, 
 
 	countQuery := "SELECT COUNT(*) FROM oauth_clients WHERE " + where
 	var total int
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("counting oauth clients: %w", err)
 	}
 
@@ -504,8 +494,8 @@ func (r *OAuthRepository) ListClients(ctx context.Context, query string, limit, 
 	)
 	args = append(args, limit, offset)
 
-	var clients []model.OAuthClient
-	if err := r.db.SelectContext(ctx, &clients, selectQuery, args...); err != nil {
+	clients, err := database.Select[model.OAuthClient](ctx, r.db, selectQuery, args...)
+	if err != nil {
 		return nil, 0, fmt.Errorf("listing oauth clients: %w", err)
 	}
 	return clients, total, nil
@@ -513,7 +503,7 @@ func (r *OAuthRepository) ListClients(ctx context.Context, query string, limit, 
 
 // DeactivateClient marks an OAuth client as inactive.
 func (r *OAuthRepository) DeactivateClient(ctx context.Context, clientID int64) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.db.Exec(ctx,
 		`UPDATE oauth_clients SET is_active = false, updated_at = NOW() WHERE id = $1`, clientID)
 	if err != nil {
 		return fmt.Errorf("deactivating oauth client %d: %w", clientID, err)
@@ -523,7 +513,7 @@ func (r *OAuthRepository) DeactivateClient(ctx context.Context, clientID int64) 
 
 // TouchClientLastUsed updates last_used_at to NOW() for the given client.
 func (r *OAuthRepository) TouchClientLastUsed(ctx context.Context, clientID int64) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.db.Exec(ctx,
 		`UPDATE oauth_clients SET last_used_at = NOW() WHERE id = $1`, clientID)
 	if err != nil {
 		return fmt.Errorf("touching last_used_at for oauth client %d: %w", clientID, err)
@@ -534,7 +524,7 @@ func (r *OAuthRepository) TouchClientLastUsed(ctx context.Context, clientID int6
 // CountUsers returns the total number of users.
 func (r *OAuthRepository) CountUsers(ctx context.Context) (int, error) {
 	var count int
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&count)
+	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("counting users: %w", err)
 	}
@@ -544,7 +534,7 @@ func (r *OAuthRepository) CountUsers(ctx context.Context) (int, error) {
 // CountClients returns the total number of OAuth clients.
 func (r *OAuthRepository) CountClients(ctx context.Context) (int, error) {
 	var count int
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM oauth_clients`).Scan(&count)
+	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM oauth_clients`).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("counting oauth clients: %w", err)
 	}
@@ -556,63 +546,63 @@ func (r *OAuthRepository) CountClients(ctx context.Context) (int, error) {
 func (r *OAuthRepository) PurgeExpiredTokens(ctx context.Context, retentionDays int) (int64, error) {
 	cutoff := time.Now().AddDate(0, 0, -retentionDays)
 
-	tx, err := r.db.BeginTxx(ctx, nil)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("beginning purge expired tokens transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
 
 	var totalAffected int64
 
 	// 1. Refresh tokens (FK dependency on access tokens).
-	result, err := tx.ExecContext(ctx,
+	tag, err := tx.Exec(ctx,
 		`DELETE FROM oauth_refresh_tokens
 		WHERE (revoked = true OR expires_at < NOW())
 			AND created_at < $1`, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("purging expired refresh tokens: %w", err)
 	}
-	n, _ := result.RowsAffected()
+	n := tag.RowsAffected()
 	totalAffected += n
 	r.logger.Info("purged expired refresh tokens", "count", n)
 
 	// 2. Access tokens.
-	result, err = tx.ExecContext(ctx,
+	tag, err = tx.Exec(ctx,
 		`DELETE FROM oauth_access_tokens
 		WHERE (revoked = true OR expires_at < NOW())
 			AND created_at < $1`, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("purging expired access tokens: %w", err)
 	}
-	n, _ = result.RowsAffected()
+	n = tag.RowsAffected()
 	totalAffected += n
 	r.logger.Info("purged expired access tokens", "count", n)
 
 	// 3. Authorization codes.
-	result, err = tx.ExecContext(ctx,
+	tag, err = tx.Exec(ctx,
 		`DELETE FROM oauth_authorization_codes
 		WHERE (revoked = true OR expires_at < NOW())
 			AND created_at < $1`, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("purging expired authorization codes: %w", err)
 	}
-	n, _ = result.RowsAffected()
+	n = tag.RowsAffected()
 	totalAffected += n
 	r.logger.Info("purged expired authorization codes", "count", n)
 
 	// 4. Device codes.
-	result, err = tx.ExecContext(ctx,
+	tag, err = tx.Exec(ctx,
 		`DELETE FROM oauth_device_codes
 		WHERE (status IN ('expired', 'used') OR expires_at < NOW())
 			AND created_at < $1`, cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("purging expired device codes: %w", err)
 	}
-	n, _ = result.RowsAffected()
+	n = tag.RowsAffected()
 	totalAffected += n
 	r.logger.Info("purged expired device codes", "count", n)
 
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return 0, fmt.Errorf("committing purge expired tokens transaction: %w", err)
 	}
 

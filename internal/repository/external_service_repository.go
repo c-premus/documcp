@@ -7,26 +7,26 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/jmoiron/sqlx"
+	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/c-premus/documcp/internal/database"
 	"github.com/c-premus/documcp/internal/model"
 )
 
 // ExternalServiceRepository handles external service persistence.
 type ExternalServiceRepository struct {
-	db     *sqlx.DB
+	db     *pgxpool.Pool
 	logger *slog.Logger
 }
 
 // NewExternalServiceRepository creates a new ExternalServiceRepository.
-func NewExternalServiceRepository(db *sqlx.DB, logger *slog.Logger) *ExternalServiceRepository {
+func NewExternalServiceRepository(db *pgxpool.Pool, logger *slog.Logger) *ExternalServiceRepository {
 	return &ExternalServiceRepository{db: db, logger: logger}
 }
 
 // FindAllEnabled returns all enabled external services regardless of type.
 func (r *ExternalServiceRepository) FindAllEnabled(ctx context.Context) ([]model.ExternalService, error) {
-	var services []model.ExternalService
-	err := r.db.SelectContext(ctx, &services,
+	services, err := database.Select[model.ExternalService](ctx, r.db,
 		`SELECT * FROM external_services WHERE is_enabled = true ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("finding all enabled external services: %w", err)
@@ -36,8 +36,7 @@ func (r *ExternalServiceRepository) FindAllEnabled(ctx context.Context) ([]model
 
 // FindEnabledByType returns all enabled external services of the given type.
 func (r *ExternalServiceRepository) FindEnabledByType(ctx context.Context, serviceType string) ([]model.ExternalService, error) {
-	var services []model.ExternalService
-	err := r.db.SelectContext(ctx, &services,
+	services, err := database.Select[model.ExternalService](ctx, r.db,
 		`SELECT * FROM external_services WHERE type = $1 AND is_enabled = true ORDER BY priority`, serviceType)
 	if err != nil {
 		return nil, fmt.Errorf("finding enabled external services by type %s: %w", serviceType, err)
@@ -47,8 +46,7 @@ func (r *ExternalServiceRepository) FindEnabledByType(ctx context.Context, servi
 
 // FindByUUID returns an external service by its UUID.
 func (r *ExternalServiceRepository) FindByUUID(ctx context.Context, uuid string) (*model.ExternalService, error) {
-	var svc model.ExternalService
-	err := r.db.GetContext(ctx, &svc,
+	svc, err := database.Get[model.ExternalService](ctx, r.db,
 		`SELECT * FROM external_services WHERE uuid = $1`, uuid)
 	if err != nil {
 		return nil, fmt.Errorf("finding external service by uuid %s: %w", uuid, err)
@@ -58,8 +56,7 @@ func (r *ExternalServiceRepository) FindByUUID(ctx context.Context, uuid string)
 
 // FindBySlug returns an external service by its slug.
 func (r *ExternalServiceRepository) FindBySlug(ctx context.Context, slug string) (*model.ExternalService, error) {
-	var svc model.ExternalService
-	err := r.db.GetContext(ctx, &svc,
+	svc, err := database.Get[model.ExternalService](ctx, r.db,
 		`SELECT * FROM external_services WHERE slug = $1`, slug)
 	if err != nil {
 		return nil, fmt.Errorf("finding external service by slug %s: %w", slug, err)
@@ -94,7 +91,7 @@ func (r *ExternalServiceRepository) List(ctx context.Context, serviceType, statu
 	// Count total matching rows.
 	countQuery := `SELECT COUNT(*) FROM external_services` + whereClause
 	var total int
-	if err := r.db.GetContext(ctx, &total, countQuery, args...); err != nil {
+	if err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("counting external services: %w", err)
 	}
 
@@ -107,8 +104,8 @@ func (r *ExternalServiceRepository) List(ctx context.Context, serviceType, statu
 	q += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, argIdx, argIdx+1)
 	args = append(args, limit, offset)
 
-	var services []model.ExternalService
-	if err := r.db.SelectContext(ctx, &services, q, args...); err != nil {
+	services, err := database.Select[model.ExternalService](ctx, r.db, q, args...)
+	if err != nil {
 		return nil, 0, fmt.Errorf("listing external services: %w", err)
 	}
 
@@ -117,7 +114,7 @@ func (r *ExternalServiceRepository) List(ctx context.Context, serviceType, statu
 
 // Create inserts a new external service and sets the generated ID on svc.
 func (r *ExternalServiceRepository) Create(ctx context.Context, svc *model.ExternalService) error {
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.QueryRow(ctx,
 		`INSERT INTO external_services (
 			uuid, name, slug, type, base_url, api_key, config,
 			priority, status, is_enabled, is_env_managed,
@@ -138,7 +135,7 @@ func (r *ExternalServiceRepository) Create(ctx context.Context, svc *model.Exter
 
 // Update updates an existing external service by its ID.
 func (r *ExternalServiceRepository) Update(ctx context.Context, svc *model.ExternalService) error {
-	result, err := r.db.ExecContext(ctx,
+	tag, err := r.db.Exec(ctx,
 		`UPDATE external_services SET
 			name = $1, slug = $2, base_url = $3, api_key = $4, config = $5,
 			priority = $6, is_enabled = $7, updated_at = NOW()
@@ -149,8 +146,7 @@ func (r *ExternalServiceRepository) Update(ctx context.Context, svc *model.Exter
 	if err != nil {
 		return fmt.Errorf("updating external service %d: %w", svc.ID, err)
 	}
-	n, _ := result.RowsAffected()
-	if n == 0 {
+	if tag.RowsAffected() == 0 {
 		return sql.ErrNoRows
 	}
 	return nil
@@ -158,13 +154,12 @@ func (r *ExternalServiceRepository) Update(ctx context.Context, svc *model.Exter
 
 // Delete removes an external service by its ID.
 func (r *ExternalServiceRepository) Delete(ctx context.Context, id int64) error {
-	result, err := r.db.ExecContext(ctx,
+	tag, err := r.db.Exec(ctx,
 		`DELETE FROM external_services WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("deleting external service %d: %w", id, err)
 	}
-	n, _ := result.RowsAffected()
-	if n == 0 {
+	if tag.RowsAffected() == 0 {
 		return sql.ErrNoRows
 	}
 	return nil
@@ -173,7 +168,7 @@ func (r *ExternalServiceRepository) Delete(ctx context.Context, id int64) error 
 // Count returns the total number of external services.
 func (r *ExternalServiceRepository) Count(ctx context.Context) (int, error) {
 	var count int
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM external_services`).Scan(&count)
+	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM external_services`).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("counting external services: %w", err)
 	}
@@ -183,14 +178,14 @@ func (r *ExternalServiceRepository) Count(ctx context.Context) (int, error) {
 // ReorderPriorities updates the priority column for each service based on
 // its position in the provided ID slice (index 0 = priority 0, etc.).
 func (r *ExternalServiceRepository) ReorderPriorities(ctx context.Context, serviceIDs []int64) error {
-	tx, err := r.db.BeginTxx(ctx, nil)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("beginning reorder transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
 
 	for priority, id := range serviceIDs {
-		if _, err := tx.ExecContext(ctx,
+		if _, err := tx.Exec(ctx,
 			`UPDATE external_services SET priority = $1, updated_at = NOW() WHERE id = $2`,
 			priority, id,
 		); err != nil {
@@ -198,7 +193,7 @@ func (r *ExternalServiceRepository) ReorderPriorities(ctx context.Context, servi
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("committing reorder transaction: %w", err)
 	}
 	return nil
@@ -208,7 +203,7 @@ func (r *ExternalServiceRepository) ReorderPriorities(ctx context.Context, servi
 // On a healthy status, consecutive_failures resets to 0.
 // On an unhealthy status, consecutive_failures increments and error_count increments.
 func (r *ExternalServiceRepository) UpdateHealthStatus(ctx context.Context, id int64, status string, latencyMs int, lastError string) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.db.Exec(ctx,
 		`UPDATE external_services SET
 			status = $1,
 			last_latency_ms = $2,

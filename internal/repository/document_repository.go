@@ -7,8 +7,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/jmoiron/sqlx"
+	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/c-premus/documcp/internal/database"
 	"github.com/c-premus/documcp/internal/model"
 )
 
@@ -27,19 +28,18 @@ type TitleSuggestion struct {
 
 // DocumentRepository handles document persistence.
 type DocumentRepository struct {
-	db     *sqlx.DB
+	db     *pgxpool.Pool
 	logger *slog.Logger
 }
 
 // NewDocumentRepository creates a new DocumentRepository.
-func NewDocumentRepository(db *sqlx.DB, logger *slog.Logger) *DocumentRepository {
+func NewDocumentRepository(db *pgxpool.Pool, logger *slog.Logger) *DocumentRepository {
 	return &DocumentRepository{db: db, logger: logger}
 }
 
 // FindByUUID returns a document by its UUID, excluding soft-deleted records.
 func (r *DocumentRepository) FindByUUID(ctx context.Context, uuid string) (*model.Document, error) {
-	var doc model.Document
-	err := r.db.GetContext(ctx, &doc,
+	doc, err := database.Get[model.Document](ctx, r.db,
 		`SELECT * FROM documents WHERE uuid = $1 AND deleted_at IS NULL`, uuid)
 	if err != nil {
 		return nil, fmt.Errorf("finding document by uuid %s: %w", uuid, err)
@@ -49,8 +49,7 @@ func (r *DocumentRepository) FindByUUID(ctx context.Context, uuid string) (*mode
 
 // FindByID returns a document by its primary key.
 func (r *DocumentRepository) FindByID(ctx context.Context, id int64) (*model.Document, error) {
-	var doc model.Document
-	err := r.db.GetContext(ctx, &doc,
+	doc, err := database.Get[model.Document](ctx, r.db,
 		`SELECT * FROM documents WHERE id = $1 AND deleted_at IS NULL`, id)
 	if err != nil {
 		return nil, fmt.Errorf("finding document by id %d: %w", id, err)
@@ -60,7 +59,7 @@ func (r *DocumentRepository) FindByID(ctx context.Context, id int64) (*model.Doc
 
 // Create inserts a new document and sets the generated ID on doc.
 func (r *DocumentRepository) Create(ctx context.Context, doc *model.Document) error {
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.QueryRow(ctx,
 		`INSERT INTO documents (
 			uuid, title, description, file_type, file_path, file_size,
 			mime_type, url, content, content_hash, metadata, processed_at,
@@ -85,7 +84,7 @@ func (r *DocumentRepository) Create(ctx context.Context, doc *model.Document) er
 
 // Update updates an existing document by its ID.
 func (r *DocumentRepository) Update(ctx context.Context, doc *model.Document) error {
-	result, err := r.db.ExecContext(ctx,
+	tag, err := r.db.Exec(ctx,
 		`UPDATE documents SET
 			title = $1, description = $2, file_type = $3, file_path = $4,
 			file_size = $5, mime_type = $6, url = $7, content = $8,
@@ -102,8 +101,7 @@ func (r *DocumentRepository) Update(ctx context.Context, doc *model.Document) er
 	if err != nil {
 		return fmt.Errorf("updating document %d: %w", doc.ID, err)
 	}
-	n, _ := result.RowsAffected()
-	if n == 0 {
+	if tag.RowsAffected() == 0 {
 		return sql.ErrNoRows
 	}
 	return nil
@@ -111,13 +109,12 @@ func (r *DocumentRepository) Update(ctx context.Context, doc *model.Document) er
 
 // SoftDelete sets deleted_at on a document.
 func (r *DocumentRepository) SoftDelete(ctx context.Context, id int64) error {
-	result, err := r.db.ExecContext(ctx,
+	tag, err := r.db.Exec(ctx,
 		`UPDATE documents SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, id)
 	if err != nil {
 		return fmt.Errorf("soft deleting document %d: %w", id, err)
 	}
-	n, _ := result.RowsAffected()
-	if n == 0 {
+	if tag.RowsAffected() == 0 {
 		return sql.ErrNoRows
 	}
 	return nil
@@ -125,8 +122,7 @@ func (r *DocumentRepository) SoftDelete(ctx context.Context, id int64) error {
 
 // TagsForDocument returns all tags associated with a document.
 func (r *DocumentRepository) TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error) {
-	var tags []model.DocumentTag
-	err := r.db.SelectContext(ctx, &tags,
+	tags, err := database.Select[model.DocumentTag](ctx, r.db,
 		`SELECT * FROM document_tags WHERE document_id = $1 ORDER BY tag`, documentID)
 	if err != nil {
 		return nil, fmt.Errorf("finding tags for document %d: %w", documentID, err)
@@ -136,19 +132,19 @@ func (r *DocumentRepository) TagsForDocument(ctx context.Context, documentID int
 
 // ReplaceTags deletes existing tags and inserts new ones within a transaction.
 func (r *DocumentRepository) ReplaceTags(ctx context.Context, documentID int64, tags []string) error {
-	tx, err := r.db.BeginTxx(ctx, nil)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("beginning transaction for replacing tags on document %d: %w", documentID, err)
 	}
-	defer tx.Rollback() //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
 
-	_, err = tx.ExecContext(ctx, `DELETE FROM document_tags WHERE document_id = $1`, documentID)
+	_, err = tx.Exec(ctx, `DELETE FROM document_tags WHERE document_id = $1`, documentID)
 	if err != nil {
 		return fmt.Errorf("deleting tags for document %d: %w", documentID, err)
 	}
 
 	for _, tag := range tags {
-		_, err = tx.ExecContext(ctx,
+		_, err = tx.Exec(ctx,
 			`INSERT INTO document_tags (document_id, tag, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())`,
 			documentID, tag)
 		if err != nil {
@@ -156,7 +152,7 @@ func (r *DocumentRepository) ReplaceTags(ctx context.Context, documentID int64, 
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("committing tags replacement for document %d: %w", documentID, err)
 	}
 	return nil
@@ -165,7 +161,7 @@ func (r *DocumentRepository) ReplaceTags(ctx context.Context, documentID int64, 
 // Count returns the total number of non-deleted documents.
 func (r *DocumentRepository) Count(ctx context.Context) (int, error) {
 	var count int
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM documents WHERE deleted_at IS NULL`).Scan(&count)
+	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM documents WHERE deleted_at IS NULL`).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("counting documents: %w", err)
 	}
@@ -174,7 +170,7 @@ func (r *DocumentRepository) Count(ctx context.Context) (int, error) {
 
 // CreateVersion inserts a new document version and sets the generated ID.
 func (r *DocumentRepository) CreateVersion(ctx context.Context, version *model.DocumentVersion) error {
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.QueryRow(ctx,
 		`INSERT INTO document_versions (document_id, version, file_path, content, metadata, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, NOW(), NOW()) RETURNING id`,
 		version.DocumentID, version.Version, version.FilePath, version.Content, version.Metadata,
@@ -187,8 +183,11 @@ func (r *DocumentRepository) CreateVersion(ctx context.Context, version *model.D
 
 // ListAllUUIDs returns all document UUIDs including soft-deleted ones.
 func (r *DocumentRepository) ListAllUUIDs(ctx context.Context) ([]string, error) {
-	var uuids []string
-	err := r.db.SelectContext(ctx, &uuids, `SELECT uuid FROM documents`)
+	rows, err := r.db.Query(ctx, `SELECT uuid FROM documents`)
+	if err != nil {
+		return nil, fmt.Errorf("listing all document uuids: %w", err)
+	}
+	uuids, err := pgxCollectStrings(rows)
 	if err != nil {
 		return nil, fmt.Errorf("listing all document uuids: %w", err)
 	}
@@ -201,13 +200,9 @@ func (r *DocumentRepository) FindByUUIDs(ctx context.Context, uuids []string) ([
 	if len(uuids) == 0 {
 		return nil, nil
 	}
-	query, args, err := sqlx.In(`SELECT * FROM documents WHERE uuid IN (?)`, uuids)
+	docs, err := database.Select[model.Document](ctx, r.db,
+		`SELECT * FROM documents WHERE uuid = ANY($1)`, uuids)
 	if err != nil {
-		return nil, fmt.Errorf("building IN clause for document FindByUUIDs: %w", err)
-	}
-	query = r.db.Rebind(query)
-	var docs []model.Document
-	if err := r.db.SelectContext(ctx, &docs, query, args...); err != nil {
 		return nil, fmt.Errorf("finding documents by uuids: %w", err)
 	}
 	return docs, nil
@@ -215,8 +210,7 @@ func (r *DocumentRepository) FindByUUIDs(ctx context.Context, uuids []string) ([
 
 // ListActiveFilePaths returns file paths for non-deleted documents.
 func (r *DocumentRepository) ListActiveFilePaths(ctx context.Context) ([]DocumentFilePath, error) {
-	var paths []DocumentFilePath
-	err := r.db.SelectContext(ctx, &paths,
+	paths, err := database.Select[DocumentFilePath](ctx, r.db,
 		`SELECT id, uuid, file_path FROM documents
 		WHERE deleted_at IS NULL AND file_path IS NOT NULL AND file_path != ''`)
 	if err != nil {
@@ -230,15 +224,14 @@ func (r *DocumentRepository) ListActiveFilePaths(ctx context.Context) ([]Documen
 func (r *DocumentRepository) PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]DocumentFilePath, error) {
 	cutoff := time.Now().Add(-olderThan)
 
-	tx, err := r.db.BeginTxx(ctx, nil)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("beginning purge soft-deleted transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
 
 	// 1. Select documents to purge.
-	var paths []DocumentFilePath
-	err = tx.SelectContext(ctx, &paths,
+	paths, err := database.Select[DocumentFilePath](ctx, tx,
 		`SELECT id, uuid, file_path FROM documents
 		WHERE deleted_at IS NOT NULL AND deleted_at < $1`, cutoff)
 	if err != nil {
@@ -255,36 +248,21 @@ func (r *DocumentRepository) PurgeSoftDeleted(ctx context.Context, olderThan tim
 	}
 
 	// 2. Delete document_tags.
-	tagQuery, tagArgs, err := sqlx.In(`DELETE FROM document_tags WHERE document_id IN (?)`, ids)
-	if err != nil {
-		return nil, fmt.Errorf("building IN clause for document_tags purge: %w", err)
-	}
-	tagQuery = tx.Rebind(tagQuery)
-	if _, err = tx.ExecContext(ctx, tagQuery, tagArgs...); err != nil {
+	if _, err = tx.Exec(ctx, `DELETE FROM document_tags WHERE document_id = ANY($1)`, ids); err != nil {
 		return nil, fmt.Errorf("purging document_tags: %w", err)
 	}
 
 	// 3. Delete document_versions.
-	verQuery, verArgs, err := sqlx.In(`DELETE FROM document_versions WHERE document_id IN (?)`, ids)
-	if err != nil {
-		return nil, fmt.Errorf("building IN clause for document_versions purge: %w", err)
-	}
-	verQuery = tx.Rebind(verQuery)
-	if _, err = tx.ExecContext(ctx, verQuery, verArgs...); err != nil {
+	if _, err = tx.Exec(ctx, `DELETE FROM document_versions WHERE document_id = ANY($1)`, ids); err != nil {
 		return nil, fmt.Errorf("purging document_versions: %w", err)
 	}
 
 	// 4. Delete documents.
-	docQuery, docArgs, err := sqlx.In(`DELETE FROM documents WHERE id IN (?)`, ids)
-	if err != nil {
-		return nil, fmt.Errorf("building IN clause for documents purge: %w", err)
-	}
-	docQuery = tx.Rebind(docQuery)
-	if _, err := tx.ExecContext(ctx, docQuery, docArgs...); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM documents WHERE id = ANY($1)`, ids); err != nil {
 		return nil, fmt.Errorf("purging documents: %w", err)
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("committing purge soft-deleted transaction: %w", err)
 	}
 
@@ -294,8 +272,7 @@ func (r *DocumentRepository) PurgeSoftDeleted(ctx context.Context, olderThan tim
 
 // FindByUUIDIncludingDeleted returns a document by its UUID, including soft-deleted records.
 func (r *DocumentRepository) FindByUUIDIncludingDeleted(ctx context.Context, uuid string) (*model.Document, error) {
-	var doc model.Document
-	err := r.db.GetContext(ctx, &doc,
+	doc, err := database.Get[model.Document](ctx, r.db,
 		`SELECT * FROM documents WHERE uuid = $1`, uuid)
 	if err != nil {
 		return nil, fmt.Errorf("finding document (including deleted) by uuid %s: %w", uuid, err)
@@ -305,13 +282,12 @@ func (r *DocumentRepository) FindByUUIDIncludingDeleted(ctx context.Context, uui
 
 // Restore clears the deleted_at timestamp on a soft-deleted document.
 func (r *DocumentRepository) Restore(ctx context.Context, id int64) error {
-	result, err := r.db.ExecContext(ctx,
+	tag, err := r.db.Exec(ctx,
 		`UPDATE documents SET deleted_at = NULL, updated_at = NOW() WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("restoring document %d: %w", id, err)
 	}
-	n, _ := result.RowsAffected()
-	if n == 0 {
+	if tag.RowsAffected() == 0 {
 		return sql.ErrNoRows
 	}
 	return nil
@@ -320,36 +296,36 @@ func (r *DocumentRepository) Restore(ctx context.Context, id int64) error {
 // PurgeSingle hard-deletes a single document and its associated tags and versions.
 // Returns the file_path for disk cleanup.
 func (r *DocumentRepository) PurgeSingle(ctx context.Context, id int64) (string, error) {
-	tx, err := r.db.BeginTxx(ctx, nil)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return "", fmt.Errorf("beginning purge single transaction: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
 
 	// Get file path before deletion.
 	var filePath string
-	err = tx.QueryRowContext(ctx,
+	err = tx.QueryRow(ctx,
 		`SELECT COALESCE(file_path, '') FROM documents WHERE id = $1`, id).Scan(&filePath)
 	if err != nil {
 		return "", fmt.Errorf("selecting file path for document %d: %w", id, err)
 	}
 
 	// Delete tags.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM document_tags WHERE document_id = $1`, id); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM document_tags WHERE document_id = $1`, id); err != nil {
 		return "", fmt.Errorf("purging tags for document %d: %w", id, err)
 	}
 
 	// Delete versions.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM document_versions WHERE document_id = $1`, id); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM document_versions WHERE document_id = $1`, id); err != nil {
 		return "", fmt.Errorf("purging versions for document %d: %w", id, err)
 	}
 
 	// Delete document.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM documents WHERE id = $1`, id); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM documents WHERE id = $1`, id); err != nil {
 		return "", fmt.Errorf("purging document %d: %w", id, err)
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return "", fmt.Errorf("committing purge single transaction: %w", err)
 	}
 
@@ -379,7 +355,7 @@ func (r *DocumentRepository) ListDeleted(ctx context.Context, limit, offset int,
 
 	var total int
 	countQuery := "SELECT COUNT(*) FROM documents WHERE " + where
-	err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
+	err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("counting deleted documents: %w", err)
 	}
@@ -390,8 +366,7 @@ func (r *DocumentRepository) ListDeleted(ctx context.Context, limit, offset int,
 	)
 	args = append(args, limit, offset)
 
-	var docs []model.Document
-	err = r.db.SelectContext(ctx, &docs, selectQuery, args...)
+	docs, err := database.Select[model.Document](ctx, r.db, selectQuery, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("listing deleted documents: %w", err)
 	}
@@ -401,8 +376,7 @@ func (r *DocumentRepository) ListDeleted(ctx context.Context, limit, offset int,
 
 // SuggestTitles returns title suggestions matching the given prefix (case-insensitive).
 func (r *DocumentRepository) SuggestTitles(ctx context.Context, prefix string, limit int) ([]TitleSuggestion, error) {
-	var suggestions []TitleSuggestion
-	err := r.db.SelectContext(ctx, &suggestions,
+	suggestions, err := database.Select[TitleSuggestion](ctx, r.db,
 		`SELECT uuid, title FROM documents
 		WHERE deleted_at IS NULL AND is_public = true AND title ILIKE $1
 		ORDER BY title LIMIT $2`,

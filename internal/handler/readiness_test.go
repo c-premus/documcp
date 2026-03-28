@@ -1,16 +1,24 @@
 package handler_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/DATA-DOG/go-sqlmock"
-
 	"github.com/c-premus/documcp/internal/handler"
 )
+
+// mockPinger implements handler.DBPinger for testing.
+type mockPinger struct {
+	err error
+}
+
+func (m *mockPinger) Ping(_ context.Context) error {
+	return m.err
+}
 
 func TestReadinessHandler_NilDB(t *testing.T) {
 	t.Parallel()
@@ -45,15 +53,7 @@ func TestReadinessHandler_NilDB(t *testing.T) {
 func TestReadinessHandler_DBHealthy(t *testing.T) {
 	t.Parallel()
 
-	db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
-	if err != nil {
-		t.Fatalf("creating sqlmock: %v", err)
-	}
-	defer func() { _ = db.Close() }()
-
-	mock.ExpectPing()
-
-	h := handler.NewReadinessHandler("2.0.0", db, nil)
+	h := handler.NewReadinessHandler("2.0.0", &mockPinger{}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -80,15 +80,7 @@ func TestReadinessHandler_DBHealthy(t *testing.T) {
 func TestReadinessHandler_DBUnhealthy(t *testing.T) {
 	t.Parallel()
 
-	db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
-	if err != nil {
-		t.Fatalf("creating sqlmock: %v", err)
-	}
-	defer func() { _ = db.Close() }()
-
-	mock.ExpectPing().WillReturnError(errors.New("connection refused"))
-
-	h := handler.NewReadinessHandler("3.0.0", db, nil)
+	h := handler.NewReadinessHandler("3.0.0", &mockPinger{err: errors.New("connection refused")}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
 	rec := httptest.NewRecorder()

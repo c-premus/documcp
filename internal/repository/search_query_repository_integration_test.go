@@ -16,7 +16,7 @@ import (
 func TestSearchQueryRepository_Create(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewSearchQueryRepository(testDB, discardLogger())
+	repo := NewSearchQueryRepository(testPool, discardLogger())
 
 	t.Run("null user_id", func(t *testing.T) {
 		sq := &model.SearchQuery{
@@ -44,7 +44,7 @@ func TestSearchQueryRepository_Create(t *testing.T) {
 	t.Run("with user_id", func(t *testing.T) {
 		// Insert a user to satisfy the FK constraint.
 		var userID int64
-		err := testDB.QueryRowContext(ctx,
+		err := testPool.QueryRow(ctx,
 			`INSERT INTO users (name, email, created_at, updated_at)
 			VALUES ($1, $2, NOW(), NOW()) RETURNING id`,
 			"Test User", "test@example.com",
@@ -84,7 +84,7 @@ func TestSearchQueryRepository_Create(t *testing.T) {
 func TestSearchQueryRepository_PopularQueries(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewSearchQueryRepository(testDB, discardLogger())
+	repo := NewSearchQueryRepository(testPool, discardLogger())
 
 	// Insert search queries with varying frequencies and casing.
 	queries := []struct {

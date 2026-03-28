@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/jmoiron/sqlx"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/c-premus/documcp/internal/database"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/stringutil"
 )
@@ -31,12 +33,12 @@ type ZimArchiveUpsert struct {
 
 // ZimArchiveRepository handles ZIM archive persistence.
 type ZimArchiveRepository struct {
-	db     *sqlx.DB
+	db     *pgxpool.Pool
 	logger *slog.Logger
 }
 
 // NewZimArchiveRepository creates a new ZimArchiveRepository.
-func NewZimArchiveRepository(db *sqlx.DB, logger *slog.Logger) *ZimArchiveRepository {
+func NewZimArchiveRepository(db *pgxpool.Pool, logger *slog.Logger) *ZimArchiveRepository {
 	return &ZimArchiveRepository{db: db, logger: logger}
 }
 
@@ -78,8 +80,7 @@ func (r *ZimArchiveRepository) List(ctx context.Context, category, language, que
 		args = append(args, offset)
 	}
 
-	var archives []model.ZimArchive
-	err := r.db.SelectContext(ctx, &archives, q, args...)
+	archives, err := database.Select[model.ZimArchive](ctx, r.db, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing zim archives: %w", err)
 	}
@@ -111,7 +112,7 @@ func (r *ZimArchiveRepository) CountFiltered(ctx context.Context, category, lang
 	}
 
 	var count int
-	err := r.db.QueryRowContext(ctx, q, args...).Scan(&count)
+	err := r.db.QueryRow(ctx, q, args...).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("counting zim archives: %w", err)
 	}
@@ -122,8 +123,7 @@ func (r *ZimArchiveRepository) CountFiltered(ctx context.Context, category, lang
 // article count descending. Used by unified search to determine which archives
 // participate in federated Kiwix fan-out.
 func (r *ZimArchiveRepository) ListSearchable(ctx context.Context) ([]model.ZimArchive, error) {
-	var archives []model.ZimArchive
-	err := r.db.SelectContext(ctx, &archives,
+	archives, err := database.Select[model.ZimArchive](ctx, r.db,
 		`SELECT * FROM zim_archives WHERE is_enabled = true AND is_searchable = true ORDER BY article_count DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("listing searchable zim archives: %w", err)
@@ -133,8 +133,7 @@ func (r *ZimArchiveRepository) ListSearchable(ctx context.Context) ([]model.ZimA
 
 // FindByName returns a ZIM archive by its name, if enabled.
 func (r *ZimArchiveRepository) FindByName(ctx context.Context, name string) (*model.ZimArchive, error) {
-	var archive model.ZimArchive
-	err := r.db.GetContext(ctx, &archive,
+	archive, err := database.Get[model.ZimArchive](ctx, r.db,
 		`SELECT * FROM zim_archives WHERE name = $1 AND is_enabled = true`, name)
 	if err != nil {
 		return nil, fmt.Errorf("finding zim archive by name %s: %w", name, err)
@@ -144,8 +143,7 @@ func (r *ZimArchiveRepository) FindByName(ctx context.Context, name string) (*mo
 
 // FindByUUID returns a ZIM archive by its UUID.
 func (r *ZimArchiveRepository) FindByUUID(ctx context.Context, uuid string) (*model.ZimArchive, error) {
-	var archive model.ZimArchive
-	err := r.db.GetContext(ctx, &archive,
+	archive, err := database.Get[model.ZimArchive](ctx, r.db,
 		`SELECT * FROM zim_archives WHERE uuid = $1`, uuid)
 	if err != nil {
 		return nil, fmt.Errorf("finding zim archive by uuid %s: %w", uuid, err)
@@ -155,8 +153,7 @@ func (r *ZimArchiveRepository) FindByUUID(ctx context.Context, uuid string) (*mo
 
 // FindDisabled returns all disabled ZIM archives.
 func (r *ZimArchiveRepository) FindDisabled(ctx context.Context) ([]model.ZimArchive, error) {
-	var archives []model.ZimArchive
-	err := r.db.SelectContext(ctx, &archives,
+	archives, err := database.Select[model.ZimArchive](ctx, r.db,
 		`SELECT * FROM zim_archives WHERE is_enabled = false`)
 	if err != nil {
 		return nil, fmt.Errorf("finding disabled zim archives: %w", err)
@@ -188,8 +185,7 @@ func (r *ZimArchiveRepository) ListAll(ctx context.Context, query string, limit 
 		args = append(args, limit)
 	}
 
-	var archives []model.ZimArchive
-	err := r.db.SelectContext(ctx, &archives, q, args...)
+	archives, err := database.Select[model.ZimArchive](ctx, r.db, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing all zim archives: %w", err)
 	}
@@ -198,8 +194,11 @@ func (r *ZimArchiveRepository) ListAll(ctx context.Context, query string, limit 
 
 // ListAllUUIDs returns all ZIM archive UUIDs.
 func (r *ZimArchiveRepository) ListAllUUIDs(ctx context.Context) ([]string, error) {
-	var uuids []string
-	err := r.db.SelectContext(ctx, &uuids, `SELECT uuid FROM zim_archives`)
+	rows, err := r.db.Query(ctx, `SELECT uuid FROM zim_archives`)
+	if err != nil {
+		return nil, fmt.Errorf("listing all zim archive uuids: %w", err)
+	}
+	uuids, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	if err != nil {
 		return nil, fmt.Errorf("listing all zim archive uuids: %w", err)
 	}
@@ -212,13 +211,9 @@ func (r *ZimArchiveRepository) FindByUUIDs(ctx context.Context, uuids []string) 
 	if len(uuids) == 0 {
 		return nil, nil
 	}
-	query, args, err := sqlx.In(`SELECT * FROM zim_archives WHERE uuid IN (?)`, uuids)
+	archives, err := database.Select[model.ZimArchive](ctx, r.db,
+		`SELECT * FROM zim_archives WHERE uuid = ANY($1)`, uuids)
 	if err != nil {
-		return nil, fmt.Errorf("building IN clause for zim archive FindByUUIDs: %w", err)
-	}
-	query = r.db.Rebind(query)
-	var archives []model.ZimArchive
-	if err := r.db.SelectContext(ctx, &archives, query, args...); err != nil {
 		return nil, fmt.Errorf("finding zim archives by uuids: %w", err)
 	}
 	return archives, nil
@@ -227,7 +222,7 @@ func (r *ZimArchiveRepository) FindByUUIDs(ctx context.Context, uuids []string) 
 // Count returns the total number of ZIM archives.
 func (r *ZimArchiveRepository) Count(ctx context.Context) (int, error) {
 	var count int
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM zim_archives`).Scan(&count)
+	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM zim_archives`).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("counting zim archives: %w", err)
 	}
@@ -236,7 +231,7 @@ func (r *ZimArchiveRepository) Count(ctx context.Context) (int, error) {
 
 // ToggleEnabled toggles the is_enabled flag for a ZIM archive.
 func (r *ZimArchiveRepository) ToggleEnabled(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.db.Exec(ctx,
 		`UPDATE zim_archives SET is_enabled = NOT is_enabled, updated_at = NOW() WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("toggling enabled for zim archive %d: %w", id, err)
@@ -246,7 +241,7 @@ func (r *ZimArchiveRepository) ToggleEnabled(ctx context.Context, id int64) erro
 
 // ToggleSearchable toggles the is_searchable flag for a ZIM archive.
 func (r *ZimArchiveRepository) ToggleSearchable(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.db.Exec(ctx,
 		`UPDATE zim_archives SET is_searchable = NOT is_searchable, updated_at = NOW() WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("toggling searchable for zim archive %d: %w", id, err)
@@ -267,7 +262,7 @@ func (r *ZimArchiveRepository) UpsertFromCatalog(ctx context.Context, serviceID 
 		tagsJSON = &s
 	}
 
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.db.Exec(ctx,
 		`INSERT INTO zim_archives (
 			uuid, name, slug, title, description, language, category,
 			creator, publisher, favicon, article_count, media_count,
@@ -311,41 +306,35 @@ func (r *ZimArchiveRepository) UpsertFromCatalog(ctx context.Context, serviceID 
 func (r *ZimArchiveRepository) DisableOrphaned(ctx context.Context, serviceID int64, activeNames []string) (int, error) {
 	if len(activeNames) == 0 {
 		// Disable all archives for this service.
-		result, err := r.db.ExecContext(ctx,
+		result, err := r.db.Exec(ctx,
 			`UPDATE zim_archives SET is_enabled = false, updated_at = NOW()
 			WHERE external_service_id = $1 AND is_enabled = true`, serviceID)
 		if err != nil {
 			return 0, fmt.Errorf("disabling all orphaned zim archives for service %d: %w", serviceID, err)
 		}
-		n, _ := result.RowsAffected()
-		return int(n), nil
+		return int(result.RowsAffected()), nil
 	}
 
-	query, args, err := sqlx.In(
+	result, err := r.db.Exec(ctx,
 		`UPDATE zim_archives SET is_enabled = false, updated_at = NOW()
-		WHERE external_service_id = ? AND is_enabled = true AND name NOT IN (?)`,
+		WHERE external_service_id = $1 AND is_enabled = true AND NOT (name = ANY($2))`,
 		serviceID, activeNames)
-	if err != nil {
-		return 0, fmt.Errorf("building IN clause for zim archive orphan check: %w", err)
-	}
-
-	query = r.db.Rebind(query)
-
-	result, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, fmt.Errorf("disabling orphaned zim archives for service %d: %w", serviceID, err)
 	}
 
-	n, _ := result.RowsAffected()
-	return int(n), nil
+	return int(result.RowsAffected()), nil
 }
 
 // FindUUIDsByExternalServiceID returns the UUIDs of all ZIM archives
 // associated with the given external service, for index cleanup on service deletion.
 func (r *ZimArchiveRepository) FindUUIDsByExternalServiceID(ctx context.Context, serviceID int64) ([]string, error) {
-	var uuids []string
-	err := r.db.SelectContext(ctx, &uuids,
+	rows, err := r.db.Query(ctx,
 		`SELECT uuid FROM zim_archives WHERE external_service_id = $1`, serviceID)
+	if err != nil {
+		return nil, fmt.Errorf("finding ZIM archive UUIDs for service %d: %w", serviceID, err)
+	}
+	uuids, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	if err != nil {
 		return nil, fmt.Errorf("finding ZIM archive UUIDs for service %d: %w", serviceID, err)
 	}
@@ -359,4 +348,3 @@ func nullStr(s string) *string {
 	}
 	return &s
 }
-
