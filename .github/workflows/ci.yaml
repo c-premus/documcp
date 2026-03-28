@@ -74,7 +74,7 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Build binary for vulnerability scan
-        run: go build -o bin/documcp ./cmd/server
+        run: go build -o bin/documcp ./cmd/documcp
 
       - name: Run govulncheck (binary mode)
         run: govulncheck -mode=binary ./bin/documcp
@@ -130,4 +130,4 @@ jobs:
         run: cd frontend && npm ci && npm run build
 
       - name: Build binary
-        run: go build -o bin/documcp ./cmd/server
+        run: go build -o bin/documcp ./cmd/documcp

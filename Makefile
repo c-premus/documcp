@@ -10,7 +10,7 @@ LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION) -X main.buildTime=$(BUILD_
 
 # Build the server binary
 build:
-	go build $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/server
+	go build $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/documcp
 
 # Run all tests
 test:
@@ -38,9 +38,9 @@ fmt:
 tidy:
 	go mod tidy
 
-# Run the server (loads .env if present)
+# Run the server in combined mode (loads .env if present)
 run:
-	@if [ -f .env ]; then set -a; . ./.env; set +a; fi; go run ./cmd/server
+	@if [ -f .env ]; then set -a; . ./.env; set +a; fi; go run ./cmd/documcp serve --with-worker
 
 # Clean build artifacts
 clean:
@@ -48,11 +48,11 @@ clean:
 
 # Run database migrations
 migrate:
-	go run ./cmd/cli migrate up
+	go run ./cmd/documcp migrate
 
-# Run database migrations down
+# Run database migrations down (not yet supported — use goose directly)
 migrate-down:
-	go run ./cmd/cli migrate down
+	@echo "Use 'goose -dir migrations postgres \"$$DB_DSN\" down' directly"
 
 # Frontend
 frontend-install:

@@ -17,13 +17,14 @@ import (
 
 // RiverClient wraps River's client with application-specific configuration.
 type RiverClient struct {
-	client            *river.Client[pgx.Tx]
-	pool              *pgxpool.Pool
-	eventBus          *EventBus
-	metrics           *observability.Metrics
-	logger            *slog.Logger
-	cancelSubscribe   func()
-	forwardingDone    chan struct{}
+	client          *river.Client[pgx.Tx]
+	pool            *pgxpool.Pool
+	eventBus        *EventBus
+	metrics         *observability.Metrics
+	logger          *slog.Logger
+	cancelSubscribe func()
+	forwardingDone  chan struct{}
+	insertOnly      bool
 }
 
 // RiverConfig holds configuration for the River queue client.
@@ -35,41 +36,72 @@ type RiverConfig struct {
 	Workers  *river.Workers
 
 	PeriodicJobs []*river.PeriodicJob
+
+	// InsertOnly creates a client that can only insert jobs, not process them.
+	// When true, Queues are omitted and Start()/Stop() become no-ops.
+	InsertOnly bool
+
+	// QueueWorkers sets per-queue concurrency. Ignored when InsertOnly is true.
+	// Zero values fall back to defaults (high=10, default=5, low=2).
+	QueueWorkers map[string]int
 }
 
 // NewRiverClient creates a River client with the given workers and queue config.
+// When cfg.InsertOnly is true, the client can insert jobs but will not process
+// them — Start() and Stop() become no-ops.
 func NewRiverClient(cfg RiverConfig) (*RiverClient, error) {
 	logger := cfg.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	client, err := river.NewClient(riverpgxv5.New(cfg.Pool), &river.Config{
-		Queues: map[string]river.QueueConfig{
-			"high":    {MaxWorkers: 10},
-			"default": {MaxWorkers: 5},
-			"low":     {MaxWorkers: 2},
-		},
+	riverCfg := &river.Config{
 		Workers:      cfg.Workers,
 		Logger:       logger,
 		ErrorHandler: &riverErrorHandler{eventBus: cfg.EventBus, metrics: cfg.Metrics, logger: logger},
 		PeriodicJobs: cfg.PeriodicJobs,
-	})
+	}
+
+	if !cfg.InsertOnly {
+		riverCfg.Queues = buildQueueConfig(cfg.QueueWorkers)
+	}
+
+	client, err := river.NewClient(riverpgxv5.New(cfg.Pool), riverCfg)
 	if err != nil {
 		return nil, fmt.Errorf("creating river client: %w", err)
 	}
 
 	return &RiverClient{
-		client:   client,
-		pool:     cfg.Pool,
-		eventBus: cfg.EventBus,
-		metrics:  cfg.Metrics,
-		logger:   logger,
+		client:     client,
+		pool:       cfg.Pool,
+		eventBus:   cfg.EventBus,
+		metrics:    cfg.Metrics,
+		logger:     logger,
+		insertOnly: cfg.InsertOnly,
 	}, nil
 }
 
+// buildQueueConfig creates the queue concurrency map with defaults for zero values.
+func buildQueueConfig(workers map[string]int) map[string]river.QueueConfig {
+	get := func(name string, fallback int) int {
+		if v, ok := workers[name]; ok && v > 0 {
+			return v
+		}
+		return fallback
+	}
+	return map[string]river.QueueConfig{
+		"high":    {MaxWorkers: get("high", 10)},
+		"default": {MaxWorkers: get("default", 5)},
+		"low":     {MaxWorkers: get("low", 2)},
+	}
+}
+
 // Start begins processing jobs. Call after creating the client.
+// No-op when the client is in insert-only mode.
 func (rc *RiverClient) Start(ctx context.Context) error {
+	if rc.insertOnly {
+		return nil
+	}
 	if err := rc.client.Start(ctx); err != nil {
 		return fmt.Errorf("starting river client: %w", err)
 	}
@@ -79,8 +111,9 @@ func (rc *RiverClient) Start(ctx context.Context) error {
 // StartEventForwarding subscribes to River's job completion and snooze events
 // and forwards them to the application EventBus so SSE clients receive them.
 // Call after Start(). The goroutine exits when Stop() cancels the subscription.
+// No-op when the client is in insert-only mode.
 func (rc *RiverClient) StartEventForwarding() {
-	if rc.eventBus == nil {
+	if rc.insertOnly || rc.eventBus == nil {
 		return
 	}
 
@@ -118,7 +151,11 @@ func (rc *RiverClient) StartEventForwarding() {
 }
 
 // Stop gracefully shuts down the River client, waiting for in-progress jobs.
+// No-op when the client is in insert-only mode.
 func (rc *RiverClient) Stop(ctx context.Context) error {
+	if rc.insertOnly {
+		return nil
+	}
 	if rc.cancelSubscribe != nil {
 		rc.cancelSubscribe()
 		<-rc.forwardingDone
@@ -127,6 +164,11 @@ func (rc *RiverClient) Stop(ctx context.Context) error {
 		return fmt.Errorf("stopping river client: %w", err)
 	}
 	return nil
+}
+
+// InsertOnly returns true when the client can only insert jobs, not process them.
+func (rc *RiverClient) InsertOnly() bool {
+	return rc.insertOnly
 }
 
 // Insert enqueues a job. Satisfies the service.JobInserter interface.

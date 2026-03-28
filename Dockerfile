@@ -36,7 +36,7 @@ ARG BUILD_TIME=unknown
 # Compile a statically linked binary with version metadata.
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags "-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" \
-    -o /bin/documcp ./cmd/server
+    -o /bin/documcp ./cmd/documcp
 
 # Stage 3: Runtime — Alpine with poppler-utils for PDF extraction.
 # alpine:3.21 — pinned for supply chain integrity
@@ -57,3 +57,4 @@ EXPOSE 8080
 USER nonroot:nonroot
 
 ENTRYPOINT ["/documcp"]
+CMD ["serve", "--with-worker"]
