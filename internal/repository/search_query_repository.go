@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/jmoiron/sqlx"
+	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/c-premus/documcp/internal/database"
 	"github.com/c-premus/documcp/internal/model"
 )
 
@@ -18,18 +19,18 @@ type PopularQuery struct {
 
 // SearchQueryRepository handles search query persistence.
 type SearchQueryRepository struct {
-	db     *sqlx.DB
+	db     *pgxpool.Pool
 	logger *slog.Logger
 }
 
 // NewSearchQueryRepository creates a new SearchQueryRepository.
-func NewSearchQueryRepository(db *sqlx.DB, logger *slog.Logger) *SearchQueryRepository {
+func NewSearchQueryRepository(db *pgxpool.Pool, logger *slog.Logger) *SearchQueryRepository {
 	return &SearchQueryRepository{db: db, logger: logger}
 }
 
 // Create inserts a new search query record and sets the generated ID.
 func (r *SearchQueryRepository) Create(ctx context.Context, sq *model.SearchQuery) error {
-	err := r.db.QueryRowContext(ctx,
+	err := r.db.QueryRow(ctx,
 		`INSERT INTO search_queries (user_id, query, results_count, filters, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, NOW(), NOW()) RETURNING id`,
 		sq.UserID, sq.Query, sq.ResultsCount, sq.Filters,
@@ -42,8 +43,7 @@ func (r *SearchQueryRepository) Create(ctx context.Context, sq *model.SearchQuer
 
 // PopularQueries returns the most frequent search queries.
 func (r *SearchQueryRepository) PopularQueries(ctx context.Context, limit int) ([]PopularQuery, error) {
-	var queries []PopularQuery
-	err := r.db.SelectContext(ctx, &queries,
+	queries, err := database.Select[PopularQuery](ctx, r.db,
 		`SELECT LOWER(query) AS query, COUNT(*) AS count
 		FROM search_queries
 		GROUP BY LOWER(query)

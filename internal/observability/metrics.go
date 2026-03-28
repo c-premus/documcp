@@ -3,9 +3,9 @@
 package observability
 
 import (
-	"database/sql"
 	"net/http"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -130,15 +130,15 @@ func NewMetrics() *Metrics {
 	return m
 }
 
-// RegisterDBMetrics registers Prometheus gauges for database/sql.DBStats.
+// RegisterDBMetrics registers Prometheus gauges for pgxpool connection stats.
 // The collector reads pool stats on each Prometheus scrape.
-func RegisterDBMetrics(db *sql.DB) {
-	prometheus.MustRegister(&dbStatsCollector{db: db})
+func RegisterDBMetrics(pool *pgxpool.Pool) {
+	prometheus.MustRegister(&dbStatsCollector{pool: pool})
 }
 
-// dbStatsCollector implements prometheus.Collector for database/sql pool stats.
+// dbStatsCollector implements prometheus.Collector for pgxpool stats.
 type dbStatsCollector struct {
-	db *sql.DB
+	pool *pgxpool.Pool
 }
 
 var (
@@ -160,12 +160,12 @@ func (c *dbStatsCollector) Describe(ch chan<- *prometheus.Desc) {
 
 // Collect gathers and sends current database connection pool metrics.
 func (c *dbStatsCollector) Collect(ch chan<- prometheus.Metric) {
-	stats := c.db.Stats()
-	ch <- prometheus.MustNewConstMetric(dbOpenDesc, prometheus.GaugeValue, float64(stats.OpenConnections))
-	ch <- prometheus.MustNewConstMetric(dbInUseDesc, prometheus.GaugeValue, float64(stats.InUse))
-	ch <- prometheus.MustNewConstMetric(dbIdleDesc, prometheus.GaugeValue, float64(stats.Idle))
-	ch <- prometheus.MustNewConstMetric(dbWaitCountDesc, prometheus.CounterValue, float64(stats.WaitCount))
-	ch <- prometheus.MustNewConstMetric(dbWaitDurDesc, prometheus.CounterValue, stats.WaitDuration.Seconds())
+	stats := c.pool.Stat()
+	ch <- prometheus.MustNewConstMetric(dbOpenDesc, prometheus.GaugeValue, float64(stats.TotalConns()))
+	ch <- prometheus.MustNewConstMetric(dbInUseDesc, prometheus.GaugeValue, float64(stats.AcquiredConns()))
+	ch <- prometheus.MustNewConstMetric(dbIdleDesc, prometheus.GaugeValue, float64(stats.IdleConns()))
+	ch <- prometheus.MustNewConstMetric(dbWaitCountDesc, prometheus.CounterValue, float64(stats.EmptyAcquireCount()))
+	ch <- prometheus.MustNewConstMetric(dbWaitDurDesc, prometheus.CounterValue, stats.AcquireDuration().Seconds())
 }
 
 // MetricsHandler returns an http.Handler that serves Prometheus metrics

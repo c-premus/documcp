@@ -2,7 +2,6 @@ package server
 
 import (
 	"crypto/subtle"
-	"database/sql"
 	"net/http"
 	"strings"
 	"time"
@@ -64,7 +63,7 @@ type Deps struct {
 	IsSecure bool // true when running behind TLS (reserved for future use)
 
 	// Infrastructure
-	DB               *sql.DB // for readiness checks (nil disables /health/ready)
+	DB               handler.DBPinger // for readiness checks (nil disables /health/ready)
 	InternalAPIToken string  // protects /metrics and /health/ready (empty = unrestricted)
 
 	// Server tuning (populated from config)

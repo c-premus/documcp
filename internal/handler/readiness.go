@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"database/sql"
+	"context"
 	"encoding/json"
 	"net/http"
 )
@@ -18,15 +18,20 @@ type searchHealthChecker interface {
 	Healthy() bool
 }
 
+// DBPinger checks database connectivity.
+type DBPinger interface {
+	Ping(ctx context.Context) error
+}
+
 // ReadinessHandler checks that critical dependencies are reachable.
 type ReadinessHandler struct {
 	version string
-	db      *sql.DB
+	db      DBPinger
 	search  searchHealthChecker
 }
 
-// NewReadinessHandler creates a ReadinessHandler with the given DB and version.
-func NewReadinessHandler(version string, db *sql.DB, search searchHealthChecker) *ReadinessHandler {
+// NewReadinessHandler creates a ReadinessHandler with the given DB pinger and version.
+func NewReadinessHandler(version string, db DBPinger, search searchHealthChecker) *ReadinessHandler {
 	return &ReadinessHandler{version: version, db: db, search: search}
 }
 
@@ -37,7 +42,7 @@ func (h *ReadinessHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Check Postgres
 	if h.db != nil {
-		if err := h.db.PingContext(r.Context()); err != nil {
+		if err := h.db.Ping(r.Context()); err != nil {
 			services["postgres"] = "unhealthy"
 			allHealthy = false
 		} else {

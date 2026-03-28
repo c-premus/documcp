@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/c-premus/documcp/internal/database"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/testutil"
 )
@@ -16,7 +17,7 @@ import (
 func TestDocumentRepository_CreateAndFind(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	tests := []struct {
 		name     string
@@ -107,7 +108,7 @@ func TestDocumentRepository_CreateAndFind(t *testing.T) {
 func TestDocumentRepository_Update(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	tests := []struct {
 		name      string
@@ -165,7 +166,7 @@ func TestDocumentRepository_Update(t *testing.T) {
 func TestDocumentRepository_SoftDelete(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	doc := testutil.NewDocument(
 		testutil.WithDocumentID(0),
@@ -212,7 +213,7 @@ func TestDocumentRepository_SoftDelete(t *testing.T) {
 func TestDocumentRepository_Count(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	// Count should be zero on a clean database.
 	count, err := repo.Count(ctx)
@@ -261,7 +262,7 @@ func TestDocumentRepository_Count(t *testing.T) {
 func TestDocumentRepository_Tags(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	doc := testutil.NewDocument(
 		testutil.WithDocumentID(0),
@@ -345,7 +346,7 @@ func TestDocumentRepository_Tags(t *testing.T) {
 func TestDocumentRepository_CreateVersion(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	doc := testutil.NewDocument(
 		testutil.WithDocumentID(0),
@@ -397,8 +398,7 @@ func TestDocumentRepository_CreateVersion(t *testing.T) {
 			}
 
 			// Verify the version was persisted by querying directly.
-			var found model.DocumentVersion
-			err := testDB.GetContext(ctx, &found,
+			found, err := database.Get[model.DocumentVersion](ctx, testPool,
 				`SELECT * FROM document_versions WHERE id = $1`, ver.ID)
 			if err != nil {
 				t.Fatalf("querying created version: %v", err)
@@ -428,7 +428,7 @@ func TestDocumentRepository_CreateVersion(t *testing.T) {
 func TestDocumentRepository_ListAllUUIDs(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	t.Run("empty table returns empty slice", func(t *testing.T) {
 		uuids, err := repo.ListAllUUIDs(ctx)
@@ -493,7 +493,7 @@ func TestDocumentRepository_ListAllUUIDs(t *testing.T) {
 func TestDocumentRepository_ListActiveFilePaths(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	// Insert documents with varying file path states.
 	docWithPath := testutil.NewDocument(
@@ -567,7 +567,7 @@ func TestDocumentRepository_ListActiveFilePaths(t *testing.T) {
 func TestDocumentRepository_PurgeSoftDeleted(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	// 1. Create documents: 1 active, 2 soft-deleted (one old, one recent).
 	activeDoc := testutil.NewDocument(
@@ -618,7 +618,7 @@ func TestDocumentRepository_PurgeSoftDeleted(t *testing.T) {
 	}
 
 	// Backdate the old deleted doc's deleted_at to 48 hours ago.
-	_, err := testDB.ExecContext(ctx,
+	_, err := testPool.Exec(ctx,
 		`UPDATE documents SET deleted_at = $1 WHERE id = $2`,
 		time.Now().Add(-48*time.Hour), oldDeletedDoc.ID)
 	if err != nil {
@@ -644,7 +644,7 @@ func TestDocumentRepository_PurgeSoftDeleted(t *testing.T) {
 
 	// Verify the old deleted document's tags were removed.
 	var tagCount int
-	err = testDB.QueryRowContext(ctx,
+	err = testPool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM document_tags WHERE document_id = $1`, oldDeletedDoc.ID).Scan(&tagCount)
 	if err != nil {
 		t.Fatalf("counting tags: %v", err)
@@ -655,7 +655,7 @@ func TestDocumentRepository_PurgeSoftDeleted(t *testing.T) {
 
 	// Verify the old deleted document's versions were removed.
 	var versionCount int
-	err = testDB.QueryRowContext(ctx,
+	err = testPool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM document_versions WHERE document_id = $1`, oldDeletedDoc.ID).Scan(&versionCount)
 	if err != nil {
 		t.Fatalf("counting versions: %v", err)
@@ -666,7 +666,7 @@ func TestDocumentRepository_PurgeSoftDeleted(t *testing.T) {
 
 	// Verify the old deleted document itself is gone.
 	var docCount int
-	err = testDB.QueryRowContext(ctx,
+	err = testPool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM documents WHERE id = $1`, oldDeletedDoc.ID).Scan(&docCount)
 	if err != nil {
 		t.Fatalf("counting purged document: %v", err)
@@ -686,7 +686,7 @@ func TestDocumentRepository_PurgeSoftDeleted(t *testing.T) {
 
 	// Recently deleted document should still exist (in database, not via FindByUUID since soft-deleted).
 	var recentCount int
-	err = testDB.QueryRowContext(ctx,
+	err = testPool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM documents WHERE id = $1`, recentDeletedDoc.ID).Scan(&recentCount)
 	if err != nil {
 		t.Fatalf("counting recent deleted document: %v", err)
@@ -699,7 +699,7 @@ func TestDocumentRepository_PurgeSoftDeleted(t *testing.T) {
 func TestDocumentRepository_SuggestTitles(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	// Create a mix of public and private documents.
 	docs := []struct {
@@ -728,7 +728,7 @@ func TestDocumentRepository_SuggestTitles(t *testing.T) {
 
 	// Soft-delete one public document.
 	var deleteID int64
-	err := testDB.QueryRowContext(ctx,
+	err := testPool.QueryRow(ctx,
 		`SELECT id FROM documents WHERE uuid = $1`, testUUID("suggest-005")).Scan(&deleteID)
 	if err != nil {
 		t.Fatalf("finding document for soft delete: %v", err)
@@ -805,7 +805,7 @@ func TestDocumentRepository_SuggestTitles(t *testing.T) {
 func TestDocumentRepository_List(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	// Create 4 documents: 3 active, 1 soft-deleted.
 	doc1 := testutil.NewDocument(
@@ -896,7 +896,7 @@ func TestDocumentRepository_List(t *testing.T) {
 
 	t.Run("filter by user_id", func(t *testing.T) {
 		// Create a user and assign doc1 to them.
-		oauthRepo := NewOAuthRepository(testDB, discardLogger())
+		oauthRepo := NewOAuthRepository(testPool, discardLogger())
 		user := testutil.NewUser(
 			testutil.WithUserID(0),
 			testutil.WithUserEmail("list-user@example.com"),
@@ -1030,7 +1030,7 @@ func TestDocumentRepository_List(t *testing.T) {
 func TestDocumentRepository_FindByStatus(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	// Create 4 documents: 2 pending, 1 completed, 1 pending (soft-deleted).
 	pending1 := testutil.NewDocument(
@@ -1112,7 +1112,7 @@ func TestDocumentRepository_FindByStatus(t *testing.T) {
 func TestDocumentRepository_FindByUUIDIncludingDeleted(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	// Create a document and soft-delete it.
 	doc := testutil.NewDocument(
@@ -1167,7 +1167,7 @@ func TestDocumentRepository_FindByUUIDIncludingDeleted(t *testing.T) {
 func TestDocumentRepository_Restore(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	// Create a document and soft-delete it.
 	doc := testutil.NewDocument(
@@ -1220,7 +1220,7 @@ func TestDocumentRepository_Restore(t *testing.T) {
 func TestDocumentRepository_PurgeSingle(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	// Create a document with tags and a version.
 	doc := testutil.NewDocument(
@@ -1263,7 +1263,7 @@ func TestDocumentRepository_PurgeSingle(t *testing.T) {
 
 	// Verify document is gone.
 	var docCount int
-	err = testDB.QueryRowContext(ctx,
+	err = testPool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM documents WHERE id = $1`, doc.ID).Scan(&docCount)
 	if err != nil {
 		t.Fatalf("counting purged document: %v", err)
@@ -1274,7 +1274,7 @@ func TestDocumentRepository_PurgeSingle(t *testing.T) {
 
 	// Verify tags are gone.
 	var tagCount int
-	err = testDB.QueryRowContext(ctx,
+	err = testPool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM document_tags WHERE document_id = $1`, doc.ID).Scan(&tagCount)
 	if err != nil {
 		t.Fatalf("counting purged tags: %v", err)
@@ -1285,7 +1285,7 @@ func TestDocumentRepository_PurgeSingle(t *testing.T) {
 
 	// Verify versions are gone.
 	var versionCount int
-	err = testDB.QueryRowContext(ctx,
+	err = testPool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM document_versions WHERE document_id = $1`, doc.ID).Scan(&versionCount)
 	if err != nil {
 		t.Fatalf("counting purged versions: %v", err)
@@ -1298,7 +1298,7 @@ func TestDocumentRepository_PurgeSingle(t *testing.T) {
 func TestDocumentRepository_ListDeleted(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testDB, discardLogger())
+	repo := NewDocumentRepository(testPool, discardLogger())
 
 	// Create 4 docs: 2 active, 2 soft-deleted.
 	active1 := testutil.NewDocument(

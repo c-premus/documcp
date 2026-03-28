@@ -2,8 +2,8 @@ package server_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -31,6 +31,15 @@ var (
 	testMetrics     *observability.Metrics
 	testMetricsOnce sync.Once
 )
+
+// stubPinger implements handler.DBPinger for testing.
+type stubPinger struct {
+	err error
+}
+
+func (s *stubPinger) Ping(_ context.Context) error {
+	return s.err
+}
 
 func sharedMetrics() *observability.Metrics {
 	testMetricsOnce.Do(func() {
@@ -768,9 +777,9 @@ func TestRegisterRoutes_MaxBodySizeEnforced(t *testing.T) {
 func TestRegisterRoutes_ReadinessEndpointWithDB(t *testing.T) {
 	t.Parallel()
 
-	// Use an empty sql.DB (not connected). The readiness handler will
-	// attempt to ping and fail, but the route should still be registered.
-	db := &sql.DB{}
+	// Use a stub pinger that always fails. The readiness handler will
+	// report unhealthy, but the route should still be registered.
+	db := &stubPinger{err: errors.New("not connected")}
 
 	srv := newTestServerWithDeps(t, server.Deps{
 		Version: "test",

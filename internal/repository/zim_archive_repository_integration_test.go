@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/c-premus/documcp/internal/database"
 	"github.com/c-premus/documcp/internal/model"
 )
 
@@ -16,7 +17,7 @@ import (
 func createTestExternalService(ctx context.Context, t *testing.T) *model.ExternalService {
 	t.Helper()
 
-	svcRepo := NewExternalServiceRepository(testDB, discardLogger())
+	svcRepo := NewExternalServiceRepository(testPool, discardLogger())
 	svc := &model.ExternalService{
 		UUID:      testUUID("zim-svc-001"),
 		Name:      "Test Kiwix",
@@ -35,7 +36,7 @@ func TestZimArchiveRepository_UpsertFromCatalog(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testDB, discardLogger())
+	repo := NewZimArchiveRepository(testPool, discardLogger())
 
 	entry := ZimArchiveUpsert{
 		Name:         "Wikipedia English",
@@ -150,7 +151,7 @@ func TestZimArchiveRepository_List(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testDB, discardLogger())
+	repo := NewZimArchiveRepository(testPool, discardLogger())
 
 	entries := []ZimArchiveUpsert{
 		{Name: "Wikipedia English", Title: "Wikipedia (en)", Language: "en", Category: "wikipedia"},
@@ -163,7 +164,7 @@ func TestZimArchiveRepository_List(t *testing.T) {
 
 	// Disable one archive to test enabled-only filtering.
 	var disableID int64
-	err := testDB.QueryRowContext(ctx,
+	err := testPool.QueryRow(ctx,
 		"SELECT id FROM zim_archives WHERE name = $1", "Wikipedia French").Scan(&disableID)
 	require.NoError(t, err)
 	require.NoError(t, repo.ToggleEnabled(ctx, disableID))
@@ -214,7 +215,7 @@ func TestZimArchiveRepository_FindByName(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testDB, discardLogger())
+	repo := NewZimArchiveRepository(testPool, discardLogger())
 
 	entry := ZimArchiveUpsert{
 		Name:     "FindMe Archive",
@@ -238,7 +239,7 @@ func TestZimArchiveRepository_FindByName(t *testing.T) {
 
 	t.Run("disabled not found", func(t *testing.T) {
 		var id int64
-		err := testDB.QueryRowContext(ctx,
+		err := testPool.QueryRow(ctx,
 			"SELECT id FROM zim_archives WHERE name = $1", "FindMe Archive").Scan(&id)
 		require.NoError(t, err)
 
@@ -253,7 +254,7 @@ func TestZimArchiveRepository_FindByUUID(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testDB, discardLogger())
+	repo := NewZimArchiveRepository(testPool, discardLogger())
 
 	entry := ZimArchiveUpsert{
 		Name:     "UUID Archive",
@@ -264,7 +265,7 @@ func TestZimArchiveRepository_FindByUUID(t *testing.T) {
 	require.NoError(t, repo.UpsertFromCatalog(ctx, svc.ID, entry))
 
 	var uuid string
-	err := testDB.QueryRowContext(ctx,
+	err := testPool.QueryRow(ctx,
 		"SELECT uuid FROM zim_archives WHERE name = $1", "UUID Archive").Scan(&uuid)
 	require.NoError(t, err)
 
@@ -282,7 +283,7 @@ func TestZimArchiveRepository_FindByUUID(t *testing.T) {
 
 	t.Run("disabled still found", func(t *testing.T) {
 		var id int64
-		err := testDB.QueryRowContext(ctx,
+		err := testPool.QueryRow(ctx,
 			"SELECT id FROM zim_archives WHERE name = $1", "UUID Archive").Scan(&id)
 		require.NoError(t, err)
 
@@ -300,7 +301,7 @@ func TestZimArchiveRepository_FindDisabled(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testDB, discardLogger())
+	repo := NewZimArchiveRepository(testPool, discardLogger())
 
 	// Insert 3 archives: 2 enabled, 1 disabled.
 	entries := []ZimArchiveUpsert{
@@ -314,7 +315,7 @@ func TestZimArchiveRepository_FindDisabled(t *testing.T) {
 
 	// Disable one archive.
 	var disableID int64
-	err := testDB.QueryRowContext(ctx,
+	err := testPool.QueryRow(ctx,
 		"SELECT id FROM zim_archives WHERE name = $1", "Disabled Archive Gamma").Scan(&disableID)
 	require.NoError(t, err)
 	require.NoError(t, repo.ToggleEnabled(ctx, disableID))
@@ -339,10 +340,10 @@ func TestZimArchiveRepository_FindDisabled(t *testing.T) {
 	t.Run("returns multiple disabled archives", func(t *testing.T) {
 		// Disable two archives.
 		var alphaID, betaID int64
-		err := testDB.QueryRowContext(ctx,
+		err := testPool.QueryRow(ctx,
 			"SELECT id FROM zim_archives WHERE name = $1", "Enabled Archive Alpha").Scan(&alphaID)
 		require.NoError(t, err)
-		err = testDB.QueryRowContext(ctx,
+		err = testPool.QueryRow(ctx,
 			"SELECT id FROM zim_archives WHERE name = $1", "Enabled Archive Beta").Scan(&betaID)
 		require.NoError(t, err)
 
@@ -364,7 +365,7 @@ func TestZimArchiveRepository_ListAllAndCount(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testDB, discardLogger())
+	repo := NewZimArchiveRepository(testPool, discardLogger())
 
 	entries := []ZimArchiveUpsert{
 		{Name: "Archive Alpha", Title: "Alpha", Language: "en", Category: "wikipedia"},
@@ -377,7 +378,7 @@ func TestZimArchiveRepository_ListAllAndCount(t *testing.T) {
 
 	// Disable one archive.
 	var disableID int64
-	err := testDB.QueryRowContext(ctx,
+	err := testPool.QueryRow(ctx,
 		"SELECT id FROM zim_archives WHERE name = $1", "Archive Beta").Scan(&disableID)
 	require.NoError(t, err)
 	require.NoError(t, repo.ToggleEnabled(ctx, disableID))
@@ -412,7 +413,7 @@ func TestZimArchiveRepository_ToggleEnabledAndSearchable(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testDB, discardLogger())
+	repo := NewZimArchiveRepository(testPool, discardLogger())
 
 	entry := ZimArchiveUpsert{
 		Name:     "Toggle Archive",
@@ -423,13 +424,12 @@ func TestZimArchiveRepository_ToggleEnabledAndSearchable(t *testing.T) {
 	require.NoError(t, repo.UpsertFromCatalog(ctx, svc.ID, entry))
 
 	var id int64
-	err := testDB.QueryRowContext(ctx,
+	err := testPool.QueryRow(ctx,
 		"SELECT id FROM zim_archives WHERE name = $1", "Toggle Archive").Scan(&id)
 	require.NoError(t, err)
 
 	// Verify defaults from UpsertFromCatalog: is_enabled=true, is_searchable=true (DB default).
-	var archive model.ZimArchive
-	err = testDB.GetContext(ctx, &archive,
+	archive, err := database.Get[model.ZimArchive](ctx, testPool,
 		"SELECT * FROM zim_archives WHERE id = $1", id)
 	require.NoError(t, err)
 	assert.True(t, archive.IsEnabled)
@@ -438,8 +438,7 @@ func TestZimArchiveRepository_ToggleEnabledAndSearchable(t *testing.T) {
 	t.Run("toggle enabled off", func(t *testing.T) {
 		require.NoError(t, repo.ToggleEnabled(ctx, id))
 
-		var a model.ZimArchive
-		err := testDB.GetContext(ctx, &a, "SELECT * FROM zim_archives WHERE id = $1", id)
+		a, err := database.Get[model.ZimArchive](ctx, testPool, "SELECT * FROM zim_archives WHERE id = $1", id)
 		require.NoError(t, err)
 		assert.False(t, a.IsEnabled)
 	})
@@ -447,8 +446,7 @@ func TestZimArchiveRepository_ToggleEnabledAndSearchable(t *testing.T) {
 	t.Run("toggle enabled on", func(t *testing.T) {
 		require.NoError(t, repo.ToggleEnabled(ctx, id))
 
-		var a model.ZimArchive
-		err := testDB.GetContext(ctx, &a, "SELECT * FROM zim_archives WHERE id = $1", id)
+		a, err := database.Get[model.ZimArchive](ctx, testPool, "SELECT * FROM zim_archives WHERE id = $1", id)
 		require.NoError(t, err)
 		assert.True(t, a.IsEnabled)
 	})
@@ -456,8 +454,7 @@ func TestZimArchiveRepository_ToggleEnabledAndSearchable(t *testing.T) {
 	t.Run("toggle searchable off", func(t *testing.T) {
 		require.NoError(t, repo.ToggleSearchable(ctx, id))
 
-		var a model.ZimArchive
-		err := testDB.GetContext(ctx, &a, "SELECT * FROM zim_archives WHERE id = $1", id)
+		a, err := database.Get[model.ZimArchive](ctx, testPool, "SELECT * FROM zim_archives WHERE id = $1", id)
 		require.NoError(t, err)
 		assert.False(t, a.IsSearchable)
 	})
@@ -465,8 +462,7 @@ func TestZimArchiveRepository_ToggleEnabledAndSearchable(t *testing.T) {
 	t.Run("toggle searchable on", func(t *testing.T) {
 		require.NoError(t, repo.ToggleSearchable(ctx, id))
 
-		var a model.ZimArchive
-		err := testDB.GetContext(ctx, &a, "SELECT * FROM zim_archives WHERE id = $1", id)
+		a, err := database.Get[model.ZimArchive](ctx, testPool, "SELECT * FROM zim_archives WHERE id = $1", id)
 		require.NoError(t, err)
 		assert.True(t, a.IsSearchable)
 	})
@@ -476,7 +472,7 @@ func TestZimArchiveRepository_DisableOrphaned(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testDB, discardLogger())
+	repo := NewZimArchiveRepository(testPool, discardLogger())
 
 	entries := []ZimArchiveUpsert{
 		{Name: "Active Archive", Title: "Active", Language: "en", Category: "wikipedia"},

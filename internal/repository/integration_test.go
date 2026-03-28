@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/jmoiron/sqlx"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -22,7 +22,7 @@ import (
 	"github.com/c-premus/documcp/internal/database"
 )
 
-var testDB *sqlx.DB
+var testPool *pgxpool.Pool
 
 func TestMain(m *testing.M) {
 	// Skip gracefully if Docker is not available (e.g., CI without DinD).
@@ -60,17 +60,16 @@ func TestMain(m *testing.M) {
 		log.Fatalf("getting connection string: %v", err)
 	}
 
-	testDB, err = sqlx.Connect("pgx", dsn)
+	testPool, err = pgxpool.New(ctx, dsn)
 	if err != nil {
 		log.Fatalf("connecting to test database: %v", err)
 	}
-	defer func() {
-		if err := testDB.Close(); err != nil {
-			log.Printf("closing test database: %v", err)
-		}
-	}()
+	defer testPool.Close()
 
-	if err := database.RunMigrations(testDB.DB, "../../migrations"); err != nil {
+	// goose requires *sql.DB; bridge from pgxpool.
+	sqlDB := database.SQLDBFromPool(testPool)
+	defer sqlDB.Close() //nolint:errcheck
+	if err := database.RunMigrations(sqlDB, "../../migrations"); err != nil {
 		log.Fatalf("running migrations: %v", err)
 	}
 
@@ -100,7 +99,7 @@ func truncateAll(t *testing.T) {
 	}
 
 	for _, table := range tables {
-		if _, err := testDB.Exec(fmt.Sprintf("TRUNCATE TABLE %s CASCADE", table)); err != nil {
+		if _, err := testPool.Exec(context.Background(), fmt.Sprintf("TRUNCATE TABLE %s CASCADE", table)); err != nil {
 			t.Fatalf("truncating table %s: %v", table, err)
 		}
 	}

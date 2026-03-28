@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
+
+	"github.com/c-premus/documcp/internal/database"
 	"github.com/c-premus/documcp/internal/model"
 )
 
@@ -72,7 +75,7 @@ func (r *DocumentRepository) List(ctx context.Context, params DocumentListParams
 	// Count total matching rows.
 	countQuery := "SELECT COUNT(*) FROM documents WHERE " + where
 	var total int
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, fmt.Errorf("counting documents: %w", err)
 	}
 
@@ -100,8 +103,8 @@ func (r *DocumentRepository) List(ctx context.Context, params DocumentListParams
 	)
 	args = append(args, limit, params.Offset)
 
-	var docs []model.Document
-	if err := r.db.SelectContext(ctx, &docs, selectQuery, args...); err != nil {
+	docs, err := database.Select[model.Document](ctx, r.db, selectQuery, args...)
+	if err != nil {
 		return nil, fmt.Errorf("listing documents: %w", err)
 	}
 
@@ -113,12 +116,16 @@ func (r *DocumentRepository) List(ctx context.Context, params DocumentListParams
 
 // FindByStatus returns documents with the given status, limited to count.
 func (r *DocumentRepository) FindByStatus(ctx context.Context, status string, limit int) ([]model.Document, error) {
-	var docs []model.Document
-	err := r.db.SelectContext(ctx, &docs,
+	docs, err := database.Select[model.Document](ctx, r.db,
 		`SELECT * FROM documents WHERE status = $1 AND deleted_at IS NULL ORDER BY created_at ASC LIMIT $2`,
 		status, limit)
 	if err != nil {
 		return nil, fmt.Errorf("finding documents by status %q: %w", status, err)
 	}
 	return docs, nil
+}
+
+// pgxCollectStrings collects a single-column string result set from pgx.Rows.
+func pgxCollectStrings(rows pgx.Rows) ([]string, error) {
+	return pgx.CollectRows(rows, pgx.RowTo[string])
 }

@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/jmoiron/sqlx"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/c-premus/documcp/internal/crypto"
+	"github.com/c-premus/documcp/internal/database"
 	"github.com/c-premus/documcp/internal/model"
 )
 
@@ -27,13 +29,13 @@ type GitTemplateFileInsert struct {
 
 // GitTemplateRepository handles git template persistence.
 type GitTemplateRepository struct {
-	db        *sqlx.DB
+	db        *pgxpool.Pool
 	logger    *slog.Logger
 	encryptor *crypto.Encryptor // nil disables encryption
 }
 
 // NewGitTemplateRepository creates a new GitTemplateRepository.
-func NewGitTemplateRepository(db *sqlx.DB, logger *slog.Logger, enc *crypto.Encryptor) *GitTemplateRepository {
+func NewGitTemplateRepository(db *pgxpool.Pool, logger *slog.Logger, enc *crypto.Encryptor) *GitTemplateRepository {
 	return &GitTemplateRepository{db: db, logger: logger, encryptor: enc}
 }
 
@@ -62,8 +64,7 @@ func (r *GitTemplateRepository) List(ctx context.Context, category string, limit
 		args = append(args, offset)
 	}
 
-	var templates []model.GitTemplate
-	err := r.db.SelectContext(ctx, &templates, q, args...)
+	templates, err := database.Select[model.GitTemplate](ctx, r.db, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing git templates: %w", err)
 	}
@@ -83,7 +84,7 @@ func (r *GitTemplateRepository) CountFiltered(ctx context.Context, category stri
 	}
 
 	var count int
-	err := r.db.QueryRowContext(ctx, q, args...).Scan(&count)
+	err := r.db.QueryRow(ctx, q, args...).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("counting git templates: %w", err)
 	}
@@ -92,8 +93,7 @@ func (r *GitTemplateRepository) CountFiltered(ctx context.Context, category stri
 
 // FindByUUID returns a git template by its UUID, if enabled and not soft-deleted.
 func (r *GitTemplateRepository) FindByUUID(ctx context.Context, uuid string) (*model.GitTemplate, error) {
-	var tmpl model.GitTemplate
-	err := r.db.GetContext(ctx, &tmpl,
+	tmpl, err := database.Get[model.GitTemplate](ctx, r.db,
 		`SELECT * FROM git_templates WHERE uuid = $1 AND deleted_at IS NULL AND is_enabled = true`, uuid)
 	if err != nil {
 		return nil, fmt.Errorf("finding git template by uuid %s: %w", uuid, err)
@@ -104,8 +104,7 @@ func (r *GitTemplateRepository) FindByUUID(ctx context.Context, uuid string) (*m
 
 // FilesForTemplate returns all files belonging to a git template.
 func (r *GitTemplateRepository) FilesForTemplate(ctx context.Context, templateID int64) ([]model.GitTemplateFile, error) {
-	var files []model.GitTemplateFile
-	err := r.db.SelectContext(ctx, &files,
+	files, err := database.Select[model.GitTemplateFile](ctx, r.db,
 		`SELECT * FROM git_template_files WHERE git_template_id = $1 ORDER BY path`, templateID)
 	if err != nil {
 		return nil, fmt.Errorf("finding files for git template %d: %w", templateID, err)
@@ -115,8 +114,7 @@ func (r *GitTemplateRepository) FilesForTemplate(ctx context.Context, templateID
 
 // FindFileByPath returns a single template file by template ID and path.
 func (r *GitTemplateRepository) FindFileByPath(ctx context.Context, templateID int64, path string) (*model.GitTemplateFile, error) {
-	var file model.GitTemplateFile
-	err := r.db.GetContext(ctx, &file,
+	file, err := database.Get[model.GitTemplateFile](ctx, r.db,
 		`SELECT * FROM git_template_files WHERE git_template_id = $1 AND path = $2`, templateID, path)
 	if err != nil {
 		return nil, fmt.Errorf("finding file by path %q in git template %d: %w", path, templateID, err)
@@ -143,8 +141,7 @@ func (r *GitTemplateRepository) ListAll(ctx context.Context, query string, limit
 		args = append(args, limit)
 	}
 
-	var templates []model.GitTemplate
-	err := r.db.SelectContext(ctx, &templates, q, args...)
+	templates, err := database.Select[model.GitTemplate](ctx, r.db, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing all git templates: %w", err)
 	}
@@ -154,8 +151,11 @@ func (r *GitTemplateRepository) ListAll(ctx context.Context, query string, limit
 
 // ListAllUUIDs returns all non-deleted git template UUIDs.
 func (r *GitTemplateRepository) ListAllUUIDs(ctx context.Context) ([]string, error) {
-	var uuids []string
-	err := r.db.SelectContext(ctx, &uuids, `SELECT uuid FROM git_templates WHERE deleted_at IS NULL`)
+	rows, err := r.db.Query(ctx, `SELECT uuid FROM git_templates WHERE deleted_at IS NULL`)
+	if err != nil {
+		return nil, fmt.Errorf("listing all git template uuids: %w", err)
+	}
+	uuids, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	if err != nil {
 		return nil, fmt.Errorf("listing all git template uuids: %w", err)
 	}
@@ -168,13 +168,9 @@ func (r *GitTemplateRepository) FindByUUIDs(ctx context.Context, uuids []string)
 	if len(uuids) == 0 {
 		return nil, nil
 	}
-	query, args, err := sqlx.In(`SELECT * FROM git_templates WHERE uuid IN (?) AND deleted_at IS NULL`, uuids)
+	templates, err := database.Select[model.GitTemplate](ctx, r.db,
+		`SELECT * FROM git_templates WHERE uuid = ANY($1) AND deleted_at IS NULL`, uuids)
 	if err != nil {
-		return nil, fmt.Errorf("building IN clause for git template FindByUUIDs: %w", err)
-	}
-	query = r.db.Rebind(query)
-	var templates []model.GitTemplate
-	if err := r.db.SelectContext(ctx, &templates, query, args...); err != nil {
 		return nil, fmt.Errorf("finding git templates by uuids: %w", err)
 	}
 	r.decryptTokens(templates)
@@ -184,7 +180,7 @@ func (r *GitTemplateRepository) FindByUUIDs(ctx context.Context, uuids []string)
 // Count returns the total number of non-deleted git templates.
 func (r *GitTemplateRepository) Count(ctx context.Context) (int, error) {
 	var count int
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM git_templates WHERE deleted_at IS NULL`).Scan(&count)
+	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM git_templates WHERE deleted_at IS NULL`).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("counting git templates: %w", err)
 	}
@@ -193,8 +189,7 @@ func (r *GitTemplateRepository) Count(ctx context.Context) (int, error) {
 
 // FindBySlug returns a git template by its slug, if enabled and not soft-deleted.
 func (r *GitTemplateRepository) FindBySlug(ctx context.Context, slug string) (*model.GitTemplate, error) {
-	var tmpl model.GitTemplate
-	err := r.db.GetContext(ctx, &tmpl,
+	tmpl, err := database.Get[model.GitTemplate](ctx, r.db,
 		`SELECT * FROM git_templates WHERE slug = $1 AND deleted_at IS NULL AND is_enabled = true`, slug)
 	if err != nil {
 		return nil, fmt.Errorf("finding git template by slug %s: %w", slug, err)
@@ -209,7 +204,7 @@ func (r *GitTemplateRepository) Create(ctx context.Context, tmpl *model.GitTempl
 	if err != nil {
 		return err
 	}
-	err = r.db.QueryRowContext(ctx,
+	err = r.db.QueryRow(ctx,
 		`INSERT INTO git_templates (
 			uuid, name, slug, description, repository_url, branch, git_token,
 			readme_content, manifest, category, tags, user_id,
@@ -241,7 +236,7 @@ func (r *GitTemplateRepository) Update(ctx context.Context, tmpl *model.GitTempl
 	if err != nil {
 		return err
 	}
-	_, err = r.db.ExecContext(ctx,
+	_, err = r.db.Exec(ctx,
 		`UPDATE git_templates SET
 			name = $1, slug = $2, description = $3, repository_url = $4,
 			branch = $5, git_token = $6, readme_content = $7, manifest = $8,
@@ -261,7 +256,7 @@ func (r *GitTemplateRepository) Update(ctx context.Context, tmpl *model.GitTempl
 
 // SoftDelete marks a git template as deleted by setting deleted_at.
 func (r *GitTemplateRepository) SoftDelete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.db.Exec(ctx,
 		`UPDATE git_templates SET deleted_at = NOW(), updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL`, id)
 	if err != nil {
@@ -272,7 +267,7 @@ func (r *GitTemplateRepository) SoftDelete(ctx context.Context, id int64) error 
 
 // UpdateSyncStatus updates the sync-related fields for a git template.
 func (r *GitTemplateRepository) UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.db.Exec(ctx,
 		`UPDATE git_templates SET
 			status = $1,
 			last_commit_sha = $2,
@@ -292,13 +287,13 @@ func (r *GitTemplateRepository) UpdateSyncStatus(ctx context.Context, templateID
 
 // ReplaceFiles deletes existing files for a template and inserts new ones in a transaction.
 func (r *GitTemplateRepository) ReplaceFiles(ctx context.Context, templateID int64, files []GitTemplateFileInsert) error {
-	tx, err := r.db.BeginTxx(ctx, nil)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("beginning transaction for replacing files on template %d: %w", templateID, err)
 	}
-	defer tx.Rollback() //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
 
-	_, err = tx.ExecContext(ctx,
+	_, err = tx.Exec(ctx,
 		`DELETE FROM git_template_files WHERE git_template_id = $1`, templateID)
 	if err != nil {
 		return fmt.Errorf("deleting files for git template %d: %w", templateID, err)
@@ -324,7 +319,7 @@ func (r *GitTemplateRepository) ReplaceFiles(ctx context.Context, templateID int
 			contentHash = &f.ContentHash
 		}
 
-		_, err = tx.ExecContext(ctx,
+		_, err = tx.Exec(ctx,
 			`INSERT INTO git_template_files (
 				uuid, git_template_id, path, filename, extension,
 				content, size_bytes, content_hash, is_essential, variables,
@@ -342,7 +337,7 @@ func (r *GitTemplateRepository) ReplaceFiles(ctx context.Context, templateID int
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("committing file replacement for git template %d: %w", templateID, err)
 	}
 	return nil
@@ -377,8 +372,7 @@ func (r *GitTemplateRepository) Search(ctx context.Context, query, category stri
 	q += fmt.Sprintf(` LIMIT $%d`, argIdx)
 	args = append(args, limit)
 
-	var templates []model.GitTemplate
-	err := r.db.SelectContext(ctx, &templates, q, args...)
+	templates, err := database.Select[model.GitTemplate](ctx, r.db, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("searching git templates for %q: %w", query, err)
 	}

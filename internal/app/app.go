@@ -20,7 +20,6 @@ import (
 
 	"github.com/gorilla/sessions"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jmoiron/sqlx"
 	"github.com/riverqueue/river"
 
 	"github.com/c-premus/documcp/internal/auth/oauth"
@@ -51,7 +50,6 @@ import (
 // App holds all application dependencies wired together.
 type App struct {
 	Config          *config.Config
-	DB              *sqlx.DB
 	Logger          *slog.Logger
 	Metrics         *observability.Metrics
 	Server          *server.Server
@@ -66,14 +64,16 @@ type App struct {
 func New(cfg *config.Config) (*App, error) {
 	logger := newLogger(cfg.App.Env, cfg.App.Debug, os.Stdout)
 
-	db, err := database.New(
+	pgxPool, err := database.NewPgxPool(
+		context.Background(),
 		cfg.DatabaseDSN(),
-		cfg.Database.MaxOpenConns,
-		cfg.Database.MaxIdleConns,
-		cfg.Database.MaxLifetime,
+		int32(min(cfg.Database.MaxOpenConns, 1<<31-1)), //nolint:gosec // config value is bounded by validation
+		cfg.Database.PgxMinConns,
+		cfg.Database.PgxMaxConnLifetime,
+		cfg.Database.PgxMaxConnIdleTime,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("initializing database: %w", err)
+		return nil, fmt.Errorf("initializing database pool: %w", err)
 	}
 
 	logger.Info("database connected",
@@ -81,26 +81,14 @@ func New(cfg *config.Config) (*App, error) {
 		"database", cfg.Database.Database,
 	)
 
-	if err = database.RunMigrations(db.DB, "migrations"); err != nil {
+	// goose requires *sql.DB; bridge from pgxpool for migrations only.
+	sqlDB := database.SQLDBFromPool(pgxPool)
+	if err = database.RunMigrations(sqlDB, "migrations"); err != nil {
 		return nil, fmt.Errorf("running migrations: %w", err)
 	}
+	_ = sqlDB.Close() // bridge DB; pool is managed by pgxpool
 
 	logger.Info("database migrations applied")
-
-	// --- pgxpool for River ---
-	pgxPool, err := database.NewPgxPool(
-		context.Background(),
-		cfg.DatabaseDSN(),
-		10,
-		cfg.Database.PgxMinConns,
-		cfg.Database.PgxMaxConnLifetime,
-		cfg.Database.PgxMaxConnIdleTime,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating pgxpool for river: %w", err)
-	}
-
-	logger.Info("pgxpool connected for river queue")
 
 	if err = database.RunRiverMigrations(context.Background(), pgxPool); err != nil {
 		pgxPool.Close()
@@ -168,12 +156,12 @@ func New(cfg *config.Config) (*App, error) {
 	oauth.SetTokenHMACKey(hmacKey)
 
 	// --- Repositories ---
-	documentRepo := repository.NewDocumentRepository(db, logger)
-	externalServiceRepo := repository.NewExternalServiceRepository(db, logger)
-	zimArchiveRepo := repository.NewZimArchiveRepository(db, logger)
-	gitTemplateRepo := repository.NewGitTemplateRepository(db, logger, encryptor)
-	searchQueryRepo := repository.NewSearchQueryRepository(db, logger)
-	oauthRepo := repository.NewOAuthRepository(db, logger)
+	documentRepo := repository.NewDocumentRepository(pgxPool, logger)
+	externalServiceRepo := repository.NewExternalServiceRepository(pgxPool, logger)
+	zimArchiveRepo := repository.NewZimArchiveRepository(pgxPool, logger)
+	gitTemplateRepo := repository.NewGitTemplateRepository(pgxPool, logger, encryptor)
+	searchQueryRepo := repository.NewSearchQueryRepository(pgxPool, logger)
+	oauthRepo := repository.NewOAuthRepository(pgxPool, logger)
 
 	// --- Meilisearch ---
 	var searchClient *search.Client
@@ -227,7 +215,7 @@ func New(cfg *config.Config) (*App, error) {
 
 	// --- Observability (Metrics) ---
 	metrics := observability.NewMetrics()
-	observability.RegisterDBMetrics(db.DB)
+	observability.RegisterDBMetrics(pgxPool)
 	if searcher != nil {
 		searcher.SetMetrics(metrics)
 	}
@@ -479,7 +467,7 @@ func New(cfg *config.Config) (*App, error) {
 		OTELEnabled:            cfg.OTEL.Enabled,
 		IsSecure:               cfg.App.Env == "production",
 		SearchClient:           searchClient,
-		DB:                     db.DB,
+		DB:                     pgxPool,
 		InternalAPIToken:       cfg.App.InternalAPIToken,
 		MaxBodySize:            cfg.Server.MaxBodySize,
 		RequestTimeout:         cfg.Server.RequestTimeout,
@@ -493,7 +481,6 @@ func New(cfg *config.Config) (*App, error) {
 
 	return &App{
 		Config:          cfg,
-		DB:              db,
 		Logger:          logger,
 		Metrics:         metrics,
 		Server:          srv,
@@ -580,11 +567,6 @@ func (a *App) Close() error {
 	}
 	if a.PgxPool != nil {
 		a.PgxPool.Close()
-	}
-	if a.DB != nil {
-		if err := a.DB.Close(); err != nil {
-			return fmt.Errorf("closing database: %w", err)
-		}
 	}
 	return nil
 }

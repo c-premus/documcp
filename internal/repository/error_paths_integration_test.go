@@ -21,7 +21,7 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 	logger := discardLogger()
 
 	t.Run("DocumentRepository", func(t *testing.T) {
-		repo := NewDocumentRepository(testDB, logger)
+		repo := NewDocumentRepository(testPool, logger)
 
 		doc := &model.Document{UUID: testUUID("err-doc-001"), Title: "Err", FileType: "pdf", FilePath: "/tmp/x", MIMEType: "application/pdf", Status: "pending"}
 		assert.Error(t, repo.Create(ctx, doc))
@@ -47,7 +47,7 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 	})
 
 	t.Run("ExternalServiceRepository", func(t *testing.T) {
-		repo := NewExternalServiceRepository(testDB, logger)
+		repo := NewExternalServiceRepository(testPool, logger)
 
 		svc := &model.ExternalService{UUID: testUUID("err-svc-001"), Name: "Err", Slug: "err", Type: "kiwix", BaseURL: "https://x.com", Status: "unknown"}
 		assert.Error(t, repo.Create(ctx, svc))
@@ -66,14 +66,14 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 	})
 
 	t.Run("SearchQueryRepository", func(t *testing.T) {
-		repo := NewSearchQueryRepository(testDB, logger)
+		repo := NewSearchQueryRepository(testPool, logger)
 
 		sq := &model.SearchQuery{Query: "test", ResultsCount: 1}
 		assert.Error(t, repo.Create(ctx, sq))
 	})
 
 	t.Run("ZimArchiveRepository", func(t *testing.T) {
-		repo := NewZimArchiveRepository(testDB, logger)
+		repo := NewZimArchiveRepository(testPool, logger)
 
 		assert.Error(t, repo.UpsertFromCatalog(ctx, 1, ZimArchiveUpsert{Name: "X", Title: "X"}))
 		assert.Error(t, repo.ToggleEnabled(ctx, 1))
@@ -96,7 +96,7 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 	})
 
 	t.Run("GitTemplateRepository", func(t *testing.T) {
-		repo := NewGitTemplateRepository(testDB, logger, nil)
+		repo := NewGitTemplateRepository(testPool, logger, nil)
 
 		tmpl := &model.GitTemplate{UUID: testUUID("err-tmpl-001"), Name: "Err", Slug: "err", RepositoryURL: "https://x.com", Branch: "main", Status: "pending"}
 		assert.Error(t, repo.Create(ctx, tmpl))
@@ -124,7 +124,7 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 	})
 
 	t.Run("OAuthRepository", func(t *testing.T) {
-		repo := NewOAuthRepository(testDB, logger)
+		repo := NewOAuthRepository(testPool, logger)
 
 		assert.Error(t, repo.CreateClient(ctx, &model.OAuthClient{ClientID: "x", ClientName: "x", RedirectURIs: "[]", GrantTypes: "[]", ResponseTypes: "[]", TokenEndpointAuthMethod: "none"}))
 		assert.Error(t, repo.CreateUser(ctx, &model.User{Name: "x", Email: "x@x.com"}))
