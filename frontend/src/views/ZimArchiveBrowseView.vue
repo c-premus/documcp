@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { sanitizeHTML } from '@/utils/sanitize'
@@ -16,6 +16,15 @@ const store = useZimArchivesStore()
 
 const currentArchive = computed(() => {
   return store.archives.find((a) => a.name === props.archive)
+})
+
+// Ensure archives are loaded so we can check has_fulltext_index.
+onMounted(() => {
+  if (store.archives.length === 0) {
+    store.fetchArchives().catch(() => {
+      // Non-critical — search still works via /search fallback.
+    })
+  }
 })
 
 const searchQuery = ref('')
@@ -48,8 +57,10 @@ function handleSearchInput(event: Event): void {
     return
   }
 
+  const usesSuggest = currentArchive.value != null && !currentArchive.value.has_fulltext_index
+
   searchTimer = setTimeout(() => {
-    store.searchArticles(props.archive, searchQuery.value.trim(), 10).catch(() => {
+    store.searchArticles(props.archive, searchQuery.value.trim(), 10, usesSuggest).catch(() => {
       toast.error('Search failed')
     })
   }, 300)
@@ -88,7 +99,7 @@ function handleResultClick(result: ZimSearchResult): void {
           <input
             type="text"
             :value="searchQuery"
-            placeholder="Search articles..."
+            :placeholder="currentArchive && !currentArchive.has_fulltext_index ? 'Search by article title...' : 'Search articles...'"
             class="block w-full rounded-md border-0 py-1.5 pl-10 pr-3 text-text-primary bg-bg-surface ring-1 ring-inset ring-border-input placeholder:text-text-disabled focus:ring-2 focus:ring-inset focus:ring-focus sm:text-sm sm:leading-6"
             @input="handleSearchInput"
           />
