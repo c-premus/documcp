@@ -29,6 +29,8 @@ type GitTemplate struct {
 	LastCommitSHA  sql.NullString `db:"last_commit_sha" json:"last_commit_sha"`
 	FileCount      int            `db:"file_count" json:"file_count"`
 	TotalSizeBytes int64          `db:"total_size_bytes" json:"total_size_bytes"`
+	FilePaths      sql.NullString `db:"file_paths" json:"-"`
+	SearchVector   any            `db:"search_vector" json:"-"`
 	CreatedAt      sql.NullTime   `db:"created_at" json:"created_at"`
 	UpdatedAt      sql.NullTime   `db:"updated_at" json:"updated_at"`
 	DeletedAt      sql.NullTime   `db:"deleted_at" json:"deleted_at"`
@@ -71,6 +73,7 @@ type GitTemplateFile struct {
 	ContentHash   sql.NullString `db:"content_hash" json:"content_hash"`
 	IsEssential   bool           `db:"is_essential" json:"is_essential"`
 	Variables     sql.NullString `db:"variables" json:"variables"`
+	SearchVector  any            `db:"search_vector" json:"-"`
 	CreatedAt     sql.NullTime   `db:"created_at" json:"created_at"`
 	UpdatedAt     sql.NullTime   `db:"updated_at" json:"updated_at"`
 }

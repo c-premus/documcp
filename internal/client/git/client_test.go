@@ -337,8 +337,9 @@ func TestExtractFiles_IsEssentialFlagSet(t *testing.T) {
 // --- Sync mock types ---
 
 type mockTemplateRepo struct {
-	updateSyncStatusFn func(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error
-	replaceFilesFn     func(ctx context.Context, templateID int64, files []TemplateFile) error
+	updateSyncStatusFn    func(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error
+	replaceFilesFn        func(ctx context.Context, templateID int64, files []TemplateFile) error
+	updateSearchContentFn func(ctx context.Context, templateID int64, readmeContent, filePaths string) error
 }
 
 func (m *mockTemplateRepo) UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error {
@@ -351,6 +352,13 @@ func (m *mockTemplateRepo) UpdateSyncStatus(ctx context.Context, templateID int6
 func (m *mockTemplateRepo) ReplaceFiles(ctx context.Context, templateID int64, files []TemplateFile) error {
 	if m.replaceFilesFn != nil {
 		return m.replaceFilesFn(ctx, templateID, files)
+	}
+	return nil
+}
+
+func (m *mockTemplateRepo) UpdateSearchContent(ctx context.Context, templateID int64, readmeContent, filePaths string) error {
+	if m.updateSearchContentFn != nil {
+		return m.updateSearchContentFn(ctx, templateID, readmeContent, filePaths)
 	}
 	return nil
 }

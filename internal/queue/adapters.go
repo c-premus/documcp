@@ -68,3 +68,8 @@ func (a *gitRepoAdapter) ReplaceFiles(ctx context.Context, templateID int64, fil
 	}
 	return a.repo.ReplaceFiles(ctx, templateID, converted)
 }
+
+// UpdateSearchContent updates the readme_content and file_paths for FTS indexing.
+func (a *gitRepoAdapter) UpdateSearchContent(ctx context.Context, templateID int64, readmeContent, filePaths string) error {
+	return a.repo.UpdateSearchContent(ctx, templateID, readmeContent, filePaths)
+}

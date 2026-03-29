@@ -239,8 +239,9 @@ func (f *mockKiwixFactory) Get(_ context.Context) (kiwixSearcher, error) {
 }
 
 type mockSearcher struct {
-	searchFn          func(ctx context.Context, params search.SearchParams) (*search.SearchResponse, error)
-	federatedSearchFn func(ctx context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error)
+	searchFn                 func(ctx context.Context, params search.SearchParams) (*search.SearchResponse, error)
+	federatedSearchFn        func(ctx context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error)
+	searchGitTemplateFilesFn func(ctx context.Context, query string, limit int64) ([]search.FileSearchResult, error)
 }
 
 func (m *mockSearcher) Search(ctx context.Context, params search.SearchParams) (*search.SearchResponse, error) {
@@ -255,6 +256,13 @@ func (m *mockSearcher) FederatedSearch(ctx context.Context, params search.Federa
 		return m.federatedSearchFn(ctx, params)
 	}
 	return &search.FederatedSearchResponse{}, nil
+}
+
+func (m *mockSearcher) SearchGitTemplateFiles(ctx context.Context, query string, limit int64) ([]search.FileSearchResult, error) {
+	if m.searchGitTemplateFilesFn != nil {
+		return m.searchGitTemplateFilesFn(ctx, query, limit)
+	}
+	return nil, nil
 }
 
 // newHandlerWithMocks creates a Handler with a real MCP server and the provided
