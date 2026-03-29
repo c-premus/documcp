@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/c-premus/documcp/internal/auth/oauth"
+	authscope "github.com/c-premus/documcp/internal/auth/scope"
 )
 
 // Authorize handles GET /oauth/authorize — shows the consent screen.
@@ -95,6 +96,23 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Narrow requested scope to what this user is entitled to grant.
+	// Admins can grant all scopes; regular users only DefaultScopes.
+	user, err := h.service.FindUserByID(r.Context(), userID)
+	if err != nil {
+		h.logger.Error("looking up user for scope computation", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	effectiveScope := scope
+	if scope != "" {
+		effectiveScope = authscope.Intersect(scope, authscope.UserScopes(user.IsAdmin))
+	}
+	if effectiveScope == "" && scope != "" {
+		oauthError(w, http.StatusBadRequest, "invalid_scope", "None of the requested scopes are available to your account.")
+		return
+	}
+
 	// Generate consent nonce
 	nonce := uuid.New().String()
 
@@ -106,7 +124,7 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		"redirect_uri":          redirectURI,
 		"code_challenge":        codeChallenge,
 		"code_challenge_method": codeChallengeMethod,
-		"scope":                 scope,
+		"scope":                 effectiveScope,
 		"timestamp":             time.Now().Unix(),
 	}
 	if err := session.Save(r, w); err != nil {
@@ -115,16 +133,22 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Render simple consent screen
+	// Render simple consent screen.
+	// Override the global CSP: the form POSTs to 'self' but the server responds
+	// with a 302 to the client's redirect_uri (different origin). Chrome checks
+	// the redirect destination against form-action, so we must allow any target.
+	// This page is server-rendered with html.EscapeString — no injection risk.
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'none'; style-src 'unsafe-inline'; form-action *; frame-ancestors 'none'")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = fmt.Fprintf(w, consentHTML,
 		html.EscapeString(client.ClientName),
-		html.EscapeString(scope),
+		html.EscapeString(effectiveScope),
 		html.EscapeString(clientID),
 		html.EscapeString(redirectURI),
 		html.EscapeString(state),
-		html.EscapeString(scope),
+		html.EscapeString(effectiveScope),
 		html.EscapeString(codeChallenge),
 		html.EscapeString(codeChallengeMethod),
 		html.EscapeString(nonce),
@@ -244,6 +268,16 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Failed to generate authorization code", http.StatusInternalServerError)
 		return
+	}
+
+	// Expand the client's registered scope so the auth code check passes.
+	// The effective scope was already narrowed to user entitlements in GET.
+	if reqScope != "" {
+		if expandErr := h.service.ExpandClientScope(r.Context(), client.ID, reqScope); expandErr != nil {
+			h.logger.Error("expanding client scope on approval", "error", expandErr)
+			http.Error(w, "Failed to generate authorization code", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Generate authorization code

@@ -521,6 +521,16 @@ func (r *OAuthRepository) TouchClientLastUsed(ctx context.Context, clientID int6
 	return nil
 }
 
+// UpdateClientScope replaces the scope column for the given client.
+func (r *OAuthRepository) UpdateClientScope(ctx context.Context, clientID int64, scope string) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE oauth_clients SET scope = $1, updated_at = NOW() WHERE id = $2`, scope, clientID)
+	if err != nil {
+		return fmt.Errorf("updating scope for oauth client %d: %w", clientID, err)
+	}
+	return nil
+}
+
 // CountUsers returns the total number of users.
 func (r *OAuthRepository) CountUsers(ctx context.Context) (int, error) {
 	var count int

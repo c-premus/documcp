@@ -42,6 +42,7 @@ type mockOAuthRepo struct {
 	UpdateDeviceCodeStatusFunc            func(ctx context.Context, id int64, status string, userID *int64) error
 	UpdateDeviceCodeLastPolledFunc        func(ctx context.Context, id int64, interval int) error
 	FindUserByIDFunc                      func(ctx context.Context, id int64) (*model.User, error)
+	UpdateClientScopeFunc                 func(ctx context.Context, clientID int64, scope string) error
 }
 
 func (m *mockOAuthRepo) CreateClient(ctx context.Context, client *model.OAuthClient) error {
@@ -193,6 +194,13 @@ func (m *mockOAuthRepo) FindUserByID(ctx context.Context, id int64) (*model.User
 		return m.FindUserByIDFunc(ctx, id)
 	}
 	return nil, nil
+}
+
+func (m *mockOAuthRepo) UpdateClientScope(ctx context.Context, clientID int64, scope string) error {
+	if m.UpdateClientScopeFunc != nil {
+		return m.UpdateClientScopeFunc(ctx, clientID, scope)
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------
