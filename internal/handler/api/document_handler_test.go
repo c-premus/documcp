@@ -259,7 +259,7 @@ func newTestDocument(uuid string) *model.Document {
 // The handler repo is a mockHandlerRepo with TagsForDocument wired through.
 func newDocumentHandlerForTest(mockRepo *mockDocumentRepo) *DocumentHandler {
 	docService := service.NewDocumentService(mockRepo, testLogger())
-	pipeline := service.NewDocumentPipeline(docService, nil, nil, nil, "")
+	pipeline := service.NewDocumentPipeline(docService, nil, nil, "")
 	return &DocumentHandler{
 		pipeline: pipeline,
 		repo: &mockHandlerRepo{
@@ -906,7 +906,7 @@ func (m *mockExtractor) Supports(mimeType string) bool {
 func newDocumentHandlerWithExtractor(mockRepo *mockDocumentRepo, ext extractor.Extractor) *DocumentHandler {
 	docService := service.NewDocumentService(mockRepo, testLogger())
 	registry := extractor.NewRegistry(ext)
-	pipeline := service.NewDocumentPipeline(docService, registry, nil, nil, "")
+	pipeline := service.NewDocumentPipeline(docService, registry, nil, "")
 	return &DocumentHandler{
 		pipeline: pipeline,
 		repo:     &mockHandlerRepo{},
@@ -1635,12 +1635,11 @@ func TestNewDocumentHandler(t *testing.T) {
 		r := &mockHandlerRepo{}
 		l := testLogger()
 
-		h := NewDocumentHandler(p, r, nil, l)
+		h := NewDocumentHandler(p, r, l)
 
 		assert.NotNil(t, h)
 		assert.Equal(t, p, h.pipeline)
 		assert.Equal(t, r, h.repo)
-		assert.Nil(t, h.indexer)
 		assert.Equal(t, l, h.logger)
 	})
 }

@@ -91,7 +91,7 @@ type deleteDocumentResponse struct {
 func (h *Handler) registerDocumentTools() {
 	mcp.AddTool(h.server, &mcp.Tool{
 		Name: "search_documents",
-		Description: "Full-text search across documents (Meilisearch).\n\n" +
+		Description: "Full-text search across documents.\n\n" +
 			"**Filters:**\n" +
 			"- `file_type`: markdown, pdf, docx, xlsx, html\n" +
 			"- `tags`: Filter by document tags (AND logic)\n" +
@@ -159,40 +159,39 @@ func (h *Handler) handleSearchDocuments(
 		limit = 100
 	}
 
-	// Build filter string
-	var filters []string
-	filters = append(filters, "__soft_deleted = false")
+	// Build structured search params.
+	params := search.SearchParams{
+		Query:    input.Query,
+		IndexUID: search.IndexDocuments,
+		Limit:    limit,
+	}
 	if input.FileType != "" && isValidFileType(input.FileType) {
-		filters = append(filters, `file_type = "`+sanitizeFilterValue(input.FileType)+`"`)
+		params.FileType = input.FileType
 	}
 	if len(input.Tags) > 0 {
-		for _, tag := range input.Tags {
-			filters = append(filters, `tags = "`+sanitizeFilterValue(tag)+`"`)
-		}
+		params.Tags = input.Tags
 	}
 
 	// Restrict document visibility based on authentication context.
 	// M2M tokens (no user) see only public documents; non-admin users see own + public.
 	user, _ := authmiddleware.UserFromContext(ctx)
-	if user == nil {
-		filters = append(filters, "is_public = true")
-	} else if !user.IsAdmin {
-		filters = append(filters, fmt.Sprintf("(user_id = %d OR is_public = true)", user.ID))
+	switch {
+	case user == nil:
+		pub := true
+		params.IsPublic = &pub
+	case user.IsAdmin:
+		params.IsAdmin = true
+	default:
+		params.UserID = &user.ID
 	}
 
-	resp, err := h.searcher.Search(ctx, search.SearchParams{
-		Query:    input.Query,
-		IndexUID: search.IndexDocuments,
-		Filters:  strings.Join(filters, " AND "),
-		Limit:    limit,
-	})
+	resp, err := h.searcher.Search(ctx, params)
 	if err != nil {
 		return nil, searchDocumentsResponse{}, fmt.Errorf("searching documents: %w", err)
 	}
 
-	normalized := search.NormalizeHits(resp.Hits, "document")
-	results := make([]documentSearchResult, 0, len(normalized))
-	for _, sr := range normalized {
+	results := make([]documentSearchResult, 0, len(resp.Hits))
+	for _, sr := range resp.Hits {
 		result := documentSearchResult{
 			UUID:          sr.UUID,
 			Title:         sr.Title,

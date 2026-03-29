@@ -20,7 +20,6 @@ import (
 	"github.com/c-premus/documcp/internal/extractor"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/queue"
-	"github.com/c-premus/documcp/internal/search"
 )
 
 // JobInserter inserts jobs into the queue. Defined here (where consumed).
@@ -59,7 +58,6 @@ type UploadDocumentParams struct {
 type DocumentPipeline struct {
 	*DocumentService
 	extractorRegistry *extractor.Registry
-	indexer           *search.Indexer
 	inserter          JobInserter
 	storagePath       string
 }
@@ -68,34 +66,20 @@ type DocumentPipeline struct {
 func NewDocumentPipeline(
 	svc *DocumentService,
 	registry *extractor.Registry,
-	indexer *search.Indexer,
 	inserter JobInserter,
 	storagePath string,
 ) *DocumentPipeline {
 	return &DocumentPipeline{
 		DocumentService:   svc,
 		extractorRegistry: registry,
-		indexer:           indexer,
 		inserter:          inserter,
 		storagePath:       storagePath,
 	}
 }
 
-// Delete soft-deletes a document by UUID and marks it as soft-deleted in the search index.
-// Index update failure is non-fatal: the document is excluded by query-time filtering regardless.
+// Delete soft-deletes a document by UUID.
 func (p *DocumentPipeline) Delete(ctx context.Context, docUUID string) error {
-	if err := p.DocumentService.Delete(ctx, docUUID); err != nil {
-		return err
-	}
-
-	if p.indexer != nil {
-		if err := p.indexer.SoftDeleteDocument(ctx, docUUID); err != nil {
-			p.logger.Warn("failed to soft-delete document in search index",
-				"uuid", docUUID, "error", err)
-		}
-	}
-
-	return nil
+	return p.DocumentService.Delete(ctx, docUUID)
 }
 
 // StoragePath returns the base storage directory for uploaded documents.
@@ -223,80 +207,19 @@ func (p *DocumentPipeline) ProcessDocument(ctx context.Context, docID int64) err
 	doc.ContentHash = sql.NullString{String: contentHash, Valid: true}
 	doc.WordCount = sql.NullInt64{Int64: int64(result.WordCount), Valid: true}
 	doc.ProcessedAt = sql.NullTime{Time: now, Valid: true}
-	doc.Status = "extracted"
+	doc.Status = "indexed"
 	doc.ErrorMessage = sql.NullString{}
 
 	if err := p.repo.Update(ctx, doc); err != nil {
 		return fmt.Errorf("updating document %d after extraction: %w", docID, err)
 	}
 
-	p.logger.Info("document extracted",
+	p.logger.Info("document processed",
 		"id", docID,
 		"uuid", doc.UUID,
 		"word_count", result.WordCount,
 	)
 
-	// Dispatch indexing job.
-	if err := p.dispatchIndexing(ctx, doc); err != nil {
-		return fmt.Errorf("processing document %d: %w", docID, err)
-	}
-
-	return nil
-}
-
-// IndexDocument indexes a document in Meilisearch and updates its DB record.
-func (p *DocumentPipeline) IndexDocument(ctx context.Context, doc *model.Document) error {
-	if p.indexer == nil {
-		return nil
-	}
-
-	tags, err := p.repo.TagsForDocument(ctx, doc.ID)
-	if err != nil {
-		return fmt.Errorf("loading tags for indexing document %d: %w", doc.ID, err)
-	}
-
-	tagNames := make([]string, len(tags))
-	for i, t := range tags {
-		tagNames[i] = t.Tag
-	}
-
-	record := search.DocumentRecord{
-		UUID:        doc.UUID,
-		Title:       doc.Title,
-		Description: doc.Description.String,
-		Content:     doc.Content.String,
-		FileType:    doc.FileType,
-		Tags:        tagNames,
-		Status:      doc.Status,
-		IsPublic:    doc.IsPublic,
-		WordCount:   int(doc.WordCount.Int64),
-		SoftDeleted: false,
-	}
-	if doc.UserID.Valid {
-		uid := doc.UserID.Int64
-		record.UserID = &uid
-	}
-	if doc.CreatedAt.Valid {
-		record.CreatedAt = doc.CreatedAt.Time.Format(time.RFC3339)
-	}
-	if doc.UpdatedAt.Valid {
-		record.UpdatedAt = doc.UpdatedAt.Time.Format(time.RFC3339)
-	}
-
-	if err := p.indexer.IndexDocument(ctx, record); err != nil {
-		return p.markIndexFailed(ctx, doc, fmt.Sprintf("indexing failed: %v", err))
-	}
-
-	now := time.Now()
-	doc.Status = "indexed"
-	doc.MeilisearchIndexedAt = sql.NullTime{Time: now, Valid: true}
-	doc.ErrorMessage = sql.NullString{}
-
-	if err := p.repo.Update(ctx, doc); err != nil {
-		return fmt.Errorf("updating document %d after indexing: %w", doc.ID, err)
-	}
-
-	p.logger.Info("document indexed", "id", doc.ID, "uuid", doc.UUID)
 	return nil
 }
 
@@ -315,31 +238,6 @@ func (p *DocumentPipeline) dispatchExtraction(ctx context.Context, docID int64, 
 	return nil
 }
 
-// dispatchIndexing enqueues a document indexing job via River.
-func (p *DocumentPipeline) dispatchIndexing(ctx context.Context, doc *model.Document) error {
-	if p.inserter == nil || p.indexer == nil {
-		return nil
-	}
-
-	if _, err := p.inserter.Insert(ctx, queue.DocumentIndexArgs{
-		DocumentID: doc.ID,
-		DocUUID:    doc.UUID,
-	}, nil); err != nil {
-		return fmt.Errorf("dispatching indexing job for document %d: %w", doc.ID, err)
-	}
-	return nil
-}
-
-// IndexDocumentByID fetches a document by ID and indexes it in Meilisearch.
-// Used by the River DocumentIndexWorker.
-func (p *DocumentPipeline) IndexDocumentByID(ctx context.Context, docID int64) error {
-	doc, err := p.repo.FindByID(ctx, docID)
-	if err != nil {
-		return fmt.Errorf("finding document %d for indexing: %w", docID, err)
-	}
-	return p.IndexDocument(ctx, doc)
-}
-
 // markFailed updates a document's status to "failed" with an error message.
 func (p *DocumentPipeline) markFailed(ctx context.Context, doc *model.Document, errMsg string) error {
 	doc.Status = "failed"
@@ -351,13 +249,3 @@ func (p *DocumentPipeline) markFailed(ctx context.Context, doc *model.Document, 
 	return fmt.Errorf("document %d: %s", doc.ID, errMsg)
 }
 
-// markIndexFailed updates a document's status to "index_failed".
-func (p *DocumentPipeline) markIndexFailed(ctx context.Context, doc *model.Document, errMsg string) error {
-	doc.Status = "index_failed"
-	doc.ErrorMessage = sql.NullString{String: errMsg, Valid: true}
-	if err := p.repo.Update(ctx, doc); err != nil {
-		return fmt.Errorf("marking document %d as index_failed: %w", doc.ID, err)
-	}
-	p.logger.Error("document indexing failed", "id", doc.ID, "uuid", doc.UUID, "error", errMsg)
-	return fmt.Errorf("document %d: %s", doc.ID, errMsg)
-}

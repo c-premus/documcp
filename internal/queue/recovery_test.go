@@ -82,7 +82,7 @@ func TestRecoverStuckDocuments_uploatedDispatchtesExtract(t *testing.T) {
 	assert.Equal(t, "uuid-20", args1.DocUUID)
 }
 
-func TestRecoverStuckDocuments_extractedDispatchesIndex(t *testing.T) {
+func TestRecoverStuckDocuments_extractedDispatchesExtract(t *testing.T) {
 	t.Parallel()
 
 	inserter := &mockJobInserter{}
@@ -99,8 +99,8 @@ func TestRecoverStuckDocuments_extractedDispatchesIndex(t *testing.T) {
 
 	require.Len(t, inserter.inserted, 1)
 
-	args, ok := inserter.inserted[0].args.(DocumentIndexArgs)
-	require.True(t, ok, "expected DocumentIndexArgs")
+	args, ok := inserter.inserted[0].args.(DocumentExtractArgs)
+	require.True(t, ok, "expected DocumentExtractArgs")
 	assert.Equal(t, int64(30), args.DocumentID)
 	assert.Equal(t, "uuid-30", args.DocUUID)
 }
@@ -124,9 +124,9 @@ func TestRecoverStuckDocuments_bothStatuses(t *testing.T) {
 	_, isExtract := inserter.inserted[0].args.(DocumentExtractArgs)
 	assert.True(t, isExtract, "first job should be DocumentExtractArgs")
 
-	// Second should be index (from extracted).
-	_, isIndex := inserter.inserted[1].args.(DocumentIndexArgs)
-	assert.True(t, isIndex, "second job should be DocumentIndexArgs")
+	// Second should be extract (from extracted).
+	_, isExtract2 := inserter.inserted[1].args.(DocumentExtractArgs)
+	assert.True(t, isExtract2, "second job should be DocumentExtractArgs")
 }
 
 func TestRecoverStuckDocuments_nilInserter(t *testing.T) {

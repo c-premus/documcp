@@ -28,8 +28,7 @@ type ZimArchive struct {
 	IsEnabled            bool           `db:"is_enabled" json:"is_enabled"`
 	IsSearchable         bool           `db:"is_searchable" json:"is_searchable"`
 	LastSyncedAt         sql.NullTime   `db:"last_synced_at" json:"last_synced_at"`
-	MeilisearchIndexedAt sql.NullTime   `db:"meilisearch_indexed_at" json:"meilisearch_indexed_at"`
-	CreatedAt            sql.NullTime   `db:"created_at" json:"created_at"`
+	CreatedAt sql.NullTime `db:"created_at" json:"created_at"`
 	UpdatedAt            sql.NullTime   `db:"updated_at" json:"updated_at"`
 }
 

@@ -77,7 +77,6 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	documentPipeline := service.NewDocumentPipeline(
 		documentService,
 		f.ExtractorRegistry,
-		f.SearchIndexer,
 		riverClient,
 		f.StoragePath,
 	)
@@ -86,21 +85,12 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	// Workers are registered even in insert-only mode for job kind validation.
 	rs.ExtractWorker.Pipeline = documentPipeline
 	rs.ExtractWorker.Metrics = f.Metrics
-	rs.IndexWorker.Indexer = documentPipeline
-	rs.IndexWorker.Metrics = f.Metrics
-	rs.ReindexWorker.Indexer = documentPipeline
-	rs.ReindexWorker.Lister = f.DocumentRepo
-	rs.ReindexWorker.Logger = logger
 
 	oauthService := oauth.NewService(f.OAuthRepo, cfg.OAuth, cfg.App.URL, logger)
-	var extSvcIndexCleaner service.ExternalServiceIndexCleaner
-	if f.SearchIndexer != nil {
-		extSvcIndexCleaner = f.SearchIndexer
-	}
 	externalServiceSvc := service.NewExternalServiceService(
 		f.ExternalServiceRepo,
 		f.ZimArchiveRepo,
-		extSvcIndexCleaner,
+		nil, // search index cleaning handled by PostgreSQL FTS
 		logger,
 	)
 
@@ -127,15 +117,8 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	}
 
 	// --- API Handlers ---
-	var docIndexer apihandler.DocumentIndexer
-	if f.SearchIndexer != nil {
-		docIndexer = f.SearchIndexer
-	}
-	documentH := apihandler.NewDocumentHandler(documentPipeline, f.DocumentRepo, docIndexer, logger)
-	var searchH *apihandler.SearchHandler
-	if f.Searcher != nil {
-		searchH = apihandler.NewSearchHandler(f.Searcher, f.SearchQueryRepo, f.DocumentRepo, logger)
-	}
+	documentH := apihandler.NewDocumentHandler(documentPipeline, f.DocumentRepo, logger)
+	searchH := apihandler.NewSearchHandler(f.Searcher, f.SearchQueryRepo, f.DocumentRepo, logger)
 	zimH := apihandler.NewZimHandler(f.ZimArchiveRepo, &apihandler.KiwixFactoryAdapter{Factory: f.KiwixFactory}, logger)
 	gitTemplateH := apihandler.NewGitTemplateHandler(f.GitTemplateRepo, riverClient, logger)
 	externalServiceH := apihandler.NewExternalServiceHandler(externalServiceSvc, f.ExternalServiceRepo, riverClient, f.KiwixFactory, logger)
@@ -181,9 +164,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		FederatedPerArchiveLimit: cfg.Kiwix.FederatedPerArchiveLimit,
 	}
 	mcpCfg.KiwixFactory = f.KiwixFactory
-	if f.Searcher != nil {
-		mcpCfg.Searcher = f.Searcher
-	}
+	mcpCfg.Searcher = f.Searcher
 	mcpH := mcphandler.New(mcpCfg)
 
 	// --- HTTP Server ---
@@ -231,7 +212,6 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		Metrics:                f.Metrics,
 		OTELEnabled:            cfg.OTEL.Enabled,
 		IsSecure:               cfg.App.Env == "production",
-		SearchClient:           f.SearchClient,
 		DB:                     f.PgxPool,
 		InternalAPIToken:       cfg.App.InternalAPIToken,
 		MaxBodySize:            cfg.Server.MaxBodySize,
@@ -356,8 +336,6 @@ func buildSessionStore(cfg *config.Config, logger *slog.Logger) (*sessions.Cooki
 type riverSetup struct {
 	Client        *queue.RiverClient
 	ExtractWorker *queue.DocumentExtractWorker
-	IndexWorker   *queue.DocumentIndexWorker
-	ReindexWorker *queue.ReindexAllWorker
 }
 
 // buildRiverClient creates the River client with all workers registered.
@@ -373,7 +351,6 @@ func buildRiverClient(f *Foundation, eventBus *queue.EventBus, insertOnly bool) 
 		GitRepo:           f.GitTemplateRepo,
 		OAuthRepo:         f.OAuthRepo,
 		DocRepo:           f.DocumentRepo,
-		Indexer:           f.SearchIndexer,
 		GitTempDir:        f.GitTempDir,
 		StoragePath:       f.StoragePath,
 		Logger:            f.Logger,
@@ -390,22 +367,16 @@ func buildRiverClient(f *Foundation, eventBus *queue.EventBus, insertOnly bool) 
 
 	// Document workers created with nil deps — wired after pipeline creation.
 	extractWorker := &queue.DocumentExtractWorker{}
-	indexWorker := &queue.DocumentIndexWorker{}
-	reindexWorker := &queue.ReindexAllWorker{}
 
 	workers := river.NewWorkers()
 	river.AddWorker(workers, extractWorker)
-	river.AddWorker(workers, indexWorker)
-	river.AddWorker(workers, reindexWorker)
 
 	// Scheduler workers.
 	river.AddWorker(workers, &queue.SyncKiwixWorker{Deps: schedulerDeps})
 	river.AddWorker(workers, &queue.SyncGitTemplatesWorker{Deps: schedulerDeps})
 	river.AddWorker(workers, &queue.CleanupOAuthTokensWorker{Deps: schedulerDeps})
 	river.AddWorker(workers, &queue.CleanupOrphanedFilesWorker{Deps: schedulerDeps})
-	river.AddWorker(workers, &queue.VerifySearchIndexWorker{Deps: schedulerDeps})
 	river.AddWorker(workers, &queue.PurgeSoftDeletedWorker{Deps: schedulerDeps})
-	river.AddWorker(workers, &queue.CleanupDisabledZimWorker{Deps: schedulerDeps})
 	river.AddWorker(workers, &queue.HealthCheckServicesWorker{Deps: schedulerDeps})
 
 	// Periodic jobs (only when processing jobs).
@@ -442,8 +413,6 @@ func buildRiverClient(f *Foundation, eventBus *queue.EventBus, insertOnly bool) 
 	return &riverSetup{
 		Client:        riverClient,
 		ExtractWorker: extractWorker,
-		IndexWorker:   indexWorker,
-		ReindexWorker: reindexWorker,
 	}, nil
 }
 

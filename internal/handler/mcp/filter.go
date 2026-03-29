@@ -47,10 +47,3 @@ func isValidFileType(ft string) bool {
 	return validFileTypes[strings.ToLower(ft)]
 }
 
-// sanitizeFilterValue escapes a string for safe use in a Meilisearch filter value.
-// It escapes backslashes and double quotes which are meaningful in filter syntax.
-func sanitizeFilterValue(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `"`, `\"`)
-	return s
-}

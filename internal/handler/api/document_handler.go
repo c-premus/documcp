@@ -67,19 +67,12 @@ type documentRepo interface {
 	ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
 }
 
-// DocumentIndexer handles search index operations for documents.
-type DocumentIndexer interface {
-	DeleteDocument(ctx context.Context, uuid string) error
-	UndeleteDocument(ctx context.Context, uuid string) error
-}
-
 const maxUploadBodySize = 50*1024*1024 + 1024 // 50 MiB + metadata overhead
 
 // DocumentHandler handles REST API endpoints for documents.
 type DocumentHandler struct {
 	pipeline documentPipeline
 	repo     documentRepo
-	indexer  DocumentIndexer // nil when search is not configured
 	logger   *slog.Logger
 }
 
@@ -87,13 +80,11 @@ type DocumentHandler struct {
 func NewDocumentHandler(
 	pipeline documentPipeline,
 	repo documentRepo,
-	indexer DocumentIndexer,
 	logger *slog.Logger,
 ) *DocumentHandler {
 	return &DocumentHandler{
 		pipeline: pipeline,
 		repo:     repo,
-		indexer:  indexer,
 		logger:   logger,
 	}
 }
@@ -684,12 +675,6 @@ func (h *DocumentHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.indexer != nil {
-		if idxErr := h.indexer.UndeleteDocument(r.Context(), docUUID); idxErr != nil {
-			h.logger.Warn("failed to undelete document in search index", "uuid", docUUID, "error", idxErr)
-		}
-	}
-
 	// Re-fetch to get updated timestamps.
 	doc, err = h.repo.FindByUUID(r.Context(), docUUID)
 	if err != nil {
@@ -727,12 +712,6 @@ func (h *DocumentHandler) Purge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.indexer != nil {
-		if err := h.indexer.DeleteDocument(r.Context(), docUUID); err != nil {
-			h.logger.Warn("failed to delete document from search index", "uuid", docUUID, "error", err)
-		}
-	}
-
 	if filePath != "" {
 		safePath, pathErr := safeStoragePath(h.pipeline.StoragePath(), filePath)
 		if pathErr != nil {
@@ -766,15 +745,6 @@ func (h *DocumentHandler) BulkPurge(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("bulk purging documents", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to purge documents")
 		return
-	}
-
-	if h.indexer != nil {
-		for _, p := range paths {
-			if err := h.indexer.DeleteDocument(r.Context(), p.UUID); err != nil {
-				h.logger.Warn("failed to delete document from search index during bulk purge",
-					"uuid", p.UUID, "error", err)
-			}
-		}
 	}
 
 	for _, p := range paths {

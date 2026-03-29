@@ -24,24 +24,3 @@ func TestIsValidFileType(t *testing.T) {
 	}
 }
 
-func TestSanitizeFilterValue(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{"normal string", "golang", "golang"},
-		{"double quote", `foo"bar`, `foo\"bar`},
-		{"backslash", `foo\bar`, `foo\\bar`},
-		{"both quote and backslash", `a\"b`, `a\\\"b`},
-		{"meilisearch operators in value", `tag" AND is_public = true`, `tag\" AND is_public = true`},
-		{"empty string", "", ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := sanitizeFilterValue(tt.in); got != tt.want {
-				t.Errorf("sanitizeFilterValue(%q) = %q, want %q", tt.in, got, tt.want)
-			}
-		})
-	}
-}

@@ -366,46 +366,6 @@ func (h *Handler) handleSearchGitTemplates(
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, searchGitTemplatesResponse{}, errors.New("mcp:read scope required")
 	}
-	if h.searcher == nil {
-		// Fall back to DB search if searcher is not available
-		limit := input.Limit
-		if limit <= 0 {
-			limit = 10
-		}
-		if limit > 50 {
-			limit = 50
-		}
-
-		templates, err := h.gitTemplateRepo.Search(ctx, input.Query, input.Category, limit)
-		if err != nil {
-			return nil, searchGitTemplatesResponse{}, fmt.Errorf("searching git templates: %w", err)
-		}
-
-		results := make([]gitTemplateSearchResult, 0, len(templates))
-		for i := range templates {
-			gt := &templates[i]
-			item := gitTemplateSearchResult{
-				UUID:      gt.UUID,
-				Name:      gt.Name,
-				FileCount: gt.FileCount,
-				Status:    gt.Status,
-			}
-			if gt.Description.Valid {
-				item.Description = gt.Description.String
-			}
-			if gt.Category.Valid {
-				item.Category = gt.Category.String
-			}
-			results = append(results, item)
-		}
-
-		return nil, searchGitTemplatesResponse{
-			Success: true,
-			Query:   input.Query,
-			Results: results,
-			Total:   len(results),
-		}, nil
-	}
 
 	limit := int64(input.Limit)
 	if limit <= 0 {
@@ -415,25 +375,26 @@ func (h *Handler) handleSearchGitTemplates(
 		limit = 50
 	}
 
-	var filters []string
-	filters = append(filters, "__soft_deleted = false")
-	if input.Category != "" {
-		filters = append(filters, `category = "`+sanitizeFilterValue(input.Category)+`"`)
+	if h.searcher == nil {
+		return nil, searchGitTemplatesResponse{Message: "Search service not configured"}, nil
 	}
 
-	resp, err := h.searcher.Search(ctx, search.SearchParams{
+	params := search.SearchParams{
 		Query:    input.Query,
 		IndexUID: search.IndexGitTemplates,
-		Filters:  strings.Join(filters, " AND "),
 		Limit:    limit,
-	})
+	}
+	if input.Category != "" {
+		params.Category = input.Category
+	}
+
+	resp, err := h.searcher.Search(ctx, params)
 	if err != nil {
 		return nil, searchGitTemplatesResponse{}, fmt.Errorf("searching git templates: %w", err)
 	}
 
-	normalized := search.NormalizeHits(resp.Hits, "git_template")
-	results := make([]gitTemplateSearchResult, 0, len(normalized))
-	for _, sr := range normalized {
+	results := make([]gitTemplateSearchResult, 0, len(resp.Hits))
+	for _, sr := range resp.Hits {
 		results = append(results, gitTemplateSearchResult{
 			UUID:        sr.UUID,
 			Name:        sr.Title,

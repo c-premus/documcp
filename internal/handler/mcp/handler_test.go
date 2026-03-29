@@ -3,12 +3,10 @@ package mcphandler
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"testing"
 
-	"github.com/meilisearch/meilisearch-go"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
@@ -40,14 +38,58 @@ func ctxWithTokenOnly() context.Context {
 	return context.WithValue(context.Background(), authmiddleware.AccessTokenContextKey, mcpToken())
 }
 
-// makeMCPHit builds a meilisearch.Hit from a plain map for test convenience.
-func makeMCPHit(m map[string]any) meilisearch.Hit {
-	hit := make(meilisearch.Hit, len(m))
+// makeMCPHit builds a search.SearchResult from a plain map for test convenience.
+func makeMCPHit(m map[string]any) search.SearchResult {
+	return mapToSearchResult(m)
+}
+
+// mapToSearchResult converts a map of arbitrary values to a SearchResult.
+func mapToSearchResult(m map[string]any) search.SearchResult {
+	r := search.SearchResult{Extra: make(map[string]any)}
 	for k, v := range m {
-		raw, _ := json.Marshal(v)
-		hit[k] = json.RawMessage(raw)
+		switch k {
+		case "uuid":
+			if s, ok := v.(string); ok {
+				r.UUID = s
+			}
+		case "title":
+			if s, ok := v.(string); ok {
+				r.Title = s
+			}
+		case "name":
+			if s, ok := v.(string); ok {
+				if r.Title == "" {
+					r.Title = s
+				}
+				r.Extra["name"] = v // also store in Extra for lookups
+			}
+		case "description":
+			if s, ok := v.(string); ok {
+				r.Description = s
+			}
+		case "source":
+			if s, ok := v.(string); ok {
+				r.Source = s
+			}
+		case "_federation":
+			// Extract indexUid from federation metadata map.
+			switch fv := v.(type) {
+			case map[string]any:
+				if uid, ok := fv["indexUid"].(string); ok {
+					r.Source = uid
+				}
+			case string:
+				r.Source = fv
+			}
+		case "_rankingScore":
+			if f, ok := v.(float64); ok {
+				r.Score = f
+			}
+		default:
+			r.Extra[k] = v
+		}
 	}
-	return hit
+	return r
 }
 
 // --- Mock implementations ---
@@ -197,22 +239,22 @@ func (f *mockKiwixFactory) Get(_ context.Context) (kiwixSearcher, error) {
 }
 
 type mockSearcher struct {
-	searchFn          func(ctx context.Context, params search.SearchParams) (*meilisearch.SearchResponse, error)
-	federatedSearchFn func(ctx context.Context, params search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error)
+	searchFn          func(ctx context.Context, params search.SearchParams) (*search.SearchResponse, error)
+	federatedSearchFn func(ctx context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error)
 }
 
-func (m *mockSearcher) Search(ctx context.Context, params search.SearchParams) (*meilisearch.SearchResponse, error) {
+func (m *mockSearcher) Search(ctx context.Context, params search.SearchParams) (*search.SearchResponse, error) {
 	if m.searchFn != nil {
 		return m.searchFn(ctx, params)
 	}
-	return nil, nil
+	return &search.SearchResponse{}, nil
 }
 
-func (m *mockSearcher) FederatedSearch(ctx context.Context, params search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
+func (m *mockSearcher) FederatedSearch(ctx context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
 	if m.federatedSearchFn != nil {
 		return m.federatedSearchFn(ctx, params)
 	}
-	return nil, nil
+	return &search.FederatedSearchResponse{}, nil
 }
 
 // newHandlerWithMocks creates a Handler with a real MCP server and the provided
@@ -246,6 +288,8 @@ func newHandlerWithMocks(opts struct {
 	}
 	if opts.searcher != nil {
 		h.searcher = opts.searcher
+	} else {
+		h.searcher = &mockSearcher{} // default no-op searcher
 	}
 	return h
 }
@@ -698,6 +742,7 @@ func TestHandleSearchDocuments(t *testing.T) {
 			kiwixC   *mockKiwixClient
 			searcher *mockSearcher
 		}{})
+		h.searcher = nil // explicitly nil for this test
 
 		_, resp, err := h.handleSearchDocuments(ctx, nil, dto.SearchDocumentsInput{Query: "test"})
 		if err != nil {
@@ -713,7 +758,7 @@ func TestHandleSearchDocuments(t *testing.T) {
 
 	t.Run("returns error when searcher fails", func(t *testing.T) {
 		s := &mockSearcher{
-			searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
+			searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
 				return nil, errors.New("search error")
 			},
 		}
@@ -734,9 +779,9 @@ func TestHandleSearchDocuments(t *testing.T) {
 	t.Run("clamps limit to defaults", func(t *testing.T) {
 		var capturedLimit int64
 		s := &mockSearcher{
-			searchFn: func(_ context.Context, params search.SearchParams) (*meilisearch.SearchResponse, error) {
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
 				capturedLimit = params.Limit
-				return &meilisearch.SearchResponse{}, nil
+				return &search.SearchResponse{}, nil
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -760,12 +805,12 @@ func TestHandleSearchDocuments(t *testing.T) {
 		}
 	})
 
-	t.Run("builds filters from file_type and tags", func(t *testing.T) {
-		var capturedFilter string
+	t.Run("builds structured filters from file_type and tags", func(t *testing.T) {
+		var capturedParams search.SearchParams
 		s := &mockSearcher{
-			searchFn: func(_ context.Context, params search.SearchParams) (*meilisearch.SearchResponse, error) {
-				capturedFilter = params.Filters
-				return &meilisearch.SearchResponse{}, nil
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+				capturedParams = params
+				return &search.SearchResponse{}, nil
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -781,19 +826,11 @@ func TestHandleSearchDocuments(t *testing.T) {
 			FileType: "markdown",
 			Tags:     []string{"go", "testing"},
 		})
-		if capturedFilter == "" {
-			t.Fatal("expected non-empty filter")
+		if capturedParams.FileType != "markdown" {
+			t.Errorf("FileType = %q, want %q", capturedParams.FileType, "markdown")
 		}
-		// Should contain soft-delete, file_type, and both tags
-		for _, want := range []string{
-			"__soft_deleted = false",
-			`file_type = "markdown"`,
-			`tags = "go"`,
-			`tags = "testing"`,
-		} {
-			if !containsStr(capturedFilter, want) {
-				t.Errorf("filter %q missing substring %q", capturedFilter, want)
-			}
+		if len(capturedParams.Tags) != 2 || capturedParams.Tags[0] != "go" || capturedParams.Tags[1] != "testing" {
+			t.Errorf("Tags = %v, want [go testing]", capturedParams.Tags)
 		}
 	})
 }
@@ -1230,28 +1267,25 @@ func TestHandleListGitTemplates(t *testing.T) {
 func TestHandleSearchGitTemplates(t *testing.T) {
 	ctx := ctxWithAdminUser()
 
-	t.Run("falls back to DB search when searcher is nil", func(t *testing.T) {
-		repo := &mockGitTemplateRepo{
-			searchFn: func(_ context.Context, query, category string, limit int) ([]model.GitTemplate, error) {
-				return []model.GitTemplate{
-					{
-						UUID:        "t1",
-						Name:        "Found Template",
-						Description: sql.NullString{String: "desc", Valid: true},
-						Category:    sql.NullString{String: "claude", Valid: true},
-						FileCount:   3,
-						Status:      "synced",
+	t.Run("returns results from searcher", func(t *testing.T) {
+		s := &mockSearcher{
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+				return &search.SearchResponse{
+					Hits: []search.SearchResult{
+						{UUID: "t1", Title: "Found Template", Description: "desc", Source: "git_templates"},
 					},
+					EstimatedTotal: 1,
 				}, nil
 			},
 		}
+		repo := &mockGitTemplateRepo{}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
 			searcher *mockSearcher
-		}{gitRepo: repo})
+		}{gitRepo: repo, searcher: s})
 
 		_, resp, err := h.handleSearchGitTemplates(ctx, nil, dto.SearchGitTemplatesInput{Query: "claude"})
 		if err != nil {
@@ -1265,12 +1299,12 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		}
 	})
 
-	t.Run("DB fallback clamps limit", func(t *testing.T) {
-		var capturedLimit int
-		repo := &mockGitTemplateRepo{
-			searchFn: func(_ context.Context, _, _ string, limit int) ([]model.GitTemplate, error) {
-				capturedLimit = limit
-				return nil, nil
+	t.Run("clamps limit", func(t *testing.T) {
+		var capturedLimit int64
+		s := &mockSearcher{
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+				capturedLimit = params.Limit
+				return &search.SearchResponse{}, nil
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -1279,7 +1313,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
 			searcher *mockSearcher
-		}{gitRepo: repo})
+		}{searcher: s})
 
 		_, _, _ = h.handleSearchGitTemplates(ctx, nil, dto.SearchGitTemplatesInput{Query: "x", Limit: 0})
 		if capturedLimit != 10 {
@@ -1292,10 +1326,10 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		}
 	})
 
-	t.Run("returns error when DB search fails", func(t *testing.T) {
-		repo := &mockGitTemplateRepo{
-			searchFn: func(_ context.Context, _, _ string, _ int) ([]model.GitTemplate, error) {
-				return nil, errors.New("db error")
+	t.Run("returns error when search fails", func(t *testing.T) {
+		s := &mockSearcher{
+			searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
+				return nil, errors.New("search error")
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -1304,7 +1338,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
 			searcher *mockSearcher
-		}{gitRepo: repo})
+		}{searcher: s})
 
 		_, _, err := h.handleSearchGitTemplates(ctx, nil, dto.SearchGitTemplatesInput{Query: "x"})
 		if err == nil {
@@ -1314,7 +1348,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 
 	t.Run("returns error when meilisearch search fails", func(t *testing.T) {
 		s := &mockSearcher{
-			searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
+			searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
 				return nil, errors.New("search error")
 			},
 		}
@@ -1333,18 +1367,14 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		}
 	})
 
-	t.Run("DB fallback with null description and category", func(t *testing.T) {
-		repo := &mockGitTemplateRepo{
-			searchFn: func(_ context.Context, _, _ string, _ int) ([]model.GitTemplate, error) {
-				return []model.GitTemplate{
-					{
-						UUID:        "t2",
-						Name:        "No Desc Template",
-						Description: sql.NullString{Valid: false},
-						Category:    sql.NullString{Valid: false},
-						FileCount:   1,
-						Status:      "synced",
+	t.Run("empty description and category in search results", func(t *testing.T) {
+		s := &mockSearcher{
+			searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
+				return &search.SearchResponse{
+					Hits: []search.SearchResult{
+						{UUID: "t2", Title: "No Desc Template", Source: "git_templates"},
 					},
+					EstimatedTotal: 1,
 				}, nil
 			},
 		}
@@ -1354,7 +1384,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
 			searcher *mockSearcher
-		}{gitRepo: repo})
+		}{searcher: s})
 
 		_, resp, err := h.handleSearchGitTemplates(ctx, nil, dto.SearchGitTemplatesInput{Query: "x"})
 		if err != nil {
@@ -1364,16 +1394,16 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 			t.Errorf("Total = %d, want 1", resp.Total)
 		}
 		if resp.Results[0].Description != "" {
-			t.Errorf("Description = %q, want empty for null", resp.Results[0].Description)
+			t.Errorf("Description = %q, want empty", resp.Results[0].Description)
 		}
 		if resp.Results[0].Category != "" {
-			t.Errorf("Category = %q, want empty for null", resp.Results[0].Category)
+			t.Errorf("Category = %q, want empty", resp.Results[0].Category)
 		}
 	})
 
 	t.Run("meilisearch path builds results from hits", func(t *testing.T) {
 		s := &mockSearcher{
-			searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
+			searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
 				hit := makeMCPHit(map[string]any{
 					"uuid":        "uuid-ms-1",
 					"name":        "Meilisearch Template",
@@ -1382,9 +1412,9 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 					"file_count":  float64(7),
 					"status":      "synced",
 				})
-				return &meilisearch.SearchResponse{
-					Hits:               meilisearch.Hits{hit},
-					EstimatedTotalHits: 1,
+				return &search.SearchResponse{
+					Hits:               []search.SearchResult{hit},
+					EstimatedTotal: 1,
 				}, nil
 			},
 		}
@@ -1425,9 +1455,9 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 	t.Run("meilisearch path clamps limit", func(t *testing.T) {
 		var capturedLimit int64
 		s := &mockSearcher{
-			searchFn: func(_ context.Context, params search.SearchParams) (*meilisearch.SearchResponse, error) {
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
 				capturedLimit = params.Limit
-				return &meilisearch.SearchResponse{}, nil
+				return &search.SearchResponse{}, nil
 			},
 		}
 		repo := &mockGitTemplateRepo{}
@@ -1450,12 +1480,12 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		}
 	})
 
-	t.Run("meilisearch path adds category filter when provided", func(t *testing.T) {
-		var capturedFilters string
+	t.Run("search path adds category filter when provided", func(t *testing.T) {
+		var capturedParams search.SearchParams
 		s := &mockSearcher{
-			searchFn: func(_ context.Context, params search.SearchParams) (*meilisearch.SearchResponse, error) {
-				capturedFilters = params.Filters
-				return &meilisearch.SearchResponse{}, nil
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+				capturedParams = params
+				return &search.SearchResponse{}, nil
 			},
 		}
 		repo := &mockGitTemplateRepo{}
@@ -1468,11 +1498,8 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		}{gitRepo: repo, searcher: s})
 
 		_, _, _ = h.handleSearchGitTemplates(ctx, nil, dto.SearchGitTemplatesInput{Query: "x", Category: "backend"})
-		if capturedFilters == "" {
-			t.Error("expected non-empty filters when category is provided")
-		}
-		if !containsStr(capturedFilters, "category") {
-			t.Errorf("filters %q should contain 'category'", capturedFilters)
+		if capturedParams.Category != "backend" {
+			t.Errorf("Category = %q, want %q", capturedParams.Category, "backend")
 		}
 	})
 }
@@ -1985,6 +2012,7 @@ func TestHandleUnifiedSearch(t *testing.T) {
 			kiwixC   *mockKiwixClient
 			searcher *mockSearcher
 		}{})
+		h.searcher = nil // explicitly nil for this test
 
 		_, resp, err := h.handleUnifiedSearch(ctx, nil, dto.UnifiedSearchInput{Query: "test"})
 		if err != nil {
@@ -2000,7 +2028,7 @@ func TestHandleUnifiedSearch(t *testing.T) {
 
 	t.Run("returns error when federated search fails", func(t *testing.T) {
 		s := &mockSearcher{
-			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
 				return nil, errors.New("federation error")
 			},
 		}
@@ -2021,9 +2049,9 @@ func TestHandleUnifiedSearch(t *testing.T) {
 	t.Run("clamps limit", func(t *testing.T) {
 		var capturedLimit int64
 		s := &mockSearcher{
-			federatedSearchFn: func(_ context.Context, params search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
+			federatedSearchFn: func(_ context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
 				capturedLimit = params.Limit
-				return &meilisearch.MultiSearchResponse{}, nil
+				return &search.FederatedSearchResponse{}, nil
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -2048,9 +2076,9 @@ func TestHandleUnifiedSearch(t *testing.T) {
 	t.Run("maps type names to index UIDs", func(t *testing.T) {
 		var capturedIndexes []string
 		s := &mockSearcher{
-			federatedSearchFn: func(_ context.Context, params search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
+			federatedSearchFn: func(_ context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
 				capturedIndexes = params.Indexes
-				return &meilisearch.MultiSearchResponse{}, nil
+				return &search.FederatedSearchResponse{}, nil
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -2079,9 +2107,9 @@ func TestHandleUnifiedSearch(t *testing.T) {
 	t.Run("ignores unknown type names", func(t *testing.T) {
 		var capturedIndexes []string
 		s := &mockSearcher{
-			federatedSearchFn: func(_ context.Context, params search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
+			federatedSearchFn: func(_ context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
 				capturedIndexes = params.Indexes
-				return &meilisearch.MultiSearchResponse{}, nil
+				return &search.FederatedSearchResponse{}, nil
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -2104,27 +2132,9 @@ func TestHandleUnifiedSearch(t *testing.T) {
 
 // --- Test helper ---
 
-func containsStr(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || s != "" && containsSubstring(s, substr))
-}
-
-func containsSubstring(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
-}
-
-// makeHit builds a meilisearch.Hit from a map of arbitrary values.
-func makeHit(m map[string]any) meilisearch.Hit {
-	hit := make(meilisearch.Hit, len(m))
-	for k, v := range m {
-		raw, _ := json.Marshal(v)
-		hit[k] = json.RawMessage(raw)
-	}
-	return hit
+// makeHit builds a search.SearchResult from a map of arbitrary values.
+func makeHit(m map[string]any) search.SearchResult {
+	return mapToSearchResult(m)
 }
 
 // ===== Search result-building tests =====
@@ -2136,9 +2146,9 @@ func TestHandleSearchDocumentsResults(t *testing.T) {
 	t.Run("returns populated results from hits", func(t *testing.T) {
 		t.Parallel()
 		s := &mockSearcher{
-			searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
-				return &meilisearch.SearchResponse{
-					Hits: meilisearch.Hits{
+			searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
+				return &search.SearchResponse{
+					Hits: []search.SearchResult{
 						makeHit(map[string]any{
 							"uuid":        "aaa-bbb",
 							"title":       "First Doc",
@@ -2198,13 +2208,13 @@ func TestHandleSearchDocumentsResults(t *testing.T) {
 	t.Run("result includes tags from hit", func(t *testing.T) {
 		t.Parallel()
 		s := &mockSearcher{
-			searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
-				return &meilisearch.SearchResponse{
-					Hits: meilisearch.Hits{
+			searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
+				return &search.SearchResponse{
+					Hits: []search.SearchResult{
 						makeHit(map[string]any{
 							"uuid":  "tag-doc",
 							"title": "Tagged",
-							"tags":  []string{"go", "test"},
+							"tags":  []any{"go", "test"},
 						}),
 					},
 				}, nil
@@ -2236,9 +2246,9 @@ func TestHandleSearchDocumentsResults(t *testing.T) {
 	t.Run("include_content=true populates content field", func(t *testing.T) {
 		t.Parallel()
 		s := &mockSearcher{
-			searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
-				return &meilisearch.SearchResponse{
-					Hits: meilisearch.Hits{
+			searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
+				return &search.SearchResponse{
+					Hits: []search.SearchResult{
 						makeHit(map[string]any{
 							"uuid":    "content-doc",
 							"title":   "With Content",
@@ -2271,9 +2281,9 @@ func TestHandleSearchDocumentsResults(t *testing.T) {
 	t.Run("include_content=false omits content field", func(t *testing.T) {
 		t.Parallel()
 		s := &mockSearcher{
-			searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
-				return &meilisearch.SearchResponse{
-					Hits: meilisearch.Hits{
+			searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
+				return &search.SearchResponse{
+					Hits: []search.SearchResult{
 						makeHit(map[string]any{
 							"uuid":    "no-content-doc",
 							"title":   "Without Content",
@@ -2305,11 +2315,11 @@ func TestHandleSearchDocumentsResults(t *testing.T) {
 
 	t.Run("invalid file_type filter is silently ignored", func(t *testing.T) {
 		t.Parallel()
-		var capturedFilter string
+		var capturedParams search.SearchParams
 		s := &mockSearcher{
-			searchFn: func(_ context.Context, params search.SearchParams) (*meilisearch.SearchResponse, error) {
-				capturedFilter = params.Filters
-				return &meilisearch.SearchResponse{}, nil
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+				capturedParams = params
+				return &search.SearchResponse{}, nil
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -2327,8 +2337,8 @@ func TestHandleSearchDocumentsResults(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if containsStr(capturedFilter, "file_type") {
-			t.Errorf("filter should not contain file_type for invalid type, got %q", capturedFilter)
+		if capturedParams.FileType != "" {
+			t.Errorf("FileType should be empty for invalid type, got %q", capturedParams.FileType)
 		}
 	})
 }
@@ -2340,9 +2350,9 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 	t.Run("returns populated results from hits", func(t *testing.T) {
 		t.Parallel()
 		s := &mockSearcher{
-			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
-				return &meilisearch.MultiSearchResponse{
-					Hits: meilisearch.Hits{
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				return &search.FederatedSearchResponse{
+					Hits: []search.SearchResult{
 						makeHit(map[string]any{
 							"uuid":        "fed-aaa",
 							"title":       "Federated Doc",
@@ -2394,9 +2404,9 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 	t.Run("detects source from document federation metadata", func(t *testing.T) {
 		t.Parallel()
 		s := &mockSearcher{
-			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
-				return &meilisearch.MultiSearchResponse{
-					Hits: meilisearch.Hits{
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				return &search.FederatedSearchResponse{
+					Hits: []search.SearchResult{
 						makeHit(map[string]any{
 							"uuid":        "fallback-doc",
 							"title":       "Fallback Doc",
@@ -2427,9 +2437,9 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 	t.Run("detects source from zim_archive federation metadata", func(t *testing.T) {
 		t.Parallel()
 		s := &mockSearcher{
-			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
-				return &meilisearch.MultiSearchResponse{
-					Hits: meilisearch.Hits{
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				return &search.FederatedSearchResponse{
+					Hits: []search.SearchResult{
 						makeHit(map[string]any{
 							"uuid":          "fallback-zim",
 							"title":         "Fallback ZIM",
@@ -2460,9 +2470,9 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 	t.Run("detects source from git_template federation metadata", func(t *testing.T) {
 		t.Parallel()
 		s := &mockSearcher{
-			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
-				return &meilisearch.MultiSearchResponse{
-					Hits: meilisearch.Hits{
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				return &search.FederatedSearchResponse{
+					Hits: []search.SearchResult{
 						makeHit(map[string]any{
 							"uuid":           "fallback-git",
 							"title":          "Fallback Git",
@@ -2493,9 +2503,9 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 	t.Run("uses title fallback from name field", func(t *testing.T) {
 		t.Parallel()
 		s := &mockSearcher{
-			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
-				return &meilisearch.MultiSearchResponse{
-					Hits: meilisearch.Hits{
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				return &search.FederatedSearchResponse{
+					Hits: []search.SearchResult{
 						makeHit(map[string]any{
 							"uuid":           "name-fallback",
 							"name":           "Template Name",
@@ -2525,9 +2535,9 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 	t.Run("sources_searched reflects hit sources", func(t *testing.T) {
 		t.Parallel()
 		s := &mockSearcher{
-			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
-				return &meilisearch.MultiSearchResponse{
-					Hits: meilisearch.Hits{
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				return &search.FederatedSearchResponse{
+					Hits: []search.SearchResult{
 						makeHit(map[string]any{
 							"uuid":      "src-doc",
 							"title":     "Doc",

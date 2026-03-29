@@ -24,9 +24,7 @@ func BuildPeriodicJobs(cfg config.SchedulerConfig, logger *slog.Logger) []*river
 		{"git", cfg.GitSchedule, SyncGitTemplatesArgs{}, false},
 		{"oauth-cleanup", cfg.OAuthCleanupSchedule, CleanupOAuthTokensArgs{}, false},
 		{"orphaned-files", cfg.OrphanedFilesSchedule, CleanupOrphanedFilesArgs{}, false},
-		{"search-verify", cfg.SearchVerifySchedule, VerifySearchIndexArgs{}, true},
 		{"soft-delete-purge", cfg.SoftDeletePurgeSchedule, PurgeSoftDeletedArgs{}, false},
-		{"zim-cleanup", cfg.ZimCleanupSchedule, CleanupDisabledZimArgs{}, false},
 		{"health-check", cfg.HealthCheckSchedule, HealthCheckServicesArgs{}, false},
 	}
 

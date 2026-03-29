@@ -25,49 +25,6 @@ func (DocumentExtractArgs) InsertOpts() river.InsertOpts {
 	}
 }
 
-// DocumentIndexArgs dispatches document search indexing.
-type DocumentIndexArgs struct {
-	DocumentID int64  `json:"document_id"`
-	DocUUID    string `json:"doc_uuid"`
-}
-
-// Kind returns the job kind identifier for DocumentIndexArgs.
-func (DocumentIndexArgs) Kind() string { return "document_index" }
-
-// InsertOpts returns the River insert options for DocumentIndexArgs.
-func (DocumentIndexArgs) InsertOpts() river.InsertOpts {
-	return river.InsertOpts{
-		Queue:       "default",
-		Priority:    2,
-		MaxAttempts: 4,
-	}
-}
-
-// ReindexAllArgs dispatches a full reindex of all documents.
-type ReindexAllArgs struct{}
-
-// Kind returns the job kind identifier for ReindexAllArgs.
-func (ReindexAllArgs) Kind() string { return "reindex_all" }
-
-// InsertOpts returns the River insert options for ReindexAllArgs.
-func (ReindexAllArgs) InsertOpts() river.InsertOpts {
-	return river.InsertOpts{
-		Queue:       "low",
-		Priority:    4,
-		MaxAttempts: 2,
-		UniqueOpts: river.UniqueOpts{
-			ByQueue: true,
-			ByState: []rivertype.JobState{
-				rivertype.JobStatePending,
-				rivertype.JobStateAvailable,
-				rivertype.JobStateRunning,
-				rivertype.JobStateRetryable,
-				rivertype.JobStateScheduled,
-			},
-		},
-	}
-}
-
 // --- Scheduler migration jobs ---.
 
 // SyncKiwixArgs dispatches Kiwix ZIM archive synchronization.
@@ -170,30 +127,6 @@ func (CleanupOrphanedFilesArgs) InsertOpts() river.InsertOpts {
 	}
 }
 
-// VerifySearchIndexArgs dispatches search index consistency verification.
-type VerifySearchIndexArgs struct{}
-
-// Kind returns the job kind identifier for VerifySearchIndexArgs.
-func (VerifySearchIndexArgs) Kind() string { return "verify_search_index" }
-
-// InsertOpts returns the River insert options for VerifySearchIndexArgs.
-func (VerifySearchIndexArgs) InsertOpts() river.InsertOpts {
-	return river.InsertOpts{
-		Queue:       "low",
-		Priority:    4,
-		MaxAttempts: 2,
-		UniqueOpts: river.UniqueOpts{
-			ByQueue: true,
-			ByState: []rivertype.JobState{
-				rivertype.JobStatePending,
-				rivertype.JobStateAvailable,
-				rivertype.JobStateRunning,
-				rivertype.JobStateRetryable,
-				rivertype.JobStateScheduled,
-			},
-		},
-	}
-}
 
 // PurgeSoftDeletedArgs dispatches permanent removal of soft-deleted documents.
 type PurgeSoftDeletedArgs struct{}
@@ -220,30 +153,6 @@ func (PurgeSoftDeletedArgs) InsertOpts() river.InsertOpts {
 	}
 }
 
-// CleanupDisabledZimArgs dispatches removal of disabled ZIM archives from search.
-type CleanupDisabledZimArgs struct{}
-
-// Kind returns the job kind identifier for CleanupDisabledZimArgs.
-func (CleanupDisabledZimArgs) Kind() string { return "cleanup_disabled_zim" }
-
-// InsertOpts returns the River insert options for CleanupDisabledZimArgs.
-func (CleanupDisabledZimArgs) InsertOpts() river.InsertOpts {
-	return river.InsertOpts{
-		Queue:       "low",
-		Priority:    4,
-		MaxAttempts: 2,
-		UniqueOpts: river.UniqueOpts{
-			ByQueue: true,
-			ByState: []rivertype.JobState{
-				rivertype.JobStatePending,
-				rivertype.JobStateAvailable,
-				rivertype.JobStateRunning,
-				rivertype.JobStateRetryable,
-				rivertype.JobStateScheduled,
-			},
-		},
-	}
-}
 
 // HealthCheckServicesArgs dispatches external service health checks.
 type HealthCheckServicesArgs struct{}

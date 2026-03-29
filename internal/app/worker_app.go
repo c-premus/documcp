@@ -46,7 +46,6 @@ func NewWorkerApp(f *Foundation) (*WorkerApp, error) {
 	documentPipeline := service.NewDocumentPipeline(
 		documentService,
 		f.ExtractorRegistry,
-		f.SearchIndexer,
 		riverClient,
 		f.StoragePath,
 	)
@@ -54,11 +53,6 @@ func NewWorkerApp(f *Foundation) (*WorkerApp, error) {
 	// Wire pipeline into document workers (resolves circular dependency).
 	rs.ExtractWorker.Pipeline = documentPipeline
 	rs.ExtractWorker.Metrics = f.Metrics
-	rs.IndexWorker.Indexer = documentPipeline
-	rs.IndexWorker.Metrics = f.Metrics
-	rs.ReindexWorker.Indexer = documentPipeline
-	rs.ReindexWorker.Lister = f.DocumentRepo
-	rs.ReindexWorker.Logger = logger
 
 	// --- Health Endpoint ---
 	healthPort := f.Config.Queue.HealthPort

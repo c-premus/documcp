@@ -13,11 +13,6 @@ type ReadinessResponse struct {
 	Services map[string]string `json:"services"`
 }
 
-// searchHealthChecker checks if the search engine is reachable.
-type searchHealthChecker interface {
-	Healthy() bool
-}
-
 // DBPinger checks database connectivity.
 type DBPinger interface {
 	Ping(ctx context.Context) error
@@ -27,12 +22,11 @@ type DBPinger interface {
 type ReadinessHandler struct {
 	version string
 	db      DBPinger
-	search  searchHealthChecker
 }
 
 // NewReadinessHandler creates a ReadinessHandler with the given DB pinger and version.
-func NewReadinessHandler(version string, db DBPinger, search searchHealthChecker) *ReadinessHandler {
-	return &ReadinessHandler{version: version, db: db, search: search}
+func NewReadinessHandler(version string, db DBPinger) *ReadinessHandler {
+	return &ReadinessHandler{version: version, db: db}
 }
 
 // ServeHTTP pings Postgres and returns 200 if all services are healthy, 503 otherwise.
@@ -47,16 +41,6 @@ func (h *ReadinessHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			allHealthy = false
 		} else {
 			services["postgres"] = "healthy"
-		}
-	}
-
-	// Check Meilisearch
-	if h.search != nil {
-		if h.search.Healthy() {
-			services["meilisearch"] = "healthy"
-		} else {
-			services["meilisearch"] = "unhealthy"
-			allHealthy = false
 		}
 	}
 

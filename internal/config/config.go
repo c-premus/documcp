@@ -19,8 +19,7 @@ type Config struct {
 	App         AppConfig
 	Server      ServerConfig
 	Database    DatabaseConfig
-	Meilisearch MeilisearchConfig
-	OIDC        OIDCConfig
+	OIDC OIDCConfig
 	OAuth       OAuthConfig
 	Storage     StorageConfig
 	OTEL        OTELConfig
@@ -97,12 +96,6 @@ type DatabaseConfig struct {
 	PgxMinConns        int32         `mapstructure:"db_pgx_min_conns"`
 	PgxMaxConnLifetime time.Duration `mapstructure:"db_pgx_max_conn_lifetime"`
 	PgxMaxConnIdleTime time.Duration `mapstructure:"db_pgx_max_conn_idle_time"`
-}
-
-// MeilisearchConfig holds Meilisearch connection settings.
-type MeilisearchConfig struct {
-	Host string `mapstructure:"meilisearch_host"`
-	Key  string `mapstructure:"meilisearch_key"`
 }
 
 // OIDCConfig holds OpenID Connect provider settings.
@@ -223,10 +216,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("db_pgx_min_conns", int32(2))
 	v.SetDefault("db_pgx_max_conn_lifetime", 30*time.Minute)
 	v.SetDefault("db_pgx_max_conn_idle_time", 5*time.Minute)
-
-	// Meilisearch
-	v.SetDefault("meilisearch_host", "http://localhost:7700")
-	v.SetDefault("meilisearch_key", "")
 
 	// OIDC
 	v.SetDefault("oidc_provider_url", "")
@@ -382,11 +371,6 @@ func Load() (*Config, error) {
 		PgxMaxConnIdleTime: v.GetDuration("db_pgx_max_conn_idle_time"),
 	}
 
-	cfg.Meilisearch = MeilisearchConfig{
-		Host: v.GetString("meilisearch_host"),
-		Key:  v.GetString("meilisearch_key"),
-	}
-
 	cfg.OIDC = OIDCConfig{
 		ProviderURL:      v.GetString("oidc_provider_url"),
 		ClientID:         v.GetString("oidc_client_id"),
@@ -485,10 +469,6 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	if c.Database.Username == "" {
 		errs = append(errs, "database username is required (DB_USERNAME)")
 	}
-	if c.Meilisearch.Host == "" {
-		errs = append(errs, "meilisearch host is required (MEILISEARCH_HOST)")
-	}
-
 	// --- Conditional validation ---
 	if c.App.Env != "" && c.App.Env != "development" && c.App.Env != "staging" &&
 		c.App.Env != "production" && c.App.Env != "testing" {
