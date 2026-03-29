@@ -19,6 +19,7 @@ ALTER TABLE documents DROP COLUMN IF EXISTS meilisearch_indexed_at;
 CREATE INDEX idx_documents_search_vector ON documents USING GIN (search_vector);
 CREATE INDEX idx_documents_title_trgm ON documents USING GIN (title gin_trgm_ops);
 
+-- +goose StatementBegin
 -- Trigger function: builds weighted vector from title(A), description(B), tags(B), content(D).
 CREATE OR REPLACE FUNCTION documents_search_vector_update() RETURNS trigger AS $$
 DECLARE
@@ -57,6 +58,7 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 CREATE TRIGGER trg_documents_search_vector
     AFTER INSERT OR UPDATE OF title, description, content ON documents
