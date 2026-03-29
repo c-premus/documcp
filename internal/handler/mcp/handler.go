@@ -57,6 +57,11 @@ type kiwixClientFactory interface {
 	Get(ctx context.Context) (kiwixSearcher, error)
 }
 
+// documentIndexer abstracts the search.Indexer methods needed for MCP document creation.
+type documentIndexer interface {
+	IndexDocument(ctx context.Context, doc search.DocumentRecord) error
+}
+
 // contentSearcher abstracts the search.Searcher methods.
 type contentSearcher interface {
 	Search(ctx context.Context, params search.SearchParams) (*meilisearch.SearchResponse, error)
@@ -111,6 +116,7 @@ type Handler struct {
 	// External service clients
 	kiwixFactory kiwixClientFactory // lazy-init; nil means ZIM tools not enabled
 	searcher     contentSearcher
+	indexer      documentIndexer // nil when search is not configured
 
 	// Federated search config
 	federatedSearchTimeout   time.Duration
@@ -138,6 +144,7 @@ type Config struct {
 	// External service clients
 	KiwixFactory *kiwix.ClientFactory // lazy-init Kiwix client (nil = ZIM tools disabled)
 	Searcher     contentSearcher
+	Indexer      documentIndexer // indexes documents in Meilisearch after MCP create
 
 	// Federated search (Kiwix fan-out during unified_search)
 	FederatedSearchTimeout   time.Duration
@@ -191,6 +198,7 @@ func New(cfg Config) *Handler {
 		searchQueryRepo:     cfg.SearchQueryRepo,
 		kiwixFactory:        kf,
 		searcher:            cfg.Searcher,
+		indexer:             cfg.Indexer,
 
 		federatedSearchTimeout:   fedTimeout,
 		federatedMaxArchives:     fedMaxArchives,

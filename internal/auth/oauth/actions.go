@@ -26,6 +26,7 @@ type OAuthRepo interface {
 	FindClientByClientID(ctx context.Context, clientID string) (*model.OAuthClient, error)
 	FindClientByID(ctx context.Context, id int64) (*model.OAuthClient, error)
 	TouchClientLastUsed(ctx context.Context, clientID int64) error
+	UpdateClientScope(ctx context.Context, clientID int64, scope string) error
 	// Authorization Codes
 	CreateAuthorizationCode(ctx context.Context, code *model.OAuthAuthorizationCode) error
 	FindAuthorizationCodeByCode(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
@@ -96,6 +97,26 @@ func (s *Service) FindClientByInternalID(ctx context.Context, id int64) (*model.
 // TouchClientLastUsed records that a client's token was used.
 func (s *Service) TouchClientLastUsed(ctx context.Context, clientID int64) error {
 	return s.repo.TouchClientLastUsed(ctx, clientID)
+}
+
+// ExpandClientScope widens the client's registered scope to include
+// additionalScopes. The result is the sorted union of the existing scope and
+// the additional scopes. This allows dynamically-registered clients to receive
+// broader tokens when an authenticated user approves the authorization.
+func (s *Service) ExpandClientScope(ctx context.Context, clientID int64, additionalScopes string) error {
+	client, err := s.repo.FindClientByID(ctx, clientID)
+	if err != nil {
+		return fmt.Errorf("looking up client: %w", err)
+	}
+	if client == nil {
+		return errors.New("client not found")
+	}
+	currentScope := ""
+	if client.Scope.Valid {
+		currentScope = client.Scope.String
+	}
+	newScope := authscope.Union(currentScope, additionalScopes)
+	return s.repo.UpdateClientScope(ctx, client.ID, newScope)
 }
 
 // FindDeviceCodeByUserCode looks up a pending device code by user code.

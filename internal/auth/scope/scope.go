@@ -2,7 +2,10 @@
 // parsing, validating, and comparing space-delimited scope strings per RFC 6749.
 package scope
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // Scope constants.
 const (
@@ -67,6 +70,54 @@ func IsSubset(requested, allowed string) bool {
 		}
 	}
 	return true
+}
+
+// Intersect returns the scopes present in both a and b as a space-delimited
+// string, preserving the order from a.
+func Intersect(a, b string) string {
+	bSet := make(map[string]bool)
+	for _, s := range ParseScopes(b) {
+		bSet[s] = true
+	}
+	var out []string
+	for _, s := range ParseScopes(a) {
+		if bSet[s] {
+			out = append(out, s)
+		}
+	}
+	return strings.Join(out, " ")
+}
+
+// Union returns the deduplicated union of scopes from a and b, sorted
+// lexicographically.
+func Union(a, b string) string {
+	set := make(map[string]bool)
+	for _, s := range ParseScopes(a) {
+		set[s] = true
+	}
+	for _, s := range ParseScopes(b) {
+		set[s] = true
+	}
+	out := make([]string, 0, len(set))
+	for s := range set {
+		out = append(out, s)
+	}
+	slices.Sort(out)
+	return strings.Join(out, " ")
+}
+
+// UserScopes returns the set of scopes a user is entitled to grant. Admins can
+// grant all known scopes; regular users can grant DefaultScopes only.
+func UserScopes(isAdmin bool) string {
+	if isAdmin {
+		out := make([]string, 0, len(All))
+		for s := range All {
+			out = append(out, s)
+		}
+		slices.Sort(out)
+		return strings.Join(out, " ")
+	}
+	return DefaultScopes()
 }
 
 // ValidateAll returns the list of scopes in the space-delimited string that are

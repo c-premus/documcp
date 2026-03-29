@@ -255,6 +255,9 @@ func TestHandler_Authorize(t *testing.T) {
 					IsActive:                true,
 				}, nil
 			},
+			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
+				return &model.User{ID: id, IsAdmin: true}, nil
+			},
 		}
 		h, store := newHandlerWithRepo(repo)
 		store.session.Values["user_id"] = int64(42)
@@ -285,6 +288,9 @@ func TestHandler_Authorize(t *testing.T) {
 					IsActive:                true,
 				}, nil
 			},
+			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
+				return &model.User{ID: id, IsAdmin: true}, nil
+			},
 		}
 		h, store := newHandlerWithRepo(repo)
 		store.session.Values["user_id"] = int64(42)
@@ -311,6 +317,9 @@ func TestHandler_Authorize(t *testing.T) {
 					TokenEndpointAuthMethod: "client_secret_post",
 					IsActive:                true,
 				}, nil
+			},
+			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
+				return &model.User{ID: id, IsAdmin: true}, nil
 			},
 		}
 		h, store := newHandlerWithRepo(repo)
