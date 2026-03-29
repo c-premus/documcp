@@ -16,15 +16,13 @@ func TestBuildPeriodicJobs_allSchedulesConfigured(t *testing.T) {
 		GitSchedule:             "0 * * * *",
 		OAuthCleanupSchedule:    "0 * * * *",
 		OrphanedFilesSchedule:   "0 2 * * *",
-		SearchVerifySchedule:    "0 3 * * *",
 		SoftDeletePurgeSchedule: "0 4 * * *",
-		ZimCleanupSchedule:      "0 5 * * *",
 		HealthCheckSchedule:     "*/15 * * * *",
 	}
 
 	jobs := BuildPeriodicJobs(cfg, discardLogger())
 
-	assert.Len(t, jobs, 8, "all 8 periodic jobs should be registered")
+	assert.Len(t, jobs, 6, "all 6 periodic jobs should be registered")
 }
 
 func TestBuildPeriodicJobs_emptySchedulesSkipped(t *testing.T) {
@@ -35,9 +33,7 @@ func TestBuildPeriodicJobs_emptySchedulesSkipped(t *testing.T) {
 		GitSchedule:             "", // disabled
 		OAuthCleanupSchedule:    "0 * * * *",
 		OrphanedFilesSchedule:   "", // disabled
-		SearchVerifySchedule:    "", // disabled
 		SoftDeletePurgeSchedule: "", // disabled
-		ZimCleanupSchedule:      "", // disabled
 		HealthCheckSchedule:     "", // disabled
 	}
 
@@ -64,16 +60,14 @@ func TestBuildPeriodicJobs_invalidCronSkipped(t *testing.T) {
 		GitSchedule:             "invalid expression here",
 		OAuthCleanupSchedule:    "0 * * * *",
 		OrphanedFilesSchedule:   "***",
-		SearchVerifySchedule:    "0 3 * * *",
 		SoftDeletePurgeSchedule: "",
-		ZimCleanupSchedule:      "0 5 * * *",
 		HealthCheckSchedule:     "*/15 * * * *",
 	}
 
 	jobs := BuildPeriodicJobs(cfg, discardLogger())
 
-	// 2 invalid + 1 empty = 3 skipped, so 4 valid jobs.
-	assert.Len(t, jobs, 4, "invalid cron expressions should be skipped")
+	// 3 invalid + 1 empty = 4 skipped, so 2 valid jobs.
+	assert.Len(t, jobs, 2, "invalid cron expressions should be skipped")
 }
 
 func TestBuildPeriodicJobs_nilLogger(t *testing.T) {
@@ -153,18 +147,8 @@ func TestBuildPeriodicJobs_singleValidSchedule(t *testing.T) {
 			wantCount: 1,
 		},
 		{
-			name:      "only_search_verify",
-			cfg:       config.SchedulerConfig{SearchVerifySchedule: "0 3 * * *"},
-			wantCount: 1,
-		},
-		{
 			name:      "only_soft_delete_purge",
 			cfg:       config.SchedulerConfig{SoftDeletePurgeSchedule: "0 4 * * *"},
-			wantCount: 1,
-		},
-		{
-			name:      "only_zim_cleanup",
-			cfg:       config.SchedulerConfig{ZimCleanupSchedule: "0 5 * * *"},
 			wantCount: 1,
 		},
 		{
@@ -192,16 +176,14 @@ func TestBuildPeriodicJobs_mixedValidAndInvalid(t *testing.T) {
 		GitSchedule:             "",            // empty (disabled)
 		OAuthCleanupSchedule:    "0 * * * *",   // valid
 		OrphanedFilesSchedule:   "also bad",    // invalid
-		SearchVerifySchedule:    "0 3 * * *",   // valid
 		SoftDeletePurgeSchedule: "",            // empty (disabled)
-		ZimCleanupSchedule:      "0 5 * * *",   // valid
 		HealthCheckSchedule:     "",            // empty (disabled)
 	}
 
 	jobs := BuildPeriodicJobs(cfg, discardLogger())
 
-	// 4 valid, 1 invalid, 3 empty = 4 jobs.
-	assert.Len(t, jobs, 4)
+	// 2 valid, 1 invalid, 3 empty = 2 jobs.
+	assert.Len(t, jobs, 2)
 }
 
 func TestBuildPeriodicJobs_returnsNilForNoJobs(t *testing.T) {
@@ -222,9 +204,7 @@ func TestBuildPeriodicJobs_allInvalidCron(t *testing.T) {
 		GitSchedule:             "nope",
 		OAuthCleanupSchedule:    "!!!",
 		OrphanedFilesSchedule:   "abc def",
-		SearchVerifySchedule:    "x x x x x x",
 		SoftDeletePurgeSchedule: "???",
-		ZimCleanupSchedule:      "@invalid",
 		HealthCheckSchedule:     "1 2 3 4 5 6 7",
 	}
 

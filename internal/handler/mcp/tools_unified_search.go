@@ -99,7 +99,7 @@ func (h *Handler) handleUnifiedSearch(
 	}
 	noFilter := len(typeSet) == 0 // empty = search all
 
-	// Map user-facing type names to Meilisearch index UIDs.
+	// Map user-facing type names to search index UIDs.
 	var indexes []string
 	if !noFilter {
 		typeMap := map[string]string{
@@ -116,19 +116,21 @@ func (h *Handler) handleUnifiedSearch(
 
 	// Restrict document visibility based on authentication context.
 	// M2M tokens (no user) see only public documents; non-admin users see own + public.
-	var indexFilters map[string]string
+	var fedUserID *int64
+	var fedIsPublic *bool
+	var fedIsAdmin bool
 	user, _ := authmiddleware.UserFromContext(ctx)
-	if user == nil {
-		indexFilters = map[string]string{
-			search.IndexDocuments: "is_public = true",
-		}
-	} else if !user.IsAdmin {
-		indexFilters = map[string]string{
-			search.IndexDocuments: fmt.Sprintf("(user_id = %d OR is_public = true)", user.ID),
-		}
+	switch {
+	case user == nil:
+		pub := true
+		fedIsPublic = &pub
+	case user.IsAdmin:
+		fedIsAdmin = true
+	default:
+		fedUserID = &user.ID
 	}
 
-	// Determine which Meilisearch indexes will be queried.
+	// Determine which indexes will be queried.
 	queriedIndexes := indexes
 	if len(queriedIndexes) == 0 {
 		queriedIndexes = []string{search.IndexDocuments, search.IndexZimArchives, search.IndexGitTemplates}
@@ -140,12 +142,12 @@ func (h *Handler) handleUnifiedSearch(
 
 	// Decide whether to fan out to Kiwix archives.
 	wantZimArticles := noFilter || typeSet["zim_article"]
-	// Skip Meilisearch entirely if only zim_article is requested.
-	skipMeilisearch := !noFilter && len(typeSet) == 1 && typeSet["zim_article"]
+	// Skip FTS entirely if only zim_article is requested.
+	skipFTS := !noFilter && len(typeSet) == 1 && typeSet["zim_article"]
 
 	start := time.Now()
 
-	type meiliResult struct {
+	type ftsResult struct {
 		results []unifiedSearchResult
 		err     error
 	}
@@ -154,29 +156,30 @@ func (h *Handler) handleUnifiedSearch(
 		searched []string
 	}
 
-	meiliCh := make(chan meiliResult, 1)
+	ftsCh := make(chan ftsResult, 1)
 	kiwixCh := make(chan kiwixResult, 1)
 
-	// Launch Meilisearch search.
+	// Launch FTS search.
 	go func() {
-		if skipMeilisearch {
-			meiliCh <- meiliResult{}
+		if skipFTS {
+			ftsCh <- ftsResult{}
 			return
 		}
 		resp, err := h.searcher.FederatedSearch(ctx, search.FederatedSearchParams{
-			Query:        input.Query,
-			Indexes:      indexes,
-			Limit:        limit,
-			Offset:       int64(input.Offset),
-			IndexFilters: indexFilters,
+			Query:    input.Query,
+			Indexes:  indexes,
+			Limit:    limit,
+			Offset:   int64(input.Offset),
+			UserID:   fedUserID,
+			IsPublic: fedIsPublic,
+			IsAdmin:  fedIsAdmin,
 		})
 		if err != nil {
-			meiliCh <- meiliResult{err: err}
+			ftsCh <- ftsResult{err: err}
 			return
 		}
-		normalized := search.NormalizeFederatedHits(resp.Hits)
-		results := make([]unifiedSearchResult, 0, len(normalized))
-		for _, sr := range normalized {
+		results := make([]unifiedSearchResult, 0, len(resp.Hits))
+		for _, sr := range resp.Hits {
 			results = append(results, unifiedSearchResult{
 				Source:      indexToSource(sr.Source),
 				UUID:        sr.UUID,
@@ -185,7 +188,7 @@ func (h *Handler) handleUnifiedSearch(
 				Score:       sr.Score,
 			})
 		}
-		meiliCh <- meiliResult{results: results}
+		ftsCh <- ftsResult{results: results}
 	}()
 
 	// Launch Kiwix fan-out.
@@ -198,7 +201,7 @@ func (h *Handler) handleUnifiedSearch(
 		kiwixCh <- kiwixResult{results: results, searched: searched}
 	}()
 
-	mr := <-meiliCh
+	mr := <-ftsCh
 	kr := <-kiwixCh
 
 	if mr.err != nil {
@@ -226,7 +229,7 @@ func (h *Handler) handleUnifiedSearch(
 	if len(kr.searched) > 0 {
 		sourcesSearched = append(sourcesSearched, "zim_article")
 	}
-	if skipMeilisearch {
+	if skipFTS {
 		sourcesSearched = []string{"zim_article"}
 	}
 
@@ -254,7 +257,7 @@ func (h *Handler) searchKiwixArchives(ctx context.Context, query string, perArch
 		return nil, nil
 	}
 
-	// Use Meilisearch to find archives relevant to the query (by title,
+	// Use FTS to find archives relevant to the query (by title,
 	// description, tags). This narrows the fan-out to only topically relevant
 	// archives instead of blindly picking the largest ones.
 	var selectedNames map[string]bool
@@ -265,15 +268,12 @@ func (h *Handler) searchKiwixArchives(ctx context.Context, query string, perArch
 			Limit:    int64(h.federatedMaxArchives),
 		})
 		if searchErr != nil {
-			h.logger.Warn("meilisearch archive selection failed, falling back to DB", "error", searchErr)
+			h.logger.Warn("search archive selection failed, falling back to DB", "error", searchErr)
 		} else if resp != nil && len(resp.Hits) > 0 {
 			selectedNames = make(map[string]bool, len(resp.Hits))
 			for _, hit := range resp.Hits {
-				var m map[string]any
-				if decodeErr := hit.DecodeInto(&m); decodeErr == nil {
-					if name, ok := m["name"].(string); ok && name != "" {
-						selectedNames[name] = true
-					}
+				if name := search.ExtraString(hit.Extra, "name"); name != "" {
+					selectedNames[name] = true
 				}
 			}
 		}
@@ -288,7 +288,7 @@ func (h *Handler) searchKiwixArchives(ctx context.Context, query string, perArch
 		return nil, nil
 	}
 
-	// Filter to Meilisearch-selected archives when available.
+	// Filter to FTS-selected archives when available.
 	if len(selectedNames) > 0 {
 		filtered := archives[:0]
 		for i := range archives {
@@ -403,7 +403,7 @@ func (h *Handler) searchKiwixArchives(ctx context.Context, query string, perArch
 	return unified, searchedArchives
 }
 
-// indexToSource maps a Meilisearch index UID to a user-facing source name.
+// indexToSource maps a search index UID to a user-facing source name.
 func indexToSource(indexUID string) string {
 	switch indexUID {
 	case search.IndexDocuments:

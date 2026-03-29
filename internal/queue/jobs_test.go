@@ -17,15 +17,11 @@ func TestJobArgs_Kind(t *testing.T) {
 		want string
 	}{
 		{"DocumentExtractArgs", DocumentExtractArgs{}, "document_extract"},
-		{"DocumentIndexArgs", DocumentIndexArgs{}, "document_index"},
-		{"ReindexAllArgs", ReindexAllArgs{}, "reindex_all"},
 		{"SyncKiwixArgs", SyncKiwixArgs{}, "sync_kiwix"},
 		{"SyncGitTemplatesArgs", SyncGitTemplatesArgs{}, "sync_git_templates"},
 		{"CleanupOAuthTokensArgs", CleanupOAuthTokensArgs{}, "cleanup_oauth_tokens"},
 		{"CleanupOrphanedFilesArgs", CleanupOrphanedFilesArgs{}, "cleanup_orphaned_files"},
-		{"VerifySearchIndexArgs", VerifySearchIndexArgs{}, "verify_search_index"},
 		{"PurgeSoftDeletedArgs", PurgeSoftDeletedArgs{}, "purge_soft_deleted"},
-		{"CleanupDisabledZimArgs", CleanupDisabledZimArgs{}, "cleanup_disabled_zim"},
 		{"HealthCheckServicesArgs", HealthCheckServicesArgs{}, "health_check_services"},
 	}
 
@@ -68,24 +64,6 @@ func TestJobArgs_InsertOpts(t *testing.T) {
 			wantUnique: false,
 		},
 		{
-			name:       "DocumentIndexArgs_default_priority",
-			args:       DocumentIndexArgs{DocumentID: 2, DocUUID: "def"},
-			wantQueue:  "default",
-			wantPri:    2,
-			wantMaxAtt: 4,
-			wantUnique: false,
-		},
-		{
-			name:        "ReindexAllArgs_singleton",
-			args:        ReindexAllArgs{},
-			wantQueue:   "low",
-			wantPri:     4,
-			wantMaxAtt:  2,
-			wantUnique:  true,
-			wantByQueue: true,
-			wantStates:  expectedUniqueStates,
-		},
-		{
 			name:        "SyncKiwixArgs_singleton",
 			args:        SyncKiwixArgs{},
 			wantQueue:   "low",
@@ -126,28 +104,8 @@ func TestJobArgs_InsertOpts(t *testing.T) {
 			wantStates:  expectedUniqueStates,
 		},
 		{
-			name:        "VerifySearchIndexArgs_singleton",
-			args:        VerifySearchIndexArgs{},
-			wantQueue:   "low",
-			wantPri:     4,
-			wantMaxAtt:  2,
-			wantUnique:  true,
-			wantByQueue: true,
-			wantStates:  expectedUniqueStates,
-		},
-		{
 			name:        "PurgeSoftDeletedArgs_singleton",
 			args:        PurgeSoftDeletedArgs{},
-			wantQueue:   "low",
-			wantPri:     4,
-			wantMaxAtt:  2,
-			wantUnique:  true,
-			wantByQueue: true,
-			wantStates:  expectedUniqueStates,
-		},
-		{
-			name:        "CleanupDisabledZimArgs_singleton",
-			args:        CleanupDisabledZimArgs{},
 			wantQueue:   "low",
 			wantPri:     4,
 			wantMaxAtt:  2,
@@ -201,10 +159,3 @@ func TestDocumentExtractArgs_fieldsPreserved(t *testing.T) {
 	assert.Equal(t, "test-uuid-123", args.DocUUID)
 }
 
-func TestDocumentIndexArgs_fieldsPreserved(t *testing.T) {
-	t.Parallel()
-
-	args := DocumentIndexArgs{DocumentID: 99, DocUUID: "idx-uuid-456"}
-	assert.Equal(t, int64(99), args.DocumentID)
-	assert.Equal(t, "idx-uuid-456", args.DocUUID)
-}

@@ -39,10 +39,8 @@ type Foundation struct {
 	SearchQueryRepo     *repository.SearchQueryRepository
 	OAuthRepo           *repository.OAuthRepository
 
-	// Search (nil when Meilisearch disabled)
-	SearchClient  *search.Client
-	SearchIndexer *search.Indexer
-	Searcher      *search.Searcher
+	// Search
+	Searcher *search.Searcher
 
 	// External clients
 	KiwixFactory      *kiwix.ClientFactory
@@ -109,25 +107,8 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	searchQueryRepo := repository.NewSearchQueryRepository(pgxPool, logger)
 	oauthRepo := repository.NewOAuthRepository(pgxPool, logger)
 
-	// --- Meilisearch ---
-	var searchClient *search.Client
-	var searchIndexer *search.Indexer
-	var searcher *search.Searcher
-
-	if cfg.Meilisearch.Host != "" {
-		searchClient = search.NewClient(cfg.Meilisearch.Host, cfg.Meilisearch.Key, logger)
-		if searchClient.Healthy() {
-			if err = searchClient.ConfigureIndexes(context.Background()); err != nil {
-				logger.Warn("failed to configure Meilisearch indexes", "error", err)
-			} else {
-				logger.Info("Meilisearch connected and indexes configured", "host", cfg.Meilisearch.Host)
-			}
-			searchIndexer = search.NewIndexer(searchClient, logger)
-			searcher = search.NewSearcher(searchClient, logger)
-		} else {
-			logger.Warn("Meilisearch not reachable, search features disabled", "host", cfg.Meilisearch.Host)
-		}
-	}
+	// --- Search ---
+	searcher := search.NewSearcher(pgxPool, logger)
 
 	// --- External Service Clients ---
 	kiwixFactory := kiwix.NewClientFactory(externalServiceRepo, kiwix.ClientConfig{
@@ -162,9 +143,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	// --- Observability ---
 	metrics := observability.NewMetrics()
 	observability.RegisterDBMetrics(pgxPool)
-	if searcher != nil {
-		searcher.SetMetrics(metrics)
-	}
+	searcher.SetMetrics(metrics)
 	logger.Info("Prometheus metrics registered")
 
 	tracerShutdown, err := observability.InitTracer(context.Background(), cfg.OTEL)
@@ -188,8 +167,6 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		GitTemplateRepo:     gitTemplateRepo,
 		SearchQueryRepo:     searchQueryRepo,
 		OAuthRepo:           oauthRepo,
-		SearchClient:        searchClient,
-		SearchIndexer:       searchIndexer,
 		Searcher:            searcher,
 		KiwixFactory:        kiwixFactory,
 		ExtractorRegistry:   extractorRegistry,

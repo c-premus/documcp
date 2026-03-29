@@ -83,7 +83,6 @@ func TestLoad_Defaults(t *testing.T) {
 		"SERVER_HOST", "SERVER_PORT",
 		"DB_HOST", "DB_PORT", "DB_DATABASE", "DB_USERNAME", "DB_PASSWORD", "DB_SSLMODE",
 		"DB_MAX_OPEN_CONNS", "DB_MAX_IDLE_CONNS", "DB_MAX_LIFETIME",
-		"MEILISEARCH_HOST", "MEILISEARCH_KEY",
 		"OTEL_ENABLED", "OTEL_SERVICE_NAME", "OTEL_INSECURE",
 		"OAUTH_PKCE_REQUIRED",
 		"STORAGE_DRIVER", "STORAGE_BASE_PATH", "STORAGE_DOCUMENT_PATH", "STORAGE_TEMP_PATH",
@@ -124,9 +123,6 @@ func TestLoad_Defaults(t *testing.T) {
 		{"Database.MaxOpenConns", cfg.Database.MaxOpenConns, 25},
 		{"Database.MaxIdleConns", cfg.Database.MaxIdleConns, 5},
 		{"Database.MaxLifetime", cfg.Database.MaxLifetime, 5 * time.Minute},
-
-		// Meilisearch
-		{"Meilisearch.Host", cfg.Meilisearch.Host, "http://localhost:7700"},
 
 		// OAuth
 		{"OAuth.AuthCodeLifetime", cfg.OAuth.AuthCodeLifetime, 10 * time.Minute},
@@ -234,9 +230,6 @@ func validBaseConfig() Config {
 			MaxOpenConns: 25,
 			MaxIdleConns: 10,
 		},
-		Meilisearch: MeilisearchConfig{
-			Host: "http://localhost:7700",
-		},
 		Git: GitConfig{
 			MaxFileSize:  10 * 1024 * 1024,
 			MaxTotalSize: 50 * 1024 * 1024,
@@ -278,8 +271,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "missing host",
 			cfg: Config{
-				Database:    DatabaseConfig{Database: "mydb", Username: "admin"},
-				Meilisearch: MeilisearchConfig{Host: "http://localhost:7700"},
+				Database: DatabaseConfig{Database: "mydb", Username: "admin"},
 			},
 			wantErr: true,
 			errMsg:  "database host is required",
@@ -287,8 +279,7 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "missing database",
 			cfg: Config{
-				Database:    DatabaseConfig{Host: "localhost", Username: "admin"},
-				Meilisearch: MeilisearchConfig{Host: "http://localhost:7700"},
+				Database: DatabaseConfig{Host: "localhost", Username: "admin"},
 			},
 			wantErr: true,
 			errMsg:  "database name is required",
@@ -296,19 +287,10 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "missing username",
 			cfg: Config{
-				Database:    DatabaseConfig{Host: "localhost", Database: "mydb"},
-				Meilisearch: MeilisearchConfig{Host: "http://localhost:7700"},
+				Database: DatabaseConfig{Host: "localhost", Database: "mydb"},
 			},
 			wantErr: true,
 			errMsg:  "database username is required",
-		},
-		{
-			name: "missing meilisearch host",
-			cfg: Config{
-				Database: DatabaseConfig{Host: "localhost", Database: "mydb", Username: "admin"},
-			},
-			wantErr: true,
-			errMsg:  "meilisearch host is required",
 		},
 		{
 			name:    "all missing",
@@ -645,9 +627,6 @@ func TestConfig_Validate_MultipleErrors(t *testing.T) {
 	if !strings.Contains(msg, "database username is required") {
 		t.Errorf("error should mention missing username: %s", msg)
 	}
-	if !strings.Contains(msg, "meilisearch host is required") {
-		t.Errorf("error should mention missing meilisearch host: %s", msg)
-	}
 }
 
 func TestConfig_Validate_ErrorMessageFormat(t *testing.T) {
@@ -684,33 +663,23 @@ func TestConfig_Validate_SingleFieldMissing(t *testing.T) {
 		{
 			name: "only host missing",
 			cfg: Config{
-				Database:    DatabaseConfig{Database: "mydb", Username: "admin"},
-				Meilisearch: MeilisearchConfig{Host: "http://localhost:7700"},
+				Database: DatabaseConfig{Database: "mydb", Username: "admin"},
 			},
 			errMsg: "database host is required",
 		},
 		{
 			name: "only database missing",
 			cfg: Config{
-				Database:    DatabaseConfig{Host: "localhost", Username: "admin"},
-				Meilisearch: MeilisearchConfig{Host: "http://localhost:7700"},
+				Database: DatabaseConfig{Host: "localhost", Username: "admin"},
 			},
 			errMsg: "database name is required",
 		},
 		{
 			name: "only username missing",
 			cfg: Config{
-				Database:    DatabaseConfig{Host: "localhost", Database: "mydb"},
-				Meilisearch: MeilisearchConfig{Host: "http://localhost:7700"},
+				Database: DatabaseConfig{Host: "localhost", Database: "mydb"},
 			},
 			errMsg: "database username is required",
-		},
-		{
-			name: "only meilisearch missing",
-			cfg: Config{
-				Database: DatabaseConfig{Host: "localhost", Database: "mydb", Username: "admin"},
-			},
-			errMsg: "meilisearch host is required",
 		},
 	}
 
@@ -773,9 +742,6 @@ func TestConfig_Validate_ValidWithMinimumFields(t *testing.T) {
 			Database: "d",
 			Username: "u",
 		},
-		Meilisearch: MeilisearchConfig{
-			Host: "http://localhost:7700",
-		},
 		Git: GitConfig{
 			MaxFileSize:  1,
 			MaxTotalSize: 1,
@@ -801,9 +767,6 @@ func TestConfig_Validate_ProductionMultipleErrors(t *testing.T) {
 			Host:     "localhost",
 			Database: "mydb",
 			Username: "admin",
-		},
-		Meilisearch: MeilisearchConfig{
-			Host: "http://localhost:7700",
 		},
 		Git: GitConfig{
 			MaxFileSize:  1,

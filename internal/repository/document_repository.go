@@ -64,17 +64,16 @@ func (r *DocumentRepository) Create(ctx context.Context, doc *model.Document) er
 			uuid, title, description, file_type, file_path, file_size,
 			mime_type, url, content, content_hash, metadata, processed_at,
 			word_count, user_id, is_public, status, error_message,
-			meilisearch_indexed_at, created_at, updated_at
+			created_at, updated_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6,
 			$7, $8, $9, $10, $11, $12,
 			$13, $14, $15, $16, $17,
-			$18, NOW(), NOW()
+			NOW(), NOW()
 		) RETURNING id`,
 		doc.UUID, doc.Title, doc.Description, doc.FileType, doc.FilePath, doc.FileSize,
 		doc.MIMEType, doc.URL, doc.Content, doc.ContentHash, doc.Metadata, doc.ProcessedAt,
 		doc.WordCount, doc.UserID, doc.IsPublic, doc.Status, doc.ErrorMessage,
-		doc.MeilisearchIndexedAt,
 	).Scan(&doc.ID)
 	if err != nil {
 		return fmt.Errorf("creating document %q: %w", doc.Title, err)
@@ -90,13 +89,13 @@ func (r *DocumentRepository) Update(ctx context.Context, doc *model.Document) er
 			file_size = $5, mime_type = $6, url = $7, content = $8,
 			content_hash = $9, metadata = $10, processed_at = $11,
 			word_count = $12, user_id = $13, is_public = $14, status = $15,
-			error_message = $16, meilisearch_indexed_at = $17, updated_at = NOW()
-		WHERE id = $18 AND deleted_at IS NULL`,
+			error_message = $16, updated_at = NOW()
+		WHERE id = $17 AND deleted_at IS NULL`,
 		doc.Title, doc.Description, doc.FileType, doc.FilePath,
 		doc.FileSize, doc.MIMEType, doc.URL, doc.Content,
 		doc.ContentHash, doc.Metadata, doc.ProcessedAt,
 		doc.WordCount, doc.UserID, doc.IsPublic, doc.Status,
-		doc.ErrorMessage, doc.MeilisearchIndexedAt, doc.ID,
+		doc.ErrorMessage, doc.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("updating document %d: %w", doc.ID, err)

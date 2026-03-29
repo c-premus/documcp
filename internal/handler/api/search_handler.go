@@ -50,25 +50,21 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	limitInt, offsetInt := parsePagination(r, 20, 100)
 	limit, offset := int64(limitInt), int64(offsetInt)
 
-	var filters []string
+	params := search.SearchParams{
+		Query:    query,
+		IndexUID: search.IndexDocuments,
+		Limit:    limit,
+		Offset:   offset,
+	}
+
 	if ft := r.URL.Query().Get("file_type"); ft != "" {
 		switch ft {
 		case "pdf", "docx", "xlsx", "html", "markdown":
-			filters = append(filters, "file_type = \""+ft+"\"")
+			params.FileType = ft
 		default:
 			errorResponse(w, http.StatusBadRequest, "invalid file_type filter")
 			return
 		}
-	}
-	// Always exclude soft-deleted documents.
-	filters = append(filters, "__soft_deleted = false")
-
-	params := search.SearchParams{
-		Query:    query,
-		IndexUID: search.IndexDocuments,
-		Filters:  strings.Join(filters, " AND "),
-		Limit:    limit,
-		Offset:   offset,
 	}
 
 	resp, err := h.searcher.Search(r.Context(), params)
@@ -78,13 +74,11 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results := search.NormalizeHits(resp.Hits, "document")
-
 	jsonResponse(w, http.StatusOK, map[string]any{
-		"data": results,
+		"data": resp.Hits,
 		"meta": map[string]any{
 			"query":              query,
-			"total":              resp.EstimatedTotalHits,
+			"total":              resp.EstimatedTotal,
 			"processing_time_ms": resp.ProcessingTimeMs,
 			"limit":              limit,
 			"offset":             offset,
@@ -130,13 +124,11 @@ func (h *SearchHandler) FederatedSearch(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	results := search.NormalizeHits(resp.Hits, "federated")
-
 	jsonResponse(w, http.StatusOK, map[string]any{
-		"data": results,
+		"data": resp.Hits,
 		"meta": map[string]any{
 			"query":              query,
-			"total":              resp.EstimatedTotalHits,
+			"total":              resp.EstimatedTotal,
 			"processing_time_ms": resp.ProcessingTimeMs,
 			"limit":              limit,
 			"offset":             offset,

@@ -14,7 +14,6 @@ type SyncParams struct {
 	Template SyncTemplate
 	Client   *Client
 	Repo     TemplateRepo
-	Indexer  TemplateIndexer
 	Logger   *slog.Logger
 }
 
@@ -39,29 +38,9 @@ type TemplateRepo interface {
 	ReplaceFiles(ctx context.Context, templateID int64, files []TemplateFile) error
 }
 
-// TemplateIndexer defines search indexer methods for sync.
-type TemplateIndexer interface {
-	IndexGitTemplate(ctx context.Context, record GitTemplateRecord) error
-}
-
-// GitTemplateRecord is the Meilisearch indexable record.
-//
-//nolint:revive // exported stutter is intentional; renaming would be a breaking change
-type GitTemplateRecord struct {
-	UUID          string   `json:"uuid"`
-	Name          string   `json:"name"`
-	Slug          string   `json:"slug"`
-	Description   string   `json:"description,omitempty"`
-	ReadmeContent string   `json:"readme_content,omitempty"`
-	Category      string   `json:"category,omitempty"`
-	Tags          []string `json:"tags,omitempty"`
-	IsPublic      bool     `json:"is_public"`
-	Status        string   `json:"status"`
-	SoftDeleted   bool     `json:"__soft_deleted"`
-}
-
-// Sync clones or pulls a template repository, extracts files, persists
-// them to the database, and indexes the template in Meilisearch.
+// Sync clones or pulls a template repository, extracts files, and persists
+// them to the database. Search indexing is handled automatically by PostgreSQL
+// triggers on the git_templates table.
 func Sync(ctx context.Context, params SyncParams) error {
 	tmpl := params.Template
 	logger := params.Logger
@@ -163,31 +142,6 @@ func Sync(ctx context.Context, params SyncParams) error {
 			logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
 		}
 		return fmt.Errorf("replacing template files: %w", err)
-	}
-
-	// 8. Index in Meilisearch.
-	if params.Indexer != nil {
-		readmeContent := findReadmeContent(files)
-		record := GitTemplateRecord{
-			UUID:          tmpl.UUID,
-			Name:          tmpl.Name,
-			Slug:          tmpl.Slug,
-			Description:   tmpl.Description,
-			ReadmeContent: readmeContent,
-			Category:      tmpl.Category,
-			Tags:          tmpl.Tags,
-			IsPublic:      true,
-			Status:        "synced",
-			SoftDeleted:   false,
-		}
-
-		if err := params.Indexer.IndexGitTemplate(ctx, record); err != nil {
-			logger.Error("failed to index template in Meilisearch",
-				"template_id", tmpl.ID,
-				"error", err,
-			)
-			// Indexing failure is non-fatal — the sync itself succeeded.
-		}
 	}
 
 	logger.Info("template sync complete",

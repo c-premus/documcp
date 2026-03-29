@@ -11,8 +11,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      meilisearch:
-        condition: service_healthy
     environment:
       # App
       APP_NAME: DocuMCP
@@ -29,9 +27,6 @@ services:
       DB_USERNAME: ${DB_USERNAME:?DB_USERNAME is required}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       DB_SSLMODE: ${DB_SSLMODE:-require}
-      # Meilisearch
-      MEILISEARCH_HOST: http://meilisearch:7700
-      MEILISEARCH_KEY: ${MEILI_MASTER_KEY:?MEILI_MASTER_KEY is required}
       # OIDC
       OIDC_PROVIDER_URL: ${OIDC_PROVIDER_URL:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
@@ -90,28 +85,6 @@ services:
           cpus: "0.5"
     restart: unless-stopped
 
-  meilisearch:
-    image: getmeili/meilisearch:v1.12
-    environment:
-      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?MEILI_MASTER_KEY is required}
-      MEILI_ENV: production
-    volumes:
-      - meilisearch_data:/meili_data
-    networks:
-      - documcp
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7700/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: "1.0"
-    restart: unless-stopped
-
   traefik:
     image: traefik:v3.4
     command:
@@ -147,6 +120,5 @@ networks:
 
 volumes:
   postgres_data:
-  meilisearch_data:
   document_storage:
   letsencrypt:

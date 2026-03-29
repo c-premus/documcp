@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/meilisearch/meilisearch-go"
-
 	"github.com/c-premus/documcp/internal/client/kiwix"
 	"github.com/c-premus/documcp/internal/dto"
 	"github.com/c-premus/documcp/internal/model"
@@ -343,9 +341,9 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 
 		// Meilisearch returns a high-score document hit.
 		s := &mockSearcher{
-			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
-				return &meilisearch.MultiSearchResponse{
-					Hits: meilisearch.Hits{
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				return &search.FederatedSearchResponse{
+					Hits: []search.SearchResult{
 						makeMCPHit(map[string]any{
 							"uuid":        "doc-001",
 							"title":       "Go Best Practices",
@@ -451,8 +449,8 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 			},
 		}
 		s := &mockSearcher{
-			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
-				return &meilisearch.MultiSearchResponse{}, nil
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				return &search.FederatedSearchResponse{}, nil
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -498,9 +496,9 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 
 		meiliCalled := false
 		s := &mockSearcher{
-			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
 				meiliCalled = true
-				return &meilisearch.MultiSearchResponse{}, nil
+				return &search.FederatedSearchResponse{}, nil
 			},
 		}
 		mc := &mockKiwixClient{
@@ -566,8 +564,8 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 		t.Parallel()
 
 		s := &mockSearcher{
-			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*meilisearch.MultiSearchResponse, error) {
-				return &meilisearch.MultiSearchResponse{}, nil
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				return &search.FederatedSearchResponse{}, nil
 			},
 		}
 		mc := &mockKiwixClient{
@@ -653,12 +651,12 @@ func TestSearchKiwixArchives_MeilisearchSelection(t *testing.T) {
 		}{
 			kiwixC: mc,
 			searcher: &mockSearcher{
-				searchFn: func(_ context.Context, params search.SearchParams) (*meilisearch.SearchResponse, error) {
+				searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
 					if params.IndexUID != search.IndexZimArchives {
 						t.Errorf("expected index %q, got %q", search.IndexZimArchives, params.IndexUID)
 					}
-					return &meilisearch.SearchResponse{
-						Hits: meilisearch.Hits{
+					return &search.SearchResponse{
+						Hits: []search.SearchResult{
 							makeHit(map[string]any{"name": "archive_a", "title": "Archive A"}),
 							makeHit(map[string]any{"name": "archive_b", "title": "Archive B"}),
 						},
@@ -725,8 +723,8 @@ func TestSearchKiwixArchives_MeilisearchSelection(t *testing.T) {
 		}{
 			kiwixC: mc,
 			searcher: &mockSearcher{
-				searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
-					return &meilisearch.SearchResponse{Hits: meilisearch.Hits{}}, nil
+				searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
+					return &search.SearchResponse{Hits: []search.SearchResult{}}, nil
 				},
 			},
 			zimRepo: &mockZimArchiveRepo{
@@ -815,7 +813,7 @@ func TestSearchKiwixArchives_MeilisearchSelection(t *testing.T) {
 		}{
 			kiwixC: mc,
 			searcher: &mockSearcher{
-				searchFn: func(_ context.Context, _ search.SearchParams) (*meilisearch.SearchResponse, error) {
+				searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
 					return nil, errors.New("meilisearch unavailable")
 				},
 			},

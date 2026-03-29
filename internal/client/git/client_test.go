@@ -355,17 +355,6 @@ func (m *mockTemplateRepo) ReplaceFiles(ctx context.Context, templateID int64, f
 	return nil
 }
 
-type mockTemplateIndexer struct {
-	indexGitTemplateFn func(ctx context.Context, record GitTemplateRecord) error
-}
-
-func (m *mockTemplateIndexer) IndexGitTemplate(ctx context.Context, record GitTemplateRecord) error {
-	if m.indexGitTemplateFn != nil {
-		return m.indexGitTemplateFn(ctx, record)
-	}
-	return nil
-}
-
 // syncURL is a real public IP that passes ValidateRepositoryURL without DNS
 // resolution. Git operations in Sync tests use local origins from pre-cloned
 // repos — this URL is only validated, never fetched.
@@ -551,82 +540,6 @@ func TestSync_ReplaceFilesError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "replacing template files") {
 		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestSync_WithIndexer(t *testing.T) {
-	src := makeTestGitRepo(t)
-	c := newTestClient(t)
-	slug := "with-indexer"
-	preclone(t, c, src, slug)
-
-	var indexed []GitTemplateRecord
-	indexer := &mockTemplateIndexer{
-		indexGitTemplateFn: func(_ context.Context, r GitTemplateRecord) error {
-			indexed = append(indexed, r)
-			return nil
-		},
-	}
-
-	err := Sync(context.Background(), SyncParams{
-		Template: SyncTemplate{
-			ID:            1,
-			UUID:          "abc-123",
-			Name:          "My Template",
-			Slug:          slug,
-			Description:   "A test template",
-			RepositoryURL: syncURL,
-			Branch:        "main",
-			Category:      "backend",
-			Tags:          []string{"go", "api"},
-		},
-		Client:  c,
-		Repo:    &mockTemplateRepo{},
-		Indexer: indexer,
-		Logger:  slog.Default(),
-	})
-	if err != nil {
-		t.Fatalf("Sync failed: %v", err)
-	}
-	if len(indexed) != 1 {
-		t.Fatalf("expected 1 indexed record, got %d", len(indexed))
-	}
-	if indexed[0].UUID != "abc-123" {
-		t.Errorf("expected UUID abc-123, got %q", indexed[0].UUID)
-	}
-	if indexed[0].ReadmeContent == "" {
-		t.Error("expected readme content to be extracted")
-	}
-}
-
-func TestSync_IndexerError_NonFatal(t *testing.T) {
-	src := makeTestGitRepo(t)
-	c := newTestClient(t)
-	slug := "indexer-err"
-	preclone(t, c, src, slug)
-
-	indexer := &mockTemplateIndexer{
-		indexGitTemplateFn: func(_ context.Context, _ GitTemplateRecord) error {
-			return errors.New("meilisearch down")
-		},
-	}
-
-	// Indexer error must not propagate — sync itself succeeded.
-	err := Sync(context.Background(), SyncParams{
-		Template: SyncTemplate{
-			ID:            1,
-			UUID:          "u",
-			Slug:          slug,
-			RepositoryURL: syncURL,
-			Branch:        "main",
-		},
-		Client:  c,
-		Repo:    &mockTemplateRepo{},
-		Indexer: indexer,
-		Logger:  slog.Default(),
-	})
-	if err != nil {
-		t.Fatalf("expected nil despite indexer failure, got: %v", err)
 	}
 }
 

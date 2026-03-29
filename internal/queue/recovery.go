@@ -54,20 +54,21 @@ func RecoverStuckDocuments(ctx context.Context, inserter JobInserter, finder Doc
 		}
 	}
 
-	// Re-dispatch indexing for documents stuck in "extracted" state.
+	// Re-dispatch extraction for documents stuck in "extracted" state
+	// (with PostgreSQL FTS, extraction now directly sets status to "indexed").
 	extracted, err := finder.FindByStatus(ctx, "extracted")
 	if err != nil {
 		logger.Error("finding stuck extracted documents", "error", err)
 	} else {
 		for _, doc := range extracted {
-			if _, insertErr := inserter.Insert(ctx, DocumentIndexArgs{
+			if _, insertErr := inserter.Insert(ctx, DocumentExtractArgs{
 				DocumentID: doc.ID,
 				DocUUID:    doc.UUID,
 			}, nil); insertErr != nil {
-				logger.Error("re-dispatching indexing for stuck document",
+				logger.Error("re-dispatching extraction for stuck document",
 					"doc_id", doc.ID, "uuid", doc.UUID, "error", insertErr)
 			} else {
-				logger.Info("re-dispatched indexing for stuck document",
+				logger.Info("re-dispatched extraction for stuck document",
 					"doc_id", doc.ID, "uuid", doc.UUID)
 			}
 		}

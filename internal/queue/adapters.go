@@ -7,7 +7,6 @@ import (
 	"github.com/c-premus/documcp/internal/client/git"
 	"github.com/c-premus/documcp/internal/client/kiwix"
 	"github.com/c-premus/documcp/internal/repository"
-	"github.com/c-premus/documcp/internal/search"
 )
 
 // --- Kiwix adapters ---.
@@ -40,26 +39,6 @@ func (a *kiwixRepoAdapter) DisableOrphaned(ctx context.Context, serviceID int64,
 	return a.repo.DisableOrphaned(ctx, serviceID, activeNames)
 }
 
-// kiwixIndexerAdapter adapts SearchIndexDeps to satisfy kiwix.ArchiveIndexer.
-type kiwixIndexerAdapter struct {
-	indexer SearchIndexDeps
-}
-
-// IndexZimArchive indexes a ZIM archive in the search engine.
-func (a *kiwixIndexerAdapter) IndexZimArchive(ctx context.Context, record kiwix.ZimArchiveRecord) error {
-	return a.indexer.IndexZimArchive(ctx, search.ZimArchiveRecord{
-		UUID:         record.UUID,
-		Name:         record.Name,
-		Title:        record.Title,
-		Description:  record.Description,
-		Language:     record.Language,
-		Category:     record.Category,
-		Creator:      record.Creator,
-		Tags:         record.Tags,
-		ArticleCount: record.ArticleCount,
-	})
-}
-
 // --- Git template adapters ---.
 
 // gitRepoAdapter adapts GitTemplateRepoDeps to satisfy git.TemplateRepo.
@@ -88,25 +67,4 @@ func (a *gitRepoAdapter) ReplaceFiles(ctx context.Context, templateID int64, fil
 		}
 	}
 	return a.repo.ReplaceFiles(ctx, templateID, converted)
-}
-
-// gitIndexerAdapter adapts SearchIndexDeps to satisfy git.TemplateIndexer.
-type gitIndexerAdapter struct {
-	indexer SearchIndexDeps
-}
-
-// IndexGitTemplate indexes a Git template in the search engine.
-func (a *gitIndexerAdapter) IndexGitTemplate(ctx context.Context, record git.GitTemplateRecord) error {
-	return a.indexer.IndexGitTemplate(ctx, search.GitTemplateRecord{
-		UUID:          record.UUID,
-		Name:          record.Name,
-		Slug:          record.Slug,
-		Description:   record.Description,
-		ReadmeContent: record.ReadmeContent,
-		Category:      record.Category,
-		Tags:          record.Tags,
-		IsPublic:      record.IsPublic,
-		Status:        record.Status,
-		SoftDeleted:   record.SoftDeleted,
-	})
 }

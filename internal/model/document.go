@@ -26,8 +26,7 @@ type Document struct {
 	IsPublic             bool           `db:"is_public" json:"is_public"`
 	Status               string         `db:"status" json:"status"`
 	ErrorMessage         sql.NullString `db:"error_message" json:"error_message"`
-	MeilisearchIndexedAt sql.NullTime   `db:"meilisearch_indexed_at" json:"meilisearch_indexed_at"`
-	CreatedAt            sql.NullTime   `db:"created_at" json:"created_at"`
+	CreatedAt sql.NullTime `db:"created_at" json:"created_at"`
 	UpdatedAt            sql.NullTime   `db:"updated_at" json:"updated_at"`
 	DeletedAt            sql.NullTime   `db:"deleted_at" json:"deleted_at"`
 }

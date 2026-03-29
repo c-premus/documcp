@@ -10,8 +10,6 @@ import (
 	"github.com/riverqueue/river/rivertype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/c-premus/documcp/internal/model"
 )
 
 // --- Mock implementations ---
@@ -22,16 +20,6 @@ type mockDocumentProcessor struct {
 }
 
 func (m *mockDocumentProcessor) ProcessDocument(_ context.Context, docID int64) error {
-	m.calledWith = docID
-	return m.err
-}
-
-type mockDocumentIndexer struct {
-	calledWith int64
-	err        error
-}
-
-func (m *mockDocumentIndexer) IndexDocumentByID(_ context.Context, docID int64) error {
 	m.calledWith = docID
 	return m.err
 }
@@ -123,197 +111,6 @@ func TestDocumentExtractWorker_NextRetry(t *testing.T) {
 	}
 }
 
-// --- DocumentIndexWorker tests ---
-
-func TestDocumentIndexWorker_Work(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		docID    int64
-		indexErr error
-		wantErr  bool
-	}{
-		{
-			name:  "success",
-			docID: 55,
-		},
-		{
-			name:     "indexer_error",
-			docID:    77,
-			indexErr: errors.New("indexing failed"),
-			wantErr:  true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			mock := &mockDocumentIndexer{err: tt.indexErr}
-			worker := &DocumentIndexWorker{Indexer: mock}
-
-			job := &river.Job[DocumentIndexArgs]{
-				JobRow: &rivertype.JobRow{ID: 2},
-				Args:   DocumentIndexArgs{DocumentID: tt.docID, DocUUID: "idx-uuid"},
-			}
-
-			err := worker.Work(context.Background(), job)
-
-			if tt.wantErr {
-				require.Error(t, err)
-				assert.Equal(t, tt.indexErr, err)
-			} else {
-				require.NoError(t, err)
-			}
-			assert.Equal(t, tt.docID, mock.calledWith, "IndexDocumentByID should receive the correct document ID")
-		})
-	}
-}
-
-func TestDocumentIndexWorker_NextRetry(t *testing.T) {
-	t.Parallel()
-
-	worker := &DocumentIndexWorker{}
-
-	tests := []struct {
-		name      string
-		attempt   int
-		wantDur   time.Duration
-		tolerance time.Duration
-	}{
-		{"attempt_1_60s", 1, 60 * time.Second, 2 * time.Second},
-		{"attempt_2_120s", 2, 120 * time.Second, 2 * time.Second},
-		{"attempt_3_300s", 3, 300 * time.Second, 2 * time.Second},
-		{"attempt_beyond_backoffs_capped", 10, 300 * time.Second, 2 * time.Second},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			job := &river.Job[DocumentIndexArgs]{
-				JobRow: &rivertype.JobRow{Attempt: tt.attempt},
-				Args:   DocumentIndexArgs{},
-			}
-
-			before := time.Now().Add(tt.wantDur)
-			result := worker.NextRetry(job)
-			after := time.Now().Add(tt.wantDur)
-
-			assert.True(t, result.After(before.Add(-tt.tolerance)),
-				"retry time should be approximately now + %v", tt.wantDur)
-			assert.True(t, result.Before(after.Add(tt.tolerance)),
-				"retry time should be approximately now + %v", tt.wantDur)
-		})
-	}
-}
-
-// --- Mock DocumentLister ---
-
-type mockDocumentLister struct {
-	docs map[string][]model.Document
-	err  error
-}
-
-func (m *mockDocumentLister) FindByStatus(_ context.Context, status string, _ int) ([]model.Document, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	return m.docs[status], nil
-}
-
-// --- ReindexAllWorker tests ---
-
-func TestReindexAllWorker_Work(t *testing.T) {
-	t.Parallel()
-
-	makeJob := func() *river.Job[ReindexAllArgs] {
-		return &river.Job[ReindexAllArgs]{
-			JobRow: &rivertype.JobRow{ID: 3},
-			Args:   ReindexAllArgs{},
-		}
-	}
-
-	t.Run("not_configured_missing_lister", func(t *testing.T) {
-		t.Parallel()
-		worker := &ReindexAllWorker{Indexer: &mockDocumentIndexer{}}
-		err := worker.Work(context.Background(), makeJob())
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not configured")
-	})
-
-	t.Run("not_configured_missing_indexer", func(t *testing.T) {
-		t.Parallel()
-		worker := &ReindexAllWorker{Lister: &mockDocumentLister{}}
-		err := worker.Work(context.Background(), makeJob())
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not configured")
-	})
-
-	t.Run("success_no_documents", func(t *testing.T) {
-		t.Parallel()
-		worker := &ReindexAllWorker{
-			Indexer: &mockDocumentIndexer{},
-			Lister:  &mockDocumentLister{docs: map[string][]model.Document{}},
-		}
-		err := worker.Work(context.Background(), makeJob())
-		require.NoError(t, err)
-	})
-
-	t.Run("success_indexes_all_documents", func(t *testing.T) {
-		t.Parallel()
-		indexer := &mockDocumentIndexer{}
-		lister := &mockDocumentLister{
-			docs: map[string][]model.Document{
-				"indexed":   {{ID: 1}, {ID: 2}},
-				"processed": {{ID: 3}},
-			},
-		}
-		worker := &ReindexAllWorker{Indexer: indexer, Lister: lister}
-		err := worker.Work(context.Background(), makeJob())
-		require.NoError(t, err)
-	})
-
-	t.Run("partial_failure_returns_error", func(t *testing.T) {
-		t.Parallel()
-		indexer := &mockDocumentIndexer{err: errors.New("search down")}
-		lister := &mockDocumentLister{
-			docs: map[string][]model.Document{
-				"indexed": {{ID: 1}},
-			},
-		}
-		worker := &ReindexAllWorker{Indexer: indexer, Lister: lister}
-		err := worker.Work(context.Background(), makeJob())
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "1 failures")
-	})
-
-	t.Run("canceled_context", func(t *testing.T) {
-		t.Parallel()
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		lister := &mockDocumentLister{
-			docs: map[string][]model.Document{
-				"indexed": {{ID: 1}},
-			},
-		}
-		worker := &ReindexAllWorker{Indexer: &mockDocumentIndexer{}, Lister: lister}
-		err := worker.Work(ctx, makeJob())
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "canceled")
-	})
-
-	t.Run("lister_error_continues", func(t *testing.T) {
-		t.Parallel()
-		lister := &mockDocumentLister{err: errors.New("db error")}
-		worker := &ReindexAllWorker{Indexer: &mockDocumentIndexer{}, Lister: lister}
-		// All statuses fail to list, but worker completes with 0 docs.
-		err := worker.Work(context.Background(), makeJob())
-		require.NoError(t, err)
-	})
-}
-
 // --- DocumentExtractWorker nil pipeline test ---
 
 func TestDocumentExtractWorker_Work_nilPipeline(t *testing.T) {
@@ -351,47 +148,6 @@ func TestDocumentExtractWorker_Work_successRecordsMetrics(t *testing.T) {
 
 	// Verify completed counter was incremented.
 	counter, metricErr := metrics.QueueJobsCompleted.GetMetricWithLabelValues("high", "document_extract")
-	require.NoError(t, metricErr)
-	require.NotNil(t, counter)
-}
-
-// --- DocumentIndexWorker nil indexer test ---
-
-func TestDocumentIndexWorker_Work_nilIndexer(t *testing.T) {
-	t.Parallel()
-
-	worker := &DocumentIndexWorker{Indexer: nil}
-
-	job := &river.Job[DocumentIndexArgs]{
-		JobRow: &rivertype.JobRow{ID: 1},
-		Args:   DocumentIndexArgs{DocumentID: 1, DocUUID: "uuid"},
-	}
-
-	err := worker.Work(context.Background(), job)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "indexer is nil")
-}
-
-// --- DocumentIndexWorker success records metrics ---
-
-func TestDocumentIndexWorker_Work_successRecordsMetrics(t *testing.T) {
-	t.Parallel()
-
-	mock := &mockDocumentIndexer{}
-	metrics := newTestMetrics()
-	worker := &DocumentIndexWorker{Indexer: mock, Metrics: metrics}
-
-	job := &river.Job[DocumentIndexArgs]{
-		JobRow: &rivertype.JobRow{ID: 2, Queue: "default", Kind: "document_index"},
-		Args:   DocumentIndexArgs{DocumentID: 55, DocUUID: "idx-uuid"},
-	}
-
-	err := worker.Work(context.Background(), job)
-	require.NoError(t, err)
-	assert.Equal(t, int64(55), mock.calledWith)
-
-	// Verify completed counter was incremented.
-	counter, metricErr := metrics.QueueJobsCompleted.GetMetricWithLabelValues("default", "document_index")
 	require.NoError(t, metricErr)
 	require.NotNil(t, counter)
 }
