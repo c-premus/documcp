@@ -100,9 +100,9 @@ func (s *Service) TouchClientLastUsed(ctx context.Context, clientID int64) error
 }
 
 // ExpandClientScope widens the client's registered scope to include
-// additionalScopes. The result is the sorted union of the existing scope and
-// the additional scopes. This allows dynamically-registered clients to receive
-// broader tokens when an authenticated user approves the authorization.
+// additionalScopes. Deprecated: no longer called during authorization.
+// Retained for potential admin tooling use. Client scope should remain as
+// registered; auth codes are scoped to user entitlements directly.
 func (s *Service) ExpandClientScope(ctx context.Context, clientID int64, additionalScopes string) error {
 	client, err := s.repo.FindClientByID(ctx, clientID)
 	if err != nil {
@@ -252,28 +252,11 @@ type GenerateAuthorizationCodeParams struct {
 
 // GenerateAuthorizationCode creates a new authorization code.
 func (s *Service) GenerateAuthorizationCode(ctx context.Context, params GenerateAuthorizationCodeParams) (string, error) {
-	// Validate requested scopes are known
+	// Scope validation: verify all scope tokens are known.
+	// The handler narrows scope to user entitlements before calling this method.
 	if params.Scope != "" {
 		if invalid := authscope.ValidateAll(params.Scope); len(invalid) > 0 {
 			return "", fmt.Errorf("invalid scopes: %s", strings.Join(invalid, ", "))
-		}
-	}
-
-	// Verify requested scope is a subset of the client's allowed scope
-	if params.Scope != "" {
-		client, err := s.repo.FindClientByID(ctx, params.ClientID)
-		if err != nil {
-			return "", fmt.Errorf("looking up client: %w", err)
-		}
-		if client == nil {
-			return "", errors.New("client not found")
-		}
-		clientScope := ""
-		if client.Scope.Valid {
-			clientScope = client.Scope.String
-		}
-		if clientScope != "" && !authscope.IsSubset(params.Scope, clientScope) {
-			return "", errors.New("requested scope exceeds client's allowed scope")
 		}
 	}
 
@@ -396,14 +379,21 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 		scope = authCode.Scope.String
 	}
 
-	// Defense-in-depth: validate scope against client's allowed scope
+	// Defense-in-depth: log if auth code scope exceeds client's registered scope.
+	// This can happen legitimately when a user grants scopes beyond the client's
+	// initial registration (e.g., admin approving admin scope for a dynamically
+	// registered client). The auth code scope is trustworthy — it was computed
+	// server-side from user entitlements.
 	if scope != "" {
 		clientScope := ""
 		if client.Scope.Valid {
 			clientScope = client.Scope.String
 		}
 		if clientScope != "" && !authscope.IsSubset(scope, clientScope) {
-			return nil, errors.New("authorization code scope exceeds client's allowed scope")
+			s.logger.Warn("auth code scope exceeds client registered scope",
+				"code_scope", scope, "client_scope", clientScope,
+				"client_id", params.ClientID,
+			)
 		}
 	}
 

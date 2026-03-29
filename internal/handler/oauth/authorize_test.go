@@ -501,9 +501,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					IsActive:                true,
 				}, nil
 			},
-			FindClientByIDFunc: func(_ context.Context, id int64) (*model.OAuthClient, error) {
-				return &model.OAuthClient{ID: id}, nil
-			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
 				code.ID = 99
 				return nil
@@ -659,9 +656,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					IsActive:                true,
 				}, nil
 			},
-			FindClientByIDFunc: func(_ context.Context, id int64) (*model.OAuthClient, error) {
-				return &model.OAuthClient{ID: id}, nil
-			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
 				code.ID = 99
 				return nil
@@ -732,5 +726,183 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 		require.Equal(t, http.StatusFound, rr.Code)
 		location := rr.Header().Get("Location")
 		assert.NotContains(t, location, "state=")
+	})
+
+	t.Run("does not expand client scope on approval", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:                      1,
+					ClientID:                "cid",
+					ClientName:              "Test App",
+					TokenEndpointAuthMethod: "none",
+					IsActive:                true,
+				}, nil
+			},
+			UpdateClientScopeFunc: func(_ context.Context, _ int64, _ string) error {
+				t.Fatal("ExpandClientScope should not be called")
+				return nil
+			},
+			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
+				code.ID = 99
+				return nil
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+		store.session.Values["oauth_pending_request"] = map[string]any{
+			"nonce":                 "test-nonce-value",
+			"client_id":             "cid",
+			"state":                 "my_state_",
+			"redirect_uri":          "https://example.com/cb",
+			"code_challenge":        "",
+			"code_challenge_method": "",
+			"scope":                 "mcp:access",
+			"timestamp":             time.Now().Unix(),
+		}
+
+		formBody := "client_id=cid&redirect_uri=https://example.com/cb&state=my_state_&scope=mcp:access&nonce=test-nonce-value"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/authorize/approve", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.AuthorizeApprove(rr, req)
+
+		require.Equal(t, http.StatusFound, rr.Code)
+		location := rr.Header().Get("Location")
+		assert.Contains(t, location, "code=")
+	})
+}
+
+func TestHandler_AuthorizeDeny(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns 401 when not authenticated", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
+
+		formBody := "nonce=some-nonce"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/authorize/deny", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.AuthorizeDeny(rr, req)
+
+		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	})
+
+	t.Run("returns 400 when no pending request", func(t *testing.T) {
+		t.Parallel()
+		h, store := newHandlerWithRepo(&mockOAuthRepo{})
+		store.session.Values["user_id"] = int64(42)
+
+		formBody := "nonce=some-nonce"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/authorize/deny", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.AuthorizeDeny(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.Contains(t, rr.Body.String(), "No pending OAuth request")
+	})
+
+	t.Run("returns 400 on invalid nonce", func(t *testing.T) {
+		t.Parallel()
+		h, store := newHandlerWithRepo(&mockOAuthRepo{})
+		store.session.Values["user_id"] = int64(42)
+		store.session.Values["oauth_pending_request"] = map[string]any{
+			"nonce":        "correct-nonce",
+			"client_id":    "cid",
+			"state":        "abcdefgh",
+			"redirect_uri": "https://example.com/cb",
+			"timestamp":    time.Now().Unix(),
+		}
+
+		formBody := "nonce=wrong-nonce"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/authorize/deny", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.AuthorizeDeny(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.Contains(t, rr.Body.String(), "Invalid authorization request")
+	})
+
+	t.Run("redirects with access_denied on valid deny", func(t *testing.T) {
+		t.Parallel()
+		h, store := newHandlerWithRepo(&mockOAuthRepo{})
+		store.session.Values["user_id"] = int64(42)
+		store.session.Values["oauth_pending_request"] = map[string]any{
+			"nonce":        "test-nonce-value",
+			"client_id":    "cid",
+			"state":        "my_state_",
+			"redirect_uri": "https://example.com/cb",
+			"timestamp":    time.Now().Unix(),
+		}
+
+		formBody := "nonce=test-nonce-value"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/authorize/deny", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.AuthorizeDeny(rr, req)
+
+		require.Equal(t, http.StatusFound, rr.Code)
+		location := rr.Header().Get("Location")
+		assert.Contains(t, location, "https://example.com/cb")
+		assert.Contains(t, location, "error=access_denied")
+		assert.Contains(t, location, "state=my_state_")
+	})
+
+	t.Run("clears pending request from session", func(t *testing.T) {
+		t.Parallel()
+		h, store := newHandlerWithRepo(&mockOAuthRepo{})
+		store.session.Values["user_id"] = int64(42)
+		store.session.Values["oauth_pending_request"] = map[string]any{
+			"nonce":        "test-nonce-value",
+			"client_id":    "cid",
+			"state":        "my_state_",
+			"redirect_uri": "https://example.com/cb",
+			"timestamp":    time.Now().Unix(),
+		}
+
+		formBody := "nonce=test-nonce-value"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/authorize/deny", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.AuthorizeDeny(rr, req)
+
+		require.Equal(t, http.StatusFound, rr.Code)
+		_, exists := store.session.Values["oauth_pending_request"]
+		assert.False(t, exists, "pending request should be cleared from session")
+	})
+
+	t.Run("renders error page when redirect_uri missing", func(t *testing.T) {
+		t.Parallel()
+		h, store := newHandlerWithRepo(&mockOAuthRepo{})
+		store.session.Values["user_id"] = int64(42)
+		store.session.Values["oauth_pending_request"] = map[string]any{
+			"nonce":        "test-nonce-value",
+			"client_id":    "cid",
+			"state":        "my_state_",
+			"redirect_uri": "",
+			"timestamp":    time.Now().Unix(),
+		}
+
+		formBody := "nonce=test-nonce-value"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/authorize/deny", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.AuthorizeDeny(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		assert.Contains(t, rr.Header().Get("Content-Type"), "text/html")
+		assert.Contains(t, rr.Body.String(), "Authorization Denied")
+		assert.Contains(t, rr.Body.String(), "You may close this window")
 	})
 }

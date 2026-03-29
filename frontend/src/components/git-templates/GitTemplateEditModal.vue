@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { Dialog, DialogPanel, DialogTitle } from '@headlessui/vue'
-import { CheckCircleIcon, XCircleIcon } from '@heroicons/vue/24/outline'
 import { toast } from 'vue-sonner'
-import { useGitTemplatesStore, type CreateTemplateParams } from '../../stores/gitTemplates'
+import type { GitTemplate } from '../../stores/gitTemplates'
+import { useGitTemplatesStore } from '../../stores/gitTemplates'
 
 const props = defineProps<{
   readonly open: boolean
+  readonly template: GitTemplate | null
 }>()
 
 const emit = defineEmits<{
@@ -17,18 +18,12 @@ const emit = defineEmits<{
 const store = useGitTemplatesStore()
 
 const name = ref('')
-const repositoryUrl = ref('')
-const branch = ref('main')
+const branch = ref('')
 const category = ref('project')
 const description = ref('')
 const gitToken = ref('')
-
 const submitting = ref(false)
 const error = ref<string | null>(null)
-
-const urlValidating = ref(false)
-const urlValid = ref<boolean | null>(null)
-const urlError = ref<string | null>(null)
 
 const CATEGORIES = [
   { value: 'claude', label: 'Claude' },
@@ -39,67 +34,25 @@ const CATEGORIES = [
 watch(
   () => props.open,
   (isOpen) => {
-    if (isOpen) {
-      name.value = ''
-      repositoryUrl.value = ''
-      branch.value = 'main'
-      category.value = 'project'
-      description.value = ''
+    if (isOpen && props.template !== null) {
+      name.value = props.template.name
+      branch.value = props.template.branch
+      category.value = props.template.category ?? 'project'
+      description.value = props.template.description ?? ''
       gitToken.value = ''
       submitting.value = false
       error.value = null
-      urlValid.value = null
-      urlError.value = null
     }
   },
 )
-
-watch(repositoryUrl, () => {
-  urlValid.value = null
-  urlError.value = null
-})
-
-async function handleUrlBlur(): Promise<void> {
-  const url = repositoryUrl.value.trim()
-  if (url === '') {
-    urlValid.value = null
-    urlError.value = null
-    return
-  }
-
-  urlValidating.value = true
-  urlValid.value = null
-  urlError.value = null
-
-  try {
-    const result = await store.validateUrl(url)
-    urlValid.value = result.valid
-    if (!result.valid) {
-      urlError.value = result.error ?? 'Invalid repository URL'
-    }
-  } catch {
-    urlValid.value = false
-    urlError.value = 'Failed to validate URL'
-  } finally {
-    urlValidating.value = false
-  }
-}
 
 function validate(): boolean {
   if (name.value.trim() === '') {
     error.value = 'Name is required'
     return false
   }
-  if (repositoryUrl.value.trim() === '') {
-    error.value = 'Repository URL is required'
-    return false
-  }
   if (branch.value.trim() === '') {
     error.value = 'Branch is required'
-    return false
-  }
-  if (urlValid.value === false) {
-    error.value = 'Repository URL is not valid'
     return false
   }
   error.value = null
@@ -107,24 +60,23 @@ function validate(): boolean {
 }
 
 async function handleSubmit(): Promise<void> {
-  if (!validate()) {
-    return
-  }
+  if (!validate() || props.template === null) return
 
   submitting.value = true
   error.value = null
 
   try {
-    const params: CreateTemplateParams = {
+    const payload: Record<string, unknown> = {
       name: name.value.trim(),
-      repository_url: repositoryUrl.value.trim(),
       branch: branch.value.trim(),
       category: category.value,
       description: description.value.trim() || undefined,
-      git_token: gitToken.value.trim() || undefined,
     }
-    await store.createTemplate(params)
-    toast.success(`Template "${name.value.trim()}" created`)
+    if (gitToken.value.trim() !== '') {
+      payload.git_token = gitToken.value.trim()
+    }
+    await store.updateTemplate(props.template.uuid, payload)
+    toast.success(`Template "${name.value.trim()}" updated`)
     emit('saved')
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'An unexpected error occurred'
@@ -144,17 +96,19 @@ async function handleSubmit(): Promise<void> {
           class="relative transform overflow-hidden rounded-lg bg-bg-surface px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6"
         >
           <DialogTitle as="h3" class="text-base font-semibold text-text-primary mb-4">
-            Add Git Template
+            Edit Git Template
           </DialogTitle>
 
           <form @submit.prevent="handleSubmit">
             <div class="space-y-4">
               <div>
-                <label for="template-name" class="block text-sm font-medium text-text-secondary"
+                <label
+                  for="edit-template-name"
+                  class="block text-sm font-medium text-text-secondary"
                   >Name</label
                 >
                 <input
-                  id="template-name"
+                  id="edit-template-name"
                   v-model="name"
                   type="text"
                   required
@@ -163,56 +117,13 @@ async function handleSubmit(): Promise<void> {
               </div>
 
               <div>
-                <label for="template-url" class="block text-sm font-medium text-text-secondary"
-                  >Repository URL</label
-                >
-                <div class="relative mt-1">
-                  <input
-                    id="template-url"
-                    v-model="repositoryUrl"
-                    type="url"
-                    required
-                    placeholder="https://github.com/org/repo.git"
-                    class="block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm pr-10"
-                    @blur="handleUrlBlur"
-                  />
-                  <div class="absolute inset-y-0 right-0 flex items-center pr-3">
-                    <div
-                      v-if="urlValidating"
-                      class="h-4 w-4 animate-spin rounded-full border-2 border-border-input border-t-indigo-600 dark:border-t-indigo-400"
-                    />
-                    <CheckCircleIcon v-else-if="urlValid === true" class="h-5 w-5 text-green-500" />
-                    <XCircleIcon v-else-if="urlValid === false" class="h-5 w-5 text-red-500" />
-                  </div>
-                </div>
-                <p v-if="urlError" class="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {{ urlError }}
-                </p>
-              </div>
-
-              <div>
                 <label
-                  for="template-git-token"
+                  for="edit-template-branch"
                   class="block text-sm font-medium text-text-secondary"
-                >
-                  Access Token
-                  <span class="text-text-disabled font-normal">(optional, for private repos)</span>
-                </label>
-                <input
-                  id="template-git-token"
-                  v-model="gitToken"
-                  type="password"
-                  placeholder="ghp_xxxx or glpat-xxxx"
-                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
-                />
-              </div>
-
-              <div>
-                <label for="template-branch" class="block text-sm font-medium text-text-secondary"
                   >Branch</label
                 >
                 <input
-                  id="template-branch"
+                  id="edit-template-branch"
                   v-model="branch"
                   type="text"
                   required
@@ -221,11 +132,13 @@ async function handleSubmit(): Promise<void> {
               </div>
 
               <div>
-                <label for="template-category" class="block text-sm font-medium text-text-secondary"
+                <label
+                  for="edit-template-category"
+                  class="block text-sm font-medium text-text-secondary"
                   >Category</label
                 >
                 <select
-                  id="template-category"
+                  id="edit-template-category"
                   v-model="category"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 >
@@ -237,14 +150,31 @@ async function handleSubmit(): Promise<void> {
 
               <div>
                 <label
-                  for="template-description"
+                  for="edit-template-description"
                   class="block text-sm font-medium text-text-secondary"
                   >Description</label
                 >
                 <textarea
-                  id="template-description"
+                  id="edit-template-description"
                   v-model="description"
                   rows="3"
+                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
+                />
+              </div>
+
+              <div>
+                <label
+                  for="edit-template-git-token"
+                  class="block text-sm font-medium text-text-secondary"
+                >
+                  Access Token
+                  <span class="text-text-disabled font-normal">(leave blank to keep current)</span>
+                </label>
+                <input
+                  id="edit-template-git-token"
+                  v-model="gitToken"
+                  type="password"
+                  placeholder="********"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
@@ -267,8 +197,8 @@ async function handleSubmit(): Promise<void> {
                 :disabled="submitting"
                 class="inline-flex justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <template v-if="submitting">Creating...</template>
-                <template v-else>Create</template>
+                <template v-if="submitting">Saving...</template>
+                <template v-else>Save</template>
               </button>
             </div>
           </form>

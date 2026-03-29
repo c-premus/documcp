@@ -54,6 +54,12 @@
   --focus: #818cf8;
 }
 
+/* Thin scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bdr-input) transparent;
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,

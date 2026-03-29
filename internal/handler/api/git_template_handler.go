@@ -201,7 +201,7 @@ func (h *GitTemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusBadRequest, "repository_url is required")
 		return
 	}
-	if err := security.ValidateExternalURL(body.RepositoryURL); err != nil {
+	if err := security.ValidateExternalURL(body.RepositoryURL, true); err != nil {
 		h.logger.Warn("SSRF validation rejected URL", "url", body.RepositoryURL, "error", err)
 		errorResponse(w, http.StatusBadRequest, "Invalid repository URL")
 		return
@@ -296,7 +296,7 @@ func (h *GitTemplateHandler) Update(w http.ResponseWriter, r *http.Request) {
 		tmpl.Slug = stringutil.Slugify(body.Name)
 	}
 	if body.RepositoryURL != "" {
-		if err := security.ValidateExternalURL(body.RepositoryURL); err != nil {
+		if err := security.ValidateExternalURL(body.RepositoryURL, true); err != nil {
 			h.logger.Warn("SSRF validation rejected URL", "url", body.RepositoryURL, "error", err)
 			errorResponse(w, http.StatusBadRequest, "Invalid repository URL")
 			return
@@ -844,7 +844,7 @@ func (h *GitTemplateHandler) ValidateURL(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := security.ValidateExternalURL(body.URL); err != nil {
+	if err := security.ValidateExternalURL(body.URL, true); err != nil {
 		h.logger.Warn("SSRF validation rejected URL", "url", body.URL, "error", err)
 		jsonResponse(w, http.StatusOK, map[string]any{
 			"valid": false,

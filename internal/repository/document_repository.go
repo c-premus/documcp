@@ -379,7 +379,7 @@ func (r *DocumentRepository) SuggestTitles(ctx context.Context, prefix string, l
 		`SELECT uuid, title FROM documents
 		WHERE deleted_at IS NULL AND is_public = true AND title ILIKE $1
 		ORDER BY title LIMIT $2`,
-		prefix+"%", limit)
+		escapeLike(prefix)+"%", limit)
 	if err != nil {
 		return nil, fmt.Errorf("suggesting titles with prefix %q: %w", prefix, err)
 	}

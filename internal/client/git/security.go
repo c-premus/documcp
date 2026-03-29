@@ -20,7 +20,7 @@ func ValidateRepositoryURL(rawURL string) error {
 		return fmt.Errorf("repository URL must use https scheme, got %q", parsed.Scheme)
 	}
 
-	if err := security.ValidateExternalURL(rawURL); err != nil {
+	if err := security.ValidateExternalURL(rawURL, true); err != nil {
 		return fmt.Errorf("repository URL blocked: %w", err)
 	}
 

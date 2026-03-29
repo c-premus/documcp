@@ -208,7 +208,7 @@ func (s *ExternalServiceService) Delete(ctx context.Context, svcUUID string) err
 	return nil
 }
 
-// cleanupServiceIndex removes indexed entries for the given service from Meilisearch.
+// cleanupServiceIndex removes indexed entries for the given service from PostgreSQL full-text search indexes.
 // Errors are logged but do not block deletion.
 func (s *ExternalServiceService) cleanupServiceIndex(ctx context.Context, serviceID int64, serviceType string) {
 	if serviceType != "kiwix" {

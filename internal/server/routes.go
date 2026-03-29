@@ -153,6 +153,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			// (global middleware above) plus SameSite=Lax session cookies.
 			r.Get("/authorize", deps.OAuthHandler.Authorize)
 			r.Post("/authorize/approve", deps.OAuthHandler.AuthorizeApprove)
+			r.Post("/authorize/deny", deps.OAuthHandler.AuthorizeDeny)
 			r.Get("/device", deps.OAuthHandler.DeviceVerification)
 			r.Post("/device", deps.OAuthHandler.DeviceVerificationSubmit)
 			r.Post("/device/approve", deps.OAuthHandler.DeviceApprove)

@@ -701,42 +701,34 @@ func TestGenerateAuthorizationCode(t *testing.T) {
 		assert.Contains(t, err.Error(), "bogus:scope")
 	})
 
-	t.Run("scope exceeding client scope returns error", func(t *testing.T) {
+	t.Run("scope exceeding client scope succeeds (no client scope check)", func(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockOAuthRepo{
-			FindClientByIDFunc: func(_ context.Context, id int64) (*model.OAuthClient, error) {
-				return &model.OAuthClient{
-					ID:    id,
-					Scope: sql.NullString{String: "documents:read", Valid: true},
-				}, nil
+			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
+				code.ID = 15
+				return nil
 			},
 		}
 		svc := testService(repo)
 
-		_, err := svc.GenerateAuthorizationCode(context.Background(), GenerateAuthorizationCodeParams{
+		plaintext, err := svc.GenerateAuthorizationCode(context.Background(), GenerateAuthorizationCodeParams{
 			ClientID:    1,
 			UserID:      42,
 			RedirectURI: "http://localhost/callback",
 			Scope:       "documents:read documents:write",
 		})
 
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "requested scope exceeds client's allowed scope")
+		require.NoError(t, err)
+		assert.NotEmpty(t, plaintext)
 	})
 
 	t.Run("valid scope subset of client scope succeeds", func(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockOAuthRepo{
-			FindClientByIDFunc: func(_ context.Context, id int64) (*model.OAuthClient, error) {
-				return &model.OAuthClient{
-					ID:    id,
-					Scope: sql.NullString{String: "mcp:access documents:read documents:write", Valid: true},
-				}, nil
-			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
-				code.ID = 15
+				code.ID = 16
 				return nil
 			},
 		}
@@ -1178,7 +1170,7 @@ func TestExchangeAuthorizationCode(t *testing.T) {
 		assert.Contains(t, err.Error(), "invalid authorization code")
 	})
 
-	t.Run("auth code scope exceeding client scope returns error", func(t *testing.T) {
+	t.Run("auth code scope exceeding client scope logs warning but succeeds", func(t *testing.T) {
 		t.Parallel()
 
 		codePlaintext, codeHash, client, authCode := setupValidExchange(t)
@@ -1197,17 +1189,26 @@ func TestExchangeAuthorizationCode(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 			RevokeAuthorizationCodeFunc: func(_ context.Context, _ int64) error { return nil },
+			CreateAccessTokenFunc: func(_ context.Context, token *model.OAuthAccessToken) error {
+				token.ID = 300
+				return nil
+			},
+			CreateRefreshTokenFunc: func(_ context.Context, token *model.OAuthRefreshToken) error {
+				token.ID = 400
+				return nil
+			},
 		}
 		svc := testService(repo)
 
-		_, err := svc.ExchangeAuthorizationCode(context.Background(), ExchangeAuthorizationCodeParams{
+		result, err := svc.ExchangeAuthorizationCode(context.Background(), ExchangeAuthorizationCodeParams{
 			Code:        codePlaintext,
 			ClientID:    testClientID,
 			RedirectURI: testRedirectURI,
 		})
 
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "authorization code scope exceeds client's allowed scope")
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, "documents:read documents:write", result.Scope)
 	})
 }
 
