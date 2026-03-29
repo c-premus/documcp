@@ -17,18 +17,19 @@ import (
 
 // ZimArchiveUpsert holds the fields needed to upsert a ZIM archive from a catalog sync.
 type ZimArchiveUpsert struct {
-	Name         string
-	Title        string
-	Description  string
-	Language     string
-	Category     string
-	Creator      string
-	Publisher    string
-	Favicon      string
-	ArticleCount int64
-	MediaCount   int64
-	FileSize     int64
-	Tags         []string
+	Name             string
+	Title            string
+	Description      string
+	Language         string
+	Category         string
+	Creator          string
+	Publisher        string
+	Favicon          string
+	ArticleCount     int64
+	MediaCount       int64
+	FileSize         int64
+	Tags             []string
+	HasFulltextIndex bool
 }
 
 // ZimArchiveRepository handles ZIM archive persistence.
@@ -266,12 +267,12 @@ func (r *ZimArchiveRepository) UpsertFromCatalog(ctx context.Context, serviceID 
 		`INSERT INTO zim_archives (
 			uuid, name, slug, title, description, language, category,
 			creator, publisher, favicon, article_count, media_count,
-			file_size, tags, external_service_id, is_enabled,
+			file_size, tags, has_fulltext_index, external_service_id, is_enabled,
 			last_synced_at, created_at, updated_at
 		) VALUES (
 			gen_random_uuid(), $1, $2, $3, $4, $5, $6,
 			$7, $8, $9, $10, $11,
-			$12, $13, $14, true,
+			$12, $13, $14, $15, true,
 			NOW(), NOW(), NOW()
 		)
 		ON CONFLICT (name) DO UPDATE SET
@@ -286,6 +287,7 @@ func (r *ZimArchiveRepository) UpsertFromCatalog(ctx context.Context, serviceID 
 			media_count = EXCLUDED.media_count,
 			file_size = EXCLUDED.file_size,
 			tags = EXCLUDED.tags,
+			has_fulltext_index = EXCLUDED.has_fulltext_index,
 			external_service_id = EXCLUDED.external_service_id,
 			last_synced_at = NOW(),
 			updated_at = NOW()`,
@@ -293,7 +295,7 @@ func (r *ZimArchiveRepository) UpsertFromCatalog(ctx context.Context, serviceID 
 		nullStr(entry.Language), nullStr(entry.Category),
 		nullStr(entry.Creator), nullStr(entry.Publisher), nullStr(entry.Favicon),
 		entry.ArticleCount, entry.MediaCount,
-		entry.FileSize, tagsJSON, serviceID,
+		entry.FileSize, tagsJSON, entry.HasFulltextIndex, serviceID,
 	)
 	if err != nil {
 		return fmt.Errorf("upserting zim archive %q: %w", entry.Name, err)

@@ -19,18 +19,19 @@ type kiwixRepoAdapter struct {
 // UpsertFromCatalog creates or updates a ZIM archive record from a Kiwix catalog entry.
 func (a *kiwixRepoAdapter) UpsertFromCatalog(ctx context.Context, serviceID int64, entry kiwix.CatalogEntry) error {
 	return a.repo.UpsertFromCatalog(ctx, serviceID, repository.ZimArchiveUpsert{
-		Name:         entry.Name,
-		Title:        entry.Title,
-		Description:  entry.Description,
-		Language:     entry.Language,
-		Category:     entry.Category,
-		Creator:      entry.Creator,
-		Publisher:    entry.Publisher,
-		Favicon:      entry.Favicon,
-		ArticleCount: entry.ArticleCount,
-		MediaCount:   entry.MediaCount,
-		FileSize:     entry.FileSize,
-		Tags:         entry.Tags,
+		Name:             entry.Name,
+		Title:            entry.Title,
+		Description:      entry.Description,
+		Language:         entry.Language,
+		Category:         entry.Category,
+		Creator:          entry.Creator,
+		Publisher:        entry.Publisher,
+		Favicon:          entry.Favicon,
+		ArticleCount:     entry.ArticleCount,
+		MediaCount:       entry.MediaCount,
+		FileSize:         entry.FileSize,
+		Tags:             entry.Tags,
+		HasFulltextIndex: entry.HasFulltextIndex,
 	})
 }
 

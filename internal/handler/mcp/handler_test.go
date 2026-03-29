@@ -200,9 +200,10 @@ func (m *mockGitTemplateRepo) FindFileByPath(ctx context.Context, templateID int
 }
 
 type mockKiwixClient struct {
-	searchFn       func(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error)
-	readArticleFn  func(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error)
-	fetchCatalogFn func(ctx context.Context) ([]kiwix.CatalogEntry, error)
+	searchFn            func(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error)
+	readArticleFn       func(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error)
+	fetchCatalogFn      func(ctx context.Context) ([]kiwix.CatalogEntry, error)
+	hasFulltextIndexVal bool
 }
 
 func (m *mockKiwixClient) Search(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error) {
@@ -224,6 +225,10 @@ func (m *mockKiwixClient) FetchCatalog(ctx context.Context) ([]kiwix.CatalogEntr
 		return m.fetchCatalogFn(ctx)
 	}
 	return nil, nil
+}
+
+func (m *mockKiwixClient) HasFulltextIndex(_ context.Context, _ string) bool {
+	return m.hasFulltextIndexVal
 }
 
 // mockKiwixFactory wraps a mockKiwixClient as a kiwixClientFactory for tests.
@@ -967,6 +972,7 @@ func TestHandleSearchZim(t *testing.T) {
 
 	t.Run("returns search results", func(t *testing.T) {
 		kc := &mockKiwixClient{
+			hasFulltextIndexVal: true,
 			searchFn: func(_ context.Context, archive, query, st string, limit int) ([]kiwix.SearchResult, error) {
 				return []kiwix.SearchResult{
 					{Title: "Result 1", Path: "/r1", Snippet: "Snippet 1", Score: 0.9},
@@ -999,6 +1005,7 @@ func TestHandleSearchZim(t *testing.T) {
 	t.Run("defaults search type to fulltext", func(t *testing.T) {
 		var capturedType string
 		kc := &mockKiwixClient{
+			hasFulltextIndexVal: true,
 			searchFn: func(_ context.Context, _, _, st string, _ int) ([]kiwix.SearchResult, error) {
 				capturedType = st
 				return nil, nil

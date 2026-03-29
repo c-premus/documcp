@@ -12,6 +12,7 @@ CREATE TABLE git_templates (
     manifest          TEXT          NULL,
     category          VARCHAR(50)   NULL,
     tags              TEXT          NULL,
+    file_paths        TEXT          NULL,
     user_id           BIGINT        NULL,
     is_public         BOOLEAN       NOT NULL DEFAULT FALSE,
     is_enabled        BOOLEAN       NOT NULL DEFAULT TRUE,
@@ -21,6 +22,16 @@ CREATE TABLE git_templates (
     last_commit_sha   VARCHAR(40)   NULL,
     file_count        INTEGER       NOT NULL DEFAULT 0,
     total_size_bytes  BIGINT        NOT NULL DEFAULT 0,
+    search_vector     tsvector      GENERATED ALWAYS AS (
+        setweight(to_tsvector('documcp_english', COALESCE(name, '')), 'A') ||
+        setweight(to_tsvector('documcp_english', COALESCE(description, '')), 'B') ||
+        setweight(to_tsvector('documcp_english', COALESCE(
+            regexp_replace(COALESCE(tags, ''), '[\[\]",'']', ' ', 'g'), ''
+        )), 'B') ||
+        setweight(to_tsvector('documcp_english', COALESCE(readme_content, '')), 'C') ||
+        setweight(to_tsvector('documcp_english', COALESCE(category, '')), 'C') ||
+        setweight(to_tsvector('documcp_english', COALESCE(file_paths, '')), 'D')
+    ) STORED,
     created_at        TIMESTAMPTZ   NULL,
     updated_at        TIMESTAMPTZ   NULL,
     deleted_at        TIMESTAMPTZ   NULL,
@@ -37,6 +48,8 @@ CREATE INDEX idx_git_templates_status ON git_templates (status);
 CREATE INDEX idx_git_templates_is_public ON git_templates (is_public);
 CREATE INDEX idx_git_templates_is_enabled ON git_templates (is_enabled);
 CREATE INDEX idx_git_templates_created_at ON git_templates (created_at);
+CREATE INDEX idx_git_templates_search_vector ON git_templates USING GIN (search_vector);
+CREATE INDEX idx_git_templates_name_trgm ON git_templates USING GIN (name gin_trgm_ops);
 
 CREATE TABLE git_template_files (
     id              BIGSERIAL     PRIMARY KEY,
@@ -51,6 +64,12 @@ CREATE TABLE git_template_files (
     content_hash    VARCHAR(64)   NULL,
     is_essential    BOOLEAN       NOT NULL DEFAULT FALSE,
     variables       TEXT          NULL,
+    search_vector   tsvector      GENERATED ALWAYS AS (
+        setweight(to_tsvector('documcp_english', COALESCE(
+            regexp_replace(COALESCE(filename, ''), '[-_.]', ' ', 'g'), ''
+        )), 'A') ||
+        setweight(to_tsvector('documcp_english', COALESCE(LEFT(content, 500000), '')), 'D')
+    ) STORED,
     created_at      TIMESTAMPTZ   NULL,
     updated_at      TIMESTAMPTZ   NULL,
 
@@ -63,6 +82,7 @@ CREATE TABLE git_template_files (
 CREATE INDEX idx_git_template_files_git_template_id ON git_template_files (git_template_id);
 CREATE INDEX idx_git_template_files_path ON git_template_files (path);
 CREATE INDEX idx_git_template_files_is_essential ON git_template_files (is_essential);
+CREATE INDEX idx_git_template_files_search_vector ON git_template_files USING GIN (search_vector);
 
 -- +goose Down
 DROP TABLE IF EXISTS git_template_files;

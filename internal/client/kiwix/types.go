@@ -28,7 +28,6 @@ type SearchResult struct {
 	Snippet string  `json:"snippet,omitempty"`
 	Score   float64 `json:"score,omitempty"`
 }
-
 // Article represents an article read from a ZIM archive.
 type Article struct {
 	Title    string // Article title, extracted from HTML <title> or path

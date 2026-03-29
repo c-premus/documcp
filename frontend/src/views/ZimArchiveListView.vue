@@ -76,6 +76,16 @@ const columns: ColumnDef<ZimArchive, unknown>[] = [
     },
   },
   {
+    accessorKey: 'has_fulltext_index',
+    header: 'Search',
+    enableSorting: true,
+    meta: { className: 'w-20 hidden md:table-cell' },
+    cell: ({ getValue }) => {
+      const value = getValue<boolean>()
+      return h(StatusBadge, { status: value ? 'fulltext' : 'title only' })
+    },
+  },
+  {
     accessorKey: 'article_count',
     header: 'Articles',
     enableSorting: true,

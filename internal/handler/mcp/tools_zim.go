@@ -20,13 +20,14 @@ type listZimArchivesResponse struct {
 }
 
 type zimArchiveItem struct {
-	Name         string `json:"name"`
-	Title        string `json:"title"`
-	Description  string `json:"description,omitempty"`
-	Category     string `json:"category,omitempty"`
-	Language     string `json:"language"`
-	ArticleCount int64  `json:"article_count"`
-	FileSize     int64  `json:"file_size"`
+	Name             string `json:"name"`
+	Title            string `json:"title"`
+	Description      string `json:"description,omitempty"`
+	Category         string `json:"category,omitempty"`
+	Language         string `json:"language"`
+	ArticleCount     int64  `json:"article_count"`
+	FileSize         int64  `json:"file_size"`
+	HasFulltextIndex bool   `json:"has_fulltext_index"`
 }
 
 type zimSearchResult struct {
@@ -44,6 +45,7 @@ type searchZimResponse struct {
 	Results    []zimSearchResult `json:"results"`
 	Count      int               `json:"count"`
 	Message    string            `json:"message,omitempty"`
+	Fallback   bool              `json:"fallback,omitempty"` // true when fulltext was requested but suggest was used
 }
 
 type readZimArticleResponse struct {
@@ -75,7 +77,8 @@ func (h *Handler) registerListZimArchives() {
 			"- `wikipedia`: Encyclopedia content in various languages\n" +
 			"- `stack_exchange`: Q&A from Stack Overflow and related sites\n" +
 			"- `other`: Various documentation and reference materials\n\n" +
-			"Returns archive name, title, description, category, language, article count, and file size.\n\n" +
+			"Returns archive name, title, description, category, language, article count, file size, " +
+			"and `has_fulltext_index` (whether deep content search is available vs title matching only).\n\n" +
 			"**Workflow:** Use the `name` field with `search_zim` to search within an archive, " +
 			"or with `read_zim_article` to read specific articles.",
 		Annotations: &mcp.ToolAnnotations{
@@ -90,9 +93,12 @@ func (h *Handler) registerSearchZim() {
 		Name: "search_zim",
 		Description: "Search for articles within a ZIM archive.\n\n" +
 			"**Search Types:**\n" +
-			"- `fulltext` (default): Content search across article text -- works for all archives\n" +
-			"- `suggest`: Fast title matching -- works best for well-indexed archives " +
-			"(e.g., DevDocs, Wikipedia). May return no results for smaller or custom archives.\n\n" +
+			"- `fulltext` (default): Content search across article text. If the archive lacks a " +
+			"fulltext index, automatically falls back to `suggest` (title matching) and sets " +
+			"`fallback: true` in the response.\n" +
+			"- `suggest`: Fast title matching.\n\n" +
+			"Check `has_fulltext_index` from `list_zim_archives` to see which archives support " +
+			"deep content search vs title matching only.\n\n" +
 			"Returns article title, path, and snippet. Paths can be used with `read_zim_article`.",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:   true,
@@ -138,11 +144,12 @@ func (h *Handler) handleListZimArchives(ctx context.Context, _ *mcp.CallToolRequ
 	items := make([]zimArchiveItem, 0, len(archives))
 	for i := range archives {
 		item := zimArchiveItem{
-			Name:         archives[i].Name,
-			Title:        archives[i].Title,
-			Language:     archives[i].Language,
-			ArticleCount: archives[i].ArticleCount,
-			FileSize:     archives[i].FileSize,
+			Name:             archives[i].Name,
+			Title:            archives[i].Title,
+			Language:         archives[i].Language,
+			ArticleCount:     archives[i].ArticleCount,
+			FileSize:         archives[i].FileSize,
+			HasFulltextIndex: archives[i].HasFulltextIndex,
 		}
 		if archives[i].Description.Valid {
 			item.Description = archives[i].Description.String
@@ -189,6 +196,9 @@ func (h *Handler) handleSearchZim(ctx context.Context, _ *mcp.CallToolRequest, i
 		limit = 50
 	}
 
+	// Detect whether the client will fall back from fulltext to suggest.
+	fallback := searchType == "fulltext" && !kiwixClient.HasFulltextIndex(ctx, input.Archive)
+
 	results, err := kiwixClient.Search(ctx, input.Archive, input.Query, searchType, limit)
 	if err != nil {
 		return nil, searchZimResponse{}, fmt.Errorf("searching zim archive %s: %w", input.Archive, err)
@@ -204,14 +214,25 @@ func (h *Handler) handleSearchZim(ctx context.Context, _ *mcp.CallToolRequest, i
 		})
 	}
 
-	return nil, searchZimResponse{
+	effectiveType := searchType
+	if fallback {
+		effectiveType = "suggest"
+	}
+
+	resp := searchZimResponse{
 		Success:    true,
 		Archive:    input.Archive,
 		Query:      input.Query,
-		SearchType: searchType,
+		SearchType: effectiveType,
 		Results:    items,
 		Count:      len(items),
-	}, nil
+		Fallback:   fallback,
+	}
+	if fallback {
+		resp.Message = "Fulltext search not available for this archive; results are from title matching (suggest)."
+	}
+
+	return nil, resp, nil
 }
 
 func (h *Handler) handleReadZimArticle(ctx context.Context, _ *mcp.CallToolRequest, input dto.ReadZimArticleInput) (*mcp.CallToolResult, readZimArticleResponse, error) {
