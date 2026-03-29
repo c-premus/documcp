@@ -68,7 +68,7 @@ func TestMain(m *testing.M) {
 
 	// goose requires *sql.DB; bridge from pgxpool.
 	sqlDB := database.SQLDBFromPool(testPool)
-	defer sqlDB.Close() //nolint:errcheck
+	defer sqlDB.Close() //nolint:errcheck // best-effort cleanup in test teardown
 	if err := database.RunMigrations(sqlDB, "../../migrations"); err != nil {
 		log.Fatalf("running migrations: %v", err)
 	}

@@ -2,6 +2,7 @@ package mcphandler
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"slices"
 	"sync"
@@ -789,6 +790,68 @@ func TestSearchKiwixArchives_MeilisearchSelection(t *testing.T) {
 		// All 3 archives should be searched (no Meilisearch filtering).
 		if len(searched) != 3 {
 			t.Errorf("expected 3 archives searched, got %d: %v", len(searched), searched)
+		}
+	})
+
+	t.Run("always includes devdocs archives even when not selected by FTS", func(t *testing.T) {
+		t.Parallel()
+
+		var searchedArchives sync.Map
+		mc := &mockKiwixClient{
+			fetchCatalogFn: catalogForNames("archive_a", "devdocs_en_go", "archive_c"),
+			searchFn: func(_ context.Context, archiveName, _, _ string, _ int) ([]kiwix.SearchResult, error) {
+				searchedArchives.Store(archiveName, true)
+				return []kiwix.SearchResult{{Title: "Article", Path: "A/Article"}}, nil
+			},
+		}
+
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{
+			kiwixC: mc,
+			searcher: &mockSearcher{
+				searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
+					// FTS only selects archive_a — devdocs_en_go metadata doesn't match.
+					return &search.SearchResponse{
+						Hits: []search.SearchResult{
+							makeHit(map[string]any{"name": "archive_a", "title": "Archive A"}),
+						},
+					}, nil
+				},
+			},
+			zimRepo: &mockZimArchiveRepo{
+				listSearchableFn: func(_ context.Context) ([]model.ZimArchive, error) {
+					return []model.ZimArchive{
+						{Name: "archive_a", ArticleCount: 100},
+						{Name: "devdocs_en_go", ArticleCount: 183, Category: sql.NullString{String: "devdocs", Valid: true}},
+						{Name: "archive_c", ArticleCount: 300},
+					}, nil
+				},
+			},
+		})
+		h.federatedSearchTimeout = 3 * time.Second
+		h.federatedMaxArchives = 10
+		h.federatedPerArchiveLimit = 3
+
+		_, searched := h.searchKiwixArchives(ctx, "os/exec Package exec", 3)
+
+		// Both archive_a (FTS-selected) and devdocs_en_go (DevDocs) should be searched.
+		if len(searched) != 2 {
+			t.Errorf("expected 2 archives searched, got %d: %v", len(searched), searched)
+		}
+		for _, name := range searched {
+			if name != "archive_a" && name != "devdocs_en_go" {
+				t.Errorf("unexpected archive searched: %s", name)
+			}
+		}
+
+		// archive_c should NOT have been searched.
+		if _, ok := searchedArchives.Load("archive_c"); ok {
+			t.Error("archive_c should not have been searched")
 		}
 	})
 
