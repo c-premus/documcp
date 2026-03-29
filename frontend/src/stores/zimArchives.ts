@@ -15,6 +15,7 @@ export interface ZimArchive {
   readonly media_count: number
   readonly file_size: number
   readonly file_size_human: string
+  readonly has_fulltext_index: boolean
   readonly tags: readonly string[]
   readonly last_synced_at?: string
 }

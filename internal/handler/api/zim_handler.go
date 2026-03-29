@@ -25,6 +25,7 @@ type zimArchiveRepo interface {
 type kiwixSearcher interface {
 	Search(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error)
 	ReadArticle(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error)
+	HasFulltextIndex(ctx context.Context, archiveName string) bool
 }
 
 // kiwixClientFactory creates or returns a cached Kiwix client on demand.
@@ -72,20 +73,21 @@ func (h *ZimHandler) getKiwixClient(ctx context.Context) (kiwixSearcher, error) 
 
 // zimArchiveResponse is the JSON representation of a ZIM archive.
 type zimArchiveResponse struct {
-	UUID          string   `json:"uuid"`
-	Name          string   `json:"name"`
-	Title         string   `json:"title"`
-	Description   string   `json:"description,omitempty"`
-	Language      string   `json:"language"`
-	Category      string   `json:"category,omitempty"`
-	Creator       string   `json:"creator,omitempty"`
-	Publisher     string   `json:"publisher,omitempty"`
-	ArticleCount  int64    `json:"article_count"`
-	MediaCount    int64    `json:"media_count"`
-	FileSize      int64    `json:"file_size"`
-	FileSizeHuman string   `json:"file_size_human"`
-	Tags          []string `json:"tags"`
-	LastSyncedAt  string   `json:"last_synced_at,omitempty"`
+	UUID             string   `json:"uuid"`
+	Name             string   `json:"name"`
+	Title            string   `json:"title"`
+	Description      string   `json:"description,omitempty"`
+	Language         string   `json:"language"`
+	Category         string   `json:"category,omitempty"`
+	Creator          string   `json:"creator,omitempty"`
+	Publisher        string   `json:"publisher,omitempty"`
+	ArticleCount     int64    `json:"article_count"`
+	MediaCount       int64    `json:"media_count"`
+	FileSize         int64    `json:"file_size"`
+	FileSizeHuman    string   `json:"file_size_human"`
+	HasFulltextIndex bool     `json:"has_fulltext_index"`
+	Tags             []string `json:"tags"`
+	LastSyncedAt     string   `json:"last_synced_at,omitempty"`
 }
 
 // zimSearchResultResponse is the JSON representation of a ZIM search result.
@@ -174,6 +176,9 @@ func (h *ZimHandler) Search(w http.ResponseWriter, r *http.Request) {
 
 	limit, _ := parsePagination(r, 10, 100)
 
+	// Detect whether the client will fall back from fulltext to suggest.
+	fallback := !kiwixClient.HasFulltextIndex(r.Context(), archiveName)
+
 	results, err := kiwixClient.Search(r.Context(), archiveName, query, "fulltext", limit)
 	if err != nil {
 		h.logger.Error("searching zim archive", "archive", archiveName, "query", query, "error", err)
@@ -191,13 +196,20 @@ func (h *ZimHandler) Search(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	meta := map[string]any{
+		"archive":     archiveName,
+		"query":       query,
+		"total":       len(items),
+		"search_type": "fulltext",
+	}
+	if fallback {
+		meta["search_type"] = "suggest"
+		meta["fallback"] = true
+	}
+
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"data": items,
-		"meta": map[string]any{
-			"archive": archiveName,
-			"query":   query,
-			"total":   len(items),
-		},
+		"meta": meta,
 	})
 }
 
@@ -290,15 +302,16 @@ func toZimArchiveResponse(za *model.ZimArchive) zimArchiveResponse {
 	}
 
 	resp := zimArchiveResponse{
-		UUID:          za.UUID,
-		Name:          za.Name,
-		Title:         za.Title,
-		Language:      za.Language,
-		ArticleCount:  za.ArticleCount,
-		MediaCount:    za.MediaCount,
-		FileSize:      za.FileSize,
-		FileSizeHuman: humanFileSize(za.FileSize),
-		Tags:          tags,
+		UUID:             za.UUID,
+		Name:             za.Name,
+		Title:            za.Title,
+		Language:         za.Language,
+		ArticleCount:     za.ArticleCount,
+		MediaCount:       za.MediaCount,
+		FileSize:         za.FileSize,
+		FileSizeHuman:    humanFileSize(za.FileSize),
+		HasFulltextIndex: za.HasFulltextIndex,
+		Tags:             tags,
 	}
 
 	resp.Description = nullStringValue(za.Description)

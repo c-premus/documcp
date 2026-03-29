@@ -48,6 +48,7 @@ type kiwixSearcher interface {
 	Search(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error)
 	ReadArticle(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error)
 	FetchCatalog(ctx context.Context) ([]kiwix.CatalogEntry, error)
+	HasFulltextIndex(ctx context.Context, archiveName string) bool
 }
 
 // kiwixClientFactory creates or returns a cached Kiwix client on demand.

@@ -132,6 +132,13 @@ func (c *Client) FetchCatalog(ctx context.Context) ([]CatalogEntry, error) {
 	return entries, nil
 }
 
+// HasFulltextIndex checks whether an archive has a fulltext search index
+// by looking it up in the (cached) catalog.
+func (c *Client) HasFulltextIndex(ctx context.Context, archiveName string) bool {
+	_, hasFT := c.resolveContentID(ctx, archiveName)
+	return hasFT
+}
+
 // resolveContentID looks up the versioned content ID for an archive name.
 // It fetches the catalog (from cache) and returns the ContentID for the
 // matching entry. Falls back to archiveName if not found.
@@ -150,6 +157,10 @@ func (c *Client) resolveContentID(ctx context.Context, archiveName string) (stri
 
 // Search queries the Kiwix Serve instance for articles matching the given
 // query. The searchType must be "suggest" or "fulltext".
+//
+// When fulltext is requested but the archive lacks a fulltext index, Search
+// automatically falls back to suggest (title matching) so callers always get
+// the best available results.
 func (c *Client) Search(ctx context.Context, archiveName, query, searchType string, limit int) ([]SearchResult, error) {
 	if searchType != "suggest" && searchType != "fulltext" {
 		return nil, fmt.Errorf("unsupported search type %q (must be suggest or fulltext)", searchType)
@@ -161,12 +172,25 @@ func (c *Client) Search(ctx context.Context, archiveName, query, searchType stri
 
 	contentID, hasFTIndex := c.resolveContentID(ctx, archiveName)
 
-	// Fulltext search requires a fulltext index; return empty without error if unavailable.
+	// Auto-fallback: if fulltext was requested but the archive lacks the
+	// index, transparently switch to suggest so the caller still gets results.
 	if searchType == "fulltext" && !hasFTIndex {
-		c.logger.Debug("fulltext search not available for archive, no ftindex", "archive", archiveName)
-		return []SearchResult{}, nil
+		c.logger.Debug("fulltext index not available, falling back to suggest",
+			"archive", archiveName,
+		)
+		searchType = "suggest"
 	}
 
+	results, err := c.doSearch(ctx, contentID, query, searchType, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+// doSearch performs the actual HTTP request for a search query.
+func (c *Client) doSearch(ctx context.Context, contentID, query, searchType string, limit int) ([]SearchResult, error) {
 	var reqURL string
 	switch searchType {
 	case "suggest":

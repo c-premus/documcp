@@ -27,6 +27,7 @@ type ZimArchive struct {
 	ExternalServiceID    sql.NullInt64  `db:"external_service_id" json:"external_service_id"`
 	IsEnabled            bool           `db:"is_enabled" json:"is_enabled"`
 	IsSearchable         bool           `db:"is_searchable" json:"is_searchable"`
+	HasFulltextIndex     bool           `db:"has_fulltext_index" json:"has_fulltext_index"`
 	SearchVector         any            `db:"search_vector" json:"-"`
 	LastSyncedAt         sql.NullTime   `db:"last_synced_at" json:"last_synced_at"`
 	CreatedAt sql.NullTime `db:"created_at" json:"created_at"`

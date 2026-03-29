@@ -415,6 +415,10 @@ func (m *mockKiwixSearcher) ReadArticle(ctx context.Context, archiveName, articl
 	return m.ReadArticleFn(ctx, archiveName, articlePath)
 }
 
+func (m *mockKiwixSearcher) HasFulltextIndex(_ context.Context, _ string) bool {
+	return false
+}
+
 // ---------------------------------------------------------------------------
 // ZimHandler early-return path tests (nil kiwixClient)
 // ---------------------------------------------------------------------------

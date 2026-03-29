@@ -14,6 +14,10 @@ const props = defineProps<{
 
 const store = useZimArchivesStore()
 
+const currentArchive = computed(() => {
+  return store.archives.find((a) => a.name === props.archive)
+})
+
 const searchQuery = ref('')
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -89,6 +93,14 @@ function handleResultClick(result: ZimSearchResult): void {
             @input="handleSearchInput"
           />
         </div>
+
+        <!-- Title-only search notice -->
+        <p
+          v-if="currentArchive && !currentArchive.has_fulltext_index"
+          class="text-xs text-amber-600 dark:text-amber-400 mb-3"
+        >
+          This archive supports title matching only (no full-text content search).
+        </p>
 
         <!-- Search loading -->
         <div v-if="store.searchLoading" class="flex items-center justify-center py-8">
