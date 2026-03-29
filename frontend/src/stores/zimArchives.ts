@@ -100,13 +100,15 @@ export const useZimArchivesStore = defineStore('zimArchives', () => {
     archive: string,
     q: string,
     limit?: number,
+    usesSuggest?: boolean,
   ): Promise<ZimSearchResult[]> {
     searchLoading.value = true
     error.value = null
     try {
+      const endpoint = usesSuggest ? 'suggest' : 'search'
       const query = buildQuery({ q, limit })
       const response = await apiFetch<SearchResponse>(
-        `/api/zim/archives/${encodeURIComponent(archive)}/search${query}`,
+        `/api/zim/archives/${encodeURIComponent(archive)}/${endpoint}${query}`,
       )
       searchResults.value = response.data
       return response.data

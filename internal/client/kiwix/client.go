@@ -500,8 +500,9 @@ var (
 	scriptRe     = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
 	styleRe      = regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
 	htmlTagRe    = regexp.MustCompile(`<[^>]+>`)
-	whitespaceRe = regexp.MustCompile(`[ \t]+`)
-	blankLinesRe = regexp.MustCompile(`\n{3,}`)
+	whitespaceRe  = regexp.MustCompile(`[ \t]+`)
+	blankLineWSRe = regexp.MustCompile(`(?m)^[ \t]+$`)
+	blankLinesRe  = regexp.MustCompile(`\n{3,}`)
 	titleRe      = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 )
 
@@ -547,6 +548,7 @@ func htmlToPlainText(content string) string {
 
 	// Normalize whitespace.
 	text = whitespaceRe.ReplaceAllString(text, " ")
+	text = blankLineWSRe.ReplaceAllString(text, "")
 	text = blankLinesRe.ReplaceAllString(text, "\n\n")
 	text = strings.TrimSpace(text)
 
