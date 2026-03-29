@@ -397,6 +397,56 @@ func (s *Searcher) searchGitTemplates(ctx context.Context, query string, params 
 	}, nil
 }
 
+// FileSearchResult holds a file-level match from git_template_files.
+type FileSearchResult struct {
+	TemplateUUID string  `json:"template_uuid"`
+	TemplateName string  `json:"template_name"`
+	FilePath     string  `json:"file_path"`
+	Filename     string  `json:"filename"`
+	Score        float64 `json:"score"`
+}
+
+// SearchGitTemplateFiles searches file content within git_template_files using FTS.
+func (s *Searcher) SearchGitTemplateFiles(ctx context.Context, query string, limit int64) ([]FileSearchResult, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+
+	expanded := ExpandSynonyms(query)
+
+	sql := fmt.Sprintf(`
+		SELECT gt.uuid, gt.name, f.path, f.filename,
+		       ts_rank_cd(f.search_vector, websearch_to_tsquery('%s', $1)) AS rank
+		FROM git_template_files f
+		JOIN git_templates gt ON gt.id = f.git_template_id
+		WHERE f.search_vector @@ websearch_to_tsquery('%s', $1)
+		  AND gt.deleted_at IS NULL
+		  AND gt.is_enabled = true
+		ORDER BY rank DESC
+		LIMIT %d`,
+		tsConfig, tsConfig, limit,
+	)
+
+	rows, err := s.db.Query(ctx, sql, expanded)
+	if err != nil {
+		return nil, fmt.Errorf("searching git template files: %w", err)
+	}
+	defer rows.Close()
+
+	var results []FileSearchResult
+	for rows.Next() {
+		var r FileSearchResult
+		if err := rows.Scan(&r.TemplateUUID, &r.TemplateName, &r.FilePath, &r.Filename, &r.Score); err != nil {
+			return nil, fmt.Errorf("scanning git template file result: %w", err)
+		}
+		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating git template file results: %w", err)
+	}
+	return results, nil
+}
+
 // buildDocumentFilters builds WHERE clauses and args for document search filters.
 // Returns (where string, args, next arg index).
 func (s *Searcher) buildDocumentFilters(params SearchParams, startIdx int) (where string, filterArgs []any, nextIdx int) {

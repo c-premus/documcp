@@ -54,6 +54,7 @@ type GitTemplateRepoDeps interface {
 	List(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error)
 	UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error
 	ReplaceFiles(ctx context.Context, templateID int64, files []repository.GitTemplateFileInsert) error
+	UpdateSearchContent(ctx context.Context, templateID int64, readmeContent, filePaths string) error
 }
 
 // SchedulerDeps holds all dependencies needed by scheduler workers.

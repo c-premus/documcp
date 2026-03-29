@@ -60,6 +60,7 @@ type kiwixClientFactory interface {
 type contentSearcher interface {
 	Search(ctx context.Context, params search.SearchParams) (*search.SearchResponse, error)
 	FederatedSearch(ctx context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error)
+	SearchGitTemplateFiles(ctx context.Context, query string, limit int64) ([]search.FileSearchResult, error)
 }
 
 // serverInstructions is the MCP server instructions describing all available
@@ -83,7 +84,7 @@ const serverInstructions = `Documentation knowledge base with full-text search.
 
 **Git Templates** (project bootstrapping: CLAUDE.md, Memory Bank)
 - ` + "`list_git_templates`" + ` - List available templates with category filter.
-- ` + "`search_git_templates`" + ` - Full-text search across README files and metadata.
+- ` + "`search_git_templates`" + ` - Full-text search across template files, README content, and metadata. Returns ` + "`matched_files`" + ` paths for direct use with ` + "`get_template_file`" + `.
 - ` + "`get_template_structure`" + ` - View folder tree, essential files, and required variables.
 - ` + "`get_template_file`" + ` - Retrieve file content with optional variable substitution.
 - ` + "`get_deployment_guide`" + ` - Get deployment instructions with all essential files.

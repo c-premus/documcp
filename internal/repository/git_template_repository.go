@@ -285,6 +285,22 @@ func (r *GitTemplateRepository) UpdateSyncStatus(ctx context.Context, templateID
 	return nil
 }
 
+// UpdateSearchContent populates readme_content and file_paths for FTS indexing.
+func (r *GitTemplateRepository) UpdateSearchContent(ctx context.Context, templateID int64, readmeContent, filePaths string) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE git_templates SET
+			readme_content = CASE WHEN $1 = '' THEN NULL ELSE $1 END,
+			file_paths = CASE WHEN $2 = '' THEN NULL ELSE $2 END,
+			updated_at = NOW()
+		WHERE id = $3`,
+		readmeContent, filePaths, templateID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating search content for git template %d: %w", templateID, err)
+	}
+	return nil
+}
+
 // ReplaceFiles deletes existing files for a template and inserts new ones in a transaction.
 func (r *GitTemplateRepository) ReplaceFiles(ctx context.Context, templateID int64, files []GitTemplateFileInsert) error {
 	tx, err := r.db.Begin(ctx)

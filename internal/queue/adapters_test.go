@@ -180,6 +180,10 @@ func (s *stubGitRepo) ReplaceFiles(_ context.Context, _ int64, files []repositor
 	return nil
 }
 
+func (s *stubGitRepo) UpdateSearchContent(_ context.Context, _ int64, _, _ string) error {
+	return nil
+}
+
 func TestKiwixRepoAdapter_UpsertFromCatalog(t *testing.T) {
 	t.Parallel()
 

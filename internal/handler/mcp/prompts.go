@@ -309,7 +309,7 @@ func (h *Handler) handleGitTemplateSetup(_ context.Context, req *mcp.GetPromptRe
 
 **Available tools:**
 - list_git_templates: List available templates with optional category filter
-- search_git_templates: Full-text search across template READMEs and metadata
+- search_git_templates: Full-text search across template files, README content, and metadata. Returns matched_files paths.
 - get_template_structure: View folder tree, essential files, and required variables
 - get_template_file: Retrieve individual file content with variable substitution
 - get_deployment_guide: Get deployment instructions with all essential files
@@ -479,7 +479,7 @@ func (h *Handler) handleCrossSourceResearch(_ context.Context, req *mcp.GetPromp
 
 **Git Templates (if enabled):**
 - list_git_templates: List project templates
-- search_git_templates: Search template metadata and READMEs
+- search_git_templates: Search template files, README content, and metadata
 - get_template_structure: View template folder tree and variables (uuid)
 
 **Research depth:** %s

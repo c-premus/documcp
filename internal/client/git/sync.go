@@ -36,6 +36,7 @@ type SyncTemplate struct {
 type TemplateRepo interface {
 	UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error
 	ReplaceFiles(ctx context.Context, templateID int64, files []TemplateFile) error
+	UpdateSearchContent(ctx context.Context, templateID int64, readmeContent, filePaths string) error
 }
 
 // Sync clones or pulls a template repository, extracts files, and persists
@@ -144,6 +145,13 @@ func Sync(ctx context.Context, params SyncParams) error {
 		return fmt.Errorf("replacing template files: %w", err)
 	}
 
+	// 8. Populate search content (readme + file paths for FTS).
+	readmeContent := findReadmeContent(files)
+	filePaths := buildFilePaths(files)
+	if err := params.Repo.UpdateSearchContent(ctx, tmpl.ID, readmeContent, filePaths); err != nil {
+		logger.Warn("failed to update search content", "template_id", tmpl.ID, "error", err)
+	}
+
 	logger.Info("template sync complete",
 		"template_id", tmpl.ID,
 		"uuid", tmpl.UUID,
@@ -163,4 +171,30 @@ func findReadmeContent(files []TemplateFile) string {
 		}
 	}
 	return ""
+}
+
+// buildFilePaths builds a space-separated string of file paths and humanized
+// filenames for FTS indexing. Each file contributes its path plus a version with
+// hyphens/underscores/dots replaced by spaces (e.g., "spring-boot-engineer.md"
+// becomes "spring-boot-engineer.md spring boot engineer").
+func buildFilePaths(files []TemplateFile) string {
+	var b strings.Builder
+	for i, f := range files {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(f.Path)
+
+		// Add humanized filename (strip extension, replace separators with spaces).
+		name := f.Filename
+		if ext := filepath.Ext(name); ext != "" {
+			name = name[:len(name)-len(ext)]
+		}
+		humanized := strings.NewReplacer("-", " ", "_", " ", ".", " ").Replace(name)
+		if humanized != name && humanized != "" {
+			b.WriteByte(' ')
+			b.WriteString(humanized)
+		}
+	}
+	return b.String()
 }

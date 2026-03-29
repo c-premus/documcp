@@ -90,8 +90,10 @@ CREATE INDEX idx_zim_archives_title_trgm ON zim_archives USING GIN (title gin_tr
 
 -- ---------------------------------------------------------------------------
 -- git_templates: GENERATED ALWAYS STORED
--- Weights: name(A) + description(B) + tags(B) + readme_content(C) + category(C)
+-- Weights: name(A) + description(B) + tags(B) + readme_content(C) + category(C) + file_paths(D)
 -- ---------------------------------------------------------------------------
+ALTER TABLE git_templates ADD COLUMN file_paths TEXT NULL;
+
 ALTER TABLE git_templates ADD COLUMN search_vector tsvector
     GENERATED ALWAYS AS (
         setweight(to_tsvector('documcp_english', COALESCE(name, '')), 'A') ||
@@ -100,11 +102,26 @@ ALTER TABLE git_templates ADD COLUMN search_vector tsvector
             regexp_replace(COALESCE(tags, ''), '[\[\]",'']', ' ', 'g'), ''
         )), 'B') ||
         setweight(to_tsvector('documcp_english', COALESCE(readme_content, '')), 'C') ||
-        setweight(to_tsvector('documcp_english', COALESCE(category, '')), 'C')
+        setweight(to_tsvector('documcp_english', COALESCE(category, '')), 'C') ||
+        setweight(to_tsvector('documcp_english', COALESCE(file_paths, '')), 'D')
     ) STORED;
 
 CREATE INDEX idx_git_templates_search_vector ON git_templates USING GIN (search_vector);
 CREATE INDEX idx_git_templates_name_trgm ON git_templates USING GIN (name gin_trgm_ops);
+
+-- ---------------------------------------------------------------------------
+-- git_template_files: GENERATED ALWAYS STORED
+-- Weights: filename(A, humanized) + content(D, capped at 500KB)
+-- ---------------------------------------------------------------------------
+ALTER TABLE git_template_files ADD COLUMN search_vector tsvector
+    GENERATED ALWAYS AS (
+        setweight(to_tsvector('documcp_english', COALESCE(
+            regexp_replace(COALESCE(filename, ''), '[-_.]', ' ', 'g'), ''
+        )), 'A') ||
+        setweight(to_tsvector('documcp_english', COALESCE(LEFT(content, 500000), '')), 'D')
+    ) STORED;
+
+CREATE INDEX idx_git_template_files_search_vector ON git_template_files USING GIN (search_vector);
 
 
 -- +goose Down
@@ -123,9 +140,13 @@ DROP INDEX IF EXISTS idx_zim_archives_title_trgm;
 ALTER TABLE zim_archives DROP COLUMN IF EXISTS search_vector;
 ALTER TABLE zim_archives ADD COLUMN meilisearch_indexed_at TIMESTAMPTZ NULL;
 
+DROP INDEX IF EXISTS idx_git_template_files_search_vector;
+ALTER TABLE git_template_files DROP COLUMN IF EXISTS search_vector;
+
 DROP INDEX IF EXISTS idx_git_templates_search_vector;
 DROP INDEX IF EXISTS idx_git_templates_name_trgm;
 ALTER TABLE git_templates DROP COLUMN IF EXISTS search_vector;
+ALTER TABLE git_templates DROP COLUMN IF EXISTS file_paths;
 
 DROP TEXT SEARCH CONFIGURATION IF EXISTS documcp_english;
 DROP EXTENSION IF EXISTS unaccent;

@@ -44,12 +44,13 @@ type gitTemplateItem struct {
 }
 
 type gitTemplateSearchResult struct {
-	UUID        string `json:"uuid"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Category    string `json:"category,omitempty"`
-	FileCount   int    `json:"file_count,omitempty"`
-	Status      string `json:"status,omitempty"`
+	UUID         string   `json:"uuid"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description,omitempty"`
+	Category     string   `json:"category,omitempty"`
+	FileCount    int      `json:"file_count,omitempty"`
+	Status       string   `json:"status,omitempty"`
+	MatchedFiles []string `json:"matched_files,omitempty"`
 }
 
 type searchGitTemplatesResponse struct {
@@ -204,11 +205,12 @@ func (h *Handler) registerListGitTemplates() {
 func (h *Handler) registerSearchGitTemplates() {
 	mcp.AddTool(h.server, &mcp.Tool{
 		Name: "search_git_templates",
-		Description: "Full-text search across Git template README files and metadata.\n\n" +
+		Description: "Full-text search across Git template files, README content, and metadata.\n\n" +
 			"Use this to find templates by:\n" +
-			"- Content (searches README.md)\n" +
+			"- File content (searches all template files)\n" +
 			"- Purpose or technology\n" +
-			"- Template name or description\n\n" +
+			"- Template name, description, or filenames\n\n" +
+			"Results include `matched_files` paths for direct use with `get_template_file`.\n\n" +
 			"Returns matching templates with relevance ranking.\n" +
 			"Use `get_template_structure` for detailed file listing of a specific template.\n\n" +
 			"**Workflow:** Use `uuid` from results with `get_template_structure` to explore " +
@@ -393,16 +395,39 @@ func (h *Handler) handleSearchGitTemplates(
 		return nil, searchGitTemplatesResponse{}, fmt.Errorf("searching git templates: %w", err)
 	}
 
+	// Build template-level results.
+	resultMap := make(map[string]*gitTemplateSearchResult, len(resp.Hits))
 	results := make([]gitTemplateSearchResult, 0, len(resp.Hits))
 	for _, sr := range resp.Hits {
-		results = append(results, gitTemplateSearchResult{
+		r := gitTemplateSearchResult{
 			UUID:        sr.UUID,
 			Name:        sr.Title,
 			Description: sr.Description,
 			Category:    search.ExtraString(sr.Extra, "category"),
 			FileCount:   search.ExtraInt(sr.Extra, "file_count"),
 			Status:      search.ExtraString(sr.Extra, "status"),
-		})
+		}
+		results = append(results, r)
+		resultMap[sr.UUID] = &results[len(results)-1]
+	}
+
+	// Also search file-level content for matched_files.
+	fileResults, fileErr := h.searcher.SearchGitTemplateFiles(ctx, input.Query, limit)
+	if fileErr == nil {
+		for _, fr := range fileResults {
+			if existing, ok := resultMap[fr.TemplateUUID]; ok {
+				existing.MatchedFiles = append(existing.MatchedFiles, fr.FilePath)
+			} else {
+				// File matched but template-level didn't — add as new result.
+				r := gitTemplateSearchResult{
+					UUID:         fr.TemplateUUID,
+					Name:         fr.TemplateName,
+					MatchedFiles: []string{fr.FilePath},
+				}
+				results = append(results, r)
+				resultMap[fr.TemplateUUID] = &results[len(results)-1]
+			}
+		}
 	}
 
 	return nil, searchGitTemplatesResponse{
