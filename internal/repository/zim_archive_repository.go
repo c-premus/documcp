@@ -63,7 +63,7 @@ func (r *ZimArchiveRepository) List(ctx context.Context, category, language, que
 
 	if query != "" {
 		q += fmt.Sprintf(` AND (name ILIKE $%d OR title ILIKE $%d)`, argIdx, argIdx+1)
-		likeQuery := "%" + query + "%"
+		likeQuery := "%" + escapeLike(query) + "%"
 		args = append(args, likeQuery, likeQuery)
 		argIdx += 2
 	}
@@ -108,7 +108,7 @@ func (r *ZimArchiveRepository) CountFiltered(ctx context.Context, category, lang
 
 	if query != "" {
 		q += fmt.Sprintf(` AND (name ILIKE $%d OR title ILIKE $%d)`, argIdx, argIdx+1)
-		likeQuery := "%" + query + "%"
+		likeQuery := "%" + escapeLike(query) + "%"
 		args = append(args, likeQuery, likeQuery)
 	}
 
@@ -170,7 +170,7 @@ func (r *ZimArchiveRepository) ListAll(ctx context.Context, query string, limit 
 
 	if query != "" {
 		conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR title ILIKE $%d)", argIdx, argIdx+1))
-		likeQuery := "%" + query + "%"
+		likeQuery := "%" + escapeLike(query) + "%"
 		args = append(args, likeQuery, likeQuery)
 		argIdx += 2
 	}

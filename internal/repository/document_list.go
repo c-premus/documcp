@@ -66,7 +66,7 @@ func (r *DocumentRepository) List(ctx context.Context, params DocumentListParams
 	}
 	if params.Query != "" {
 		conditions = append(conditions, fmt.Sprintf("title ILIKE $%d", argIdx))
-		args = append(args, "%"+params.Query+"%")
+		args = append(args, "%"+escapeLike(params.Query)+"%")
 		argIdx++
 	}
 

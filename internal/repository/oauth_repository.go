@@ -418,7 +418,7 @@ func (r *OAuthRepository) ListUsers(ctx context.Context, query string, limit, of
 
 	if query != "" {
 		where = fmt.Sprintf("(name ILIKE $%d OR email ILIKE $%d)", argIdx, argIdx+1)
-		likeQuery := "%" + query + "%"
+		likeQuery := "%" + escapeLike(query) + "%"
 		args = append(args, likeQuery, likeQuery)
 		argIdx += 2
 	}
@@ -473,7 +473,7 @@ func (r *OAuthRepository) ListClients(ctx context.Context, query string, limit, 
 
 	if query != "" {
 		where = fmt.Sprintf("(client_name ILIKE $%d OR client_id ILIKE $%d)", argIdx, argIdx+1)
-		likeQuery := "%" + query + "%"
+		likeQuery := "%" + escapeLike(query) + "%"
 		args = append(args, likeQuery, likeQuery)
 		argIdx += 2
 	}

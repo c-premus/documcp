@@ -20,7 +20,6 @@ const store = useExternalServicesStore()
 const name = ref('')
 const serviceType = ref('kiwix')
 const baseUrl = ref('')
-const apiKey = ref('')
 const priority = ref(0)
 const submitting = ref(false)
 const error = ref<string | null>(null)
@@ -37,13 +36,11 @@ watch(
         name.value = props.service.name
         serviceType.value = props.service.type
         baseUrl.value = props.service.base_url
-        apiKey.value = ''
         priority.value = props.service.priority
       } else {
         name.value = ''
         serviceType.value = 'kiwix'
         baseUrl.value = ''
-        apiKey.value = ''
         priority.value = 0
       }
       submitting.value = false
@@ -87,9 +84,6 @@ async function handleSubmit(): Promise<void> {
         base_url: baseUrl.value.trim(),
         priority: priority.value,
       }
-      if (apiKey.value.trim() !== '') {
-        payload.api_key = apiKey.value.trim()
-      }
       await store.updateService(props.service.uuid, payload)
       toast.success(`Service "${name.value.trim()}" updated`)
     } else {
@@ -99,15 +93,11 @@ async function handleSubmit(): Promise<void> {
         base_url: baseUrl.value.trim(),
         priority: priority.value,
       }
-      if (apiKey.value.trim() !== '') {
-        payload.api_key = apiKey.value.trim()
-      }
       await store.createService(
         payload as {
           name: string
           type: string
           base_url: string
-          api_key?: string
           priority?: number
         },
       )
@@ -173,22 +163,6 @@ async function handleSubmit(): Promise<void> {
                   type="url"
                   required
                   placeholder="https://example.com"
-                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
-                />
-              </div>
-
-              <div>
-                <label for="service-api-key" class="block text-sm font-medium text-text-secondary">
-                  API Key
-                  <span v-if="isEditMode" class="text-text-disabled font-normal"
-                    >(leave blank to keep current)</span
-                  >
-                </label>
-                <input
-                  id="service-api-key"
-                  v-model="apiKey"
-                  type="password"
-                  :placeholder="isEditMode ? '********' : ''"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>

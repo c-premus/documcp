@@ -130,7 +130,7 @@ func (r *GitTemplateRepository) ListAll(ctx context.Context, query string, limit
 
 	if query != "" {
 		q += fmt.Sprintf(` AND (name ILIKE $%d OR description ILIKE $%d)`, argIdx, argIdx+1)
-		likeQuery := "%" + query + "%"
+		likeQuery := "%" + escapeLike(query) + "%"
 		args = append(args, likeQuery, likeQuery)
 		argIdx += 2
 	}
@@ -367,7 +367,7 @@ func (r *GitTemplateRepository) Search(ctx context.Context, query, category stri
 	argIdx := 1
 
 	if query != "" {
-		likeQuery := "%" + query + "%"
+		likeQuery := "%" + escapeLike(query) + "%"
 		q += fmt.Sprintf(` AND (name ILIKE $%d OR description ILIKE $%d OR readme_content ILIKE $%d)`,
 			argIdx, argIdx+1, argIdx+2)
 		args = append(args, likeQuery, likeQuery, likeQuery)

@@ -517,6 +517,9 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	if isProd && c.App.URL == "http://localhost" {
 		errs = append(errs, "APP_URL must be set to the actual URL in production (currently http://localhost)")
 	}
+	if isProd && !strings.HasPrefix(c.App.URL, "https://") {
+		errs = append(errs, "APP_URL should use https:// in production (session cookies require Secure flag)")
+	}
 	if isProd && c.App.InternalAPIToken == "" {
 		errs = append(errs, "INTERNAL_API_TOKEN is required in production")
 	}

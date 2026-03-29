@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -70,7 +71,7 @@ func (s *Server) Start() error {
 	s.logger.Info("starting HTTP server", "addr", s.httpServer.Addr)
 
 	err := s.httpServer.ListenAndServe()
-	if err != nil && err != http.ErrServerClosed {
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("starting HTTP server: %w", err)
 	}
 
@@ -121,7 +122,7 @@ func (s *Server) ListenAndServeOnAvailablePort() (net.Listener, error) {
 	s.logger.Info("starting HTTP server", "addr", s.httpServer.Addr)
 
 	go func() {
-		if serveErr := s.httpServer.Serve(ln); serveErr != nil && serveErr != http.ErrServerClosed {
+		if serveErr := s.httpServer.Serve(ln); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			s.logger.Error("HTTP server error", "error", serveErr)
 		}
 	}()

@@ -10,6 +10,7 @@ import (
 )
 
 // JobInserter inserts jobs into the queue.
+// NOTE: An identical interface exists in internal/service/document_pipeline.go (same "define where consumed" idiom).
 type JobInserter interface {
 	Insert(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
 }

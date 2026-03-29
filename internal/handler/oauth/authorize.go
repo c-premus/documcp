@@ -270,15 +270,8 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Expand the client's registered scope so the auth code check passes.
-	// The effective scope was already narrowed to user entitlements in GET.
-	if reqScope != "" {
-		if expandErr := h.service.ExpandClientScope(r.Context(), client.ID, reqScope); expandErr != nil {
-			h.logger.Error("expanding client scope on approval", "error", expandErr)
-			http.Error(w, "Failed to generate authorization code", http.StatusInternalServerError)
-			return
-		}
-	}
+	// Scope was narrowed to user entitlements in GET /oauth/authorize.
+	// No client scope expansion needed — auth codes are scoped to user entitlements directly.
 
 	// Generate authorization code
 	code, err := h.service.GenerateAuthorizationCode(r.Context(), oauth.GenerateAuthorizationCodeParams{
@@ -302,6 +295,103 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
+
+// AuthorizeDeny handles POST /oauth/authorize/deny — user denies consent.
+func (h *Handler) AuthorizeDeny(w http.ResponseWriter, r *http.Request) {
+	// Check user is authenticated
+	session, sessErr := h.store.Get(r, sessionName)
+	if sessErr != nil {
+		h.logger.Warn("session decode error in authorize/deny", "error", sessErr)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID, ok := session.Values["user_id"].(int64)
+	if !ok || userID == 0 {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Parse form or JSON body — only need nonce
+	var reqNonce string
+
+	contentType := r.Header.Get("Content-Type")
+	if contentType == "application/json" {
+		var body struct {
+			Nonce string `json:"nonce"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		reqNonce = body.Nonce
+	} else {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		reqNonce = r.FormValue("nonce")
+	}
+
+	// Get pending request from session
+	pendingRaw, exists := session.Values["oauth_pending_request"]
+	if !exists || pendingRaw == nil {
+		http.Error(w, "No pending OAuth request. Please restart the authorization flow.", http.StatusBadRequest)
+		return
+	}
+
+	pending, ok := pendingRaw.(map[string]any)
+	if !ok {
+		http.Error(w, "No pending OAuth request. Please restart the authorization flow.", http.StatusBadRequest)
+		return
+	}
+
+	// Validate nonce
+	pendingNonce, _ := pending["nonce"].(string)
+	if reqNonce == "" || subtle.ConstantTimeCompare([]byte(reqNonce), []byte(pendingNonce)) != 1 {
+		http.Error(w, "Invalid authorization request. Please restart the authorization flow.", http.StatusBadRequest)
+		return
+	}
+
+	// Clear pending request from session
+	delete(session.Values, "oauth_pending_request")
+	_ = session.Save(r, w)
+
+	// Extract redirect_uri and state from pending request
+	redirectURI, _ := pending["redirect_uri"].(string)
+	state, _ := pending["state"].(string)
+
+	if redirectURI != "" {
+		q := url.Values{}
+		q.Set("error", "access_denied")
+		q.Set("error_description", "The resource owner denied the request")
+		if state != "" {
+			q.Set("state", state)
+		}
+		redirectURL := redirectURI + "?" + q.Encode()
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		return
+	}
+
+	// No redirect_uri — render a simple denial page
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = fmt.Fprint(w, denyHTML)
+}
+
+const denyHTML = `<!DOCTYPE html>
+<html>
+<head><title>Authorization Denied</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px}
+h1{font-size:1.5em}
+</style>
+</head>
+<body>
+<h1>Authorization Denied</h1>
+<p>Authorization denied. You may close this window.</p>
+</body>
+</html>`
 
 // pendingStateMaxAge is the maximum age (in seconds) for pending OAuth state
 // stored in the session (authorization code flow and device code flow).

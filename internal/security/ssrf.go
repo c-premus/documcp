@@ -26,16 +26,18 @@ var privateRanges = []string{
 }
 
 // parsedPrivateRanges holds pre-parsed *net.IPNet entries for privateRanges.
-var parsedPrivateRanges []*net.IPNet
+var parsedPrivateRanges = mustParseCIDRs(privateRanges)
 
-func init() {
-	for _, cidr := range privateRanges {
+func mustParseCIDRs(cidrs []string) []*net.IPNet {
+	nets := make([]*net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
 		_, network, err := net.ParseCIDR(cidr)
 		if err != nil {
 			panic(fmt.Sprintf("invalid CIDR %q: %v", cidr, err))
 		}
-		parsedPrivateRanges = append(parsedPrivateRanges, network)
+		nets = append(nets, network)
 	}
+	return nets
 }
 
 // ValidateExternalURL checks that a URL is safe to make requests to. It blocks

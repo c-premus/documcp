@@ -3,7 +3,7 @@ import { ref, computed, watch, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { formatDistanceToNow } from 'date-fns'
-import { TrashIcon, ArrowPathIcon } from '@heroicons/vue/24/outline'
+import { TrashIcon, ArrowPathIcon, PencilSquareIcon } from '@heroicons/vue/24/outline'
 import type { ColumnDef } from '@tanstack/vue-table'
 
 import DataTable from '../components/shared/DataTable.vue'
@@ -11,6 +11,7 @@ import Pagination from '../components/shared/Pagination.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
 import GitTemplateCreateModal from '../components/git-templates/GitTemplateCreateModal.vue'
+import GitTemplateEditModal from '../components/git-templates/GitTemplateEditModal.vue'
 import { useGitTemplatesStore } from '../stores/gitTemplates'
 import type { GitTemplate } from '../stores/gitTemplates'
 
@@ -23,6 +24,8 @@ const perPage = ref(50)
 const showCreateModal = ref(false)
 const deleteTarget = ref<GitTemplate | null>(null)
 const showDeleteDialog = computed(() => deleteTarget.value !== null)
+const editTarget = ref<GitTemplate | null>(null)
+const showEditModal = computed(() => editTarget.value !== null)
 const syncingUuids = ref<Set<string>>(new Set())
 
 function fetchData(): void {
@@ -78,6 +81,15 @@ async function handleDeleteConfirm(): Promise<void> {
 
 function handleDeleteCancel(): void {
   deleteTarget.value = null
+}
+
+function handleEditClose(): void {
+  editTarget.value = null
+}
+
+function handleEditSaved(): void {
+  editTarget.value = null
+  fetchData()
 }
 
 function handleCreateClose(): void {
@@ -178,6 +190,20 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
           'button',
           {
             type: 'button',
+            class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
+            title: 'Edit template',
+            'aria-label': 'Edit template',
+            onClick: (event: MouseEvent) => {
+              event.stopPropagation()
+              editTarget.value = template
+            },
+          },
+          [h(PencilSquareIcon, { class: 'h-5 w-5' })],
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
             class: [
               'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
               isSyncing ? 'animate-spin' : '',
@@ -274,6 +300,14 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
       variant="danger"
       @confirm="handleDeleteConfirm"
       @cancel="handleDeleteCancel"
+    />
+
+    <!-- Edit Modal -->
+    <GitTemplateEditModal
+      :open="showEditModal"
+      :template="editTarget"
+      @close="handleEditClose"
+      @saved="handleEditSaved"
     />
 
     <!-- Create Modal -->

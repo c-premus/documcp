@@ -2,16 +2,18 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
-	"strconv"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/c-premus/documcp/internal/auth/oauth"
 	"github.com/c-premus/documcp/internal/queue"
 	"github.com/c-premus/documcp/internal/service"
 )
@@ -31,6 +33,16 @@ func NewWorkerApp(f *Foundation) (*WorkerApp, error) {
 
 	// --- EventBus ---
 	eventBus := queue.NewEventBus(logger)
+
+	// Token HMAC key — needed by workers that process token-related jobs.
+	sessionSecret := f.Config.OAuth.SessionSecret
+	if sessionSecret != "" {
+		hmacKey, err := deriveKey([]byte(sessionSecret), f.Config.OAuth.HKDFSalt, "oauth-token-hmac", 32)
+		if err != nil {
+			return nil, fmt.Errorf("deriving token HMAC key: %w", err)
+		}
+		oauth.SetTokenHMACKey(hmacKey)
+	}
 
 	// --- River Workers + Client (full worker mode) ---
 	rs, err := buildRiverClient(f, eventBus, false)
@@ -90,7 +102,7 @@ func (w *WorkerApp) Start(ctx context.Context) error {
 	// Start health endpoint in background.
 	healthErrCh := make(chan error, 1)
 	go func() {
-		if err := w.HealthServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := w.HealthServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			healthErrCh <- err
 		}
 	}()

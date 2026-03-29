@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"strconv"
 	"strings"
@@ -112,6 +113,7 @@ func hashToken(s string) string {
 		mac.Write([]byte(s))
 		return hex.EncodeToString(mac.Sum(nil))
 	}
+	slog.Warn("token HMAC key not configured, falling back to plain SHA-256")
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
 }

@@ -86,7 +86,7 @@ interface ValidateUrlResponse {
   readonly error?: string
 }
 
-interface CreateTemplateParams {
+export interface CreateTemplateParams {
   readonly name: string
   readonly repository_url: string
   readonly branch: string
@@ -94,6 +94,7 @@ interface CreateTemplateParams {
   readonly description?: string
   readonly tags?: string[]
   readonly is_public?: boolean
+  readonly git_token?: string
 }
 
 export function buildTree(files: GitTemplateFile[]): TreeItem[] {
@@ -263,6 +264,27 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
     }
   }
 
+  async function updateTemplate(
+    uuid: string,
+    params: Partial<CreateTemplateParams>,
+  ): Promise<GitTemplate> {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await apiFetch<SingleResponse>(`/api/git-templates/${uuid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      })
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to update git template'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function validateUrl(url: string): Promise<ValidateUrlResponse> {
     const response = await apiFetch<ValidateUrlResponse>('/api/admin/git-templates/validate-url', {
       method: 'POST',
@@ -279,6 +301,7 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
     error,
     fetchTemplates,
     createTemplate,
+    updateTemplate,
     deleteTemplate,
     syncTemplate,
     fetchStructure,
