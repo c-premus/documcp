@@ -221,15 +221,9 @@ linters:
 
       # gosec G204: The git client intentionally launches `git` subprocesses (clone,
       # fetch, ls-remote) where the remote URL is an administrator-configured value
-      # stored in the database. The PDF extractor runs `pdftotext` on uploaded files
-      # whose paths are server-controlled. Both patterns are fundamental to this
-      # application's document processing functionality; the inputs are not user-
-      # supplied at the call site.
+      # stored in the database. This is fundamental to the application's git template
+      # sync functionality; the inputs are not user-supplied at the call site.
       - path: internal/client/git/client\.go
-        linters:
-          - gosec
-        text: "G204"
-      - path: internal/extractor/pdf/extractor\.go
         linters:
           - gosec
         text: "G204"

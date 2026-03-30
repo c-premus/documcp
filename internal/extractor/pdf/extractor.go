@@ -1,21 +1,23 @@
-// Package pdf extracts text content from PDF files using pdftotext (poppler-utils).
-// It requires no CGO — all PDF processing is done by shelling out to external tools.
+// Package pdf extracts text content from PDF files using pure Go libraries.
+// No external tools (poppler-utils) or CGO required.
 package pdf
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"fmt"
-	"os/exec"
+	"io"
+	"os"
 	"strings"
+
+	lpdf "github.com/ledongthuc/pdf"
+	pdfcpuapi "github.com/pdfcpu/pdfcpu/pkg/api"
 
 	"github.com/c-premus/documcp/internal/extractor"
 )
 
 const mimeTypePDF = "application/pdf"
 
-// PDFExtractor extracts text from PDF files via the pdftotext CLI tool.
+// PDFExtractor extracts text from PDF files via pure Go libraries.
 //
 //nolint:revive // exported stutter is intentional; renaming would be a breaking change
 type PDFExtractor struct{}
@@ -31,15 +33,18 @@ func (e *PDFExtractor) Supports(mimeType string) bool {
 }
 
 // Extract reads the PDF at filePath and returns its text content and metadata.
-// It shells out to pdftotext for text extraction and pdfinfo for metadata.
-// The provided context controls the timeout of both commands.
+// It uses ledongthuc/pdf for text extraction and pdfcpu for metadata.
 func (e *PDFExtractor) Extract(ctx context.Context, filePath string) (*extractor.ExtractedContent, error) {
-	text, err := extractText(ctx, filePath)
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context canceled before PDF extraction: %w", err)
+	}
+
+	text, err := extractText(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("extracting PDF text: %w", err)
 	}
 
-	metadata := extractMetadata(ctx, filePath)
+	metadata := extractMetadata(filePath)
 
 	return &extractor.ExtractedContent{
 		Content:   text,
@@ -48,63 +53,48 @@ func (e *PDFExtractor) Extract(ctx context.Context, filePath string) (*extractor
 	}, nil
 }
 
-// extractText runs pdftotext to convert the PDF to plain text.
-func extractText(ctx context.Context, filePath string) (string, error) {
-	pdftotextPath, err := exec.LookPath("pdftotext")
+// extractText uses ledongthuc/pdf to extract plain text from a PDF file.
+func extractText(filePath string) (string, error) {
+	f, r, err := lpdf.Open(filePath)
 	if err != nil {
-		return "", fmt.Errorf("pdftotext not found; install poppler-utils: %w", err)
+		return "", fmt.Errorf("opening PDF: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	reader, err := r.GetPlainText()
+	if err != nil {
+		return "", fmt.Errorf("reading PDF text: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, pdftotextPath, "-layout", filePath, "-")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("running pdftotext: %s: %w", strings.TrimSpace(stderr.String()), err)
+	b, err := io.ReadAll(reader)
+	if err != nil {
+		return "", fmt.Errorf("reading PDF text output: %w", err)
 	}
 
-	return stdout.String(), nil
+	return string(b), nil
 }
 
-// extractMetadata runs pdfinfo and parses known metadata fields.
-// It returns a best-effort result — if pdfinfo is unavailable or fails,
+// extractMetadata uses pdfcpu to read PDF document properties.
+// It returns a best-effort result — if metadata extraction fails,
 // an empty map is returned.
-func extractMetadata(ctx context.Context, filePath string) map[string]any {
+func extractMetadata(filePath string) map[string]any {
 	metadata := make(map[string]any)
 
-	pdfinfoPath, err := exec.LookPath("pdfinfo")
+	f, err := os.Open(filePath)
+	if err != nil {
+		return metadata
+	}
+	defer func() { _ = f.Close() }()
+
+	props, err := pdfcpuapi.Properties(f, nil)
 	if err != nil {
 		return metadata
 	}
 
-	cmd := exec.CommandContext(ctx, pdfinfoPath, filePath)
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-
-	if err := cmd.Run(); err != nil {
-		return metadata
-	}
-
-	knownKeys := map[string]bool{
-		"Title":    true,
-		"Author":   true,
-		"Pages":    true,
-		"Creator":  true,
-		"Producer": true,
-	}
-
-	scanner := bufio.NewScanner(&stdout)
-	for scanner.Scan() {
-		line := scanner.Text()
-		key, value, ok := strings.Cut(line, ":")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		value = strings.TrimSpace(value)
-		if knownKeys[key] && value != "" {
-			metadata[key] = value
+	knownKeys := []string{"Title", "Author", "Pages", "Creator", "Producer"}
+	for _, key := range knownKeys {
+		if v, ok := props[key]; ok && v != "" {
+			metadata[key] = v
 		}
 	}
 

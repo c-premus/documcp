@@ -475,8 +475,8 @@ func TestExternalServiceService_Create_SSRF(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for loopback, got nil")
 		}
-		if !strings.Contains(err.Error(), "base URL validation") {
-			t.Errorf("error %q does not contain %q", err.Error(), "base URL validation")
+		if !errors.Is(err, ErrInvalidURL) {
+			t.Errorf("error %q is not ErrInvalidURL", err.Error())
 		}
 	})
 
@@ -572,8 +572,8 @@ func TestExternalServiceService_Update_SSRF(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for loopback, got nil")
 		}
-		if !strings.Contains(err.Error(), "base URL validation") {
-			t.Errorf("error %q does not contain %q", err.Error(), "base URL validation")
+		if !errors.Is(err, ErrInvalidURL) {
+			t.Errorf("error %q is not ErrInvalidURL", err.Error())
 		}
 	})
 
