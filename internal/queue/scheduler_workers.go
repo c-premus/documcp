@@ -344,7 +344,7 @@ func (w *HealthCheckServicesWorker) Work(ctx context.Context, _ *river.Job[Healt
 		return fmt.Errorf("finding enabled external services: %w", err)
 	}
 
-	httpClient := &http.Client{Timeout: 10 * time.Second, Transport: security.SafeTransport(w.Deps.SSRFDialerTimeout)}
+	httpClient := &http.Client{Timeout: 10 * time.Second, Transport: security.SafeTransportAllowPrivate(w.Deps.SSRFDialerTimeout)}
 
 	var healthyCount, unhealthyCount int
 	for i := range services {
