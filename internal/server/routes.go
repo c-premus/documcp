@@ -421,6 +421,11 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		http.Redirect(w, r, "/auth/login", http.StatusMovedPermanently)
 	})
 
+	// Redirect root to admin panel
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/admin/", http.StatusFound)
+	})
+
 	// Vue SPA at /admin/* (must be registered last to avoid shadowing API routes)
 	if deps.SPAHandler != nil {
 		r.Get("/admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently).ServeHTTP)
