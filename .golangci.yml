@@ -194,23 +194,6 @@ linters:
           - gosec
         text: "G302"
 
-      # gosec G204: credential_test.go tests the git credential helper by invoking
-      # real `git credential-store` and `git config` commands. The paths are test-
-      # generated temp files, not user input. The test would be meaningless without
-      # actually running git, so process launching is inherent to the test design.
-      - path: internal/client/git/credential_test\.go
-        linters:
-          - gosec
-        text: "G204"
-
-      # gosec G304: credential_test.go reads a temp file it created itself (the
-      # credential store) to verify its contents. The path is constructed from
-      # t.TempDir(), never from user input.
-      - path: internal/client/git/credential_test\.go
-        linters:
-          - gosec
-        text: "G304"
-
       # gosec G304: The document pipeline reads uploaded files from the storage
       # directory for text extraction. The path originates from the pipeline's own
       # storage layer, not from user-supplied input at the point of the os.Open call.
@@ -218,15 +201,6 @@ linters:
         linters:
           - gosec
         text: "G304"
-
-      # gosec G204: The git client intentionally launches `git` subprocesses (clone,
-      # fetch, ls-remote) where the remote URL is an administrator-configured value
-      # stored in the database. This is fundamental to the application's git template
-      # sync functionality; the inputs are not user-supplied at the call site.
-      - path: internal/client/git/client\.go
-        linters:
-          - gosec
-        text: "G204"
 
       # gosec G304: Extractors read document files from the server-controlled storage
       # directory. The git client reads template files from local working directories
