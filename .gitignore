@@ -1,7 +1,7 @@
 # Build artifacts
 bin/
-documcp
-server
+/documcp
+/server
 
 # Local settings with permissions (may contain sensitive patterns)
 .claude/settings.local.json
