@@ -37,7 +37,7 @@ func NewWorkerApp(f *Foundation) (*WorkerApp, error) {
 	// Token HMAC key — needed by workers that process token-related jobs.
 	sessionSecret := f.Config.OAuth.SessionSecret
 	if sessionSecret != "" {
-		hmacKey, err := deriveKey([]byte(sessionSecret), f.Config.OAuth.HKDFSalt, "oauth-token-hmac", 32)
+		hmacKey, err := deriveKey([]byte(sessionSecret), f.Config.OAuth.HKDFSalt, "oauth-token-hmac")
 		if err != nil {
 			return nil, fmt.Errorf("deriving token HMAC key: %w", err)
 		}

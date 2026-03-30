@@ -9,8 +9,8 @@ import (
 )
 
 // ValidateRepositoryURL checks that a repository URL is safe to clone.
-// It blocks localhost, loopback, private IPs, and non-HTTPS URLs.
-func ValidateRepositoryURL(rawURL string) error {
+// It blocks localhost, loopback, private IPs (unless allowPrivate is true), and non-HTTPS URLs.
+func ValidateRepositoryURL(rawURL string, allowPrivate ...bool) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("parsing repository URL: %w", err)
@@ -20,7 +20,7 @@ func ValidateRepositoryURL(rawURL string) error {
 		return fmt.Errorf("repository URL must use https scheme, got %q", parsed.Scheme)
 	}
 
-	if err := security.ValidateExternalURL(rawURL, true); err != nil {
+	if err := security.ValidateExternalURL(rawURL, allowPrivate...); err != nil {
 		return fmt.Errorf("repository URL blocked: %w", err)
 	}
 

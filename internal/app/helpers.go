@@ -35,9 +35,9 @@ func newLogger(env string, debug bool, w io.Writer) *slog.Logger {
 
 // deriveKey uses HKDF-SHA256 to derive a subkey from a master secret.
 // This ensures different keys for different purposes (e.g. CSRF vs sessions).
-func deriveKey(secret []byte, salt, info string, length int) ([]byte, error) {
+func deriveKey(secret []byte, salt, info string) ([]byte, error) {
 	r := hkdf.New(sha256.New, secret, []byte(salt), []byte(info))
-	key := make([]byte, length)
+	key := make([]byte, 32)
 	if _, err := io.ReadFull(r, key); err != nil {
 		return nil, fmt.Errorf("deriving key for %s: %w", info, err)
 	}

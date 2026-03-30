@@ -56,7 +56,7 @@ func Sync(ctx context.Context, params SyncParams) error {
 	)
 
 	// 1. Validate repository URL.
-	if err := ValidateRepositoryURL(tmpl.RepositoryURL); err != nil {
+	if err := ValidateRepositoryURL(tmpl.RepositoryURL, true); err != nil {
 		syncErr := fmt.Sprintf("invalid repository URL: %v", err)
 		if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", "", 0, 0, syncErr); statusErr != nil {
 			logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)

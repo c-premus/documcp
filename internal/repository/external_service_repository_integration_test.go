@@ -248,8 +248,8 @@ func TestExternalServiceRepository_List(t *testing.T) {
 			name:       "filter by type kiwix",
 			filterType: "kiwix",
 			limit:      50,
-			wantCount:  2,
-			wantTotal:  2,
+			wantCount:  3,
+			wantTotal:  3,
 		},
 		{
 			name:      "filter by status healthy",
