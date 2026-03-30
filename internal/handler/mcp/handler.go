@@ -233,6 +233,21 @@ func New(cfg Config) *Handler {
 	return h
 }
 
+// Close terminates all active MCP sessions so the HTTP server can shut down
+// without waiting for long-lived SSE streams to drain.
+func (h *Handler) Close() {
+	var n int
+	for sess := range h.server.Sessions() {
+		if err := sess.Close(); err != nil && !errors.Is(err, context.Canceled) {
+			h.logger.Warn("closing MCP session", "session_id", sess.ID(), "error", err)
+		}
+		n++
+	}
+	if n > 0 {
+		h.logger.Info("closed MCP sessions", "count", n)
+	}
+}
+
 // kiwixFactoryAdapter wraps *kiwix.ClientFactory to satisfy kiwixClientFactory.
 type kiwixFactoryAdapter struct {
 	factory *kiwix.ClientFactory

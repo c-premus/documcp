@@ -12,6 +12,7 @@ import {
   ServerIcon,
   QueueListIcon,
   TrashIcon,
+  BookOpenIcon,
   XMarkIcon,
 } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth'
@@ -30,7 +31,10 @@ const sse = useSSEStore()
 const sidebar = useSidebar()
 const logoSrc = `${import.meta.env.BASE_URL}logo-concept-1-transparent.svg`
 
-const mainNavItems: readonly NavItem[] = [{ name: 'Dashboard', to: '/dashboard', icon: HomeIcon }]
+const mainNavItems: readonly NavItem[] = [
+  { name: 'Dashboard', to: '/dashboard', icon: HomeIcon },
+  { name: 'API Docs', to: '/api-docs', icon: BookOpenIcon },
+]
 
 const documentNavItems: readonly NavItem[] = [
   { name: 'Document List', to: '/documents', icon: DocumentTextIcon },

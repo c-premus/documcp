@@ -36,6 +36,7 @@ type ServerApp struct {
 	Server      *server.Server
 	RiverClient *queue.RiverClient
 	EventBus    *queue.EventBus
+	MCPHandler  *mcphandler.Handler
 	WithWorker  bool
 }
 
@@ -230,6 +231,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		Server:      srv,
 		RiverClient: riverClient,
 		EventBus:    eventBus,
+		MCPHandler:  mcpH,
 		WithWorker:  withWorker,
 	}, nil
 }
@@ -261,9 +263,12 @@ func (s *ServerApp) Start(ctx context.Context) error {
 		s.Foundation.Logger.Info("shutdown signal received")
 	}
 
-	// Close EventBus first so SSE connections exit immediately.
+	// Close EventBus and MCP sessions so SSE connections exit immediately.
 	if s.EventBus != nil {
 		s.EventBus.Close()
+	}
+	if s.MCPHandler != nil {
+		s.MCPHandler.Close()
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), s.Foundation.Config.Server.ShutdownTimeout)

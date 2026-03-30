@@ -87,16 +87,16 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 
 	// --- Encryption ---
 	var encryptor *crypto.Encryptor
-	if cfg.App.EncryptionKey != "" {
+	if len(cfg.App.EncryptionKeyBytes) > 0 {
 		var encErr error
-		encryptor, encErr = crypto.NewEncryptor([]byte(cfg.App.EncryptionKey))
+		encryptor, encErr = crypto.NewEncryptor(cfg.App.EncryptionKeyBytes)
 		if encErr != nil {
 			pgxPool.Close()
 			return nil, fmt.Errorf("initializing encryptor: %w", encErr)
 		}
 		logger.Info("encryption at rest enabled")
 	} else {
-		logger.Warn("ENCRYPTION_KEY not set, git tokens will be stored in plaintext")
+		logger.Warn("ENCRYPTION_KEY not set, secrets will be stored in plaintext")
 	}
 
 	// --- Repositories ---
