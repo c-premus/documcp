@@ -82,6 +82,7 @@ export const useDocumentsStore = defineStore('documents', () => {
   const currentDocument = ref<Document | null>(null)
   const total = ref(0)
   const loading = ref(false)
+  const loaded = ref(false)
   const error = ref<string | null>(null)
 
   async function fetchDocuments(params?: ListParams): Promise<ListResponse> {
@@ -100,6 +101,7 @@ export const useDocumentsStore = defineStore('documents', () => {
       const response = await apiFetch<ListResponse>(`/api/documents${query}`)
       documents.value = response.data
       total.value = response.meta.total
+      loaded.value = true
       return response
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch documents'
@@ -132,6 +134,8 @@ export const useDocumentsStore = defineStore('documents', () => {
         method: 'POST',
         body: formData,
       })
+      documents.value = [response.data, ...documents.value]
+      total.value += 1
       return response
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to upload document'
@@ -242,6 +246,7 @@ export const useDocumentsStore = defineStore('documents', () => {
       const response = await apiFetch<TrashResponse>(`/api/documents/trash${query}`)
       documents.value = response.data
       total.value = response.total
+      loaded.value = true
       return response
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch deleted documents'
@@ -263,6 +268,7 @@ export const useDocumentsStore = defineStore('documents', () => {
     currentDocument,
     total,
     loading,
+    loaded,
     error,
     fetchDocuments,
     fetchDocument,

@@ -10,6 +10,7 @@ import { useZimArchivesStore } from '@/stores/zimArchives'
 import { useGitTemplatesStore } from '@/stores/gitTemplates'
 import { useExternalServicesStore } from '@/stores/externalServices'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useQueueStore } from '@/stores/queue'
 
 vi.mock('vue-sonner', () => ({
   toast: {
@@ -102,7 +103,7 @@ describe('useDocumentEvents', () => {
       expect(documents.refreshCurrent).toHaveBeenCalled()
     })
 
-    it('fetches document list only when documents are loaded (lazy refresh)', async () => {
+    it('fetches document list only when loaded flag is set (lazy refresh)', async () => {
       const documents = useDocumentsStore()
       vi.spyOn(documents, 'refreshCurrent').mockResolvedValue(null)
       vi.spyOn(documents, 'fetchDocuments').mockResolvedValue({
@@ -110,27 +111,33 @@ describe('useDocumentEvents', () => {
         meta: { total: 0, limit: 10, offset: 0 },
       })
 
-      // No documents loaded — should NOT fetch list
+      // Not loaded — should NOT fetch list
       const { result } = mountComposable()
       result.start()
 
-      const event = makeEvent({ type: 'job.completed', job_kind: 'document_index' })
+      const event = makeEvent({ type: 'job.completed', job_kind: 'document_extract' })
       onHandlers.get('job.completed')!(event)
       expect(documents.fetchDocuments).not.toHaveBeenCalled()
 
-      // With documents loaded — should fetch list
-      documents.$patch({ documents: [{ uuid: 'doc-1' }] as never[] })
+      // With loaded flag set — should fetch list
+      documents.$patch({ loaded: true })
       onHandlers.get('job.completed')!(event)
       expect(documents.fetchDocuments).toHaveBeenCalled()
     })
   })
 
   describe('job.completed — scheduler jobs', () => {
-    it('refreshes zimArchives on sync_kiwix when archives loaded', async () => {
+    it('refreshes zimArchives and externalServices on sync_kiwix when loaded', async () => {
       const { toast } = await import('vue-sonner')
       const zimArchives = useZimArchivesStore()
-      zimArchives.$patch({ archives: [{ uuid: 'zim-1' }] as never[] })
+      const externalServices = useExternalServicesStore()
+      zimArchives.$patch({ loaded: true })
+      externalServices.$patch({ loaded: true })
       vi.spyOn(zimArchives, 'fetchArchives').mockResolvedValue({ data: [], meta: { total: 0 } })
+      vi.spyOn(externalServices, 'fetchServices').mockResolvedValue({
+        data: [],
+        meta: { total: 0, limit: 10, offset: 0 },
+      })
 
       const { result } = mountComposable()
       result.start()
@@ -138,12 +145,31 @@ describe('useDocumentEvents', () => {
       onHandlers.get('job.completed')!(makeEvent({ type: 'job.completed', job_kind: 'sync_kiwix' }))
 
       expect(zimArchives.fetchArchives).toHaveBeenCalled()
+      expect(externalServices.fetchServices).toHaveBeenCalled()
       expect(toast.info).toHaveBeenCalledWith('Kiwix sync completed')
     })
 
-    it('refreshes gitTemplates on sync_git_templates when templates loaded', async () => {
+    it('does not refresh zimArchives or externalServices on sync_kiwix when not loaded', () => {
+      const zimArchives = useZimArchivesStore()
+      const externalServices = useExternalServicesStore()
+      vi.spyOn(zimArchives, 'fetchArchives').mockResolvedValue({ data: [], meta: { total: 0 } })
+      vi.spyOn(externalServices, 'fetchServices').mockResolvedValue({
+        data: [],
+        meta: { total: 0, limit: 10, offset: 0 },
+      })
+
+      const { result } = mountComposable()
+      result.start()
+
+      onHandlers.get('job.completed')!(makeEvent({ type: 'job.completed', job_kind: 'sync_kiwix' }))
+
+      expect(zimArchives.fetchArchives).not.toHaveBeenCalled()
+      expect(externalServices.fetchServices).not.toHaveBeenCalled()
+    })
+
+    it('refreshes gitTemplates on sync_git_templates when loaded', async () => {
       const gitTemplates = useGitTemplatesStore()
-      gitTemplates.$patch({ templates: [{ uuid: 'tpl-1' }] as never[] })
+      gitTemplates.$patch({ loaded: true })
       vi.spyOn(gitTemplates, 'fetchTemplates').mockResolvedValue({
         data: [],
         meta: { total: 0, limit: 50, offset: 0 },
@@ -159,9 +185,9 @@ describe('useDocumentEvents', () => {
       expect(gitTemplates.fetchTemplates).toHaveBeenCalled()
     })
 
-    it('refreshes externalServices on health_check_services when services loaded', async () => {
+    it('refreshes externalServices on health_check_services when loaded', async () => {
       const externalServices = useExternalServicesStore()
-      externalServices.$patch({ services: [{ uuid: 'svc-1' }] as never[] })
+      externalServices.$patch({ loaded: true })
       vi.spyOn(externalServices, 'fetchServices').mockResolvedValue({
         data: [],
         meta: { total: 0, limit: 10, offset: 0 },
@@ -175,6 +201,47 @@ describe('useDocumentEvents', () => {
       )
 
       expect(externalServices.fetchServices).toHaveBeenCalled()
+    })
+  })
+
+  describe('job.completed — queue stats refresh', () => {
+    it('refreshes queue stats when stats are loaded', () => {
+      const queue = useQueueStore()
+      queue.$patch({
+        stats: { available: 0, running: 0, retryable: 0, discarded: 0, cancelled: 0 },
+      })
+      vi.spyOn(queue, 'fetchStats').mockResolvedValue({
+        available: 0,
+        running: 0,
+        retryable: 0,
+        discarded: 0,
+        cancelled: 0,
+      })
+
+      const { result } = mountComposable()
+      result.start()
+
+      onHandlers.get('job.completed')!(makeEvent({ type: 'job.completed', job_kind: 'sync_kiwix' }))
+
+      expect(queue.fetchStats).toHaveBeenCalled()
+    })
+
+    it('does not refresh queue stats when stats are not loaded', () => {
+      const queue = useQueueStore()
+      vi.spyOn(queue, 'fetchStats').mockResolvedValue({
+        available: 0,
+        running: 0,
+        retryable: 0,
+        discarded: 0,
+        cancelled: 0,
+      })
+
+      const { result } = mountComposable()
+      result.start()
+
+      onHandlers.get('job.completed')!(makeEvent({ type: 'job.completed', job_kind: 'sync_kiwix' }))
+
+      expect(queue.fetchStats).not.toHaveBeenCalled()
     })
   })
 
@@ -197,6 +264,56 @@ describe('useDocumentEvents', () => {
       expect(toast.error).toHaveBeenCalledWith('Document processing failed: extraction failed')
       expect(notifications.addEvent).toHaveBeenCalledWith(event)
     })
+
+    it('fetches document list on failure only when loaded', () => {
+      const documents = useDocumentsStore()
+      vi.spyOn(documents, 'fetchDocuments').mockResolvedValue({
+        data: [],
+        meta: { total: 0, limit: 10, offset: 0 },
+      })
+
+      const { result } = mountComposable()
+      result.start()
+
+      const event = makeEvent({ type: 'job.failed', job_kind: 'document_extract' })
+
+      // Not loaded — should NOT fetch
+      onHandlers.get('job.failed')!(event)
+      expect(documents.fetchDocuments).not.toHaveBeenCalled()
+
+      // Loaded — should fetch
+      documents.$patch({ loaded: true })
+      onHandlers.get('job.failed')!(event)
+      expect(documents.fetchDocuments).toHaveBeenCalled()
+    })
+
+    it('refreshes queue stats and failed jobs on failure when stats loaded', () => {
+      const queue = useQueueStore()
+      queue.$patch({
+        stats: { available: 0, running: 0, retryable: 0, discarded: 0, cancelled: 0 },
+      })
+      vi.spyOn(queue, 'fetchStats').mockResolvedValue({
+        available: 0,
+        running: 0,
+        retryable: 0,
+        discarded: 0,
+        cancelled: 0,
+      })
+      vi.spyOn(queue, 'fetchFailedJobs').mockResolvedValue({
+        data: [],
+        meta: { count: 0 },
+      })
+
+      const { result } = mountComposable()
+      result.start()
+
+      onHandlers.get('job.failed')!(
+        makeEvent({ type: 'job.failed', job_kind: 'document_extract', error: 'fail' }),
+      )
+
+      expect(queue.fetchStats).toHaveBeenCalled()
+      expect(queue.fetchFailedJobs).toHaveBeenCalled()
+    })
   })
 
   describe('job.snoozed', () => {
@@ -207,7 +324,7 @@ describe('useDocumentEvents', () => {
       const { result } = mountComposable()
       result.start()
 
-      const event = makeEvent({ type: 'job.snoozed', job_kind: 'document_index' })
+      const event = makeEvent({ type: 'job.snoozed', job_kind: 'document_extract' })
       onHandlers.get('job.snoozed')!(event)
 
       expect(notifications.addEvent).toHaveBeenCalledWith(event)
