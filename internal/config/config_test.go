@@ -245,7 +245,7 @@ func validProdConfig() Config {
 		Env:              "production",
 		URL:              "https://documcp.example.com",
 		InternalAPIToken: "secure-token-here",
-		EncryptionKey:    "01234567890123456789012345678901", // 32 bytes
+		EncryptionKey:    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", // 64 hex chars = 32 bytes
 	}
 	cfg.Database.Password = "secret"
 	cfg.OAuth.SessionSecret = "my-session-secret-that-is-long-enough-for-production"
@@ -346,22 +346,32 @@ func TestConfig_Validate(t *testing.T) {
 			}(),
 			wantErr: false,
 		},
-		// ENCRYPTION_KEY length validation
+		// ENCRYPTION_KEY hex validation
 		{
-			name: "encryption key wrong length",
+			name: "encryption key invalid hex",
 			cfg: func() Config {
 				c := validBaseConfig()
-				c.App.EncryptionKey = "too-short"
+				c.App.EncryptionKey = "not-valid-hex-string"
 				return c
 			}(),
 			wantErr: true,
-			errMsg:  "ENCRYPTION_KEY must be exactly 32 bytes",
+			errMsg:  "ENCRYPTION_KEY must be a valid hex string",
 		},
 		{
-			name: "encryption key correct length",
+			name: "encryption key wrong decoded length",
 			cfg: func() Config {
 				c := validBaseConfig()
-				c.App.EncryptionKey = "01234567890123456789012345678901"
+				c.App.EncryptionKey = "abcdef0123456789" // 8 bytes decoded
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "ENCRYPTION_KEY must decode to exactly 32 bytes",
+		},
+		{
+			name: "encryption key correct 64-char hex",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.App.EncryptionKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				return c
 			}(),
 			wantErr: false,
@@ -784,7 +794,7 @@ func TestConfig_Validate_ProductionMultipleErrors(t *testing.T) {
 	expected := []string{
 		"OAUTH_SESSION_SECRET is required in production",
 		"DB_PASSWORD is required in production",
-		"ENCRYPTION_KEY is required in production",
+		"ENCRYPTION_KEY is required in production (secrets stored in plaintext without it)",
 		"APP_URL must be set to the actual URL in production",
 		"INTERNAL_API_TOKEN is required in production",
 	}

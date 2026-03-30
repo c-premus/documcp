@@ -4,6 +4,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -61,6 +62,7 @@ type AppConfig struct {
 	Timezone          string        `mapstructure:"app_timezone"`
 	InternalAPIToken  string        `mapstructure:"internal_api_token"`
 	EncryptionKey     string        `mapstructure:"encryption_key"`
+	EncryptionKeyBytes []byte       // Decoded from EncryptionKey (hex); populated by Validate()
 	QueueStopTimeout  time.Duration `mapstructure:"app_queue_stop_timeout"`
 	TracerStopTimeout time.Duration `mapstructure:"app_tracer_stop_timeout"`
 	SSRFDialerTimeout time.Duration `mapstructure:"ssrf_dialer_timeout"`
@@ -475,8 +477,16 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 		errs = append(errs, "APP_ENV must be one of: development, staging, production, testing")
 	}
 
-	if c.App.EncryptionKey != "" && len(c.App.EncryptionKey) != 32 {
-		errs = append(errs, "ENCRYPTION_KEY must be exactly 32 bytes for AES-256-GCM")
+	if c.App.EncryptionKey != "" {
+		keyBytes, hexErr := hex.DecodeString(c.App.EncryptionKey)
+		switch {
+		case hexErr != nil:
+			errs = append(errs, "ENCRYPTION_KEY must be a valid hex string (generate with: openssl rand -hex 32)")
+		case len(keyBytes) != 32:
+			errs = append(errs, "ENCRYPTION_KEY must decode to exactly 32 bytes for AES-256-GCM (use a 64-character hex string)")
+		default:
+			c.App.EncryptionKeyBytes = keyBytes
+		}
 	}
 
 	if c.OTEL.Enabled && c.OTEL.Endpoint == "" {
@@ -512,7 +522,7 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 		errs = append(errs, "DB_PASSWORD is required in production")
 	}
 	if isProd && c.App.EncryptionKey == "" {
-		errs = append(errs, "ENCRYPTION_KEY is required in production (git tokens stored in plaintext without it)")
+		errs = append(errs, "ENCRYPTION_KEY is required in production (secrets stored in plaintext without it)")
 	}
 	if isProd && c.App.URL == "http://localhost" {
 		errs = append(errs, "APP_URL must be set to the actual URL in production (currently http://localhost)")
