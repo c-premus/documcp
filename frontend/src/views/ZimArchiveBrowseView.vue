@@ -99,7 +99,11 @@ function handleResultClick(result: ZimSearchResult): void {
           <input
             type="text"
             :value="searchQuery"
-            :placeholder="currentArchive && !currentArchive.has_fulltext_index ? 'Search by article title...' : 'Search articles...'"
+            :placeholder="
+              currentArchive && !currentArchive.has_fulltext_index
+                ? 'Search by article title...'
+                : 'Search articles...'
+            "
             class="block w-full rounded-md border-0 py-1.5 pl-10 pr-3 text-text-primary bg-bg-surface ring-1 ring-inset ring-border-input placeholder:text-text-disabled focus:ring-2 focus:ring-inset focus:ring-focus sm:text-sm sm:leading-6"
             @input="handleSearchInput"
           />

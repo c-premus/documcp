@@ -52,7 +52,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	}
 
 	// --- Token HMAC key ---
-	hmacKey, err := deriveKey([]byte(sessionSecret), cfg.OAuth.HKDFSalt, "oauth-token-hmac", 32)
+	hmacKey, err := deriveKey([]byte(sessionSecret), cfg.OAuth.HKDFSalt, "oauth-token-hmac")
 	if err != nil {
 		return nil, fmt.Errorf("deriving HMAC key: %w", err)
 	}
@@ -304,14 +304,14 @@ func buildSessionStore(cfg *config.Config, logger *slog.Logger) (*sessions.Cooki
 		logger.Warn("no OAUTH_SESSION_SECRET configured, using random secret (sessions will not survive restarts)")
 	}
 
-	sessionEncKey, err := deriveKey([]byte(sessionSecret), cfg.OAuth.HKDFSalt, "session-cookie-encryption", 32)
+	sessionEncKey, err := deriveKey([]byte(sessionSecret), cfg.OAuth.HKDFSalt, "session-cookie-encryption")
 	if err != nil {
 		return nil, "", fmt.Errorf("deriving session encryption key: %w", err)
 	}
 
 	keyPairs := [][]byte{[]byte(sessionSecret), sessionEncKey}
 	if prev := cfg.OAuth.SessionSecretPrevious; prev != "" {
-		oldEncKey, encErr := deriveKey([]byte(prev), cfg.OAuth.HKDFSalt, "session-cookie-encryption", 32)
+		oldEncKey, encErr := deriveKey([]byte(prev), cfg.OAuth.HKDFSalt, "session-cookie-encryption")
 		if encErr != nil {
 			return nil, "", fmt.Errorf("deriving previous session encryption key: %w", encErr)
 		}
