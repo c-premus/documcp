@@ -972,7 +972,7 @@ func TestZimHandler_Search(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 500 when kiwix client returns error", func(t *testing.T) {
+	t.Run("returns empty results when kiwix client returns error", func(t *testing.T) {
 		t.Parallel()
 
 		kc := &mockKiwixSearcher{
@@ -987,16 +987,17 @@ func TestZimHandler_Search(t *testing.T) {
 
 		h.Search(rr, req)
 
-		if rr.Code != http.StatusInternalServerError {
-			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
 		}
 
 		var body map[string]any
 		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
 			t.Fatalf("decoding response: %v", err)
 		}
-		if msg := body["message"]; msg != "search failed" {
-			t.Errorf("message = %v, want 'search failed'", msg)
+		data := body["data"].([]any)
+		if len(data) != 0 {
+			t.Errorf("expected empty data, got %d items", len(data))
 		}
 	})
 
@@ -1170,7 +1171,7 @@ func TestZimHandler_Suggest(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 500 when kiwix client returns error", func(t *testing.T) {
+	t.Run("returns empty results when kiwix client returns error", func(t *testing.T) {
 		t.Parallel()
 
 		kc := &mockKiwixSearcher{
@@ -1185,16 +1186,17 @@ func TestZimHandler_Suggest(t *testing.T) {
 
 		h.Suggest(rr, req)
 
-		if rr.Code != http.StatusInternalServerError {
-			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
 		}
 
 		var body map[string]any
 		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
 			t.Fatalf("decoding response: %v", err)
 		}
-		if msg := body["message"]; msg != "suggest failed" {
-			t.Errorf("message = %v, want 'suggest failed'", msg)
+		data := body["data"].([]any)
+		if len(data) != 0 {
+			t.Errorf("expected empty data, got %d items", len(data))
 		}
 	})
 

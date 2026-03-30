@@ -356,8 +356,8 @@ func TestSearch(t *testing.T) {
 
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprint(w, `[
-				{"label":"Go Tutorial","value":"go-tutorial","path":"A/Go_Tutorial"},
-				{"label":"Go Modules","value":"go-modules","path":"A/Go_Modules"}
+				{"label":"<b>Go</b> Tutorial","value":"Go Tutorial","kind":"path","path":"A/Go_Tutorial"},
+				{"label":"<b>Go</b> Modules","value":"Go Modules","kind":"path","path":"A/Go_Modules"}
 			]`)
 		}))
 		defer srv.Close()
@@ -371,18 +371,18 @@ func TestSearch(t *testing.T) {
 		if len(results) != 2 {
 			t.Fatalf("expected 2 results, got %d", len(results))
 		}
-		if results[0].Title != "go-tutorial" {
-			t.Errorf("Title = %q, want %q", results[0].Title, "go-tutorial")
+		if results[0].Title != "Go Tutorial" {
+			t.Errorf("Title = %q, want %q", results[0].Title, "Go Tutorial")
 		}
 		if results[0].Path != "A/Go_Tutorial" {
 			t.Errorf("Path = %q, want %q", results[0].Path, "A/Go_Tutorial")
 		}
-		if results[1].Title != "go-modules" {
-			t.Errorf("Title = %q, want %q", results[1].Title, "go-modules")
+		if results[1].Title != "Go Modules" {
+			t.Errorf("Title = %q, want %q", results[1].Title, "Go Modules")
 		}
 	})
 
-	t.Run("fulltext search sends correct query params", func(t *testing.T) {
+	t.Run("fulltext search sends correct query params and parses XML", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/catalog/root.xml" {
 				w.Header().Set("Content-Type", "application/xml")
@@ -401,14 +401,24 @@ func TestSearch(t *testing.T) {
 			if r.URL.Query().Get("content") != "devdocs-go" {
 				t.Errorf("content = %q, want devdocs-go", r.URL.Query().Get("content"))
 			}
+			if r.URL.Query().Get("format") != "xml" {
+				t.Errorf("format = %q, want xml", r.URL.Query().Get("format"))
+			}
 
-			// Return HTML like Kiwix fulltext search does (hrefs prefixed with /content/{archive}/).
-			_, _ = fmt.Fprint(w, `<html><body>
-				<a href="/content/devdocs-go/A/Goroutines">Goroutines</a>
-				<cite>Concurrency primitives in Go</cite>
-				<a href="/content/devdocs-go/A/Channels">Channels</a>
-				<cite>Channel communication</cite>
-			</body></html>`)
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <item>
+    <title>Goroutines</title>
+    <link>/content/devdocs-go/A/Goroutines</link>
+    <description>Concurrency primitives in Go</description>
+  </item>
+  <item>
+    <title>Channels</title>
+    <link>/content/devdocs-go/A/Channels</link>
+    <description>Channel communication</description>
+  </item>
+</channel></rss>`)
 		}))
 		defer srv.Close()
 
@@ -492,36 +502,43 @@ func TestSearch(t *testing.T) {
 		}
 	})
 
-	t.Run("returns error on malformed suggest JSON", func(t *testing.T) {
+	t.Run("falls back to fulltext on malformed suggest JSON", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/catalog/root.xml" {
 				w.Header().Set("Content-Type", "application/xml")
 				_, _ = fmt.Fprint(w, catalogForArchive("archive", false))
 				return
 			}
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = fmt.Fprint(w, `{not valid json]`)
+			if r.URL.Path == "/suggest" {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = fmt.Fprint(w, `{not valid json]`)
+				return
+			}
+			// Fulltext fallback returns valid XML with no results.
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = fmt.Fprint(w, `<?xml version="1.0"?><rss><channel></channel></rss>`)
 		}))
 		defer srv.Close()
 
 		client := newTestClient(t, srv.URL)
-		_, err := client.Search(context.Background(), "archive", "query", "suggest", 10)
-		if err == nil {
-			t.Fatal("expected error for malformed JSON, got nil")
+		results, err := client.Search(context.Background(), "archive", "query", "suggest", 10)
+		if err != nil {
+			t.Fatalf("expected fallback to succeed, got error: %v", err)
 		}
-		if !strings.Contains(err.Error(), "parsing suggest JSON") {
-			t.Errorf("error %q should mention parsing suggest JSON", err.Error())
+		if len(results) != 0 {
+			t.Errorf("expected 0 results from fallback, got %d", len(results))
 		}
 	})
 
-	t.Run("fulltext returns empty slice for HTML with no results", func(t *testing.T) {
+	t.Run("fulltext returns empty slice for XML with no items", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/catalog/root.xml" {
 				w.Header().Set("Content-Type", "application/xml")
 				_, _ = fmt.Fprint(w, catalogForArchive("archive", true))
 				return
 			}
-			_, _ = fmt.Fprint(w, `<html><body><p>No results found</p></body></html>`)
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = fmt.Fprint(w, `<?xml version="1.0"?><rss><channel></channel></rss>`)
 		}))
 		defer srv.Close()
 
@@ -943,22 +960,28 @@ func TestHTMLToPlainText(t *testing.T) {
 }
 
 func TestParseFulltextResponse(t *testing.T) {
-	t.Run("parses links and snippets from HTML", func(t *testing.T) {
-		// Kiwix fulltext search returns hrefs prefixed with /content/{archive}/.
-		body := `<html>
-<body>
-<a href="/content/archive_2025-01/A/First_Article">First Article</a>
-<cite>This is the first snippet</cite>
-<a href="/content/archive_2025-01/A/Second_Article">Second Article</a>
-<cite>This is the second snippet</cite>
-</body>
-</html>`
+	t.Run("parses XML RSS items", func(t *testing.T) {
+		body := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <item>
+    <title>First Article</title>
+    <link>/content/archive_2025-01/A/First_Article</link>
+    <description>This is the first snippet</description>
+  </item>
+  <item>
+    <title>Second Article</title>
+    <link>/content/archive_2025-01/A/Second_Article</link>
+    <description>This is the second snippet</description>
+  </item>
+</channel></rss>`
 
-		results := parseFulltextResponse([]byte(body))
+		results, err := parseFulltextResponse([]byte(body))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if len(results) != 2 {
 			t.Fatalf("expected 2 results, got %d", len(results))
 		}
-
 		if results[0].Title != "First Article" {
 			t.Errorf("Title[0] = %q, want %q", results[0].Title, "First Article")
 		}
@@ -973,36 +996,36 @@ func TestParseFulltextResponse(t *testing.T) {
 		}
 	})
 
-	t.Run("handles more links than snippets", func(t *testing.T) {
-		body := `<a href="/content/arc_2025-01/One">One</a>
-<a href="/content/arc_2025-01/Two">Two</a>
-<cite>Only one snippet</cite>`
-
-		results := parseFulltextResponse([]byte(body))
-		if len(results) != 2 {
-			t.Fatalf("expected 2 results, got %d", len(results))
-		}
-		// First link has no matching snippet (snippets[0] maps to link[0]).
-		// Actually the regex finds them in order, so snippet[0] goes to link[0].
-		if results[0].Snippet != "Only one snippet" {
-			t.Errorf("Snippet[0] = %q, want %q", results[0].Snippet, "Only one snippet")
-		}
-		// Second link has no snippet.
-		if results[1].Snippet != "" {
-			t.Errorf("Snippet[1] = %q, want empty", results[1].Snippet)
+	t.Run("returns error for invalid XML", func(t *testing.T) {
+		_, err := parseFulltextResponse([]byte("{not xml}"))
+		if err == nil {
+			t.Fatal("expected error for invalid XML, got nil")
 		}
 	})
 
-	t.Run("returns nil for empty body", func(t *testing.T) {
-		results := parseFulltextResponse([]byte(""))
-		if results != nil {
-			t.Errorf("expected nil, got %v", results)
+	t.Run("returns empty for empty channel", func(t *testing.T) {
+		body := `<?xml version="1.0"?><rss><channel></channel></rss>`
+		results, err := parseFulltextResponse([]byte(body))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(results) != 0 {
+			t.Errorf("expected 0 results, got %d", len(results))
 		}
 	})
 
-	t.Run("decodes HTML entities in titles", func(t *testing.T) {
-		body := `<a href="/content/arc_2025-01/Test">Tom &amp; Jerry</a>`
-		results := parseFulltextResponse([]byte(body))
+	t.Run("decodes HTML entities in title", func(t *testing.T) {
+		body := `<?xml version="1.0"?><rss><channel>
+  <item>
+    <title>Tom &amp; Jerry</title>
+    <link>/content/arc_2025-01/path/article</link>
+    <description>A classic</description>
+  </item>
+</channel></rss>`
+		results, err := parseFulltextResponse([]byte(body))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if len(results) != 1 {
 			t.Fatalf("expected 1 result, got %d", len(results))
 		}
@@ -1010,13 +1033,41 @@ func TestParseFulltextResponse(t *testing.T) {
 			t.Errorf("Title = %q, want %q", results[0].Title, "Tom & Jerry")
 		}
 	})
+
+	t.Run("falls back to path title when all titles are identical", func(t *testing.T) {
+		body := `<?xml version="1.0"?><rss><channel>
+  <item>
+    <title>100R</title>
+    <link>/content/arc_2025-01/site/satellite_phone.html</link>
+    <description>desc1</description>
+  </item>
+  <item>
+    <title>100R</title>
+    <link>/content/arc_2025-01/site/orca.html</link>
+    <description>desc2</description>
+  </item>
+</channel></rss>`
+		results, err := parseFulltextResponse([]byte(body))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(results) != 2 {
+			t.Fatalf("expected 2 results, got %d", len(results))
+		}
+		if results[0].Title != "Satellite Phone" {
+			t.Errorf("Title[0] = %q, want %q", results[0].Title, "Satellite Phone")
+		}
+		if results[1].Title != "Orca" {
+			t.Errorf("Title[1] = %q, want %q", results[1].Title, "Orca")
+		}
+	})
 }
 
 func TestParseSuggestResponse(t *testing.T) {
 	t.Run("parses valid JSON array", func(t *testing.T) {
 		data := `[
-			{"label":"Go Functions","value":"go-functions","path":"A/Go_Functions"},
-			{"label":"Go Interfaces","value":"go-interfaces","path":"A/Go_Interfaces"}
+			{"label":"<b>Go</b> Functions","value":"Go Functions","kind":"path","path":"A/Go_Functions"},
+			{"label":"<b>Go</b> Interfaces","value":"Go Interfaces","kind":"path","path":"A/Go_Interfaces"}
 		]`
 
 		results, err := parseSuggestResponse([]byte(data))
@@ -1026,8 +1077,8 @@ func TestParseSuggestResponse(t *testing.T) {
 		if len(results) != 2 {
 			t.Fatalf("expected 2 results, got %d", len(results))
 		}
-		if results[0].Title != "go-functions" {
-			t.Errorf("Title = %q, want %q", results[0].Title, "go-functions")
+		if results[0].Title != "Go Functions" {
+			t.Errorf("Title = %q, want %q", results[0].Title, "Go Functions")
 		}
 		if results[0].Path != "A/Go_Functions" {
 			t.Errorf("Path = %q, want %q", results[0].Path, "A/Go_Functions")

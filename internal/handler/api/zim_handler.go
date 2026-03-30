@@ -181,9 +181,9 @@ func (h *ZimHandler) Search(w http.ResponseWriter, r *http.Request) {
 
 	results, err := kiwixClient.Search(r.Context(), archiveName, query, "fulltext", limit)
 	if err != nil {
-		h.logger.Error("searching zim archive", "archive", archiveName, "query", query, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "search failed")
-		return
+		h.logger.Warn("searching zim archive", "archive", archiveName, "query", query, "error", err)
+		// Return empty results — upstream Kiwix failures are not our server error.
+		results = nil
 	}
 
 	items := make([]zimSearchResultResponse, 0, len(results))
@@ -234,9 +234,8 @@ func (h *ZimHandler) Suggest(w http.ResponseWriter, r *http.Request) {
 
 	results, err := kiwixClient.Search(r.Context(), archiveName, query, "suggest", limit)
 	if err != nil {
-		h.logger.Error("suggesting zim archive", "archive", archiveName, "query", query, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "suggest failed")
-		return
+		h.logger.Warn("suggesting zim archive", "archive", archiveName, "query", query, "error", err)
+		results = nil
 	}
 
 	items := make([]zimSearchResultResponse, 0, len(results))

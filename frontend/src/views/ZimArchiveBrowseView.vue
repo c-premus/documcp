@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { sanitizeHTML } from '@/utils/sanitize'
@@ -18,8 +18,10 @@ const currentArchive = computed(() => {
   return store.archives.find((a) => a.name === props.archive)
 })
 
-// Ensure archives are loaded so we can check has_fulltext_index.
+// Clear stale search/article state on mount and ensure archives are loaded.
 onMounted(() => {
+  store.clearSearch()
+  store.clearArticle()
   if (store.archives.length === 0) {
     store.fetchArchives().catch(() => {
       // Non-critical — search still works via /search fallback.
@@ -29,6 +31,23 @@ onMounted(() => {
 
 const searchQuery = ref('')
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+let searchGeneration = 0
+
+// Reset state when switching archives (Vue Router reuses the component).
+watch(
+  () => props.archive,
+  () => {
+    searchQuery.value = ''
+    if (searchTimer !== null) {
+      clearTimeout(searchTimer)
+      searchTimer = null
+    }
+    // Bump generation so any in-flight search response is ignored.
+    searchGeneration++
+    store.clearSearch()
+    store.clearArticle()
+  },
+)
 
 const sanitizedContent = computed(() => {
   if (store.currentArticle === null) {
@@ -57,11 +76,11 @@ function handleSearchInput(event: Event): void {
     return
   }
 
-  const usesSuggest = currentArchive.value != null && !currentArchive.value.has_fulltext_index
-
+  const gen = ++searchGeneration
   searchTimer = setTimeout(() => {
-    store.searchArticles(props.archive, searchQuery.value.trim(), 10, usesSuggest).catch(() => {
-      toast.error('Search failed')
+    if (gen !== searchGeneration) return
+    store.searchArticles(props.archive, searchQuery.value.trim(), 10).catch(() => {
+      if (gen === searchGeneration) toast.error('Search failed')
     })
   }, 300)
 }

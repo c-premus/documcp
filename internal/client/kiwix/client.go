@@ -160,7 +160,8 @@ func (c *Client) resolveContentID(ctx context.Context, archiveName string) (stri
 //
 // When fulltext is requested but the archive lacks a fulltext index, Search
 // automatically falls back to suggest (title matching) so callers always get
-// the best available results.
+// the best available results. If the chosen search type fails at runtime,
+// the other type is attempted as a last resort.
 func (c *Client) Search(ctx context.Context, archiveName, query, searchType string, limit int) ([]SearchResult, error) {
 	if searchType != "suggest" && searchType != "fulltext" {
 		return nil, fmt.Errorf("unsupported search type %q (must be suggest or fulltext)", searchType)
@@ -174,15 +175,31 @@ func (c *Client) Search(ctx context.Context, archiveName, query, searchType stri
 
 	// Auto-fallback: if fulltext was requested but the archive lacks the
 	// index, transparently switch to suggest so the caller still gets results.
-	if searchType == "fulltext" && !hasFTIndex {
+	primary := searchType
+	if primary == "fulltext" && !hasFTIndex {
 		c.logger.Debug("fulltext index not available, falling back to suggest",
 			"archive", archiveName,
 		)
-		searchType = "suggest"
+		primary = "suggest"
 	}
 
-	results, err := c.doSearch(ctx, contentID, query, searchType, limit)
-	if err != nil {
+	results, err := c.doSearch(ctx, contentID, query, primary, limit)
+	if err == nil {
+		return results, nil
+	}
+
+	// Try the other search type as a last resort.
+	fallback := "fulltext"
+	if primary == "fulltext" {
+		fallback = "suggest"
+	}
+	c.logger.Debug("search failed, trying fallback",
+		"archive", archiveName, "primary", primary, "fallback", fallback, "error", err,
+	)
+
+	results, fallbackErr := c.doSearch(ctx, contentID, query, fallback, limit)
+	if fallbackErr != nil {
+		// Return the original error — the fallback was best-effort.
 		return nil, err
 	}
 
@@ -190,6 +207,7 @@ func (c *Client) Search(ctx context.Context, archiveName, query, searchType stri
 }
 
 // doSearch performs the actual HTTP request for a search query.
+// contentID is the versioned content identifier (e.g., "100r.co_en_all_2025-09").
 func (c *Client) doSearch(ctx context.Context, contentID, query, searchType string, limit int) ([]SearchResult, error) {
 	var reqURL string
 	switch searchType {
@@ -205,6 +223,7 @@ func (c *Client) doSearch(ctx context.Context, contentID, query, searchType stri
 			"pattern":    {query},
 			"pageLength": {strconv.Itoa(limit)},
 			"content":    {contentID},
+			"format":     {"xml"},
 		}
 		reqURL = c.baseURL + "/search?" + params.Encode()
 	}
@@ -233,7 +252,7 @@ func (c *Client) doSearch(ctx context.Context, contentID, query, searchType stri
 	case "suggest":
 		return parseSuggestResponse(body)
 	default: // fulltext (validated above)
-		return parseFulltextResponse(body), nil
+		return parseFulltextResponse(body)
 	}
 }
 
@@ -437,6 +456,7 @@ func parseSuggestResponse(data []byte) ([]SearchResult, error) {
 		if s.Path == "" {
 			continue // skip pattern suggestions (no article path)
 		}
+		// Use value (clean text title); label contains HTML markup (<b> tags).
 		results = append(results, SearchResult{
 			Title: html.UnescapeString(s.Value),
 			Path:  s.Path,
@@ -446,53 +466,105 @@ func parseSuggestResponse(data []byte) ([]SearchResult, error) {
 	return results, nil
 }
 
-// Regex patterns for parsing fulltext search HTML results.
-var (
-	fulltextArticleRe = regexp.MustCompile(`<a[^>]+href="([^"]+)"[^>]*>([^<]+)</a>`)
-	fulltextSnippetRe = regexp.MustCompile(`<cite>([^<]*)</cite>`)
-)
+// searchRSSFeed is the XML structure for Kiwix fulltext search results (format=xml).
+type searchRSSFeed struct {
+	XMLName xml.Name      `xml:"rss"`
+	Channel searchChannel `xml:"channel"`
+}
 
-// parseFulltextResponse extracts search results from the Kiwix fulltext
-// search HTML page. This is a best-effort parser since the response is HTML.
-func parseFulltextResponse(data []byte) []SearchResult {
-	body := string(data)
+type searchChannel struct {
+	Items []searchItem `xml:"item"`
+}
 
-	links := fulltextArticleRe.FindAllStringSubmatch(body, -1)
-	snippets := fulltextSnippetRe.FindAllStringSubmatch(body, -1)
+type searchItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+}
+
+// parseFulltextResponse parses the XML (RSS) response from a Kiwix fulltext
+// search request (format=xml).
+func parseFulltextResponse(data []byte) ([]SearchResult, error) {
+	var feed searchRSSFeed
+	if err := xml.Unmarshal(data, &feed); err != nil {
+		return nil, fmt.Errorf("parsing search XML: %w", err)
+	}
 
 	var results []SearchResult
-	for i, match := range links {
-		if len(match) < 3 {
-			continue
-		}
-
-		// Strip the /content/{archive}/ prefix from fulltext search result hrefs.
-		// Kiwix returns hrefs like /content/archive_2025-11/path/to/article
+	for _, item := range feed.Channel.Items {
+		// Strip the /content/{archive}/ prefix from search result links.
+		// Kiwix returns links like /content/archive_2025-11/path/to/article
 		// We want just path/to/article for use in ReadArticle.
-		href := match[1]
+		href := item.Link
 		if rest, ok := strings.CutPrefix(href, "/content/"); ok {
 			if _, after, found := strings.Cut(rest, "/"); found {
 				href = after
 			}
 		}
 
-		// Skip pagination links and other non-article hrefs.
+		// Skip non-article links.
 		if strings.HasPrefix(href, "/") || strings.HasPrefix(href, "?") {
 			continue
 		}
 
-		result := SearchResult{
-			Title: strings.TrimSpace(html.UnescapeString(match[2])),
-			Path:  href,
-		}
-		if i < len(snippets) && len(snippets[i]) >= 2 {
-			result.Snippet = html.UnescapeString(snippets[i][1])
-		}
-
-		results = append(results, result)
+		title := strings.TrimSpace(item.Title)
+		results = append(results, SearchResult{
+			Title:   title,
+			Path:    href,
+			Snippet: html.UnescapeString(item.Description),
+		})
 	}
 
-	return results
+	// If all results have the same title (archive name), derive from paths.
+	if len(results) > 1 {
+		allSame := true
+		for i := 1; i < len(results); i++ {
+			if results[i].Title != results[0].Title {
+				allSame = false
+				break
+			}
+		}
+		if allSame {
+			for i := range results {
+				results[i].Title = titleFromPath(results[i].Path)
+			}
+		}
+	}
+
+	return results, nil
+}
+
+// titleFromPath derives a human-readable title from a ZIM article URL path.
+// Used as a fallback when Kiwix fulltext results show the archive name instead
+// of individual article titles.
+// Example: "100r.co/site/satellite_phone.html" → "Satellite Phone"
+func titleFromPath(path string) string {
+	// Use the last path segment.
+	if idx := strings.LastIndex(path, "/"); idx >= 0 {
+		path = path[idx+1:]
+	}
+	// Strip file extension.
+	if dot := strings.LastIndex(path, "."); dot >= 0 {
+		path = path[:dot]
+	}
+	// URL-decode (e.g. %20 → space).
+	if decoded, err := url.PathUnescape(path); err == nil {
+		path = decoded
+	}
+	// Replace underscores and hyphens with spaces.
+	path = strings.NewReplacer("_", " ", "-", " ").Replace(path)
+	// Title-case each word.
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "Untitled"
+	}
+	words := strings.Fields(path)
+	for i, w := range words {
+		if w != "" {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 // Regex patterns for HTML to plain text conversion.
