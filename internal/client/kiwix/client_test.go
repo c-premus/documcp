@@ -1190,6 +1190,173 @@ func TestSearch_ContextCanceled(t *testing.T) {
 	}
 }
 
+// --- HasFulltextIndex ---
+
+func TestHasFulltextIndex(t *testing.T) {
+	t.Run("returns true when archive has fulltext index", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = fmt.Fprint(w, catalogForArchive("devdocs-go", true))
+		}))
+		defer srv.Close()
+
+		client := newTestClient(t, srv.URL)
+		got := client.HasFulltextIndex(context.Background(), "devdocs-go")
+		if !got {
+			t.Error("expected true for archive with _ftindex:yes, got false")
+		}
+	})
+
+	t.Run("returns false when archive lacks fulltext index", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = fmt.Fprint(w, catalogForArchive("devdocs-go", false))
+		}))
+		defer srv.Close()
+
+		client := newTestClient(t, srv.URL)
+		got := client.HasFulltextIndex(context.Background(), "devdocs-go")
+		if got {
+			t.Error("expected false for archive without _ftindex:yes, got true")
+		}
+	})
+
+	t.Run("returns false when archive not found in catalog", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = fmt.Fprint(w, catalogForArchive("other-archive", true))
+		}))
+		defer srv.Close()
+
+		client := newTestClient(t, srv.URL)
+		got := client.HasFulltextIndex(context.Background(), "nonexistent")
+		if got {
+			t.Error("expected false for archive not in catalog, got true")
+		}
+	})
+
+	t.Run("returns false when catalog fetch fails", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer srv.Close()
+
+		client := newTestClient(t, srv.URL)
+		got := client.HasFulltextIndex(context.Background(), "devdocs-go")
+		if got {
+			t.Error("expected false when catalog fetch fails, got true")
+		}
+	})
+
+	t.Run("uses cached catalog on repeated calls", func(t *testing.T) {
+		callCount := 0
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			callCount++
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = fmt.Fprint(w, catalogForArchive("devdocs-go", true))
+		}))
+		defer srv.Close()
+
+		client := newTestClient(t, srv.URL)
+
+		_ = client.HasFulltextIndex(context.Background(), "devdocs-go")
+		_ = client.HasFulltextIndex(context.Background(), "devdocs-go")
+
+		if callCount != 1 {
+			t.Errorf("expected 1 HTTP call (cached), got %d", callCount)
+		}
+	})
+}
+
+// --- titleFromPath ---
+
+func TestTitleFromPath(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{
+			name: "strips extension and title-cases",
+			path: "site/satellite_phone.html",
+			want: "Satellite Phone",
+		},
+		{
+			name: "handles hyphens",
+			path: "docs/my-great-article.html",
+			want: "My Great Article",
+		},
+		{
+			name: "handles URL-encoded spaces",
+			path: "A/Hello%20World.html",
+			want: "Hello World",
+		},
+		{
+			name: "no directory prefix",
+			path: "goroutines.html",
+			want: "Goroutines",
+		},
+		{
+			name: "no extension",
+			path: "A/Channels",
+			want: "Channels",
+		},
+		{
+			name: "empty path returns Untitled",
+			path: "",
+			want: "Untitled",
+		},
+		{
+			name: "deeply nested path uses last segment",
+			path: "a/b/c/d/my_article.htm",
+			want: "My Article",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := titleFromPath(tt.path)
+			if got != tt.want {
+				t.Errorf("titleFromPath(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+// --- ReadArticle archive name validation ---
+
+func TestReadArticle_InvalidArchiveName(t *testing.T) {
+	// Server should never be called when archive name validation fails.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("server should not be called for invalid archive names")
+	}))
+	defer srv.Close()
+
+	client := newTestClient(t, srv.URL)
+
+	names := []string{
+		"",
+		"archive/traversal",
+		"archive\\traversal",
+		"archive..secret",
+		"archive\x00null",
+	}
+
+	for _, n := range names {
+		t.Run(fmt.Sprintf("rejects %q", n), func(t *testing.T) {
+			_, err := client.ReadArticle(context.Background(), n, "A/Article")
+			if err == nil {
+				t.Fatalf("expected error for archive name %q, got nil", n)
+			}
+			if !strings.Contains(err.Error(), "invalid archive name") {
+				t.Errorf("error %q should mention 'invalid archive name'", err.Error())
+			}
+		})
+	}
+}
+
+// --- Context cancellation ---
+
 func TestReadArticle_ContextCanceled(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(5 * time.Second)
