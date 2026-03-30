@@ -62,7 +62,6 @@ See `docs/OAUTH_CLIENT_GUIDE.md` for connecting AI agents and CLI tools.
 - Go 1.26.1
 - Node.js 22 (frontend)
 - PostgreSQL (with `pg_trgm` and `unaccent` extensions)
-- `poppler-utils` (PDF text extraction)
 
 ### Build and Run
 
