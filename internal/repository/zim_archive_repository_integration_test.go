@@ -17,7 +17,7 @@ import (
 func createTestExternalService(ctx context.Context, t *testing.T) *model.ExternalService {
 	t.Helper()
 
-	svcRepo := NewExternalServiceRepository(testPool, discardLogger())
+	svcRepo := NewExternalServiceRepository(testPool, discardLogger(), nil)
 	svc := &model.ExternalService{
 		UUID:      testUUID("zim-svc-001"),
 		Name:      "Test Kiwix",
