@@ -1,0 +1,23 @@
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import tailwindcss from '@tailwindcss/vite'
+import { resolve } from 'path'
+
+export default defineConfig({
+  plugins: [vue(), tailwindcss()],
+  resolve: {
+    alias: { '@': resolve(__dirname, 'src') },
+  },
+  base: '/admin/',
+  build: {
+    outDir: '../web/frontend/dist',
+    emptyOutDir: true,
+  },
+  server: {
+    proxy: {
+      '/api': 'http://localhost:8080',
+      '/auth': 'http://localhost:8080',
+      '/oauth': 'http://localhost:8080',
+    },
+  },
+})

@@ -1,0 +1,1791 @@
+{
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 0,
+  "fiscalYearStartMonth": 0,
+  "schemaVersion": 41,
+  "templating": {},
+  "annotations": {
+    "list": [
+      {
+        "name": "Annotations & Alerts",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "builtIn": 1,
+        "type": "dashboard"
+      }
+    ]
+  },
+  "title": "DocuMCP Observability",
+  "uid": "documcp-observability-v2",
+  "description": "Traces, logs, and RED metrics for the DocuMCP Go stack (database, search, worker pool)",
+  "tags": [
+    "documcp",
+    "observability",
+    "traces",
+    "go"
+  ],
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "liveNow": false,
+  "links": [
+    {
+      "title": "Explore Tempo",
+      "type": "link",
+      "icon": "bolt",
+      "tooltip": "Open Tempo in Explore mode",
+      "tags": [],
+      "asDropdown": false,
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": false,
+      "url": "/explore?orgId=1&left=%7B%22datasource%22:%22tempo%22%7D"
+    },
+    {
+      "title": "Explore Loki",
+      "type": "link",
+      "icon": "list-ul",
+      "tooltip": "Open Loki in Explore mode",
+      "tags": [],
+      "asDropdown": false,
+      "targetBlank": false,
+      "includeVars": false,
+      "keepTime": false,
+      "url": "/explore?orgId=1&left=%7B%22datasource%22:%22loki%22%7D"
+    }
+  ],
+  "panels": [
+    {
+      "type": "row",
+      "collapsed": false,
+      "id": 0,
+      "panels": [],
+      "title": "DocuMCP Service Overview (RED Metrics)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "h": 1,
+        "w": 24
+      }
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Request Rate",
+      "description": "Requests per second (server + internal spans)",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "Total"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 30,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4,
+            "axisBorderShow": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Error Rate",
+      "description": "Server errors per second",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "Errors"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 30,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4,
+            "axisBorderShow": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Request Latency",
+      "description": "P50, P95, P99 latency for server spans",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4,
+            "axisBorderShow": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "P50"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "P95"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "P99"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(traces_spanmetrics_latency_bucket{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__rate_interval])) by (le))",
+          "refId": "A",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(traces_spanmetrics_latency_bucket{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__rate_interval])) by (le))",
+          "refId": "B",
+          "legendFormat": "P95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(traces_spanmetrics_latency_bucket{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__rate_interval])) by (le))",
+          "refId": "C",
+          "legendFormat": "P99"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "collapsed": false,
+      "id": 0,
+      "panels": [],
+      "title": "Top Routes & Operations",
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "h": 1,
+        "w": 24
+      }
+    },
+    {
+      "type": "table",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Requests by Route",
+      "description": "Top routes by request rate with error % and P95 latency",
+      "gridPos": {
+        "h": 14,
+        "w": 14,
+        "x": 0,
+        "y": 10
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "topk(15, sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__range])))",
+          "refId": "A",
+          "legendFormat": "{{span_name}}",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "expr": "100 * sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\", status_code=\"STATUS_CODE_ERROR\"}[$__range])) / sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__range]))",
+          "refId": "B",
+          "legendFormat": "{{span_name}}",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__range])))",
+          "refId": "C",
+          "legendFormat": "{{span_name}}",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "span_name",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "Time 3": true
+            },
+            "renameByName": {
+              "span_name": "Route",
+              "Value #A": "Rate",
+              "Value #B": "Error %",
+              "Value #C": "P95 Latency"
+            }
+          }
+        }
+      ],
+      "options": {
+        "frameIndex": 0,
+        "showHeader": true,
+        "showTypeIcons": false,
+        "footer": {
+          "show": false,
+          "reducer": []
+        },
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Rate",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Rate"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "reqps"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Error %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "P95 Latency"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.5
+                    },
+                    {
+                      "color": "red",
+                      "value": 2
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "bargauge",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Slowest Routes (P95)",
+      "description": "Top 10 routes by P95 latency",
+      "gridPos": {
+        "h": 14,
+        "w": 10,
+        "x": 14,
+        "y": 10
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "topk(10, histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__range]))))",
+          "refId": "A",
+          "legendFormat": "{{span_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          },
+          "color": {
+            "mode": "continuous-GrYlRd"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "valueMode": "color",
+        "namePlacement": "auto",
+        "showUnfilled": true,
+        "sizing": "auto",
+        "minVizWidth": 8,
+        "minVizHeight": 10,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false,
+          "calcs": []
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "maxVizHeight": 300,
+        "orientation": "horizontal"
+      }
+    },
+    {
+      "type": "row",
+      "collapsed": false,
+      "id": 0,
+      "panels": [],
+      "title": "Dependencies (SQL, HTTP)",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "h": 1,
+        "w": 24
+      }
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "SQL Query Rate",
+      "description": "SQL operations per second by type",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 25
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 25,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_name=~\"SELECT|INSERT|UPDATE|DELETE\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{span_name}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "SQL Latency (P95)",
+      "description": "P95 latency for SQL queries by type",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 25
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"DocuMCP\", span_name=~\"SELECT|INSERT|UPDATE|DELETE\"}[$__rate_interval])))",
+          "refId": "A",
+          "legendFormat": "{{span_name}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "External HTTP Calls",
+      "description": "Outbound HTTP request rate (Kiwix, Git)",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 25
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 25,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_kind=\"SPAN_KIND_CLIENT\", span_name=~\"(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS) .+\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "HTTP calls"
+        },
+        {
+          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_name=~\"kiwix.*\"}[$__rate_interval]))",
+          "refId": "B",
+          "legendFormat": "Kiwix calls"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "collapsed": false,
+      "id": 0,
+      "panels": [],
+      "title": "Go Runtime & Application Metrics",
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "h": 1,
+        "w": 24
+      }
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "DB Connection Pool",
+      "description": "PostgreSQL connection pool: open, in-use, and idle connections",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 34
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Open"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "In Use"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Idle"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "documcp_db_open_connections",
+          "refId": "A",
+          "legendFormat": "Open"
+        },
+        {
+          "expr": "documcp_db_in_use_connections",
+          "refId": "B",
+          "legendFormat": "In Use"
+        },
+        {
+          "expr": "documcp_db_idle_connections",
+          "refId": "C",
+          "legendFormat": "Idle"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "DB Connection Wait",
+      "description": "Rate of connections waited for and cumulative wait time",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 34
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Wait rate (/s)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Wait time (s/s)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          }
+        ]
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "rate(documcp_db_wait_count_total[$__rate_interval])",
+          "refId": "A",
+          "legendFormat": "Wait rate (/s)"
+        },
+        {
+          "expr": "rate(documcp_db_wait_duration_seconds_total[$__rate_interval])",
+          "refId": "B",
+          "legendFormat": "Wait time (s/s)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Active Connections",
+      "description": "Currently active HTTP connections",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 34
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "documcp_http_active_connections",
+          "refId": "A",
+          "legendFormat": "Active"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "graphMode": "area",
+        "colorMode": "background",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "percentChangeColorMode": "standard",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Document Count",
+      "description": "Total documents managed",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 34
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "documcp_document_count",
+          "refId": "A",
+          "legendFormat": "Documents"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "graphMode": "area",
+        "colorMode": "background",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "percentChangeColorMode": "standard",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "HTTP Requests (Native)",
+      "description": "Request rate from native Prometheus counter by method and route",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 38
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (method) (rate(documcp_http_requests_total[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{method}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "MCP & Kiwix Operations",
+      "description": "MCP tool and Kiwix service operation latency (P95)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 38
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"DocuMCP\", span_name=~\"mcp.*|kiwix.*|action.zim.*\"}[$__rate_interval])))",
+          "refId": "A",
+          "legendFormat": "{{span_name}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Search Latency",
+      "description": "P50, P95, P99 search query latency",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 38
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "P50"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "P95"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "P99"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(documcp_search_latency_seconds_bucket[$__rate_interval])) by (le))",
+          "refId": "A",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(documcp_search_latency_seconds_bucket[$__rate_interval])) by (le))",
+          "refId": "B",
+          "legendFormat": "P95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(documcp_search_latency_seconds_bucket[$__rate_interval])) by (le))",
+          "refId": "C",
+          "legendFormat": "P99"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "collapsed": false,
+      "id": 0,
+      "panels": [],
+      "title": "Cross-Service Topology",
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "h": 1,
+        "w": 24
+      }
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Hop Latency (P95)",
+      "description": "P95 server-side latency for each hop in the request chain",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 43
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 25,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{client=\"DocuMCP\"}[$__rate_interval]) or rate(traces_service_graph_request_server_seconds_bucket{server=\"DocuMCP\"}[$__rate_interval])))",
+          "refId": "A",
+          "legendFormat": "{{client}} → {{server}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Edge Request Rate",
+      "description": "Request rate for each service-to-service edge in the topology",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 43
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 25,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (client, server) (rate(traces_service_graph_request_total{client=\"DocuMCP\"}[$__rate_interval]) or rate(traces_service_graph_request_total{server=\"DocuMCP\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{client}} → {{server}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Edge Error Rate",
+      "description": "Failed requests per second for each service edge",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 43
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 25,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/.*/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (client, server) (rate(traces_service_graph_request_failed_total{client=\"DocuMCP\"}[$__rate_interval]) or rate(traces_service_graph_request_failed_total{server=\"DocuMCP\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{client}} → {{server}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "collapsed": false,
+      "id": 0,
+      "panels": [],
+      "title": "Trace Explorer",
+      "gridPos": {
+        "x": 0,
+        "y": 67,
+        "h": 1,
+        "w": 24
+      }
+    },
+    {
+      "type": "table",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Recent Traces",
+      "description": "Recent traces from Tempo — click trace ID to explore",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "filters": [],
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name = \"DocuMCP\" && kind = server }",
+          "limit": 100,
+          "tableType": "spans"
+        }
+      ],
+      "options": {
+        "frameIndex": 0,
+        "showHeader": true,
+        "showTypeIcons": false,
+        "footer": {
+          "show": true,
+          "reducer": [],
+          "enablePagination": true,
+          "countRows": true
+        },
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Start Time",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Duration"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ns"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 500000000
+                    },
+                    {
+                      "color": "red",
+                      "value": 2000000000
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Trace ID"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "View Trace",
+                    "url": "/explore?orgId=1&left=%7B%22datasource%22:%22tempo%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22datasource%22:%7B%22type%22:%22tempo%22,%22uid%22:%22tempo%22%7D,%22queryType%22:%22traceql%22,%22query%22:%22${__value.raw}%22%7D%5D%7D"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "nodeGraph",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Service Map",
+      "description": "Service dependency graph for DocuMCP stack derived from Tempo service graph metrics",
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 62
+      },
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "filters": [],
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "queryType": "serviceMap"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "collapsed": false,
+      "id": 0,
+      "panels": [],
+      "title": "Logs",
+      "gridPos": {
+        "x": 0,
+        "y": 90,
+        "h": 1,
+        "w": 24
+      }
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Log Volume by Level",
+      "description": "Log lines per second grouped by severity",
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 75
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "expr": "sum by (level) (count_over_time({service_name=\"DocuMCP\"} [$__auto]))",
+          "refId": "A",
+          "legendFormat": "{{level}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "showPoints": "never"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ERROR"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "WARNING"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "INFO"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "DEBUG"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "logs",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Recent Logs",
+      "description": "DocuMCP application logs with trace correlation links",
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 81
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "expr": "{service_name=\"DocuMCP\"}",
+          "refId": "A",
+          "maxLines": 200
+        }
+      ],
+      "options": {
+        "showLabels": true,
+        "showCommonLabels": false,
+        "showTime": true,
+        "showLogContextToggle": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    }
+  ]
+}

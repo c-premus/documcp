@@ -1,0 +1,390 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+
+  enable:
+    # ─── Tier 1: Bugs & Correctness ──────────────────────────────────────────
+    - errcheck     # All returned errors must be handled
+    - govet        # go vet checks (shadow, printf, etc.)
+    - staticcheck  # Comprehensive SA/S1/QF checks (supersedes gosimple, stylecheck)
+    - unused       # Find unused exported identifiers
+    - gosec        # Security checks aligned with OWASP Top 10
+    - bodyclose    # HTTP response body must be closed
+    - nilerr       # Return nil when error variable is non-nil
+    - nilnesserr   # Incorrect nil check that returns a different nil-typed error
+    - noctx        # http.NewRequest and similar must use context-aware variants
+    - spancheck    # OpenTelemetry span.End() must be deferred; errors must be recorded
+
+    # ─── Tier 2: Code Quality & Style ────────────────────────────────────────
+    - revive       # Google Go Style Guide rules (configurable subset below)
+    - gocritic     # Diagnostic, style, and performance checks
+    - unconvert    # Remove unnecessary type conversions
+    - unparam      # Detect unused or always-same-value function parameters
+    - misspell     # Spelling errors in comments and string literals
+    - errorlint    # Correct error wrapping: errors.Is/As, %w in Errorf
+    - sloglint     # Consistent log/slog usage patterns
+    - promlinter   # Prometheus metrics naming convention (snake_case, _total suffix, etc.)
+    - modernize    # Suggest modern Go idioms available in Go 1.21+
+
+    # ─── Tier 3: Nice to Have ────────────────────────────────────────────────
+    - gocyclo      # Cyclomatic complexity — catch overly complex functions
+    - nakedret     # Naked returns in long functions reduce readability
+    - perfsprint   # Replace fmt.Sprintf with faster alternatives where possible
+    - recvcheck    # Consistent receiver type (pointer vs value) across all methods
+    - loggercheck  # Key-value pair consistency in structured logger calls
+    - ineffassign  # Detect assignments whose value is never subsequently read
+
+  settings:
+    govet:
+      enable:
+        - shadow   # Variable declared in inner scope shadows outer declaration
+        - printf   # Printf-family format string verification
+
+    gosec:
+      # No excludes: all timeout fields (ReadTimeout, WriteTimeout, ReadHeaderTimeout,
+      # IdleTimeout) are explicitly configured in internal/server/server.go DefaultConfig().
+      # G112 (slowloris: ReadHeaderTimeout not set) will not fire because it IS set.
+      config:
+        G306: "0600"  # File creation: flag anything more permissive than 0600
+
+    revive:
+      # Only the rules listed below are active. Revive ships with many more rules;
+      # unlisted ones are disabled so linter behaviour is explicit and auditable.
+      rules:
+        - name: blank-imports
+          severity: warning
+        - name: context-as-argument
+          severity: error
+        - name: context-keys-type
+          severity: error
+        - name: dot-imports
+          severity: warning
+        - name: error-return
+          severity: error
+        - name: error-strings
+          severity: warning
+        - name: error-naming
+          severity: warning
+        - name: exported
+          severity: warning
+          arguments:
+            - "checkPrivateReceivers"
+        - name: increment-decrement
+          severity: warning
+        - name: var-naming
+          severity: warning
+        - name: range
+          severity: warning
+        - name: receiver-naming
+          severity: warning
+        - name: indent-error-flow
+          severity: warning
+        - name: empty-block
+          severity: warning
+        - name: superfluous-else
+          severity: warning
+        - name: unreachable-code
+          severity: error
+        - name: redefines-builtin-id
+          severity: error
+
+    gocritic:
+      # Enable all checks tagged diagnostic, style, or performance.
+      # Individual checks are disabled via disabled-checks below with rationale.
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        # slog.Handler.Handle signature is dictated by the slog.Handler interface
+        # (Handle(context.Context, slog.Record) error). slog.Record is 288 bytes
+        # but cannot be passed by pointer without violating the interface contract.
+        - hugeParam
+
+    gocyclo:
+      min-complexity: 30  # Functions with CC > 30 warrant refactoring
+
+    nakedret:
+      max-func-lines: 30  # Bare returns in functions ≤ 30 lines are acceptable
+
+    sloglint:
+      kv-only: true  # Require "key", value pairs; ban slog.Attr helpers at call sites
+
+    perfsprint:
+      err-error: true  # fmt.Errorf(err.Error()) → errors.New(err.Error())
+      errorf: true     # fmt.Errorf("literal") without %w → errors.New("literal")
+      sprintf1: true   # fmt.Sprintf("%s", x) → simpler form
+
+    misspell:
+      locale: US
+
+    errcheck:
+      check-type-assertions: true   # t.(T) without comma-ok must be checked
+      check-blank: false            # _ = f() is an explicit, documented discard
+
+    errorlint:
+      errorf: true      # fmt.Errorf must use %w for wrappable errors
+      asserts: true     # Type assertions on errors must use errors.As
+      comparison: true  # Error comparisons must use errors.Is
+
+    promlinter:
+      strict: true  # Enforce all naming conventions, not just the most common ones
+
+  exclusions:
+    generated: lax  # Skip files marked as auto-generated (mocks, protobuf, etc.)
+
+    paths:
+      - vendor
+      - web/frontend/dist      # Compiled frontend assets embedded via go:embed; not Go code
+      - frontend/node_modules  # npm dependencies (flatted ships Go code)
+      - third_party
+
+    rules:
+      # ── Test files ────────────────────────────────────────────────────────────
+
+      # errcheck: testify assertion helpers (assert.Equal, require.NoError) return
+      # bool which callers legitimately discard.
+      - path: _test\.go
+        linters:
+          - errcheck
+
+      # gosec G107: In test code the URL is always constructed from httptest.Server.URL
+      # or a known test address — never from user-supplied input. This is a false positive.
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G107"
+
+      # gocyclo: Table-driven test functions are inherently high-cyclomatic because
+      # each test case adds a branch. Splitting them into multiple functions would
+      # reduce readability without improving correctness or safety.
+      - path: _test\.go
+        linters:
+          - gocyclo
+
+      # ── Production code (architecturally justified) ───────────────────────────
+
+      # var-naming in internal/handler/api: chi sub-router grouping uses "api" as
+      # a package name by convention. The Go spec requires package names to be
+      # lowercase; "api" is correct even though revive flags it as an initialiser
+      # abbreviation that should be "API".
+      - path: internal/handler/api/
+        linters:
+          - revive
+        text: "var-naming"
+
+      # Generated OpenAPI client and other codegen output uses patterns (deep nesting,
+      # unexported types in exported positions) that trigger gocritic and revive.
+      # We cannot modify generated output; the _gen.go suffix is the project convention.
+      - path: ".*_gen\\.go"
+        linters:
+          - gocritic
+          - revive
+
+      # gosec G302: credential.go creates a shell script (GIT_ASKPASS helper) that
+      # must be executable. The 0o700 permission is the minimum required for the
+      # script to function as a git credential helper. The file is created in a
+      # temp directory and removed immediately after use.
+      - path: internal/client/git/credential\.go
+        linters:
+          - gosec
+        text: "G302"
+
+      # gosec G204: credential_test.go tests the git credential helper by invoking
+      # real `git credential-store` and `git config` commands. The paths are test-
+      # generated temp files, not user input. The test would be meaningless without
+      # actually running git, so process launching is inherent to the test design.
+      - path: internal/client/git/credential_test\.go
+        linters:
+          - gosec
+        text: "G204"
+
+      # gosec G304: credential_test.go reads a temp file it created itself (the
+      # credential store) to verify its contents. The path is constructed from
+      # t.TempDir(), never from user input.
+      - path: internal/client/git/credential_test\.go
+        linters:
+          - gosec
+        text: "G304"
+
+      # gosec G304: The document pipeline reads uploaded files from the storage
+      # directory for text extraction. The path originates from the pipeline's own
+      # storage layer, not from user-supplied input at the point of the os.Open call.
+      - path: internal/service/document_pipeline\.go
+        linters:
+          - gosec
+        text: "G304"
+
+      # gosec G204: The git client intentionally launches `git` subprocesses (clone,
+      # fetch, ls-remote) where the remote URL is an administrator-configured value
+      # stored in the database. The PDF extractor runs `pdftotext` on uploaded files
+      # whose paths are server-controlled. Both patterns are fundamental to this
+      # application's document processing functionality; the inputs are not user-
+      # supplied at the call site.
+      - path: internal/client/git/client\.go
+        linters:
+          - gosec
+        text: "G204"
+      - path: internal/extractor/pdf/extractor\.go
+        linters:
+          - gosec
+        text: "G204"
+
+      # gosec G304: Extractors read document files from the server-controlled storage
+      # directory. The git client reads template files from local working directories
+      # it created via git clone. The document handler reads uploaded files from a
+      # controlled temp path. File reading is the core purpose of these components;
+      # the paths are not derived from unvalidated user input at the point of reading.
+      - path: internal/extractor/
+        linters:
+          - gosec
+        text: "G304"
+      - path: internal/client/git/client\.go
+        linters:
+          - gosec
+        text: "G304"
+      - path: internal/handler/api/document_handler\.go
+        linters:
+          - gosec
+        text: "G304"
+
+      # gocyclo: app.New (CC 32) and routes.RegisterRoutes (CC 37) are dependency-
+      # injection wiring functions. Their cyclomatic complexity is proportional to
+      # the number of components wired and routes registered, not to conditional
+      # logic complexity. Extracting sub-functions would not reduce true CC because
+      # each component/route still adds a branch at the call site.
+      - path: internal/app/app\.go
+        linters:
+          - gocyclo
+      - path: internal/server/routes\.go
+        linters:
+          - gocyclo
+
+      # govet shadow: Integration test setup functions use if-err shadowing in
+      # defer closures (container teardown) and in sequential error checks. This
+      # is idiomatic Go test code; the shadows are intentional short-lived names.
+      - path: _test\.go
+        linters:
+          - govet
+        text: "shadow"
+
+      # gocritic exitAfterDefer: TestMain-style setup functions register a defer
+      # for container teardown and then call log.Fatalf on startup errors.
+      # Fatalf calls os.Exit which bypasses defer — this is a known limitation of
+      # the TestMain + testcontainers pattern. The container is a throwaway CI
+      # resource; not terminating it on a startup failure is acceptable.
+      - path: _test\.go
+        linters:
+          - gocritic
+        text: "exitAfterDefer"
+
+      # noctx: httptest.NewRequest is the standard library's test utility for
+      # constructing mock HTTP requests. It implicitly uses context.Background(),
+      # which is functionally equivalent to httptest.NewRequestWithContext(context.Background(), ...).
+      # Migrating 400+ test helpers provides no safety benefit for request-mocking code.
+      - path: _test\.go
+        linters:
+          - noctx
+
+      # gosec G101: Test files legitimately contain hardcoded credentials (tokens,
+      # passwords) as test fixtures and golden values. These are not production
+      # secrets; they exist solely to verify authentication logic under test.
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G101"
+
+      # gosec G115: Integer overflow int -> rune in test helper. The value is
+      # always a small loop index ('A'+id where id < 26), making overflow impossible.
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G115"
+
+      # gosec G122: filepath.Walk in test cleanup code. Test helpers walk temp
+      # directories they created to clean up files after test runs. These paths
+      # are not user-supplied and cannot be redirected by symlink attacks in the
+      # test environment.
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G122"
+
+      # gosec G118: The fire-and-forget goroutine in BearerToken and BearerOrSession
+      # middleware intentionally uses context.Background() + a 3-second timeout.
+      # The request context (r.Context()) CANNOT be used here because the HTTP
+      # handler returns (and the request context is cancelled) before the goroutine
+      # completes. This is the correct pattern for background work that must outlive
+      # the request lifecycle.
+      - path: internal/auth/middleware/middleware\.go
+        linters:
+          - gosec
+        text: "G118"
+
+      # gosec G706: Log injection via taint analysis. The values logged here are
+      # integer IDs (int64) extracted from validated JWT tokens or database records,
+      # not user-supplied strings. Integer values cannot carry log-injection payloads.
+      # The rule fires because gosec's taint analysis conservatively traces the
+      # token struct from the HTTP request headers to the log call.
+      - path: internal/auth/middleware/middleware\.go
+        linters:
+          - gosec
+        text: "G706"
+
+      # gosec G705: XSS via taint analysis. All user-controlled values in HTML
+      # responses are escaped with html.EscapeString() before interpolation into
+      # the consent/device HTML templates. The taint analysis flags the Fprintf
+      # call because the template string itself originates in the same function,
+      # but the format arguments are all escaped.
+      - path: internal/handler/oauth/authorize\.go
+        linters:
+          - gosec
+        text: "G705"
+      - path: internal/handler/oauth/device_flow\.go
+        linters:
+          - gosec
+        text: "G705"
+
+      # gosec G705: The document download endpoint writes doc.Content.String
+      # (stored document content from the database) with a Content-Type and
+      # Content-Disposition header set from DB metadata. This endpoint is
+      # protected by admin authentication; only admins can upload documents.
+      # The false positive arises because gosec traces the content bytes to
+      # ResponseWriter.Write and assumes HTML output.
+      - path: internal/handler/api/document_handler\.go
+        linters:
+          - gosec
+        text: "G705"
+
+      # gosec G703: Path traversal via taint analysis. All file-system operations
+      # (Download, Purge, BulkPurge) validate the path against the storage root
+      # via safeStoragePath() before os.Open/os.Remove. The Analyze endpoint uses
+      # tmpFile.Name() from os.CreateTemp, not user input. gosec flags these
+      # because its taint analysis does not model the guard.
+      - path: internal/handler/api/document_handler\.go
+        linters:
+          - gosec
+        text: "G703"
+
+      # gosec G122: filepath.Walk/WalkDir callback uses the path parameter
+      # provided by the Walk implementation itself. The git client walks a
+      # repository directory it cloned to a controlled temp path; the scheduler
+      # worker walks a local filesystem path from database configuration.
+      # Migrating to os.Root (Go 1.23+) would require a significant API rewrite
+      # for a theoretical TOCTOU attack on paths the application itself created.
+      - path: internal/client/git/client\.go
+        linters:
+          - gosec
+        text: "G122"
+      - path: internal/queue/scheduler_workers\.go
+        linters:
+          - gosec
+        text: "G122"
+
+issues:
+  max-issues-per-linter: 0  # Report every issue; no per-linter cap
+  max-same-issues: 0        # Report every unique instance; no duplicate cap

@@ -1,0 +1,152 @@
+package model
+
+import (
+	"database/sql"
+	"testing"
+)
+
+func TestGitTemplate_ParseTags(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		tags    sql.NullString
+		want    []string
+		wantErr bool
+	}{
+		{
+			name: "null tags",
+			tags: sql.NullString{Valid: false},
+			want: nil,
+		},
+		{
+			name: "empty array",
+			tags: sql.NullString{String: `[]`, Valid: true},
+			want: []string{},
+		},
+		{
+			name: "multiple tags",
+			tags: sql.NullString{String: `["go","template","docker"]`, Valid: true},
+			want: []string{"go", "template", "docker"},
+		},
+		{
+			name:    "invalid JSON",
+			tags:    sql.NullString{String: `not-json`, Valid: true},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gt := &GitTemplate{Tags: tt.tags}
+			got, err := gt.ParseTags()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.want == nil {
+				if got != nil {
+					t.Fatalf("got %v, want nil", got)
+				}
+				return
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %d tags, want %d", len(got), len(tt.want))
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("tag[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestGitTemplate_ParseManifest(t *testing.T) {
+	t.Parallel()
+
+	t.Run("null manifest", func(t *testing.T) {
+		t.Parallel()
+		gt := &GitTemplate{Manifest: sql.NullString{Valid: false}}
+		var dest map[string]any
+		if err := gt.ParseManifest(&dest); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if dest != nil {
+			t.Fatal("expected nil dest")
+		}
+	})
+
+	t.Run("valid manifest", func(t *testing.T) {
+		t.Parallel()
+		gt := &GitTemplate{Manifest: sql.NullString{
+			String: `{"name":"my-template","version":"1.0"}`,
+			Valid:  true,
+		}}
+		var dest map[string]any
+		if err := gt.ParseManifest(&dest); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if dest["name"] != "my-template" {
+			t.Errorf("name = %v, want my-template", dest["name"])
+		}
+	})
+
+	t.Run("invalid JSON", func(t *testing.T) {
+		t.Parallel()
+		gt := &GitTemplate{Manifest: sql.NullString{String: `{bad`, Valid: true}}
+		var dest map[string]any
+		if err := gt.ParseManifest(&dest); err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
+func TestGitTemplateFile_ParseVariables(t *testing.T) {
+	t.Parallel()
+
+	t.Run("null variables", func(t *testing.T) {
+		t.Parallel()
+		f := &GitTemplateFile{Variables: sql.NullString{Valid: false}}
+		var dest map[string]any
+		if err := f.ParseVariables(&dest); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if dest != nil {
+			t.Fatal("expected nil dest")
+		}
+	})
+
+	t.Run("valid variables", func(t *testing.T) {
+		t.Parallel()
+		f := &GitTemplateFile{Variables: sql.NullString{
+			String: `{"PROJECT_NAME":"demo","PORT":"8080"}`,
+			Valid:  true,
+		}}
+		var dest map[string]string
+		if err := f.ParseVariables(&dest); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if dest["PROJECT_NAME"] != "demo" {
+			t.Errorf("PROJECT_NAME = %q, want demo", dest["PROJECT_NAME"])
+		}
+		if dest["PORT"] != "8080" {
+			t.Errorf("PORT = %q, want 8080", dest["PORT"])
+		}
+	})
+
+	t.Run("invalid JSON", func(t *testing.T) {
+		t.Parallel()
+		f := &GitTemplateFile{Variables: sql.NullString{String: `bad`, Valid: true}}
+		var dest map[string]any
+		if err := f.ParseVariables(&dest); err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}

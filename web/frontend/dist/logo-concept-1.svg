@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Background -->
+  <rect width="64" height="64" rx="8" fill="#1e293b"/>
+
+  <!-- Document shape with folded corner -->
+  <path d="M12 6 L38 6 L50 18 L50 56 L12 56 Z"
+        fill="#f8fafc"
+        stroke="#94a3b8"
+        stroke-width="1"/>
+
+  <!-- Folded corner -->
+  <path d="M38 6 L38 18 L50 18"
+        fill="#e2e8f0"
+        stroke="#94a3b8"
+        stroke-width="1"/>
+
+  <!-- Text lines -->
+  <line x1="18" y1="26" x2="44" y2="26" stroke="#64748b" stroke-width="2" stroke-linecap="round"/>
+  <line x1="18" y1="34" x2="38" y2="34" stroke="#64748b" stroke-width="2" stroke-linecap="round"/>
+  <line x1="18" y1="42" x2="42" y2="42" stroke="#64748b" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Connection node (MCP indicator) -->
+  <circle cx="50" cy="50" r="10" fill="#3b82f6"/>
+  <circle cx="50" cy="50" r="4" fill="#ffffff"/>
+
+  <!-- Radiating connection lines -->
+  <path d="M56 44 L60 40" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/>
+  <path d="M58 50 L62 50" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/>
+  <path d="M56 56 L60 60" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/>
+</svg>

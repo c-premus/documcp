@@ -1,0 +1,1 @@
+This is a sample text document for testing PDF extraction. It contains multiple lines and various text content.

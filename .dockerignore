@@ -1,0 +1,50 @@
+# Version control
+.git
+.gitignore
+
+# Build artifacts
+bin/
+*.test
+coverage.out
+coverage.html
+
+# Dependencies (re-downloaded in container)
+vendor/
+
+# Environment and secrets
+.env
+.env.*
+config.yaml
+config.yml
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation and project meta
+*.md
+LICENSE
+docs/
+memory-bank/
+prompts/
+.claude/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# CI/CD workflows
+.forgejo/
+.github/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Dev tooling
+.devcontainer/
+.golangci.yml

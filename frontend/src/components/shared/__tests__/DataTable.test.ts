@@ -1,0 +1,123 @@
+import { describe, it, expect } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { h, nextTick } from 'vue'
+import DataTable from '@/components/shared/DataTable.vue'
+import type { ColumnDef } from '@tanstack/vue-table'
+
+interface TestRow {
+  id: number
+  name: string
+  email: string
+}
+
+const columns: ColumnDef<TestRow, unknown>[] = [
+  { accessorKey: 'id', header: 'ID' },
+  { accessorKey: 'name', header: 'Name' },
+  { accessorKey: 'email', header: 'Email' },
+]
+
+const sampleData: TestRow[] = [
+  { id: 1, name: 'Alice', email: 'alice@example.com' },
+  { id: 2, name: 'Bob', email: 'bob@example.com' },
+]
+
+function mountTable(
+  props: Record<string, unknown> = {},
+  slots: Record<string, () => unknown> = {},
+) {
+  return mount(DataTable as ReturnType<(typeof import('vue'))['defineComponent']>, {
+    props: { data: sampleData, columns, ...props },
+    slots,
+  })
+}
+
+describe('DataTable', () => {
+  it('renders column headers from column definitions', () => {
+    const wrapper = mountTable()
+
+    const headers = wrapper.findAll('th')
+    expect(headers).toHaveLength(3)
+    expect(headers[0]!.text()).toContain('ID')
+    expect(headers[1]!.text()).toContain('Name')
+    expect(headers[2]!.text()).toContain('Email')
+  })
+
+  it('renders data rows', () => {
+    const wrapper = mountTable()
+
+    const rows = wrapper.findAll('tbody tr')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]!.text()).toContain('Alice')
+    expect(rows[0]!.text()).toContain('alice@example.com')
+    expect(rows[1]!.text()).toContain('Bob')
+  })
+
+  it('shows loading spinner when loading is true', () => {
+    const wrapper = mountTable({ loading: true })
+
+    expect(wrapper.find('.animate-spin').exists()).toBe(true)
+    expect(wrapper.find('table').exists()).toBe(false)
+  })
+
+  it('shows table when loading is false', () => {
+    const wrapper = mountTable({ loading: false })
+
+    expect(wrapper.find('.animate-spin').exists()).toBe(false)
+    expect(wrapper.find('table').exists()).toBe(true)
+  })
+
+  it('shows empty state when no data', () => {
+    const wrapper = mountTable({ data: [] })
+
+    expect(wrapper.text()).toContain('No data available.')
+  })
+
+  it('renders custom empty slot when no data', () => {
+    const wrapper = mountTable({ data: [] }, { empty: () => h('span', 'Nothing here') })
+
+    expect(wrapper.text()).toContain('Nothing here')
+  })
+
+  it('emits row-click with row data on click', async () => {
+    const wrapper = mountTable()
+
+    const firstRow = wrapper.findAll('tbody tr')[0]!
+    await firstRow.trigger('click')
+
+    expect(wrapper.emitted('row-click')).toBeTruthy()
+    expect(wrapper.emitted('row-click')![0]).toEqual([sampleData[0]])
+  })
+
+  it('shows sorting indicator after clicking a column header', async () => {
+    const wrapper = mountTable()
+
+    const firstHeader = wrapper.findAll('th')[0]!
+    await firstHeader.trigger('click')
+    await nextTick()
+    await flushPromises()
+
+    const indicator = wrapper.find('.text-indigo-600')
+    expect(indicator.exists()).toBe(true)
+    // TanStack Table defaults to descending on first click
+    expect(['↑', '↓']).toContain(indicator.text())
+  })
+
+  it('toggles sorting direction on second click', async () => {
+    const wrapper = mountTable()
+
+    const firstHeader = wrapper.findAll('th')[0]!
+    await firstHeader.trigger('click')
+    await nextTick()
+    await flushPromises()
+
+    const firstIndicator = wrapper.find('.text-indigo-600').text()
+
+    await firstHeader.trigger('click')
+    await nextTick()
+    await flushPromises()
+
+    const secondIndicator = wrapper.find('.text-indigo-600').text()
+    expect(secondIndicator).not.toBe(firstIndicator)
+    expect(['↑', '↓']).toContain(secondIndicator)
+  })
+})

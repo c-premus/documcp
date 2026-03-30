@@ -1,0 +1,73 @@
+@import 'tailwindcss';
+@plugin "@tailwindcss/forms";
+@plugin "@tailwindcss/typography";
+
+/* Enable class-based dark mode (required for manual toggle) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Semantic color tokens */
+@theme inline {
+  --color-bg-page: var(--page);
+  --color-bg-surface: var(--surface);
+  --color-bg-surface-alt: var(--surface-alt);
+  --color-bg-hover: var(--hover);
+  --color-bg-active: var(--active);
+  --color-text-primary: var(--txt-primary);
+  --color-text-secondary: var(--txt-secondary);
+  --color-text-muted: var(--txt-muted);
+  --color-text-disabled: var(--txt-disabled);
+  --color-border-default: var(--bdr);
+  --color-border-input: var(--bdr-input);
+  --color-overlay: var(--overlay);
+  --color-focus: var(--focus);
+}
+
+:root {
+  --page: #f1f5f9;
+  --surface: #ffffff;
+  --surface-alt: #f8fafc;
+  --hover: #f1f5f9;
+  --active: #e0e7ff;
+  --txt-primary: #0f172a;
+  --txt-secondary: #334155;
+  --txt-muted: #64748b;
+  --txt-disabled: #94a3b8;
+  --bdr: #e2e8f0;
+  --bdr-input: #cbd5e1;
+  --overlay: rgb(100 116 139 / 0.75);
+  --focus: #4f46e5;
+}
+
+.dark {
+  --page: #030712;
+  --surface: #111827;
+  --surface-alt: #1f2937;
+  --hover: #374151;
+  --active: #374151;
+  --txt-primary: #f3f4f6;
+  --txt-secondary: #d1d5db;
+  --txt-muted: #9ca3af;
+  --txt-disabled: #6b7280;
+  --bdr: #374151;
+  --bdr-input: #4b5563;
+  --overlay: rgb(17 24 39 / 0.8);
+  --focus: #818cf8;
+}
+
+/* Thin scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bdr-input) transparent;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
