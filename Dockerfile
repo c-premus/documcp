@@ -39,8 +39,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o /bin/documcp ./cmd/documcp
 
 # Stage 3: Runtime — Alpine with poppler-utils for PDF extraction.
-# alpine:3.21 — pinned for supply chain integrity
-FROM alpine:3.21@sha256:22e0ec13c0db6b3e1ba3280e831fc50ba7bffe58e81f31670a64b1afede247bc
+# alpine:3.22 — pinned for supply chain integrity
+FROM alpine:3.22@sha256:55ae5d250caebc548793f321534bc6a8ef1d116f334f18f4ada1b2daad3251b2
 
 # Install runtime dependencies for PDF text extraction and TLS.
 RUN apk add --no-cache poppler-utils ca-certificates \

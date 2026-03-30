@@ -34,12 +34,34 @@ func TestExtractIP_TrustedProxies(t *testing.T) {
 		want           string
 	}{
 		{
-			name:           "X-Real-IP from trusted proxy",
+			name:           "XFF takes priority over X-Real-IP",
 			xRealIP:        "203.0.113.1",
 			xff:            "203.0.113.2",
 			remoteAddr:     "10.0.0.3:12345",
 			trustedProxies: trusted,
+			want:           "203.0.113.2",
+		},
+		{
+			name:           "X-Real-IP used when no XFF",
+			xRealIP:        "203.0.113.1",
+			remoteAddr:     "10.0.0.3:12345",
+			trustedProxies: trusted,
 			want:           "203.0.113.1",
+		},
+		{
+			name:           "X-Real-IP skipped when it is a trusted proxy",
+			xRealIP:        "10.0.0.5",
+			xff:            "203.0.113.50",
+			remoteAddr:     "10.0.0.3:12345",
+			trustedProxies: trusted,
+			want:           "203.0.113.50",
+		},
+		{
+			name:           "X-Real-IP is trusted proxy and no XFF falls back to RemoteAddr",
+			xRealIP:        "10.0.0.5",
+			remoteAddr:     "10.0.0.3:12345",
+			trustedProxies: trusted,
+			want:           "10.0.0.3",
 		},
 		{
 			name:           "X-Forwarded-For from trusted proxy",

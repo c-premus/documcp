@@ -118,9 +118,9 @@ func MaxBodySize(maxBytes int64) func(http.Handler) http.Handler {
 }
 
 // RealIP returns middleware that sets r.RemoteAddr to the client's real IP
-// address. When trustedProxies is non-empty, forwarded headers (X-Real-IP,
-// X-Forwarded-For) are only honored if the direct connection originates from
-// a trusted network. When trustedProxies is empty, headers are ignored and
+// address. When trustedProxies is non-empty, forwarded headers (X-Forwarded-For,
+// X-Real-IP) are only honored if the direct connection originates from a
+// trusted network. When trustedProxies is empty, headers are ignored and
 // RemoteAddr is used as-is — secure by default.
 func RealIP(trustedProxies []*net.IPNet) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -132,9 +132,15 @@ func RealIP(trustedProxies []*net.IPNet) func(http.Handler) http.Handler {
 }
 
 // extractIP gets the client IP. When the request originates from a trusted
-// proxy (RemoteAddr falls within a trustedProxies CIDR), it checks X-Real-IP
-// and X-Forwarded-For headers. Otherwise it uses RemoteAddr only, preventing
-// IP spoofing via header manipulation.
+// proxy (RemoteAddr falls within a trustedProxies CIDR), it checks
+// X-Forwarded-For and X-Real-IP headers. Otherwise it uses RemoteAddr only,
+// preventing IP spoofing via header manipulation.
+//
+// X-Forwarded-For is checked first because reverse proxies like Traefik
+// resolve the trust chain and place the real client IP there. X-Real-IP
+// is a fallback — some proxies (e.g. Traefik) set it to the direct peer
+// (a proxy IP), not the end client. In both cases, IPs that fall within
+// trusted proxy CIDRs are skipped to avoid returning a proxy address.
 func extractIP(r *http.Request, trustedProxies []*net.IPNet) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -144,15 +150,10 @@ func extractIP(r *http.Request, trustedProxies []*net.IPNet) string {
 	if len(trustedProxies) > 0 {
 		remoteIP := net.ParseIP(host)
 		if remoteIP != nil && ipInNets(remoteIP, trustedProxies) {
-			if ip := r.Header.Get("X-Real-Ip"); ip != "" {
-				if parsed := net.ParseIP(strings.TrimSpace(ip)); parsed != nil {
-					return parsed.String()
-				}
-			}
+			// X-Forwarded-For: walk right-to-left, skip trusted proxies.
+			// The first untrusted IP is the real client. This prevents
+			// spoofing via attacker-prepended entries at the front.
 			if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-				// Walk from rightmost (most recent proxy) to leftmost,
-				// skipping trusted proxy IPs. The first untrusted IP is
-				// the real client. Prevents spoofing via prepended headers.
 				ips := strings.Split(xff, ",")
 				for i := len(ips) - 1; i >= 0; i-- {
 					candidate := strings.TrimSpace(ips[i])
@@ -160,6 +161,16 @@ func extractIP(r *http.Request, trustedProxies []*net.IPNet) string {
 					if parsed == nil {
 						continue
 					}
+					if !ipInNets(parsed, trustedProxies) {
+						return parsed.String()
+					}
+				}
+			}
+			// X-Real-IP fallback: only use if the value is not a
+			// trusted proxy. Some reverse proxies set X-Real-IP to
+			// the direct peer rather than the resolved client IP.
+			if ip := r.Header.Get("X-Real-Ip"); ip != "" {
+				if parsed := net.ParseIP(strings.TrimSpace(ip)); parsed != nil {
 					if !ipInNets(parsed, trustedProxies) {
 						return parsed.String()
 					}
