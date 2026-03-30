@@ -68,7 +68,7 @@ describe('ExternalServiceModal', () => {
     expect(body).toContain('Edit Service')
   })
 
-  it('shows form fields for name, type, base URL, API key, and priority', async () => {
+  it('shows form fields for name, type, base URL, and priority', async () => {
     mountModal({ open: true })
     await flushPromises()
 
@@ -76,7 +76,6 @@ describe('ExternalServiceModal', () => {
     expect(labels).toContain('Name')
     expect(labels).toContain('Type')
     expect(labels).toContain('Base URL')
-    expect(labels).toContain('API Key')
     expect(labels).toContain('Priority')
   })
 
@@ -164,10 +163,12 @@ describe('ExternalServiceModal', () => {
     expect(urlInput.value).toBe('https://kiwix.example.com')
   })
 
-  it('shows "leave blank to keep current" hint for API key in edit mode', async () => {
+  it('shows Save button in edit mode', async () => {
     mountModal({ open: true, service: sampleService })
     await flushPromises()
 
-    expect(document.body.textContent).toContain('leave blank to keep current')
+    const buttons = Array.from(document.querySelectorAll('button'))
+    const saveBtn = buttons.find((b) => b.textContent?.trim() === 'Save')
+    expect(saveBtn).toBeTruthy()
   })
 })

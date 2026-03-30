@@ -5,6 +5,7 @@ import { useZimArchivesStore } from '@/stores/zimArchives'
 import { useGitTemplatesStore } from '@/stores/gitTemplates'
 import { useExternalServicesStore } from '@/stores/externalServices'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useQueueStore } from '@/stores/queue'
 import { toast } from 'vue-sonner'
 
 const schedulerMessages: Record<string, string> = {
@@ -13,9 +14,7 @@ const schedulerMessages: Record<string, string> = {
   cleanup_oauth_tokens: 'OAuth token cleanup completed',
   health_check_services: 'Service health checks completed',
   cleanup_orphaned_files: 'Orphaned files cleanup completed',
-  verify_search_indexes: 'Search index verification completed',
   purge_soft_deleted: 'Soft-deleted records purged',
-  cleanup_zim_archives: 'ZIM archive cleanup completed',
 }
 
 export function useDocumentEvents() {
@@ -25,6 +24,7 @@ export function useDocumentEvents() {
   const gitTemplates = useGitTemplatesStore()
   const externalServices = useExternalServicesStore()
   const notifications = useNotificationsStore()
+  const queue = useQueueStore()
   const cleanups: Array<() => void> = []
 
   function start() {
@@ -32,28 +32,35 @@ export function useDocumentEvents() {
       sseStore.on('job.completed', (event) => {
         notifications.addEvent(event)
 
-        if (event.job_kind === 'document_extract' || event.job_kind === 'document_index') {
-          toast.success(
-            event.job_kind === 'document_extract'
-              ? 'Document extracted successfully'
-              : 'Document indexed successfully',
-          )
+        if (event.job_kind === 'document_extract') {
+          toast.success('Document extracted successfully')
           documents.refreshCurrent()
-          if (documents.documents.length > 0) {
+          if (documents.loaded) {
             documents.fetchDocuments()
           }
         }
 
-        if (event.job_kind === 'sync_kiwix' && zimArchives.archives.length > 0) {
-          zimArchives.fetchArchives()
+        if (event.job_kind === 'sync_kiwix') {
+          if (zimArchives.loaded) {
+            zimArchives.fetchArchives()
+          }
+          if (externalServices.loaded) {
+            externalServices.fetchServices()
+          }
         }
 
-        if (event.job_kind === 'sync_git_templates' && gitTemplates.templates.length > 0) {
-          gitTemplates.fetchTemplates()
+        if (event.job_kind === 'sync_git_templates') {
+          if (gitTemplates.loaded) {
+            gitTemplates.fetchTemplates()
+          }
         }
 
-        if (event.job_kind === 'health_check_services' && externalServices.services.length > 0) {
+        if (event.job_kind === 'health_check_services' && externalServices.loaded) {
           externalServices.fetchServices()
+        }
+
+        if (queue.stats !== null) {
+          queue.fetchStats()
         }
 
         const schedulerMsg = schedulerMessages[event.job_kind]
@@ -69,9 +76,14 @@ export function useDocumentEvents() {
 
         if (event.job_kind.startsWith('document_')) {
           toast.error(`Document processing failed: ${event.error ?? 'Unknown error'}`)
-          if (documents.documents.length > 0) {
+          if (documents.loaded) {
             documents.fetchDocuments()
           }
+        }
+
+        if (queue.stats !== null) {
+          queue.fetchStats()
+          queue.fetchFailedJobs()
         }
       }),
     )

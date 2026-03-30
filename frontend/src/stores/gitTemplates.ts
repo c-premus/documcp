@@ -167,6 +167,7 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
   const templates = ref<GitTemplate[]>([])
   const total = ref(0)
   const loading = ref(false)
+  const loaded = ref(false)
   const error = ref<string | null>(null)
 
   async function fetchTemplates(params?: ListParams): Promise<ListResponse> {
@@ -181,6 +182,7 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
       const response = await apiFetch<ListResponse>(`/api/git-templates${query}`)
       templates.value = response.data
       total.value = response.meta.total
+      loaded.value = true
       return response
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch git templates'
@@ -199,6 +201,8 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
       })
+      templates.value = [response.data, ...templates.value]
+      total.value += 1
       return response.data
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to create git template'
@@ -276,6 +280,10 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
       })
+      const index = templates.value.findIndex((t) => t.uuid === uuid)
+      if (index !== -1) {
+        templates.value[index] = response.data
+      }
       return response.data
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to update git template'
@@ -298,6 +306,7 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
     templates,
     total,
     loading,
+    loaded,
     error,
     fetchTemplates,
     createTemplate,

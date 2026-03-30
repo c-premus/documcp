@@ -69,6 +69,7 @@ export const useZimArchivesStore = defineStore('zimArchives', () => {
   const currentArticle = ref<ZimArticle | null>(null)
   const searchResults = ref<ZimSearchResult[]>([])
   const loading = ref(false)
+  const loaded = ref(false)
   const searchLoading = ref(false)
   const articleLoading = ref(false)
   const error = ref<string | null>(null)
@@ -87,6 +88,7 @@ export const useZimArchivesStore = defineStore('zimArchives', () => {
       const response = await apiFetch<ListResponse>(`/api/zim/archives${query}`)
       archives.value = response.data
       total.value = response.meta.total
+      loaded.value = true
       return response
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch ZIM archives'
@@ -151,6 +153,7 @@ export const useZimArchivesStore = defineStore('zimArchives', () => {
     currentArticle,
     searchResults,
     loading,
+    loaded,
     searchLoading,
     articleLoading,
     error,

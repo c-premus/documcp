@@ -70,6 +70,7 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
   const services = ref<ExternalService[]>([])
   const total = ref(0)
   const loading = ref(false)
+  const loaded = ref(false)
   const error = ref<string | null>(null)
 
   async function fetchServices(params?: ListParams): Promise<ListResponse> {
@@ -85,6 +86,7 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
       const response = await apiFetch<ListResponse>(`/api/external-services${query}`)
       services.value = response.data
       total.value = response.meta.total
+      loaded.value = true
       return response
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch external services'
@@ -103,6 +105,8 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
+      services.value = [response.data, ...services.value]
+      total.value += 1
       return response.data
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to create service'
@@ -205,6 +209,7 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
     services,
     total,
     loading,
+    loaded,
     error,
     fetchServices,
     createService,
