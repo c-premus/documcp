@@ -101,7 +101,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 
 	// --- Repositories ---
 	documentRepo := repository.NewDocumentRepository(pgxPool, logger)
-	externalServiceRepo := repository.NewExternalServiceRepository(pgxPool, logger)
+	externalServiceRepo := repository.NewExternalServiceRepository(pgxPool, logger, encryptor)
 	zimArchiveRepo := repository.NewZimArchiveRepository(pgxPool, logger)
 	gitTemplateRepo := repository.NewGitTemplateRepository(pgxPool, logger, encryptor)
 	searchQueryRepo := repository.NewSearchQueryRepository(pgxPool, logger)

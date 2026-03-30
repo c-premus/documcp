@@ -9,19 +9,21 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/c-premus/documcp/internal/crypto"
 	"github.com/c-premus/documcp/internal/database"
 	"github.com/c-premus/documcp/internal/model"
 )
 
 // ExternalServiceRepository handles external service persistence.
 type ExternalServiceRepository struct {
-	db     *pgxpool.Pool
-	logger *slog.Logger
+	db        *pgxpool.Pool
+	logger    *slog.Logger
+	encryptor *crypto.Encryptor // nil disables encryption
 }
 
 // NewExternalServiceRepository creates a new ExternalServiceRepository.
-func NewExternalServiceRepository(db *pgxpool.Pool, logger *slog.Logger) *ExternalServiceRepository {
-	return &ExternalServiceRepository{db: db, logger: logger}
+func NewExternalServiceRepository(db *pgxpool.Pool, logger *slog.Logger, enc *crypto.Encryptor) *ExternalServiceRepository {
+	return &ExternalServiceRepository{db: db, logger: logger, encryptor: enc}
 }
 
 // FindAllEnabled returns all enabled external services regardless of type.
@@ -31,6 +33,7 @@ func (r *ExternalServiceRepository) FindAllEnabled(ctx context.Context) ([]model
 	if err != nil {
 		return nil, fmt.Errorf("finding all enabled external services: %w", err)
 	}
+	r.decryptAPIKeys(services)
 	return services, nil
 }
 
@@ -41,6 +44,7 @@ func (r *ExternalServiceRepository) FindEnabledByType(ctx context.Context, servi
 	if err != nil {
 		return nil, fmt.Errorf("finding enabled external services by type %s: %w", serviceType, err)
 	}
+	r.decryptAPIKeys(services)
 	return services, nil
 }
 
@@ -51,6 +55,7 @@ func (r *ExternalServiceRepository) FindByUUID(ctx context.Context, uuid string)
 	if err != nil {
 		return nil, fmt.Errorf("finding external service by uuid %s: %w", uuid, err)
 	}
+	r.decryptAPIKey(&svc)
 	return &svc, nil
 }
 
@@ -61,6 +66,7 @@ func (r *ExternalServiceRepository) FindBySlug(ctx context.Context, slug string)
 	if err != nil {
 		return nil, fmt.Errorf("finding external service by slug %s: %w", slug, err)
 	}
+	r.decryptAPIKey(&svc)
 	return &svc, nil
 }
 
@@ -108,13 +114,18 @@ func (r *ExternalServiceRepository) List(ctx context.Context, serviceType, statu
 	if err != nil {
 		return nil, 0, fmt.Errorf("listing external services: %w", err)
 	}
+	r.decryptAPIKeys(services)
 
 	return services, total, nil
 }
 
 // Create inserts a new external service and sets the generated ID on svc.
 func (r *ExternalServiceRepository) Create(ctx context.Context, svc *model.ExternalService) error {
-	err := r.db.QueryRow(ctx,
+	apiKey, err := r.encryptAPIKey(svc.APIKey)
+	if err != nil {
+		return err
+	}
+	err = r.db.QueryRow(ctx,
 		`INSERT INTO external_services (
 			uuid, name, slug, type, base_url, api_key, config,
 			priority, status, is_enabled, is_env_managed,
@@ -124,7 +135,7 @@ func (r *ExternalServiceRepository) Create(ctx context.Context, svc *model.Exter
 			$8, $9, $10, $11,
 			NOW(), NOW()
 		) RETURNING id, created_at, updated_at`,
-		svc.UUID, svc.Name, svc.Slug, svc.Type, svc.BaseURL, svc.APIKey, svc.Config,
+		svc.UUID, svc.Name, svc.Slug, svc.Type, svc.BaseURL, apiKey, svc.Config,
 		svc.Priority, svc.Status, svc.IsEnabled, svc.IsEnvManaged,
 	).Scan(&svc.ID, &svc.CreatedAt, &svc.UpdatedAt)
 	if err != nil {
@@ -135,12 +146,16 @@ func (r *ExternalServiceRepository) Create(ctx context.Context, svc *model.Exter
 
 // Update updates an existing external service by its ID.
 func (r *ExternalServiceRepository) Update(ctx context.Context, svc *model.ExternalService) error {
+	apiKey, err := r.encryptAPIKey(svc.APIKey)
+	if err != nil {
+		return err
+	}
 	tag, err := r.db.Exec(ctx,
 		`UPDATE external_services SET
 			name = $1, slug = $2, base_url = $3, api_key = $4, config = $5,
 			priority = $6, is_enabled = $7, updated_at = NOW()
 		WHERE id = $8`,
-		svc.Name, svc.Slug, svc.BaseURL, svc.APIKey, svc.Config,
+		svc.Name, svc.Slug, svc.BaseURL, apiKey, svc.Config,
 		svc.Priority, svc.IsEnabled, svc.ID,
 	)
 	if err != nil {
@@ -197,6 +212,38 @@ func (r *ExternalServiceRepository) ReorderPriorities(ctx context.Context, servi
 		return fmt.Errorf("committing reorder transaction: %w", err)
 	}
 	return nil
+}
+
+// encryptAPIKey encrypts an API key for storage.
+func (r *ExternalServiceRepository) encryptAPIKey(apiKey sql.NullString) (sql.NullString, error) {
+	if !apiKey.Valid || apiKey.String == "" {
+		return apiKey, nil
+	}
+	enc, err := r.encryptor.Encrypt(apiKey.String)
+	if err != nil {
+		return sql.NullString{}, fmt.Errorf("encrypting api key: %w", err)
+	}
+	return sql.NullString{String: enc, Valid: true}, nil
+}
+
+// decryptAPIKey decrypts an API key after loading from the database.
+func (r *ExternalServiceRepository) decryptAPIKey(svc *model.ExternalService) {
+	if !svc.APIKey.Valid || svc.APIKey.String == "" {
+		return
+	}
+	dec, err := r.encryptor.Decrypt(svc.APIKey.String)
+	if err != nil {
+		r.logger.Warn("decrypting api key (may be plaintext)", "service_id", svc.ID, "error", err)
+		return
+	}
+	svc.APIKey.String = dec
+}
+
+// decryptAPIKeys decrypts API keys in a slice of services.
+func (r *ExternalServiceRepository) decryptAPIKeys(services []model.ExternalService) {
+	for i := range services {
+		r.decryptAPIKey(&services[i])
+	}
 }
 
 // UpdateHealthStatus updates health-related fields for an external service.

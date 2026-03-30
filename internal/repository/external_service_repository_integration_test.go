@@ -16,7 +16,7 @@ import (
 func TestExternalServiceRepository_CreateAndFind(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger())
+	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
 
 	svc := &model.ExternalService{
 		UUID:         testUUID("create-find-001"),
@@ -85,7 +85,7 @@ func TestExternalServiceRepository_CreateAndFind(t *testing.T) {
 func TestExternalServiceRepository_FindEnabledByType(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger())
+	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
 
 	services := []model.ExternalService{
 		{
@@ -180,7 +180,7 @@ func TestExternalServiceRepository_FindEnabledByType(t *testing.T) {
 func TestExternalServiceRepository_List(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger())
+	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
 
 	services := []model.ExternalService{
 		{
@@ -309,7 +309,7 @@ func TestExternalServiceRepository_List(t *testing.T) {
 func TestExternalServiceRepository_Update(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger())
+	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
 
 	svc := &model.ExternalService{
 		UUID:      testUUID("update-001"),
@@ -349,7 +349,7 @@ func TestExternalServiceRepository_Update(t *testing.T) {
 func TestExternalServiceRepository_Delete(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger())
+	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
 
 	svc := &model.ExternalService{
 		UUID:      testUUID("delete-001"),
@@ -378,7 +378,7 @@ func TestExternalServiceRepository_Delete(t *testing.T) {
 func TestExternalServiceRepository_FindAllEnabled(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger())
+	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
 
 	// Insert services: 2 enabled (different types), 1 disabled.
 	enabledKiwix := &model.ExternalService{
@@ -460,7 +460,7 @@ func TestExternalServiceRepository_FindAllEnabled(t *testing.T) {
 func TestExternalServiceRepository_UpdateHealthStatus(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger())
+	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
 
 	svc := &model.ExternalService{
 		UUID:      testUUID("health-001"),
@@ -537,7 +537,7 @@ func TestExternalServiceRepository_UpdateHealthStatus(t *testing.T) {
 func TestExternalServiceRepository_Count(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger())
+	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
 
 	t.Run("empty table", func(t *testing.T) {
 		count, err := repo.Count(ctx)
@@ -596,7 +596,7 @@ func TestExternalServiceRepository_Count(t *testing.T) {
 func TestExternalServiceRepository_ReorderPriorities(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger())
+	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
 
 	// Create 3 services with default priority 0.
 	svc1 := &model.ExternalService{

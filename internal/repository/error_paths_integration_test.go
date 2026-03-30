@@ -47,7 +47,7 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 	})
 
 	t.Run("ExternalServiceRepository", func(t *testing.T) {
-		repo := NewExternalServiceRepository(testPool, logger)
+		repo := NewExternalServiceRepository(testPool, logger, nil)
 
 		svc := &model.ExternalService{UUID: testUUID("err-svc-001"), Name: "Err", Slug: "err", Type: "kiwix", BaseURL: "https://x.com", Status: "unknown"}
 		assert.Error(t, repo.Create(ctx, svc))
