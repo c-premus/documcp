@@ -94,7 +94,7 @@ watch(
           leave-to="-translate-x-full"
         >
           <DialogPanel
-            class="relative flex w-72 max-w-[85vw] flex-col bg-bg-surface border-r border-border-default"
+            class="relative flex w-72 max-w-[85vw] flex-col bg-bg-surface-alt border-r border-border-default"
           >
             <!-- Drawer header row -->
             <div class="flex items-center justify-between px-4 py-4 border-b border-border-default">
@@ -231,7 +231,7 @@ watch(
   <!-- Desktop Sidebar -->
   <nav
     aria-label="Main navigation"
-    class="hidden lg:flex w-64 fixed top-16 bottom-0 left-0 bg-bg-surface border-r border-border-default flex-col"
+    class="hidden lg:flex w-64 fixed top-16 bottom-0 left-0 bg-bg-surface-alt border-r border-border-default flex-col"
   >
     <div class="flex-1 overflow-y-auto py-4">
       <!-- Main -->

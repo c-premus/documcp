@@ -21,7 +21,7 @@ const logoSrc = `${import.meta.env.BASE_URL}logo-concept-1-transparent.svg`
 
 <template>
   <header
-    class="fixed top-0 left-0 right-0 z-20 h-16 bg-bg-surface border-b border-border-default px-4"
+    class="fixed top-0 left-0 right-0 z-20 h-16 bg-bg-surface-alt border-b-2 border-indigo-500/20 dark:border-indigo-400/15 px-4"
   >
     <div class="flex h-full items-center justify-between">
       <div class="flex items-center gap-3">

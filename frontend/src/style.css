@@ -23,18 +23,18 @@
 }
 
 :root {
-  --page: #f9fafb;
+  --page: #f1f5f9;
   --surface: #ffffff;
-  --surface-alt: #f9fafb;
-  --hover: #f9fafb;
-  --active: #f3f4f6;
-  --txt-primary: #111827;
-  --txt-secondary: #374151;
-  --txt-muted: #6b7280;
-  --txt-disabled: #9ca3af;
-  --bdr: #e5e7eb;
-  --bdr-input: #d1d5db;
-  --overlay: rgb(107 114 128 / 0.75);
+  --surface-alt: #f8fafc;
+  --hover: #f1f5f9;
+  --active: #e0e7ff;
+  --txt-primary: #0f172a;
+  --txt-secondary: #334155;
+  --txt-muted: #64748b;
+  --txt-disabled: #94a3b8;
+  --bdr: #e2e8f0;
+  --bdr-input: #cbd5e1;
+  --overlay: rgb(100 116 139 / 0.75);
   --focus: #4f46e5;
 }
 
