@@ -17,4 +17,7 @@ var (
 	// ErrEnvManaged indicates the resource is managed by environment configuration
 	// and cannot be modified or deleted via the API.
 	ErrEnvManaged = errors.New("env-managed resource cannot be modified")
+
+	// ErrInvalidURL indicates the provided URL failed validation (e.g. SSRF check).
+	ErrInvalidURL = errors.New("invalid URL")
 )

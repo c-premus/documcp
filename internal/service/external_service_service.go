@@ -109,7 +109,7 @@ func (s *ExternalServiceService) FindByUUID(ctx context.Context, svcUUID string)
 // Create creates a new external service with a generated UUID and slug.
 func (s *ExternalServiceService) Create(ctx context.Context, params CreateExternalServiceParams) (*model.ExternalService, error) {
 	if err := security.ValidateExternalURL(params.BaseURL, true); err != nil {
-		return nil, fmt.Errorf("base URL validation: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidURL, err)
 	}
 
 	svc := &model.ExternalService{
@@ -155,7 +155,7 @@ func (s *ExternalServiceService) Update(ctx context.Context, svcUUID string, par
 	}
 	if params.BaseURL != "" {
 		if err = security.ValidateExternalURL(params.BaseURL, true); err != nil {
-			return nil, fmt.Errorf("base URL validation: %w", err)
+			return nil, fmt.Errorf("%w: %w", ErrInvalidURL, err)
 		}
 		svc.BaseURL = params.BaseURL
 	}

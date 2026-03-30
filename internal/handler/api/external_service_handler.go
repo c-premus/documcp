@@ -157,6 +157,10 @@ func (h *ExternalServiceHandler) Create(w http.ResponseWriter, r *http.Request) 
 		Priority: body.Priority,
 	})
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidURL) {
+			errorResponse(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
 		h.logger.Error("creating external service", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to create external service")
 		return
@@ -206,6 +210,10 @@ func (h *ExternalServiceHandler) Update(w http.ResponseWriter, r *http.Request) 
 		IsEnabled: body.IsEnabled,
 	})
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidURL) {
+			errorResponse(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
 		h.logger.Error("updating external service", "uuid", svcUUID, "error", err)
 		if errors.Is(err, service.ErrNotFound) {
 			errorResponse(w, http.StatusNotFound, "external service not found")
