@@ -1207,24 +1207,16 @@ Only S256 is supported. The `plain` method is rejected.
 
 | Component | Path |
 |-----------|------|
-| Controller | `app/Http/Controllers/Auth/OAuthAuthorizationServerController.php` |
-| Registration request | `app/Http/Requests/OAuth/ClientRegistrationRequest.php` |
-| Authorize request | `app/Http/Requests/OAuth/AuthorizeRequest.php` |
-| Approve request | `app/Http/Requests/OAuth/AuthorizeApproveRequest.php` |
-| Token request | `app/Http/Requests/OAuth/TokenRequest.php` |
-| Revoke request | `app/Http/Requests/OAuth/RevokeRequest.php` |
-| Device auth request | `app/Http/Requests/OAuth/DeviceAuthorizationRequest.php` |
-| Device verify request | `app/Http/Requests/OAuth/DeviceVerifyRequest.php` |
-| Device approve request | `app/Http/Requests/OAuth/DeviceApproveRequest.php` |
-| Register client action | `app/Actions/OAuth/RegisterOAuthClientAction.php` |
-| Generate auth code action | `app/Actions/OAuth/GenerateAuthorizationCodeAction.php` |
-| Exchange auth code action | `app/Actions/OAuth/ExchangeAuthorizationCodeAction.php` |
-| Refresh token action | `app/Actions/OAuth/RefreshAccessTokenAction.php` |
-| Revoke token action | `app/Actions/OAuth/RevokeTokenAction.php` |
-| Validate PKCE action | `app/Actions/OAuth/ValidatePKCEAction.php` |
-| Generate device code action | `app/Actions/OAuth/GenerateDeviceCodeAction.php` |
-| Authorize device code action | `app/Actions/OAuth/AuthorizeDeviceCodeAction.php` |
-| Exchange device code action | `app/Actions/OAuth/ExchangeDeviceCodeAction.php` |
-| Token hashing service | `app/Services/TokenHashingService.php` |
-| OAuth configuration | `config/documcp.php` (oauth section) |
-| Routes | `routes/web.php` |
+| OAuth handler (shared) | `internal/handler/oauth/handler.go` |
+| Authorize handler | `internal/handler/oauth/authorize.go` |
+| Token handler | `internal/handler/oauth/token.go` |
+| Revoke handler | `internal/handler/oauth/revoke.go` |
+| Registration handler | `internal/handler/oauth/register.go` |
+| Device flow handler | `internal/handler/oauth/device_flow.go` |
+| OAuth actions (auth code, refresh, PKCE) | `internal/auth/oauth/actions.go` |
+| Token generation and hashing | `internal/auth/oauth/token.go` |
+| PKCE validation | `internal/auth/oauth/pkce.go` |
+| Device code actions | `internal/auth/oauth/device.go` |
+| Redirect URI validation | `internal/auth/oauth/redirect.go` |
+| OAuth configuration | `internal/config/config.go` (OAuthConfig) |
+| Routes | `internal/server/routes.go` |
