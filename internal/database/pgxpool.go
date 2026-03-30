@@ -8,8 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// NewPgxPool creates a pgx connection pool for use with River queue.
-// It runs alongside the existing sqlx.DB; both connect to the same Postgres instance.
+// NewPgxPool creates the primary database connection pool for all database access.
 func NewPgxPool(ctx context.Context, dsn string, maxConns, minConns int32, maxConnLifetime, maxConnIdleTime time.Duration) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {

@@ -19,15 +19,15 @@ import (
 // ---------------------------------------------------------------------------
 // SearchHandler tests
 //
-// The SearchHandler depends on *search.Searcher which wraps a concrete
-// *search.Client (Meilisearch). Since we cannot mock the Meilisearch
-// ServiceManager without a real server, we test the early-return error paths
-// (parameter validation) and the response format logic.
+// The SearchHandler depends on *search.Searcher which wraps the PostgreSQL FTS
+// backend. Since we cannot mock the search backend without a real database, we
+// test the early-return error paths (parameter validation) and the response
+// format logic.
 // ---------------------------------------------------------------------------
 
 func newTestSearchHandler() *SearchHandler {
 	return &SearchHandler{
-		searcher:    nil, // will cause panic if Search/FederatedSearch reaches Meilisearch call
+		searcher:    nil, // will cause panic if Search/FederatedSearch reaches the search backend
 		queryLister: nil,
 		suggester:   nil,
 		logger:      slog.New(slog.DiscardHandler),
@@ -269,7 +269,7 @@ func TestSearchHandler_FederatedSearch(t *testing.T) {
 
 	// The following tests exercise the types-filter parsing and limit/offset
 	// clamping logic. All valid-query paths reach h.searcher.FederatedSearch
-	// which panics because the searcher is nil (no real Meilisearch available).
+	// which panics because the searcher is nil (no real search backend available).
 	// We use recover() to confirm the code reached the searcher (validation
 	// passed) rather than returning a 400 early.
 

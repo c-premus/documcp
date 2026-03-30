@@ -337,10 +337,10 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 	t.Parallel()
 	ctx := ctxWithAdminUser()
 
-	t.Run("merges Meilisearch and Kiwix results sorted by score", func(t *testing.T) {
+	t.Run("merges search and Kiwix results sorted by score", func(t *testing.T) {
 		t.Parallel()
 
-		// Meilisearch returns a high-score document hit.
+		// Search returns a high-score document hit.
 		s := &mockSearcher{
 			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
 				return &search.FederatedSearchResponse{
@@ -492,13 +492,13 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 		}
 	})
 
-	t.Run("with types=zim_article only skips Meilisearch", func(t *testing.T) {
+	t.Run("with types=zim_article only skips search", func(t *testing.T) {
 		t.Parallel()
 
-		meiliCalled := false
+		searchCalled := false
 		s := &mockSearcher{
 			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
-				meiliCalled = true
+				searchCalled = true
 				return &search.FederatedSearchResponse{}, nil
 			},
 		}
@@ -542,8 +542,8 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if meiliCalled {
-			t.Error("Meilisearch FederatedSearch was called despite types=[zim_article]")
+		if searchCalled {
+			t.Error("FederatedSearch was called despite types=[zim_article]")
 		}
 		if !resp.Success {
 			t.Fatal("expected Success=true")
@@ -614,9 +614,9 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 	})
 }
 
-// ===== Meilisearch-based archive selection tests =====
+// ===== FTS-based archive selection tests =====
 
-func TestSearchKiwixArchives_MeilisearchSelection(t *testing.T) {
+func TestSearchKiwixArchives_FTSSelection(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
@@ -631,7 +631,7 @@ func TestSearchKiwixArchives_MeilisearchSelection(t *testing.T) {
 		}
 	}
 
-	t.Run("selects archives via meilisearch", func(t *testing.T) {
+	t.Run("selects archives via FTS", func(t *testing.T) {
 		t.Parallel()
 
 		var searchedArchives sync.Map
@@ -703,7 +703,7 @@ func TestSearchKiwixArchives_MeilisearchSelection(t *testing.T) {
 		}
 	})
 
-	t.Run("falls back when meilisearch returns no hits", func(t *testing.T) {
+	t.Run("falls back when FTS returns no hits", func(t *testing.T) {
 		t.Parallel()
 
 		var callCount atomic.Int32
@@ -787,7 +787,7 @@ func TestSearchKiwixArchives_MeilisearchSelection(t *testing.T) {
 
 		_, searched := h.searchKiwixArchives(ctx, "test query", 3)
 
-		// All 3 archives should be searched (no Meilisearch filtering).
+		// All 3 archives should be searched (no FTS filtering).
 		if len(searched) != 3 {
 			t.Errorf("expected 3 archives searched, got %d: %v", len(searched), searched)
 		}
@@ -855,7 +855,7 @@ func TestSearchKiwixArchives_MeilisearchSelection(t *testing.T) {
 		}
 	})
 
-	t.Run("falls back on meilisearch error", func(t *testing.T) {
+	t.Run("falls back on search error", func(t *testing.T) {
 		t.Parallel()
 
 		var callCount atomic.Int32
@@ -877,7 +877,7 @@ func TestSearchKiwixArchives_MeilisearchSelection(t *testing.T) {
 			kiwixC: mc,
 			searcher: &mockSearcher{
 				searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
-					return nil, errors.New("meilisearch unavailable")
+					return nil, errors.New("search unavailable")
 				},
 			},
 			zimRepo: &mockZimArchiveRepo{

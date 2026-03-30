@@ -441,7 +441,7 @@ func TestHandleCrossSourceResearch(t *testing.T) {
 			name: "with all arguments",
 			args: map[string]string{
 				"topic":   "observability best practices",
-				"sources": "documents,zim,confluence",
+				"sources": "documents,zim,git",
 				"depth":   "deep",
 			},
 		},

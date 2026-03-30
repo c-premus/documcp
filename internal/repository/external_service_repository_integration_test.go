@@ -20,10 +20,10 @@ func TestExternalServiceRepository_CreateAndFind(t *testing.T) {
 
 	svc := &model.ExternalService{
 		UUID:         testUUID("create-find-001"),
-		Name:         "Test Confluence",
-		Slug:         "test-confluence",
-		Type:         "confluence",
-		BaseURL:      "https://confluence.example.com",
+		Name:         "Test Service",
+		Slug:         "test-service",
+		Type:         "kiwix",
+		BaseURL:      "https://kiwix.example.com",
 		APIKey:       sql.NullString{String: "secret-key", Valid: true},
 		Config:       sql.NullString{String: `{"space":"DEV"}`, Valid: true},
 		Priority:     10,
@@ -44,10 +44,10 @@ func TestExternalServiceRepository_CreateAndFind(t *testing.T) {
 
 		assert.Equal(t, svc.ID, found.ID)
 		assert.Equal(t, testUUID("create-find-001"), found.UUID)
-		assert.Equal(t, "Test Confluence", found.Name)
-		assert.Equal(t, "test-confluence", found.Slug)
-		assert.Equal(t, "confluence", found.Type)
-		assert.Equal(t, "https://confluence.example.com", found.BaseURL)
+		assert.Equal(t, "Test Service", found.Name)
+		assert.Equal(t, "test-service", found.Slug)
+		assert.Equal(t, "kiwix", found.Type)
+		assert.Equal(t, "https://kiwix.example.com", found.BaseURL)
 		assert.True(t, found.APIKey.Valid)
 		assert.Equal(t, "secret-key", found.APIKey.String)
 		assert.True(t, found.Config.Valid)
@@ -63,12 +63,12 @@ func TestExternalServiceRepository_CreateAndFind(t *testing.T) {
 	})
 
 	t.Run("FindBySlug", func(t *testing.T) {
-		found, err := repo.FindBySlug(ctx, "test-confluence")
+		found, err := repo.FindBySlug(ctx, "test-service")
 		require.NoError(t, err)
 
 		assert.Equal(t, svc.ID, found.ID)
 		assert.Equal(t, testUUID("create-find-001"), found.UUID)
-		assert.Equal(t, "test-confluence", found.Slug)
+		assert.Equal(t, "test-service", found.Slug)
 	})
 
 	t.Run("FindByUUID_NotFound", func(t *testing.T) {
@@ -90,30 +90,30 @@ func TestExternalServiceRepository_FindEnabledByType(t *testing.T) {
 	services := []model.ExternalService{
 		{
 			UUID:      testUUID("enabled-type-001"),
-			Name:      "Confluence High Priority",
-			Slug:      "confluence-high",
-			Type:      "confluence",
-			BaseURL:   "https://c1.example.com",
+			Name:      "Kiwix High Priority",
+			Slug:      "kiwix-high",
+			Type:      "kiwix",
+			BaseURL:   "https://k1.example.com",
 			Priority:  1,
 			Status:    "healthy",
 			IsEnabled: true,
 		},
 		{
 			UUID:      testUUID("enabled-type-002"),
-			Name:      "Confluence Low Priority",
-			Slug:      "confluence-low",
-			Type:      "confluence",
-			BaseURL:   "https://c2.example.com",
+			Name:      "Kiwix Low Priority",
+			Slug:      "kiwix-low",
+			Type:      "kiwix",
+			BaseURL:   "https://k2.example.com",
 			Priority:  20,
 			Status:    "healthy",
 			IsEnabled: true,
 		},
 		{
 			UUID:      testUUID("enabled-type-003"),
-			Name:      "Confluence Disabled",
-			Slug:      "confluence-disabled",
-			Type:      "confluence",
-			BaseURL:   "https://c3.example.com",
+			Name:      "Kiwix Disabled",
+			Slug:      "kiwix-disabled",
+			Type:      "kiwix",
+			BaseURL:   "https://k3.example.com",
 			Priority:  5,
 			Status:    "healthy",
 			IsEnabled: false,
@@ -141,10 +141,10 @@ func TestExternalServiceRepository_FindEnabledByType(t *testing.T) {
 		wantSlugs   []string // expected order by priority
 	}{
 		{
-			name:        "confluence enabled only",
-			serviceType: "confluence",
+			name:        "kiwix enabled only",
+			serviceType: "kiwix",
 			wantCount:   2,
-			wantSlugs:   []string{"confluence-high", "confluence-low"},
+			wantSlugs:   []string{"kiwix-high", "kiwix-low"},
 		},
 		{
 			name:        "git enabled",
@@ -154,7 +154,7 @@ func TestExternalServiceRepository_FindEnabledByType(t *testing.T) {
 		},
 		{
 			name:        "nonexistent type",
-			serviceType: "kiwix",
+			serviceType: "nonexistent",
 			wantCount:   0,
 			wantSlugs:   nil,
 		},
@@ -185,20 +185,20 @@ func TestExternalServiceRepository_List(t *testing.T) {
 	services := []model.ExternalService{
 		{
 			UUID:      testUUID("list-001"),
-			Name:      "Confluence Healthy",
-			Slug:      "confluence-healthy",
-			Type:      "confluence",
-			BaseURL:   "https://c1.example.com",
+			Name:      "Kiwix Healthy",
+			Slug:      "kiwix-healthy",
+			Type:      "kiwix",
+			BaseURL:   "https://k1.example.com",
 			Priority:  5,
 			Status:    "healthy",
 			IsEnabled: true,
 		},
 		{
 			UUID:      testUUID("list-002"),
-			Name:      "Confluence Unhealthy",
-			Slug:      "confluence-unhealthy",
-			Type:      "confluence",
-			BaseURL:   "https://c2.example.com",
+			Name:      "Kiwix Unhealthy",
+			Slug:      "kiwix-unhealthy",
+			Type:      "kiwix",
+			BaseURL:   "https://k2.example.com",
 			Priority:  10,
 			Status:    "unhealthy",
 			IsEnabled: true,
@@ -245,8 +245,8 @@ func TestExternalServiceRepository_List(t *testing.T) {
 			wantTotal: 4,
 		},
 		{
-			name:       "filter by type confluence",
-			filterType: "confluence",
+			name:       "filter by type kiwix",
+			filterType: "kiwix",
 			limit:      50,
 			wantCount:  2,
 			wantTotal:  2,
@@ -260,7 +260,7 @@ func TestExternalServiceRepository_List(t *testing.T) {
 		},
 		{
 			name:       "filter by type and status",
-			filterType: "confluence",
+			filterType: "kiwix",
 			status:     "healthy",
 			limit:      50,
 			wantCount:  1,
@@ -315,7 +315,7 @@ func TestExternalServiceRepository_Update(t *testing.T) {
 		UUID:      testUUID("update-001"),
 		Name:      "Original Name",
 		Slug:      "original-slug",
-		Type:      "confluence",
+		Type:      "kiwix",
 		BaseURL:   "https://original.example.com",
 		Priority:  5,
 		Status:    "unknown",
@@ -341,7 +341,7 @@ func TestExternalServiceRepository_Update(t *testing.T) {
 	assert.Equal(t, 1, found.Priority)
 	assert.False(t, found.IsEnabled)
 	// Type should remain unchanged since Update does not modify it.
-	assert.Equal(t, "confluence", found.Type)
+	assert.Equal(t, "kiwix", found.Type)
 	// UpdatedAt should be refreshed.
 	assert.True(t, found.UpdatedAt.Time.After(found.CreatedAt.Time) || found.UpdatedAt.Time.Equal(found.CreatedAt.Time))
 }
@@ -381,12 +381,12 @@ func TestExternalServiceRepository_FindAllEnabled(t *testing.T) {
 	repo := NewExternalServiceRepository(testPool, discardLogger())
 
 	// Insert services: 2 enabled (different types), 1 disabled.
-	enabledConf := &model.ExternalService{
+	enabledKiwix := &model.ExternalService{
 		UUID:      testUUID("find-all-enabled-001"),
-		Name:      "Alpha Confluence",
-		Slug:      "alpha-confluence",
-		Type:      "confluence",
-		BaseURL:   "https://confluence.example.com",
+		Name:      "Alpha Kiwix",
+		Slug:      "alpha-kiwix",
+		Type:      "kiwix",
+		BaseURL:   "https://kiwix.example.com",
 		Priority:  5,
 		Status:    "healthy",
 		IsEnabled: true,
@@ -412,7 +412,7 @@ func TestExternalServiceRepository_FindAllEnabled(t *testing.T) {
 		IsEnabled: false,
 	}
 
-	for _, svc := range []*model.ExternalService{enabledConf, enabledGit, disabled} {
+	for _, svc := range []*model.ExternalService{enabledKiwix, enabledGit, disabled} {
 		require.NoError(t, repo.Create(ctx, svc))
 	}
 
@@ -421,8 +421,8 @@ func TestExternalServiceRepository_FindAllEnabled(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, results, 2)
 
-		// Ordered by name: "Alpha Confluence" before "Beta Git".
-		assert.Equal(t, "Alpha Confluence", results[0].Name)
+		// Ordered by name: "Alpha Kiwix" before "Beta Git".
+		assert.Equal(t, "Alpha Kiwix", results[0].Name)
 		assert.Equal(t, "Beta Git", results[1].Name)
 	})
 
@@ -466,7 +466,7 @@ func TestExternalServiceRepository_UpdateHealthStatus(t *testing.T) {
 		UUID:      testUUID("health-001"),
 		Name:      "Health Check Target",
 		Slug:      "health-check-target",
-		Type:      "confluence",
+		Type:      "kiwix",
 		BaseURL:   "https://health.example.com",
 		Priority:  1,
 		Status:    "unknown",
@@ -550,8 +550,8 @@ func TestExternalServiceRepository_Count(t *testing.T) {
 		UUID:      testUUID("count-001"),
 		Name:      "Count Service One",
 		Slug:      "count-service-one",
-		Type:      "confluence",
-		BaseURL:   "https://c1.example.com",
+		Type:      "kiwix",
+		BaseURL:   "https://k1.example.com",
 		Priority:  1,
 		Status:    "unknown",
 		IsEnabled: true,
@@ -603,7 +603,7 @@ func TestExternalServiceRepository_ReorderPriorities(t *testing.T) {
 		UUID:      testUUID("reorder-001"),
 		Name:      "Reorder One",
 		Slug:      "reorder-one",
-		Type:      "confluence",
+		Type:      "kiwix",
 		BaseURL:   "https://r1.example.com",
 		Priority:  0,
 		Status:    "unknown",

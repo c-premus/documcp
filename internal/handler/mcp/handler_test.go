@@ -1361,7 +1361,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		}
 	})
 
-	t.Run("returns error when meilisearch search fails", func(t *testing.T) {
+	t.Run("returns error when search fails", func(t *testing.T) {
 		s := &mockSearcher{
 			searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
 				return nil, errors.New("search error")
@@ -1416,12 +1416,12 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		}
 	})
 
-	t.Run("meilisearch path builds results from hits", func(t *testing.T) {
+	t.Run("search path builds results from hits", func(t *testing.T) {
 		s := &mockSearcher{
 			searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
 				hit := makeMCPHit(map[string]any{
 					"uuid":        "uuid-ms-1",
-					"name":        "Meilisearch Template",
+					"name":        "FTS Template",
 					"description": "A great template",
 					"category":    "backend",
 					"file_count":  float64(7),
@@ -1467,7 +1467,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		}
 	})
 
-	t.Run("meilisearch path clamps limit", func(t *testing.T) {
+	t.Run("search path clamps limit", func(t *testing.T) {
 		var capturedLimit int64
 		s := &mockSearcher{
 			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {

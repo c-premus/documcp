@@ -78,7 +78,7 @@
     {
       "name": "search_documents",
       "title": "Search Documents",
-      "description": "Full-text search across documents (Meilisearch).\n\n**Filters:**\n- `file_type`: markdown, pdf, docx, xlsx, html\n- `tags`: Filter by document tags (AND logic)\n- `include_snippets`: Show matched text context\n- `include_content`: Include full document content in results (default false to reduce response size)\n\nReturns UUID, title, description, file type, tags, content_length, and optional snippets/content. Max 100 results, ranked by relevance.\n\n**Workflow:** Use `uuid` from results with `read_document` to fetch full content.",
+      "description": "Full-text search across documents (PostgreSQL FTS).\n\n**Filters:**\n- `file_type`: markdown, pdf, docx, xlsx, html\n- `tags`: Filter by document tags (AND logic)\n- `include_snippets`: Show matched text context\n- `include_content`: Include full document content in results (default false to reduce response size)\n\nReturns UUID, title, description, file type, tags, content_length, and optional snippets/content. Max 100 results, ranked by relevance.\n\n**Workflow:** Use `uuid` from results with `read_document` to fetch full content.",
       "annotations": {
         "readOnlyHint": true,
         "idempotentHint": true
@@ -183,7 +183,7 @@
     {
       "name": "create_document",
       "title": "Create Document",
-      "description": "Create a new document with title, description, content, and tags. Automatically indexes in Meilisearch for full-text search.",
+      "description": "Create a new document with title, description, content, and tags. Automatically indexed via PostgreSQL full-text search.",
       "annotations": {},
       "conditional": null,
       "inputSchema": {

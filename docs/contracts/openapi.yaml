@@ -6,7 +6,7 @@ info:
 
     DocuMCP serves documentation through REST endpoints and the Model Context Protocol (MCP),
     enabling AI agents to access and search your knowledge base. It processes PDF, DOCX, XLSX,
-    HTML, and Markdown documents, provides full-text search via Meilisearch, and authenticates
+    HTML, and Markdown documents, provides full-text search via PostgreSQL, and authenticates
     via OIDC with RFC 7591 dynamic client registration support.
 
     ## Authentication
@@ -97,7 +97,7 @@ paths:
       summary: Deep health check
       description: |
         Comprehensive health check testing all dependencies (database, Redis,
-        Meilisearch, filesystem, queue). Protected by the `internal` middleware --
+        filesystem, queue). Protected by the `internal` middleware --
         requires the `INTERNAL_API_TOKEN` bearer token when configured.
       security:
         - internalToken: []
@@ -147,7 +147,7 @@ paths:
       tags: [Search]
       summary: Search documents
       description: |
-        Full-text search with facets, filters, and highlighting via Meilisearch.
+        Full-text search with facets, filters, and highlighting via PostgreSQL full-text search.
         Public endpoint (no authentication required). Rate limit: `search` (120/min).
 
         **Required scope:** `search:read`
@@ -1146,7 +1146,7 @@ paths:
                             type: array
                             items:
                               type: object
-                              description: Meilisearch hit with _formatted highlights
+                              description: Search hit with highlights
                           total:
                             type: integer
                           processing_time_ms:
@@ -2565,7 +2565,7 @@ components:
 
     SearchResponse:
       type: object
-      description: Meilisearch-powered search results
+      description: PostgreSQL FTS search results
       properties:
         data:
           type: array
@@ -2630,16 +2630,6 @@ components:
                 error:
                   type: string
             redis:
-              type: object
-              properties:
-                status:
-                  type: string
-                  enum: [healthy, unhealthy]
-                latency_ms:
-                  type: number
-                error:
-                  type: string
-            meilisearch:
               type: object
               properties:
                 status:
