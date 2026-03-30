@@ -28,9 +28,17 @@ config.yml
 *.md
 LICENSE
 docs/
+!docs/contracts/openapi.yaml
 memory-bank/
 prompts/
 .claude/
+
+# Runtime data (user uploads, cloned repos)
+storage/
+
+# Build outputs
+dist/
+documcp
 
 # OS files
 .DS_Store
@@ -48,3 +56,6 @@ docker-compose.yml
 # Dev tooling
 .devcontainer/
 .golangci.yml
+renovate.json
+grafana/
+Makefile
