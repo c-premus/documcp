@@ -2,7 +2,6 @@ package pdf_test
 
 import (
 	"context"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -55,9 +54,6 @@ func TestPDFExtractor_Extract_CanceledContext(t *testing.T) {
 
 	ext := pdf.New()
 	_, err := ext.Extract(ctx, "/any/path/file.pdf")
-	// The PDF extractor does not check ctx.Err() upfront like the others;
-	// instead the canceled context propagates through exec.CommandContext.
-	// Either way, we expect an error.
 	if err == nil {
 		t.Fatal("Extract() expected error for canceled context, got nil")
 	}
@@ -65,10 +61,6 @@ func TestPDFExtractor_Extract_CanceledContext(t *testing.T) {
 
 func TestPDFExtractor_Extract_SamplePDF(t *testing.T) {
 	t.Parallel()
-
-	if _, err := exec.LookPath("pdftotext"); err != nil {
-		t.Skip("pdftotext not available")
-	}
 
 	_, thisFile, _, _ := runtime.Caller(0)
 	fixturePath := filepath.Join(filepath.Dir(thisFile), "..", "..", "testutil", "testdata", "sample.pdf")

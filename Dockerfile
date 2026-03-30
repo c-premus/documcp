@@ -14,8 +14,7 @@ FROM golang:1.26.1-alpine@sha256:d337ecb3075f0ec76d81652b3fa52af47c3eba6c8ba9f93
 
 # Install build dependencies.
 # - git: required for go mod download with private modules
-# - poppler-utils: PDF text extraction (used in tests, available at build time)
-RUN apk add --no-cache git poppler-utils
+RUN apk add --no-cache git
 
 WORKDIR /src
 
@@ -38,13 +37,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags "-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" \
     -o /bin/documcp ./cmd/documcp
 
-# Stage 3: Runtime — Alpine with poppler-utils for PDF extraction.
-# alpine:3.22 — pinned for supply chain integrity
-FROM alpine:3.22@sha256:55ae5d250caebc548793f321534bc6a8ef1d116f334f18f4ada1b2daad3251b2
-
-# Install runtime dependencies for PDF text extraction and TLS.
-RUN apk add --no-cache poppler-utils ca-certificates \
-    && addgroup -S nonroot && adduser -S nonroot -G nonroot
+# Stage 3: Distroless static runtime — no shell, no package manager, no CVEs.
+# gcr.io/distroless/static:nonroot includes CA certificates and runs as UID 65534.
+FROM gcr.io/distroless/static:nonroot
 
 # Copy the compiled binary.
 COPY --from=builder /bin/documcp /documcp
@@ -53,8 +48,6 @@ COPY --from=builder /bin/documcp /documcp
 COPY --from=builder /src/migrations/ /migrations/
 
 EXPOSE 8080
-
-USER nonroot:nonroot
 
 ENTRYPOINT ["/documcp"]
 CMD ["serve", "--with-worker"]
