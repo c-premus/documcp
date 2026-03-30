@@ -1,5 +1,6 @@
 services:
   app:
+    image: ghcr.io/c-premus/documcp:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -26,7 +27,7 @@ services:
       DB_DATABASE: ${DB_DATABASE:?DB_DATABASE is required}
       DB_USERNAME: ${DB_USERNAME:?DB_USERNAME is required}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
-      DB_SSLMODE: ${DB_SSLMODE:-require}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
       # OIDC
       OIDC_PROVIDER_URL: ${OIDC_PROVIDER_URL:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
@@ -35,8 +36,9 @@ services:
       # OAuth
       OAUTH_SESSION_SECRET: ${OAUTH_SESSION_SECRET:?OAUTH_SESSION_SECRET is required}
       # Security
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required (32 bytes for AES-256-GCM)}
-      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?INTERNAL_API_TOKEN is required}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
+      HKDF_SALT: ${HKDF_SALT:-}
       # Storage
       STORAGE_DRIVER: local
       STORAGE_BASE_PATH: /data/storage

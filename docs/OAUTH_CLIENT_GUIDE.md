@@ -151,7 +151,7 @@ For CLI tools and devices without browsers, use RFC 8628 Device Authorization Gr
 ### 1. Request Device Code
 
 ```bash
-curl -X POST http://localhost:8080/oauth/device/authorize \
+curl -X POST http://localhost:8080/oauth/device/code \
   -H "Content-Type: application/json" \
   -d '{
     "client_id": "YOUR_CLIENT_ID",
@@ -381,23 +381,32 @@ Or JSON-RPC errors:
 }
 ```
 
-## Claude Desktop Configuration
+## Claude Code / Claude Desktop
+
+Use [mcp-remote](https://www.npmjs.com/package/mcp-remote) to bridge stdio-based MCP clients to DocuMCP's HTTP endpoint:
+
+### Claude Code
+
+```bash
+claude mcp add documcp -- npx -y mcp-remote https://documcp.example.com/documcp
+```
+
+### Claude Desktop
+
+Add to your Claude Desktop configuration (`claude_desktop_config.json`):
 
 ```json
 {
   "mcpServers": {
     "documcp": {
-      "command": "curl",
-      "args": [
-        "-X", "POST",
-        "-H", "Content-Type: application/json",
-        "-H", "Authorization: Bearer YOUR_TOKEN",
-        "http://localhost:8080/documcp"
-      ]
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://documcp.example.com/documcp"]
     }
   }
 }
 ```
+
+OAuth authorization happens automatically via browser popup on first connection.
 
 ## Example Client Implementation (JavaScript)
 
@@ -409,14 +418,29 @@ class DocuMCPClient {
     this.baseUrl = 'http://localhost:8080';
   }
 
-  generatePKCE() {
+  generateRandomString(length) {
+    const array = new Uint8Array(length);
+    crypto.getRandomValues(array);
+    return btoa(String.fromCharCode(...array))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+      .slice(0, length);
+  }
+
+  async sha256Base64(value) {
+    const data = new TextEncoder().encode(value);
+    const hash = await crypto.subtle.digest('SHA-256', data);
+    return btoa(String.fromCharCode(...new Uint8Array(hash)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  async generatePKCE() {
     const verifier = this.generateRandomString(43);
-    const challenge = this.sha256Base64(verifier);
+    const challenge = await this.sha256Base64(verifier);
     return { verifier, challenge };
   }
 
   async authorize() {
-    const { verifier, challenge } = this.generatePKCE();
+    const { verifier, challenge } = await this.generatePKCE();
     const state = this.generateRandomString(32);
 
     // Store for later verification
@@ -502,7 +526,7 @@ All operations complete well under 500ms, suitable for real-time MCP integration
 | Token (`/oauth/token`) | 30/min, 100/hour |
 | Registration (`/oauth/register`) | 10/hour, 50/day |
 | Authorization (`/oauth/authorize`) | 30/min |
-| Device Authorization (`/oauth/device/authorize`) | 30/min |
+| Device Authorization (`/oauth/device/code`) | 30/min |
 | Device Verification (`/device`) | 5/min, 30/hour |
 
 ## Support

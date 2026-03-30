@@ -10,7 +10,7 @@ DocuMCP gives AI agents structured access to your documentation via MCP tools an
 - **OAuth 2.1 Authorization Server** -- PKCE, device authorization ([RFC 8628](https://datatracker.ietf.org/doc/html/rfc8628)), dynamic client registration ([RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591)), and [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) Protected Resource Metadata for automatic discovery.
 - **Document Pipeline** -- Upload PDF, DOCX, XLSX, HTML, or Markdown. Text is extracted, indexed via PostgreSQL full-text search, and searchable within seconds.
 - **External Integrations** -- Kiwix ZIM archives (federated article search) and Git template repositories.
-- **Background Jobs** -- [River](https://riverqueue.com/) Postgres-native job queue with 11 worker types, 3 priority queues, and 8 periodic schedules.
+- **Background Jobs** -- [River](https://riverqueue.com/) Postgres-native job queue with 11 worker types, 3 priority queues, and 6 periodic schedules.
 - **Admin UI** -- Vue 3 + TypeScript SPA for managing documents, users, OAuth clients, external services, and queue status.
 - **Observability** -- OpenTelemetry tracing (OTLP), Prometheus metrics (15 collectors), and structured logging with `slog`.
 - **OIDC Authentication** -- User login via any OpenID Connect provider.
@@ -23,10 +23,18 @@ Docker Compose is the fastest way to run DocuMCP. The stack includes the applica
 
 ```bash
 cat > .env <<EOF
+# Database
 DB_DATABASE=documcp
 DB_USERNAME=documcp
-DB_PASSWORD=change-me-db-password
-OAUTH_SESSION_SECRET=change-me-session-secret-at-least-32-bytes
+DB_PASSWORD=$(openssl rand -base64 32)
+
+# Secrets
+OAUTH_SESSION_SECRET=$(openssl rand -base64 32)
+ENCRYPTION_KEY=$(openssl rand -base64 32)
+INTERNAL_API_TOKEN=$(openssl rand -base64 32)
+HKDF_SALT=$(openssl rand -base64 16)
+
+# Public URL and TLS
 APP_URL=https://documcp.example.com
 TRAEFIK_HOST=documcp.example.com
 ACME_EMAIL=admin@example.com
@@ -39,7 +47,11 @@ EOF
 docker compose up -d
 ```
 
-3. The application is available at `https://documcp.example.com` (or `http://localhost:8080` without Traefik).
+Migrations run automatically on first start.
+
+3. The application is available at `https://documcp.example.com` via Traefik (ports 80/443). The app listens on port 8080 internally but is not exposed to the host by default. To run without Traefik, remove the `traefik` service and add `ports: ["8080:8080"]` to the `app` service.
+
+> **OIDC required for login:** The admin panel authenticates users via an OpenID Connect provider. Set the `OIDC_*` variables in your `.env` file -- see `.env.example` for the full list.
 
 See `docs/OAUTH_CLIENT_GUIDE.md` for connecting AI agents and CLI tools.
 
@@ -51,8 +63,6 @@ See `docs/OAUTH_CLIENT_GUIDE.md` for connecting AI agents and CLI tools.
 - Node.js 22 (frontend)
 - PostgreSQL (with `pg_trgm` and `unaccent` extensions)
 - `poppler-utils` (PDF text extraction)
-
-A devcontainer configuration is included for VS Code with all dependencies pre-installed.
 
 ### Build and Run
 
