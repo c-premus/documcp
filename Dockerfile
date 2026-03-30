@@ -41,6 +41,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # gcr.io/distroless/static:nonroot includes CA certificates and runs as UID 65534.
 FROM gcr.io/distroless/static:nonroot
 
+# Reset working directory — distroless:nonroot defaults to /home/nonroot,
+# but our paths (binary, migrations) are at the filesystem root.
+WORKDIR /
+
 # Copy the compiled binary.
 COPY --from=builder /bin/documcp /documcp
 
