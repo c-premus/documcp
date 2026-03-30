@@ -192,7 +192,7 @@ func setDefaults(v *viper.Viper) {
 	// Server
 	v.SetDefault("server_host", "0.0.0.0")
 	v.SetDefault("server_port", 8080)
-	v.SetDefault("trusted_proxies", []string{})
+	v.SetDefault("trusted_proxies", "")
 	v.SetDefault("server_read_timeout", 30*time.Second)
 	v.SetDefault("server_write_timeout", 30*time.Second)
 	v.SetDefault("server_idle_timeout", 120*time.Second)
@@ -222,8 +222,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oidc_client_id", "")
 	v.SetDefault("oidc_client_secret", "")
 	v.SetDefault("oidc_redirect_uri", "")
-	v.SetDefault("oidc_scopes", []string{"openid", "profile", "email"})
-	v.SetDefault("oidc_admin_groups", []string{})
+	v.SetDefault("oidc_scopes", "openid,profile,email")
+	v.SetDefault("oidc_admin_groups", "")
 	v.SetDefault("oidc_authorization_url", "")
 	v.SetDefault("oidc_token_url", "")
 	v.SetDefault("oidc_userinfo_url", "")
@@ -344,7 +344,7 @@ func Load() (*Config, error) {
 	cfg.Server = ServerConfig{
 		Host:                 v.GetString("server_host"),
 		Port:                 v.GetInt("server_port"),
-		TrustedProxies:       v.GetStringSlice("trusted_proxies"),
+		TrustedProxies:       splitComma(v.GetString("trusted_proxies")),
 		ReadTimeout:          v.GetDuration("server_read_timeout"),
 		WriteTimeout:         v.GetDuration("server_write_timeout"),
 		IdleTimeout:          v.GetDuration("server_idle_timeout"),
@@ -376,8 +376,8 @@ func Load() (*Config, error) {
 		ClientID:         v.GetString("oidc_client_id"),
 		ClientSecret:     v.GetString("oidc_client_secret"),
 		RedirectURL:      v.GetString("oidc_redirect_uri"),
-		Scopes:           v.GetStringSlice("oidc_scopes"),
-		AdminGroups:      v.GetStringSlice("oidc_admin_groups"),
+		Scopes:           splitComma(v.GetString("oidc_scopes")),
+		AdminGroups:      splitComma(v.GetString("oidc_admin_groups")),
 		AuthorizationURL: v.GetString("oidc_authorization_url"),
 		TokenURL:         v.GetString("oidc_token_url"),
 		UserinfoURL:      v.GetString("oidc_userinfo_url"),
@@ -535,6 +535,25 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	}
 
 	return nil
+}
+
+// splitComma splits a string on commas, trims whitespace, and drops empty
+// elements. This replaces viper.GetStringSlice for env vars, which splits on
+// spaces — unreliable when values contain colons (IPv6) or are injected via
+// Docker env_file.
+func splitComma(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // ParseCIDRs parses a list of CIDR strings into net.IPNet values.
