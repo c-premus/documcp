@@ -71,6 +71,52 @@ func (m *mockOAuthTokenPurger) PurgeExpiredTokens(_ context.Context, retentionDa
 	return m.purgeCount, m.purgeErr
 }
 
+type mockExternalServiceFinder struct {
+	findEnabledByTypeFn func(ctx context.Context, serviceType string) ([]model.ExternalService, error)
+}
+
+func (m *mockExternalServiceFinder) FindEnabledByType(ctx context.Context, serviceType string) ([]model.ExternalService, error) {
+	if m.findEnabledByTypeFn != nil {
+		return m.findEnabledByTypeFn(ctx, serviceType)
+	}
+	return nil, nil
+}
+
+type mockGitTemplateRepo struct {
+	listFn               func(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error)
+	updateSyncStatusFn   func(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error
+	replaceFilesFn       func(ctx context.Context, templateID int64, files []repository.GitTemplateFileInsert) error
+	updateSearchFn       func(ctx context.Context, templateID int64, readmeContent, filePaths string) error
+}
+
+func (m *mockGitTemplateRepo) List(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error) {
+	if m.listFn != nil {
+		return m.listFn(ctx, category, limit, offset)
+	}
+	return nil, nil
+}
+
+func (m *mockGitTemplateRepo) UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error {
+	if m.updateSyncStatusFn != nil {
+		return m.updateSyncStatusFn(ctx, templateID, status, commitSHA, fileCount, totalSize, errMsg)
+	}
+	return nil
+}
+
+func (m *mockGitTemplateRepo) ReplaceFiles(ctx context.Context, templateID int64, files []repository.GitTemplateFileInsert) error {
+	if m.replaceFilesFn != nil {
+		return m.replaceFilesFn(ctx, templateID, files)
+	}
+	return nil
+}
+
+func (m *mockGitTemplateRepo) UpdateSearchContent(ctx context.Context, templateID int64, readmeContent, filePaths string) error {
+	if m.updateSearchFn != nil {
+		return m.updateSearchFn(ctx, templateID, readmeContent, filePaths)
+	}
+	return nil
+}
+
 type mockDocumentRepo struct {
 	activeFilePaths []repository.DocumentFilePath
 	activePathsErr  error
@@ -762,5 +808,109 @@ func TestHealthCheckServicesWorker_Work(t *testing.T) {
 		// Both are on loopback, so both are blocked by SSRF protection.
 		assert.Equal(t, "unhealthy", statuses[1])
 		assert.Equal(t, "unhealthy", statuses[2])
+	})
+}
+
+// ---------------------------------------------------------------------------
+// SyncKiwixWorker
+// ---------------------------------------------------------------------------
+
+func TestSyncKiwixWorker_Work(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no enabled kiwix services returns nil", func(t *testing.T) {
+		t.Parallel()
+
+		finder := &mockExternalServiceFinder{
+			findEnabledByTypeFn: func(_ context.Context, serviceType string) ([]model.ExternalService, error) {
+				assert.Equal(t, "kiwix", serviceType)
+				return []model.ExternalService{}, nil
+			},
+		}
+
+		worker := &SyncKiwixWorker{
+			Deps: SchedulerDeps{
+				Services: finder,
+				Logger:   testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(SyncKiwixArgs{}))
+		require.NoError(t, err)
+	})
+
+	t.Run("FindEnabledByType error is returned", func(t *testing.T) {
+		t.Parallel()
+
+		finder := &mockExternalServiceFinder{
+			findEnabledByTypeFn: func(_ context.Context, _ string) ([]model.ExternalService, error) {
+				return nil, errors.New("db connection lost")
+			},
+		}
+
+		worker := &SyncKiwixWorker{
+			Deps: SchedulerDeps{
+				Services: finder,
+				Logger:   testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(SyncKiwixArgs{}))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "finding enabled kiwix services")
+		assert.Contains(t, err.Error(), "db connection lost")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// SyncGitTemplatesWorker
+// ---------------------------------------------------------------------------
+
+func TestSyncGitTemplatesWorker_Work(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no git templates found returns nil", func(t *testing.T) {
+		t.Parallel()
+
+		gitRepo := &mockGitTemplateRepo{
+			listFn: func(_ context.Context, category string, limit, offset int) ([]model.GitTemplate, error) {
+				assert.Empty(t, category)
+				assert.Equal(t, 100, limit)
+				assert.Equal(t, 0, offset)
+				return []model.GitTemplate{}, nil
+			},
+		}
+
+		worker := &SyncGitTemplatesWorker{
+			Deps: SchedulerDeps{
+				GitRepo: gitRepo,
+				Logger:  testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(SyncGitTemplatesArgs{}))
+		require.NoError(t, err)
+	})
+
+	t.Run("List error is returned", func(t *testing.T) {
+		t.Parallel()
+
+		gitRepo := &mockGitTemplateRepo{
+			listFn: func(_ context.Context, _ string, _, _ int) ([]model.GitTemplate, error) {
+				return nil, errors.New("query timeout")
+			},
+		}
+
+		worker := &SyncGitTemplatesWorker{
+			Deps: SchedulerDeps{
+				GitRepo: gitRepo,
+				Logger:  testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(SyncGitTemplatesArgs{}))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "listing git templates")
+		assert.Contains(t, err.Error(), "query timeout")
 	})
 }

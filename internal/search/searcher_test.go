@@ -245,6 +245,266 @@ func TestSearchResult_JSONRoundTrip(t *testing.T) {
 	}
 }
 
+func TestFileSearchResult_JSONFieldNames(t *testing.T) {
+	t.Parallel()
+
+	result := search.FileSearchResult{
+		TemplateUUID: "tpl-uuid-123",
+		TemplateName: "My Template",
+		FilePath:     "src/main.go",
+		Filename:     "main.go",
+		Score:        0.92,
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("json.Marshal() unexpected error: %v", err)
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+	}
+
+	requiredKeys := []string{"template_uuid", "template_name", "file_path", "filename", "score"}
+	for _, key := range requiredKeys {
+		if _, ok := m[key]; !ok {
+			t.Errorf("JSON output missing expected key %q", key)
+		}
+	}
+
+	// Verify no extra keys exist beyond the expected ones.
+	if len(m) != len(requiredKeys) {
+		t.Errorf("JSON output has %d keys, want %d", len(m), len(requiredKeys))
+	}
+}
+
+func TestFileSearchResult_JSONRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	original := search.FileSearchResult{
+		TemplateUUID: "tpl-uuid-456",
+		TemplateName: "Another Template",
+		FilePath:     "pkg/util/helper.go",
+		Filename:     "helper.go",
+		Score:        0.77,
+	}
+
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("json.Marshal() unexpected error: %v", err)
+	}
+
+	var decoded search.FileSearchResult
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+	}
+
+	if decoded.TemplateUUID != original.TemplateUUID {
+		t.Errorf("TemplateUUID = %q, want %q", decoded.TemplateUUID, original.TemplateUUID)
+	}
+	if decoded.TemplateName != original.TemplateName {
+		t.Errorf("TemplateName = %q, want %q", decoded.TemplateName, original.TemplateName)
+	}
+	if decoded.FilePath != original.FilePath {
+		t.Errorf("FilePath = %q, want %q", decoded.FilePath, original.FilePath)
+	}
+	if decoded.Filename != original.Filename {
+		t.Errorf("Filename = %q, want %q", decoded.Filename, original.Filename)
+	}
+	if decoded.Score != original.Score {
+		t.Errorf("Score = %f, want %f", decoded.Score, original.Score)
+	}
+}
+
+func TestFileSearchResult_ZeroValues(t *testing.T) {
+	t.Parallel()
+
+	result := search.FileSearchResult{}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("json.Marshal() unexpected error: %v", err)
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+	}
+
+	// All fields should still be present (no omitempty on FileSearchResult).
+	requiredKeys := []string{"template_uuid", "template_name", "file_path", "filename", "score"}
+	for _, key := range requiredKeys {
+		if _, ok := m[key]; !ok {
+			t.Errorf("JSON output missing expected key %q for zero-value struct", key)
+		}
+	}
+}
+
+func TestSearchResponse_JSONRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	original := search.SearchResponse{
+		Hits: []search.SearchResult{
+			{
+				UUID:   "sr-1",
+				Title:  "First Result",
+				Source: "documents",
+				Score:  0.9,
+			},
+			{
+				UUID:        "sr-2",
+				Title:       "Second Result",
+				Description: "Has a description",
+				Source:      "documents",
+				Score:       0.7,
+				Extra:       map[string]any{"file_type": "pdf"},
+			},
+		},
+		EstimatedTotal:   2,
+		ProcessingTimeMs: 42,
+	}
+
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("json.Marshal() unexpected error: %v", err)
+	}
+
+	var decoded search.SearchResponse
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+	}
+
+	if decoded.EstimatedTotal != original.EstimatedTotal {
+		t.Errorf("EstimatedTotal = %d, want %d", decoded.EstimatedTotal, original.EstimatedTotal)
+	}
+	if decoded.ProcessingTimeMs != original.ProcessingTimeMs {
+		t.Errorf("ProcessingTimeMs = %d, want %d", decoded.ProcessingTimeMs, original.ProcessingTimeMs)
+	}
+	if len(decoded.Hits) != len(original.Hits) {
+		t.Fatalf("Hits length = %d, want %d", len(decoded.Hits), len(original.Hits))
+	}
+	if decoded.Hits[0].UUID != original.Hits[0].UUID {
+		t.Errorf("Hits[0].UUID = %q, want %q", decoded.Hits[0].UUID, original.Hits[0].UUID)
+	}
+	if decoded.Hits[1].Description != original.Hits[1].Description {
+		t.Errorf("Hits[1].Description = %q, want %q", decoded.Hits[1].Description, original.Hits[1].Description)
+	}
+}
+
+func TestSearchResponse_EmptyHits(t *testing.T) {
+	t.Parallel()
+
+	original := search.SearchResponse{
+		Hits:             []search.SearchResult{},
+		EstimatedTotal:   0,
+		ProcessingTimeMs: 1,
+	}
+
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("json.Marshal() unexpected error: %v", err)
+	}
+
+	var decoded search.SearchResponse
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+	}
+
+	if decoded.Hits == nil {
+		t.Error("Hits should be empty slice, not nil")
+	}
+	if len(decoded.Hits) != 0 {
+		t.Errorf("Hits length = %d, want 0", len(decoded.Hits))
+	}
+}
+
+func TestFederatedSearchResponse_JSONRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	original := search.FederatedSearchResponse{
+		Hits: []search.SearchResult{
+			{
+				UUID:   "fed-1",
+				Title:  "Document Hit",
+				Source: "documents",
+				Score:  0.95,
+			},
+			{
+				UUID:   "fed-2",
+				Title:  "Zim Hit",
+				Source: "zim_archives",
+				Score:  0.80,
+			},
+			{
+				UUID:   "fed-3",
+				Title:  "Template Hit",
+				Source: "git_templates",
+				Score:  0.60,
+			},
+		},
+		EstimatedTotal:   3,
+		ProcessingTimeMs: 55,
+	}
+
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("json.Marshal() unexpected error: %v", err)
+	}
+
+	var decoded search.FederatedSearchResponse
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+	}
+
+	if decoded.EstimatedTotal != original.EstimatedTotal {
+		t.Errorf("EstimatedTotal = %d, want %d", decoded.EstimatedTotal, original.EstimatedTotal)
+	}
+	if decoded.ProcessingTimeMs != original.ProcessingTimeMs {
+		t.Errorf("ProcessingTimeMs = %d, want %d", decoded.ProcessingTimeMs, original.ProcessingTimeMs)
+	}
+	if len(decoded.Hits) != len(original.Hits) {
+		t.Fatalf("Hits length = %d, want %d", len(decoded.Hits), len(original.Hits))
+	}
+
+	sources := map[string]bool{}
+	for _, h := range decoded.Hits {
+		sources[h.Source] = true
+	}
+	for _, want := range []string{"documents", "zim_archives", "git_templates"} {
+		if !sources[want] {
+			t.Errorf("expected source %q in federated results", want)
+		}
+	}
+}
+
+func TestFederatedSearchResponse_EmptyHits(t *testing.T) {
+	t.Parallel()
+
+	original := search.FederatedSearchResponse{
+		Hits:             []search.SearchResult{},
+		EstimatedTotal:   0,
+		ProcessingTimeMs: 3,
+	}
+
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("json.Marshal() unexpected error: %v", err)
+	}
+
+	var decoded search.FederatedSearchResponse
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+	}
+
+	if decoded.Hits == nil {
+		t.Error("Hits should be empty slice, not nil")
+	}
+	if len(decoded.Hits) != 0 {
+		t.Errorf("Hits length = %d, want 0", len(decoded.Hits))
+	}
+}
+
 func TestExtraString(t *testing.T) {
 	t.Parallel()
 

@@ -258,3 +258,180 @@ func TestRiverErrorHandler_HandlePanic(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// buildQueueConfig
+// ---------------------------------------------------------------------------
+
+func TestBuildQueueConfig(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil map uses defaults", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := buildQueueConfig(nil)
+
+		require.Len(t, cfg, 3)
+		assert.Equal(t, 10, cfg["high"].MaxWorkers)
+		assert.Equal(t, 5, cfg["default"].MaxWorkers)
+		assert.Equal(t, 2, cfg["low"].MaxWorkers)
+	})
+
+	t.Run("custom values override defaults", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := buildQueueConfig(map[string]int{
+			"high":    20,
+			"default": 15,
+			"low":     8,
+		})
+
+		assert.Equal(t, 20, cfg["high"].MaxWorkers)
+		assert.Equal(t, 15, cfg["default"].MaxWorkers)
+		assert.Equal(t, 8, cfg["low"].MaxWorkers)
+	})
+
+	t.Run("zero values fall back to defaults", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := buildQueueConfig(map[string]int{
+			"high":    0,
+			"default": 0,
+			"low":     0,
+		})
+
+		assert.Equal(t, 10, cfg["high"].MaxWorkers)
+		assert.Equal(t, 5, cfg["default"].MaxWorkers)
+		assert.Equal(t, 2, cfg["low"].MaxWorkers)
+	})
+
+	t.Run("negative values fall back to defaults", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := buildQueueConfig(map[string]int{
+			"high":    -1,
+			"default": -5,
+			"low":     -100,
+		})
+
+		assert.Equal(t, 10, cfg["high"].MaxWorkers)
+		assert.Equal(t, 5, cfg["default"].MaxWorkers)
+		assert.Equal(t, 2, cfg["low"].MaxWorkers)
+	})
+
+	t.Run("partial override only sets high", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := buildQueueConfig(map[string]int{
+			"high": 25,
+		})
+
+		assert.Equal(t, 25, cfg["high"].MaxWorkers)
+		assert.Equal(t, 5, cfg["default"].MaxWorkers)
+		assert.Equal(t, 2, cfg["low"].MaxWorkers)
+	})
+}
+
+// ---------------------------------------------------------------------------
+// InsertOnly accessor
+// ---------------------------------------------------------------------------
+
+func TestRiverClient_InsertOnly(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns true when insertOnly is set", func(t *testing.T) {
+		t.Parallel()
+
+		rc := &RiverClient{insertOnly: true}
+		assert.True(t, rc.InsertOnly())
+	})
+
+	t.Run("returns false when insertOnly is not set", func(t *testing.T) {
+		t.Parallel()
+
+		rc := &RiverClient{insertOnly: false}
+		assert.False(t, rc.InsertOnly())
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Insert-only mode: Start, Stop, StartEventForwarding
+// ---------------------------------------------------------------------------
+
+func TestRiverClient_InsertOnlyMode_Start(t *testing.T) {
+	t.Parallel()
+
+	rc := &RiverClient{
+		insertOnly: true,
+		logger:     discardLogger(),
+	}
+
+	err := rc.Start(context.Background())
+	require.NoError(t, err, "Start() with insertOnly=true should return nil immediately")
+}
+
+func TestRiverClient_InsertOnlyMode_Stop(t *testing.T) {
+	t.Parallel()
+
+	rc := &RiverClient{
+		insertOnly: true,
+		logger:     discardLogger(),
+	}
+
+	err := rc.Stop(context.Background())
+	require.NoError(t, err, "Stop() with insertOnly=true should return nil immediately")
+}
+
+func TestRiverClient_InsertOnlyMode_StartEventForwarding(t *testing.T) {
+	t.Parallel()
+
+	eb := NewEventBus(discardLogger())
+	rc := &RiverClient{
+		insertOnly: true,
+		eventBus:   eb,
+		logger:     discardLogger(),
+	}
+
+	assert.NotPanics(t, func() {
+		rc.StartEventForwarding()
+	})
+
+	// cancelSubscribe and forwardingDone should remain nil — no subscription started.
+	assert.Nil(t, rc.cancelSubscribe, "cancelSubscribe should be nil in insert-only mode")
+	assert.Nil(t, rc.forwardingDone, "forwardingDone should be nil in insert-only mode")
+}
+
+// ---------------------------------------------------------------------------
+// buildQueueConfig — verify it produces valid river.QueueConfig values
+// ---------------------------------------------------------------------------
+
+func TestBuildQueueConfig_allKeysPresent(t *testing.T) {
+	t.Parallel()
+
+	cfg := buildQueueConfig(map[string]int{"extra_ignored": 99})
+
+	// All three expected queues must be present regardless of input keys.
+	for _, name := range []string{"high", "default", "low"} {
+		_, ok := cfg[name]
+		assert.True(t, ok, "expected queue %q to be present", name)
+	}
+
+	// "extra_ignored" key should NOT appear — buildQueueConfig only produces
+	// the three hard-coded queues.
+	_, ok := cfg["extra_ignored"]
+	assert.False(t, ok, "unexpected queue key should not appear")
+}
+
+// ---------------------------------------------------------------------------
+// buildQueueConfig — verify type is river.QueueConfig
+// ---------------------------------------------------------------------------
+
+func TestBuildQueueConfig_returnsCorrectType(t *testing.T) {
+	t.Parallel()
+
+	cfg := buildQueueConfig(nil)
+
+	require.NotNil(t, cfg)
+	// Verify the returned type has the expected MaxWorkers field.
+	assert.Equal(t, 10, cfg["high"].MaxWorkers)
+}

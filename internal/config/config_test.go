@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -847,5 +848,147 @@ func TestLoad_NonExistentExplicitConfigFileReturnsError(t *testing.T) {
 	_, err := Load()
 	if err == nil {
 		t.Fatal("Load() expected error for non-existent explicit config file, got nil")
+	}
+}
+
+func TestOIDCConfig_ManualEndpoints(t *testing.T) {
+	tests := []struct {
+		name             string
+		authorizationURL string
+		tokenURL         string
+		want             bool
+	}{
+		{
+			name:             "both set returns true",
+			authorizationURL: "https://idp.example.com/authorize",
+			tokenURL:         "https://idp.example.com/token",
+			want:             true,
+		},
+		{
+			name:             "only authorization URL returns false",
+			authorizationURL: "https://idp.example.com/authorize",
+			tokenURL:         "",
+			want:             false,
+		},
+		{
+			name:             "only token URL returns false",
+			authorizationURL: "",
+			tokenURL:         "https://idp.example.com/token",
+			want:             false,
+		},
+		{
+			name:             "neither set returns false",
+			authorizationURL: "",
+			tokenURL:         "",
+			want:             false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := OIDCConfig{
+				AuthorizationURL: tt.authorizationURL,
+				TokenURL:         tt.tokenURL,
+			}
+			if got := c.ManualEndpoints(); got != tt.want {
+				t.Errorf("ManualEndpoints() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestClampInt32(t *testing.T) {
+	tests := []struct {
+		name string
+		in   int
+		want int32
+	}{
+		{"within range", 42, 42},
+		{"zero", 0, 0},
+		{"negative within range", -10, -10},
+		{"max int32 boundary", math.MaxInt32, math.MaxInt32},
+		{"min int32 boundary", math.MinInt32, math.MinInt32},
+		{"overflow clamps to max", math.MaxInt32 + 1, math.MaxInt32},
+		{"underflow clamps to min", math.MinInt32 - 1, math.MinInt32},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := clampInt32(tt.in)
+			if got != tt.want {
+				t.Errorf("clampInt32(%d) = %d, want %d", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestConfig_Validate_ProductionSessionSecretTooShort(t *testing.T) {
+	cfg := validProdConfig()
+	cfg.OAuth.SessionSecret = "short" // less than 32 chars
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "OAUTH_SESSION_SECRET must be at least 32 characters") {
+		t.Errorf("error %q does not mention short session secret", err.Error())
+	}
+}
+
+func TestConfig_Validate_ProductionNonHTTPSURL(t *testing.T) {
+	cfg := validProdConfig()
+	cfg.App.URL = "http://documcp.example.com"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "APP_URL should use https://") {
+		t.Errorf("error %q does not mention https requirement", err.Error())
+	}
+}
+
+func TestConfig_Validate_ProductionDebugEnabled(t *testing.T) {
+	cfg := validProdConfig()
+	cfg.App.Debug = true
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "APP_DEBUG should not be enabled in production") {
+		t.Errorf("error %q does not mention debug in production", err.Error())
+	}
+}
+
+func TestConfig_Validate_ProductionDefaultHKDFSalt(t *testing.T) {
+	cfg := validProdConfig()
+	cfg.OAuth.HKDFSalt = "DocuMCP-go-v1"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "HKDF_SALT must be changed from the default value") {
+		t.Errorf("error %q does not mention default HKDF salt", err.Error())
+	}
+}
+
+func TestConfig_DatabaseDSN_PasswordWithSpecialChars(t *testing.T) {
+	cfg := Config{
+		Database: DatabaseConfig{
+			Host:     "localhost",
+			Port:     5432,
+			Username: "admin",
+			Password: `p\ass'word`,
+			Database: "mydb",
+			SSLMode:  "disable",
+		},
+	}
+
+	dsn := cfg.DatabaseDSN()
+	want := `host=localhost port=5432 user=admin dbname=mydb sslmode=disable password='p\\ass\'word'`
+	if dsn != want {
+		t.Errorf("DatabaseDSN() = %q, want %q", dsn, want)
 	}
 }
