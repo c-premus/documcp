@@ -1,18 +1,17 @@
 {
   "metadata": {
     "generated_from": "Go MCP SDK handler implementation",
-    "generated_at": "2026-03-08",
+    "generated_at": "2026-03-30",
     "protocol_version": "2024-11-05",
-    "sdk": "github.com/mark3labs/mcp-go",
+    "sdk": "github.com/modelcontextprotocol/go-sdk",
     "source_files": {
-      "server": "app/Mcp/Servers/DocumentationServer.php",
-      "constants": "app/Mcp/McpConstants.php",
-      "tools_directory": "app/Mcp/Tools/",
-      "prompts_directory": "app/Mcp/Prompts/"
+      "mcp_handler": "internal/handler/mcp/handler.go",
+      "tools": "internal/handler/mcp/tools_*.go",
+      "prompts": "internal/handler/mcp/prompts.go",
+      "dto": "internal/dto/mcp.go"
     },
     "notes": {
-      "json_flags": "JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE (McpConstants::JSON_FLAGS)",
-      "schema_gotcha": "Never use $schema->object() without properties - Laravel MCP SDK strips the properties key when empty. Tools using $schema->string() for free-form maps (e.g., variables parameter) decode JSON internally."
+      "output_schema": "All MCP response structs (Out type in mcp.AddTool[In, Out]) must use concrete types only — no any/interface{}/[]any. The go-sdk generates outputSchema from Out via reflection; any produces JSON Schema true, which fails Claude Code validation."
     }
   },
   "server": {
