@@ -82,7 +82,7 @@ export function sqlLatencyPanel(): PanelBuilder {
 export function httpCallsPanel(): PanelBuilder {
   const panel = new PanelBuilder()
     .title('External HTTP Calls')
-    .description('Outbound HTTP request rate (Kiwix, Confluence, Git)')
+    .description('Outbound HTTP request rate (Kiwix, Git)')
     .gridPos({ h: 8, w: 8, x: 16, y: 25 })
     .unit('ops');
 

@@ -43,7 +43,7 @@ func mustParseCIDRs(cidrs []string) []*net.IPNet {
 // ValidateExternalURL checks that a URL is safe to make requests to. It blocks
 // localhost, loopback, and link-local addresses. Private RFC-1918 ranges are
 // also blocked unless allowPrivate is true — use that for admin-configured
-// services on internal networks (e.g. self-hosted Kiwix or Confluence).
+// services on internal networks (e.g. self-hosted Kiwix).
 func ValidateExternalURL(rawURL string, allowPrivate ...bool) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
@@ -100,7 +100,7 @@ func SafeTransport(dialerTimeout time.Duration) *http.Transport {
 
 // SafeTransportAllowPrivate is like SafeTransport but permits connections to
 // private RFC-1918 addresses. Use for admin-configured services on internal
-// networks (e.g. self-hosted Kiwix or Confluence). Loopback and link-local
+// networks (e.g. self-hosted Kiwix). Loopback and link-local
 // addresses remain blocked.
 // The dialerTimeout controls the TCP connection timeout.
 func SafeTransportAllowPrivate(dialerTimeout time.Duration) *http.Transport {

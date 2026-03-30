@@ -8,7 +8,7 @@ DocuMCP gives AI agents structured access to your documentation via MCP tools an
 
 - **MCP Server** -- 15 tools and 6 prompts via the official [Go MCP SDK](https://github.com/modelcontextprotocol/go-sdk). Search, read, create, update, and delete documents. Federated search across documents, ZIM archives, and Git templates in a single query.
 - **OAuth 2.1 Authorization Server** -- PKCE, device authorization ([RFC 8628](https://datatracker.ietf.org/doc/html/rfc8628)), dynamic client registration ([RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591)), and [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) Protected Resource Metadata for automatic discovery.
-- **Document Pipeline** -- Upload PDF, DOCX, XLSX, HTML, or Markdown. Text is extracted, indexed in Meilisearch, and searchable within seconds.
+- **Document Pipeline** -- Upload PDF, DOCX, XLSX, HTML, or Markdown. Text is extracted, indexed via PostgreSQL full-text search, and searchable within seconds.
 - **External Integrations** -- Kiwix ZIM archives (federated article search) and Git template repositories.
 - **Background Jobs** -- [River](https://riverqueue.com/) Postgres-native job queue with 11 worker types, 3 priority queues, and 8 periodic schedules.
 - **Admin UI** -- Vue 3 + TypeScript SPA for managing documents, users, OAuth clients, external services, and queue status.
@@ -17,7 +17,7 @@ DocuMCP gives AI agents structured access to your documentation via MCP tools an
 
 ## Quick Start
 
-Docker Compose is the fastest way to run DocuMCP. The stack includes the application, PostgreSQL 17, Meilisearch v1.12, and Traefik v3.4.
+Docker Compose is the fastest way to run DocuMCP. The stack includes the application, PostgreSQL 17, and Traefik v3.4.
 
 1. Create a `.env` file:
 
@@ -26,7 +26,6 @@ cat > .env <<EOF
 DB_DATABASE=documcp
 DB_USERNAME=documcp
 DB_PASSWORD=change-me-db-password
-MEILI_MASTER_KEY=change-me-meili-key
 OAUTH_SESSION_SECRET=change-me-session-secret-at-least-32-bytes
 APP_URL=https://documcp.example.com
 TRAEFIK_HOST=documcp.example.com
@@ -50,8 +49,7 @@ See `docs/OAUTH_CLIENT_GUIDE.md` for connecting AI agents and CLI tools.
 
 - Go 1.26.1
 - Node.js 22 (frontend)
-- PostgreSQL
-- Meilisearch
+- PostgreSQL (with `pg_trgm` and `unaccent` extensions)
 - `poppler-utils` (PDF text extraction)
 
 A devcontainer configuration is included for VS Code with all dependencies pre-installed.
@@ -118,7 +116,7 @@ internal/
   observability/         Tracing, metrics, structured logging
   queue/                 River job queue (workers, events, periodic jobs)
   repository/            Data access layer (pgx, handwritten SQL)
-  search/                Meilisearch client, indexer, and searcher
+  search/                Full-text search (tsvector/tsquery + pg_trgm)
   server/                HTTP server setup and routing (chi v5)
   service/               Business logic orchestration
   stringutil/            Shared string utilities
@@ -162,8 +160,6 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `DB_USERNAME` | Yes | -- | Database user |
 | `DB_PASSWORD` | Yes | -- | Database password |
 | `DB_SSLMODE` | No | `require` | PostgreSQL SSL mode |
-| `MEILISEARCH_HOST` | Yes | -- | Meilisearch URL |
-| `MEILISEARCH_KEY` | Yes | -- | Meilisearch master key |
 | `OIDC_PROVIDER_URL` | No | -- | OpenID Connect provider URL |
 | `OIDC_CLIENT_ID` | No | -- | OIDC client ID |
 | `OIDC_CLIENT_SECRET` | No | -- | OIDC client secret |

@@ -104,9 +104,6 @@ linters:
         # (Handle(context.Context, slog.Record) error). slog.Record is 288 bytes
         # but cannot be passed by pointer without violating the interface contract.
         - hugeParam
-        # meilisearch-go interface uses *map[string][]string for synonym methods;
-        # the signature cannot be changed when implementing the external interface.
-        - ptrToRefParam
 
     gocyclo:
       min-complexity: 30  # Functions with CC > 30 warrant refactoring

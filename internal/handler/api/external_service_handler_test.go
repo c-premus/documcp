@@ -171,7 +171,7 @@ func TestExternalServiceHandler_List(t *testing.T) {
 
 		services := []model.ExternalService{
 			{UUID: "uuid-1", Name: "Service A", Slug: "service-a", Type: "kiwix", BaseURL: "https://a.com", Status: "healthy", IsEnabled: true},
-			{UUID: "uuid-2", Name: "Service B", Slug: "service-b", Type: "confluence", BaseURL: "https://b.com", Status: "unknown", IsEnabled: false},
+			{UUID: "uuid-2", Name: "Service B", Slug: "service-b", Type: "git", BaseURL: "https://b.com", Status: "unknown", IsEnabled: false},
 		}
 		mock := &mockExternalServiceRepo{
 			listFn: func(_ context.Context, _, _ string, _, _ int) ([]model.ExternalService, int, error) {
@@ -580,7 +580,7 @@ func TestExternalServiceHandler_Create(t *testing.T) {
 		}
 		h := newExternalServiceHandler(mock)
 
-		reqBody := `{"name":"Svc","type":"confluence","base_url":"https://93.184.216.34","api_key":"secret-key","config":"{\"foo\":\"bar\"}"}`
+		reqBody := `{"name":"Svc","type":"git","base_url":"https://93.184.216.34","api_key":"secret-key","config":"{\"foo\":\"bar\"}"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/external-services", strings.NewReader(reqBody))
 		rr := httptest.NewRecorder()
 
@@ -1638,19 +1638,19 @@ func TestExternalServiceHandler_KiwixCacheInvalidation(t *testing.T) {
 
 		mock := &mockExternalServiceRepo{
 			createFn: func(_ context.Context, svc *model.ExternalService) error {
-				svc.UUID = "new-confluence"
+				svc.UUID = "new-git-svc"
 				return nil
 			},
 			findByUUIDFn: func(_ context.Context, uuid string) (*model.ExternalService, error) {
 				es := newTestExternalService(uuid)
-				es.Type = "confluence"
+				es.Type = "git"
 				return es, nil
 			},
 		}
 		cache := &mockKiwixCacheInvalidator{}
 		h := newExternalServiceHandlerWithKiwixCache(mock, nil, cache)
 
-		reqBody := `{"name":"My Confluence","type":"confluence","base_url":"https://93.184.216.34"}`
+		reqBody := `{"name":"My Git Service","type":"git","base_url":"https://93.184.216.34"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/external-services", strings.NewReader(reqBody))
 		rr := httptest.NewRecorder()
 
@@ -1747,11 +1747,11 @@ func TestExternalServiceHandler_KiwixCacheInvalidation(t *testing.T) {
 	t.Run("Delete with non-kiwix type does not invalidate cache", func(t *testing.T) {
 		t.Parallel()
 
-		es := newTestExternalService("svc-conf-del")
-		es.Type = "confluence"
+		es := newTestExternalService("svc-git-del")
+		es.Type = "git"
 		mock := &mockExternalServiceRepo{
 			findByUUIDFn: func(_ context.Context, uuid string) (*model.ExternalService, error) {
-				if uuid == "svc-conf-del" {
+				if uuid == "svc-git-del" {
 					return es, nil
 				}
 				return nil, service.ErrNotFound
@@ -1763,8 +1763,8 @@ func TestExternalServiceHandler_KiwixCacheInvalidation(t *testing.T) {
 		cache := &mockKiwixCacheInvalidator{}
 		h := newExternalServiceHandlerWithKiwixCache(mock, nil, cache)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/external-services/svc-conf-del", http.NoBody)
-		req = chiContext(req, map[string]string{"uuid": "svc-conf-del"})
+		req := httptest.NewRequest(http.MethodDelete, "/api/external-services/svc-git-del", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "svc-git-del"})
 		rr := httptest.NewRecorder()
 
 		h.Delete(rr, req)

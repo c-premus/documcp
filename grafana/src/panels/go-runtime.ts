@@ -199,7 +199,7 @@ export function documentCountPanel(): StatPanelBuilder {
 export function searchLatencyPanel(): PanelBuilder {
   const panel = new PanelBuilder()
     .title('Search Latency')
-    .description('P50, P95, P99 Meilisearch query latency')
+    .description('P50, P95, P99 search query latency')
     .gridPos({ h: 8, w: 8, x: 16, y: 38 })
     .unit('s');
 

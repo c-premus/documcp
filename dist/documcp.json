@@ -702,7 +702,7 @@
       "transparent": false,
       "repeatDirection": "h",
       "title": "External HTTP Calls",
-      "description": "Outbound HTTP request rate (Kiwix, Confluence, Git)",
+      "description": "Outbound HTTP request rate (Kiwix, Git)",
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -1187,7 +1187,7 @@
       "transparent": false,
       "repeatDirection": "h",
       "title": "Search Latency",
-      "description": "P50, P95, P99 Meilisearch query latency",
+      "description": "P50, P95, P99 search query latency",
       "gridPos": {
         "h": 8,
         "w": 8,

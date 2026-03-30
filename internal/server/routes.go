@@ -32,7 +32,7 @@ type Deps struct {
 
 	// Phase 3: Document pipeline & search
 	DocumentHandler *apihandler.DocumentHandler // nil if not configured
-	SearchHandler   *apihandler.SearchHandler   // nil if Meilisearch not configured
+	SearchHandler   *apihandler.SearchHandler   // nil if search not configured
 
 	// Phase 4: External service clients & REST API
 	ZimHandler             *apihandler.ZimHandler

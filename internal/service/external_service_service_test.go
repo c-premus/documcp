@@ -182,7 +182,7 @@ func TestExternalServiceService_List(t *testing.T) {
 			repoFn: func(_ context.Context, _, _ string, _, _ int) ([]model.ExternalService, int, error) {
 				return []model.ExternalService{
 					{ID: 1, Name: "Kiwix"},
-					{ID: 2, Name: "Confluence"},
+					{ID: 2, Name: "Git Service"},
 				}, 5, nil
 			},
 			wantCount: 2,
@@ -320,8 +320,8 @@ func TestExternalServiceService_Create(t *testing.T) {
 		svc := NewExternalServiceService(repo, nil, nil, discardLogger())
 
 		result, err := svc.Create(context.Background(), CreateExternalServiceParams{
-			Name:    "Confluence",
-			Type:    "confluence",
+			Name:    "Test Service",
+			Type:    "kiwix",
 			BaseURL: "https://93.184.216.34",
 			APIKey:  "secret-key",
 			Config:  `{"timeout": 30}`,
@@ -1081,8 +1081,8 @@ func TestExternalServiceService_Delete_WithCleanup(t *testing.T) {
 			findByUUIDFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
 				return &model.ExternalService{
 					ID:   41,
-					UUID: "meili-svc-uuid",
-					Type: "meilisearch",
+					UUID: "other-svc-uuid",
+					Type: "other",
 				}, nil
 			},
 			deleteFn: func(_ context.Context, _ int64) error {
@@ -1091,7 +1091,7 @@ func TestExternalServiceService_Delete_WithCleanup(t *testing.T) {
 		}
 
 		svc := NewExternalServiceService(repo, zimRepo, indexCleaner, discardLogger())
-		err := svc.Delete(context.Background(), "meili-svc-uuid")
+		err := svc.Delete(context.Background(), "other-svc-uuid")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
