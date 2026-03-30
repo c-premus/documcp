@@ -1,6 +1,6 @@
 // Package git provides a client for cloning and extracting files from git
-// template repositories. It shells out to the git CLI and includes SSRF
-// protection, credential handling, and binary file detection.
+// template repositories. It uses go-git for pure-Go git operations and includes
+// SSRF protection, credential handling, and binary file detection.
 package git
 
 import (
@@ -13,10 +13,13 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	gogit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/transport/http"
 )
 
 // Default size limits for file extraction.
@@ -55,9 +58,30 @@ func NewClient(tempDir string, maxFileSize, maxTotalSize int64, logger *slog.Log
 	}
 }
 
+// sanitizeErr wraps an error's message through SanitizeGitError to redact
+// URLs and tokens before the error is returned or logged.
+func sanitizeErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	return errors.New(SanitizeGitError(err.Error()))
+}
+
+// tokenAuth returns an http.BasicAuth suitable for go-git when a PAT is
+// provided. Returns nil when token is empty.
+func tokenAuth(token string) *http.BasicAuth {
+	if token == "" {
+		return nil
+	}
+	return &http.BasicAuth{
+		Username: "x-token-auth",
+		Password: token,
+	}
+}
+
 // Clone clones a repository into a subdirectory of tempDir.
 // It uses a shallow single-branch clone for efficiency. When params.Token is
-// set, a temporary GIT_ASKPASS script provides credentials.
+// set, HTTP basic auth is used to authenticate.
 // Returns the path to the cloned directory.
 func (c *Client) Clone(ctx context.Context, params CloneParams) (string, error) {
 	if err := validateBranch(params.Branch); err != nil {
@@ -69,31 +93,16 @@ func (c *Client) Clone(ctx context.Context, params CloneParams) (string, error) 
 		dest = filepath.Join(c.tempDir, filepath.Base(params.URL))
 	}
 
-	args := []string{
-		"clone",
-		"--depth", "1",
-		"--single-branch",
-		"--branch", params.Branch,
-		params.URL,
-		dest,
+	cloneOpts := &gogit.CloneOptions{
+		URL:           params.URL,
+		ReferenceName: plumbing.NewBranchReferenceName(params.Branch),
+		SingleBranch:  true,
+		Depth:         1,
 	}
 
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Env = os.Environ()
-
-	if params.Token != "" {
-		scriptPath, cleanup, err := writeCredentialScript(params.Token)
-		if err != nil {
-			return "", fmt.Errorf("setting up git credentials: %w", err)
-		}
-		defer cleanup()
-
-		// Prevent git from prompting interactively.
-		cmd.Env = append(cmd.Env, "GIT_ASKPASS="+scriptPath, "GIT_TERMINAL_PROMPT=0")
+	if auth := tokenAuth(params.Token); auth != nil {
+		cloneOpts.Auth = auth
 	}
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
 
 	c.logger.Info("cloning repository",
 		"url", params.URL,
@@ -101,8 +110,9 @@ func (c *Client) Clone(ctx context.Context, params CloneParams) (string, error) 
 		"dest", dest,
 	)
 
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git clone failed: %s", SanitizeGitError(stderr.String()))
+	_, err := gogit.PlainCloneContext(ctx, dest, false, cloneOpts)
+	if err != nil {
+		return "", fmt.Errorf("git clone failed: %w", sanitizeErr(err))
 	}
 
 	return dest, nil
@@ -110,26 +120,28 @@ func (c *Client) Clone(ctx context.Context, params CloneParams) (string, error) 
 
 // Pull fetches and fast-forward merges the latest changes in an existing clone.
 func (c *Client) Pull(ctx context.Context, repoDir, token string) error {
-	cmd := exec.CommandContext(ctx, "git", "-C", repoDir, "pull", "--ff-only")
-	cmd.Env = os.Environ()
-
-	if token != "" {
-		scriptPath, cleanup, err := writeCredentialScript(token)
-		if err != nil {
-			return fmt.Errorf("setting up git credentials for pull: %w", err)
-		}
-		defer cleanup()
-
-		cmd.Env = append(cmd.Env, "GIT_ASKPASS="+scriptPath, "GIT_TERMINAL_PROMPT=0")
+	repo, err := gogit.PlainOpen(repoDir)
+	if err != nil {
+		return fmt.Errorf("git pull failed: %w", sanitizeErr(err))
 	}
 
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	wt, err := repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("git pull failed: %w", sanitizeErr(err))
+	}
+
+	pullOpts := &gogit.PullOptions{}
+	if auth := tokenAuth(token); auth != nil {
+		pullOpts.Auth = auth
+	}
 
 	c.logger.Info("pulling repository", "dir", repoDir)
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git pull failed: %s", SanitizeGitError(stderr.String()))
+	if err := wt.PullContext(ctx, pullOpts); err != nil {
+		if errors.Is(err, gogit.NoErrAlreadyUpToDate) {
+			return nil
+		}
+		return fmt.Errorf("git pull failed: %w", sanitizeErr(err))
 	}
 
 	return nil
@@ -243,17 +255,17 @@ func (c *Client) ExtractFiles(repoDir string, maxFileSize, maxTotalSize int64) (
 
 // LatestCommitSHA returns the full SHA of the HEAD commit in the given repository.
 func (c *Client) LatestCommitSHA(ctx context.Context, repoDir string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", "-C", repoDir, "rev-parse", "HEAD")
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git rev-parse HEAD failed: %s", SanitizeGitError(stderr.String()))
+	repo, err := gogit.PlainOpen(repoDir)
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse HEAD failed: %w", sanitizeErr(err))
 	}
 
-	return strings.TrimSpace(stdout.String()), nil
+	head, err := repo.Head()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse HEAD failed: %w", sanitizeErr(err))
+	}
+
+	return head.Hash().String(), nil
 }
 
 // validateBranch rejects branch names that could be interpreted as git flags.
