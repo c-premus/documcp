@@ -77,14 +77,25 @@ func ValidateExternalURL(rawURL string, allowPrivate ...bool) error {
 		return fmt.Errorf("resolving hostname %q: %w", hostname, err)
 	}
 
+	var validCount int
 	for _, addr := range addrs {
 		ip := net.ParseIP(addr)
 		if ip == nil {
 			continue
 		}
+		// Skip unspecified (::, 0.0.0.0) — these are DNS artifacts from
+		// misconfigured AAAA records, not real targets.
+		if ip.IsUnspecified() {
+			continue
+		}
 		if err := checkIP(ip, privateOK); err != nil {
 			return fmt.Errorf("hostname %q resolves to blocked address: %w", hostname, err)
 		}
+		validCount++
+	}
+
+	if validCount == 0 {
+		return fmt.Errorf("hostname %q has no usable IP addresses", hostname)
 	}
 
 	return nil
@@ -126,14 +137,24 @@ func newSafeTransport(allowPrivate bool, dialerTimeout time.Duration) *http.Tran
 			return nil, fmt.Errorf("resolving %q: %w", host, err)
 		}
 
+		// Filter to usable IPs: skip unspecified (::, 0.0.0.0) DNS artifacts.
+		usable := make([]net.IPAddr, 0, len(ips))
 		for _, ipAddr := range ips {
+			if ipAddr.IP.IsUnspecified() {
+				continue
+			}
 			if err := checkIP(ipAddr.IP, allowPrivate); err != nil {
 				return nil, fmt.Errorf("connection to %s blocked: %w", addr, err)
 			}
+			usable = append(usable, ipAddr)
+		}
+
+		if len(usable) == 0 {
+			return nil, fmt.Errorf("host %q has no usable IP addresses", host)
 		}
 
 		// Connect to the first valid resolved IP to avoid TOCTOU with the OS resolver.
-		return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
+		return dialer.DialContext(ctx, network, net.JoinHostPort(usable[0].IP.String(), port))
 	}
 	return base
 }
