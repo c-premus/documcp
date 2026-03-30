@@ -6,7 +6,10 @@ import { resolve } from 'path'
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
   resolve: {
-    alias: { '@': resolve(__dirname, 'src') },
+    alias: {
+      '@': resolve(__dirname, 'src'),
+      '@docs': resolve(__dirname, '../docs'),
+    },
   },
   base: '/admin/',
   build: {
