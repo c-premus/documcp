@@ -117,6 +117,11 @@ func BearerToken(oauthService *oauth.Service) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
+				slog.Warn("auth failed: missing bearer token",
+					"client_ip", r.RemoteAddr,
+					"path", r.URL.Path,
+					"method", r.Method,
+				)
 				w.Header().Set("WWW-Authenticate", `Bearer`)
 				jsonError(w, http.StatusUnauthorized, "Bearer token required")
 				return
@@ -125,9 +130,19 @@ func BearerToken(oauthService *oauth.Service) func(http.Handler) http.Handler {
 			result, err := authenticateBearerToken(r.Context(), authHeader, oauthService)
 			if err != nil {
 				if errors.Is(err, errInvalidToken) {
+					slog.Warn("auth failed: invalid bearer token",
+						"client_ip", r.RemoteAddr,
+						"path", r.URL.Path,
+						"method", r.Method,
+					)
 					w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
 					jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
 				} else {
+					slog.Warn("auth failed: malformed bearer token",
+						"client_ip", r.RemoteAddr,
+						"path", r.URL.Path,
+						"method", r.Method,
+					)
 					w.Header().Set("WWW-Authenticate", `Bearer`)
 					jsonError(w, http.StatusUnauthorized, "Bearer token required")
 				}
@@ -150,9 +165,19 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store) func(htt
 				result, err := authenticateBearerToken(r.Context(), authHeader, oauthService)
 				if err != nil {
 					if errors.Is(err, errInvalidToken) {
+						slog.Warn("auth failed: invalid bearer token",
+							"client_ip", r.RemoteAddr,
+							"path", r.URL.Path,
+							"method", r.Method,
+						)
 						w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
 						jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
 					} else {
+						slog.Warn("auth failed: malformed bearer token",
+							"client_ip", r.RemoteAddr,
+							"path", r.URL.Path,
+							"method", r.Method,
+						)
 						w.Header().Set("WWW-Authenticate", `Bearer`)
 						jsonError(w, http.StatusUnauthorized, "Bearer token required")
 					}
@@ -166,6 +191,11 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store) func(htt
 			// No Authorization header — try session cookie.
 			user, _, err := loadSessionUser(r.Context(), r, store, oauthService)
 			if err != nil {
+				slog.Warn("auth failed: invalid session",
+					"client_ip", r.RemoteAddr,
+					"path", r.URL.Path,
+					"method", r.Method,
+				)
 				jsonError(w, http.StatusUnauthorized, "Authentication required")
 				return
 			}
@@ -255,6 +285,12 @@ func RequireScope(scope string) func(http.Handler) http.Handler {
 				}
 			}
 
+			slog.Warn("auth failed: insufficient scope",
+				"client_ip", r.RemoteAddr,
+				"path", r.URL.Path,
+				"method", r.Method,
+				"required_scope", scope,
+			)
 			w.Header().Set("WWW-Authenticate", `Bearer error="insufficient_scope"`)
 			jsonError(w, http.StatusForbidden, "Insufficient scope")
 		})
