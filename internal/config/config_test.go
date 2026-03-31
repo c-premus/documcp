@@ -224,6 +224,9 @@ func validBaseConfig() Config {
 			Port:        8080,
 			MaxBodySize: 1048576,
 		},
+		Redis: RedisConfig{
+			Addr: "localhost:6379",
+		},
 		Database: DatabaseConfig{
 			Host:         "localhost",
 			Database:     "mydb",
@@ -747,6 +750,9 @@ func TestConfig_Validate_ValidWithMinimumFields(t *testing.T) {
 		Server: ServerConfig{
 			Port:        8080,
 			MaxBodySize: 1,
+		},
+		Redis: RedisConfig{
+			Addr: "localhost:6379",
 		},
 		Database: DatabaseConfig{
 			Host:     "h",

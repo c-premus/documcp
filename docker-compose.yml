@@ -12,6 +12,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       # App
       APP_NAME: DocuMCP
@@ -39,6 +41,9 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
       HKDF_SALT: ${HKDF_SALT:-}
+      # Redis
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       # Storage
       STORAGE_DRIVER: local
       STORAGE_BASE_PATH: /data/storage
@@ -87,6 +92,24 @@ services:
           cpus: "0.5"
     restart: unless-stopped
 
+  redis:
+    image: redis:8-alpine
+    volumes:
+      - redis_data:/data
+    networks:
+      - documcp
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    restart: unless-stopped
+
   traefik:
     image: traefik:v3.4
     command:
@@ -122,5 +145,6 @@ networks:
 
 volumes:
   postgres_data:
+  redis_data:
   document_storage:
   letsencrypt:
