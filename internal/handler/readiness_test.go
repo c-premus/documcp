@@ -23,7 +23,7 @@ func (m *mockPinger) Ping(_ context.Context) error {
 func TestReadinessHandler_NilDB(t *testing.T) {
 	t.Parallel()
 
-	h := handler.NewReadinessHandler("1.0.0", nil)
+	h := handler.NewReadinessHandler("1.0.0", nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -53,7 +53,7 @@ func TestReadinessHandler_NilDB(t *testing.T) {
 func TestReadinessHandler_DBHealthy(t *testing.T) {
 	t.Parallel()
 
-	h := handler.NewReadinessHandler("2.0.0", &mockPinger{})
+	h := handler.NewReadinessHandler("2.0.0", &mockPinger{}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -80,7 +80,7 @@ func TestReadinessHandler_DBHealthy(t *testing.T) {
 func TestReadinessHandler_DBUnhealthy(t *testing.T) {
 	t.Parallel()
 
-	h := handler.NewReadinessHandler("3.0.0", &mockPinger{err: errors.New("connection refused")})
+	h := handler.NewReadinessHandler("3.0.0", &mockPinger{err: errors.New("connection refused")}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -107,7 +107,7 @@ func TestReadinessHandler_DBUnhealthy(t *testing.T) {
 func TestReadinessHandler_ContentType(t *testing.T) {
 	t.Parallel()
 
-	h := handler.NewReadinessHandler("1.0.0", nil)
+	h := handler.NewReadinessHandler("1.0.0", nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
 	rec := httptest.NewRecorder()

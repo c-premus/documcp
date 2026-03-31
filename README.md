@@ -78,6 +78,7 @@ go run ./cmd/documcp serve               # HTTP server only (River insert-only)
 go run ./cmd/documcp worker              # Queue workers only + health endpoint (:9090)
 go run ./cmd/documcp migrate             # Run database migrations and exit
 go run ./cmd/documcp version             # Print version info
+go run ./cmd/documcp health              # Check readiness (for Docker healthchecks)
 ```
 
 ### Test
@@ -111,7 +112,7 @@ npm run lint               # vue-tsc + ESLint
 ## Architecture
 
 ```
-cmd/documcp/             Entry point (serve, worker, migrate, version)
+cmd/documcp/             Entry point (serve, worker, migrate, version, health)
 internal/
   action/                Single-responsibility business actions
   auth/oauth/            OAuth 2.1 server (PKCE, device flow, dynamic registration)
@@ -139,7 +140,7 @@ migrations/              SQL migration files (goose)
 docs/contracts/          OpenAPI spec, MCP contract, database schema
 ```
 
-The application uses a single Cobra binary with `serve`, `worker`, and `migrate` subcommands for independent scaling. A shared Foundation holds dependencies (database pool, Redis client, repositories, search). ServerApp handles HTTP; WorkerApp handles River queue processing. Redis provides distributed rate limiting across server instances and cross-instance SSE event delivery via Pub/Sub. Repositories use `pgxpool.Pool` directly, services accept repository interfaces, and handlers accept services. Background jobs run via River, a Postgres-native job queue.
+The application uses a single Cobra binary with `serve`, `worker`, `migrate`, and `health` subcommands for independent scaling. A shared Foundation holds dependencies (database pool, Redis client, repositories, search). ServerApp handles HTTP; WorkerApp handles River queue processing. Redis provides distributed rate limiting across server instances and cross-instance SSE event delivery via Pub/Sub. Repositories use `pgxpool.Pool` directly, services accept repository interfaces, and handlers accept services. Background jobs run via River, a Postgres-native job queue.
 
 ## MCP Tools
 
@@ -177,6 +178,8 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `REDIS_USERNAME` | No | -- | Redis 6+ ACL username |
 | `REDIS_PASSWORD` | No | -- | Redis password |
 | `REDIS_DB` | No | `0` | Redis database number |
+| `REDIS_POOL_SIZE` | No | `10` | Redis connection pool size |
+| `REDIS_DIAL_TIMEOUT` | No | `5s` | Redis connection timeout |
 | `OIDC_PROVIDER_URL` | No | -- | OpenID Connect provider URL |
 | `OIDC_CLIENT_ID` | No | -- | OIDC client ID |
 | `OIDC_CLIENT_SECRET` | No | -- | OIDC client secret |
@@ -199,6 +202,8 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `QUEUE_DEFAULT_WORKERS` | No | `5` | River queue concurrency for default jobs |
 | `QUEUE_LOW_WORKERS` | No | `2` | River queue concurrency for low-priority jobs |
 | `WORKER_HEALTH_PORT` | No | `9090` | Health endpoint port for worker-only mode |
+| `DB_MAX_OPEN_CONNS` | No | `25` | Maximum database connections (increase to 40-50 for combined serve+worker mode) |
+| `DB_PGX_MIN_CONNS` | No | `5` | Minimum idle database connections |
 
 See `.env.example` for all ~60 configurable variables with defaults.
 

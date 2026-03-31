@@ -16,7 +16,15 @@ import (
 	"github.com/c-premus/documcp/internal/extractor"
 )
 
-const mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+const (
+	mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+	// maxZIPFiles limits the number of files processed from a DOCX ZIP archive.
+	maxZIPFiles = 100
+
+	// maxDecompressedFileSize is the maximum decompressed size per file (50 MiB).
+	maxDecompressedFileSize = 50 * 1024 * 1024
+)
 
 // wordprocessingML namespace.
 const wNS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -58,6 +66,10 @@ func (e *DOCXExtractor) Extract(ctx context.Context, filePath string) (*extracto
 	}
 	defer func() { _ = zr.Close() }()
 
+	if len(zr.File) > maxZIPFiles {
+		return nil, fmt.Errorf("docx %q contains %d files, exceeding limit of %d", filePath, len(zr.File), maxZIPFiles)
+	}
+
 	content, err := extractText(zr)
 	if err != nil {
 		return nil, fmt.Errorf("extracting text from %q: %w", filePath, err)
@@ -85,7 +97,7 @@ func extractText(zr *zip.ReadCloser) (string, error) {
 	}
 	defer func() { _ = rc.Close() }()
 
-	return parseDocument(rc)
+	return parseDocument(io.LimitReader(rc, maxDecompressedFileSize))
 }
 
 // parseDocument decodes the XML from word/document.xml and returns paragraphs
@@ -159,7 +171,7 @@ func extractMetadata(zr *zip.ReadCloser) map[string]any {
 	defer func() { _ = rc.Close() }()
 
 	var props coreProperties
-	if err := xml.NewDecoder(rc).Decode(&props); err != nil {
+	if err := xml.NewDecoder(io.LimitReader(rc, maxDecompressedFileSize)).Decode(&props); err != nil {
 		return nil
 	}
 
