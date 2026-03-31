@@ -88,6 +88,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		Username: cfg.Redis.Username,
 		Password: cfg.Redis.Password,
 		DB:       cfg.Redis.DB,
+		Protocol: 2, // RESP2 — avoids "Conn has unread data" from RESP3 push notifications (go-redis#3582)
 	}
 	if cfg.Redis.PoolSize > 0 {
 		redisOpts.PoolSize = cfg.Redis.PoolSize
