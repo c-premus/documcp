@@ -34,6 +34,11 @@ It also provides a REST API and web-based admin panel.`,
 		// Override version from build ldflags if set.
 		if version != "dev" {
 			cfg.DocuMCP.ServerVersion = version
+
+			// Fall back OTEL service version to build version if not explicitly set.
+			if cfg.OTEL.Version == "" {
+				cfg.OTEL.Version = version
+			}
 		}
 
 		return cfg.Validate()
