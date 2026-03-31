@@ -26,6 +26,7 @@ type Config struct {
 	Storage     StorageConfig
 	OTEL        OTELConfig
 	DocuMCP     DocuMCPConfig
+	Sentry      SentryConfig
 	Scheduler   SchedulerConfig
 	Queue       QueueConfig
 	Kiwix       KiwixConfig
@@ -200,6 +201,14 @@ type DocuMCPConfig struct {
 	ServerVersion string `mapstructure:"documcp_version"`
 }
 
+// SentryConfig holds Sentry/GlitchTip error tracking settings.
+type SentryConfig struct {
+	DSN         string  `mapstructure:"sentry_dsn"`
+	Environment string  `mapstructure:"sentry_environment"`
+	Release     string  `mapstructure:"sentry_release"`
+	SampleRate  float64 `mapstructure:"sentry_sample_rate"`
+}
+
 // setDefaults registers all default values with viper.
 func setDefaults(v *viper.Viper) {
 	// App
@@ -292,6 +301,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("documcp_endpoint", "/documcp")
 	v.SetDefault("documcp_name", "DocuMCP")
 	v.SetDefault("documcp_version", "0.1.0")
+
+	// Sentry / GlitchTip
+	v.SetDefault("sentry_dsn", "")
+	v.SetDefault("sentry_environment", "")
+	v.SetDefault("sentry_release", "")
+	v.SetDefault("sentry_sample_rate", 1.0)
 
 	// Kiwix
 	v.SetDefault("kiwix_cache_ttl", 1*time.Hour)
@@ -458,6 +473,13 @@ func Load() (*Config, error) {
 		Endpoint:      v.GetString("documcp_endpoint"),
 		ServerName:    v.GetString("documcp_name"),
 		ServerVersion: v.GetString("documcp_version"),
+	}
+
+	cfg.Sentry = SentryConfig{
+		DSN:         v.GetString("sentry_dsn"),
+		Environment: v.GetString("sentry_environment"),
+		Release:     v.GetString("sentry_release"),
+		SampleRate:  v.GetFloat64("sentry_sample_rate"),
 	}
 
 	cfg.Kiwix = KiwixConfig{

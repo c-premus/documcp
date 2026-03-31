@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
@@ -55,6 +56,11 @@ func SafeRecoverer(logger *slog.Logger) func(http.Handler) http.Handler {
 						"path", r.URL.Path,
 						"request_id", reqID,
 					)
+					if hub := sentry.GetHubFromContext(r.Context()); hub != nil {
+						hub.RecoverWithContext(r.Context(), rvr)
+					} else {
+						sentry.CurrentHub().RecoverWithContext(r.Context(), rvr)
+					}
 					if r.Header.Get("Connection") == "Upgrade" {
 						return
 					}
