@@ -22,16 +22,26 @@ import (
 // brute-force attacks if the database is compromised.
 // When nil, falls back to plain SHA-256 (still safe for high-entropy tokens).
 var (
-	tokenHMACKey []byte    //nolint:gochecknoglobals // module-level singleton initialized once via sync.Once
-	hmacKeyOnce  sync.Once //nolint:gochecknoglobals // guards one-time initialization of tokenHMACKey
+	tokenHMACKey []byte      //nolint:gochecknoglobals // module-level singleton initialized once at startup
+	hmacKeyMu    sync.RWMutex //nolint:gochecknoglobals // guards read/write access to tokenHMACKey
 )
 
 // SetTokenHMACKey configures the HMAC key used for token hashing.
 // Must be called once at startup before any token operations.
+// Safe to call concurrently — subsequent calls after the first non-nil key are ignored.
 func SetTokenHMACKey(key []byte) {
-	hmacKeyOnce.Do(func() {
+	hmacKeyMu.Lock()
+	defer hmacKeyMu.Unlock()
+	if tokenHMACKey == nil {
 		tokenHMACKey = key
-	})
+	}
+}
+
+// resetTokenHMACKey clears the HMAC key for testing. Must not be used in production.
+func resetTokenHMACKey() {
+	hmacKeyMu.Lock()
+	defer hmacKeyMu.Unlock()
+	tokenHMACKey = nil
 }
 
 // TokenPair holds a plaintext token and its database-storable hash.
@@ -108,8 +118,12 @@ func GenerateClientSecret() (plaintext, hashed string, err error) {
 // hashToken returns a hex-encoded hash of s.
 // Uses HMAC-SHA256 when a key is configured, otherwise plain SHA-256.
 func hashToken(s string) string {
-	if len(tokenHMACKey) > 0 {
-		mac := hmac.New(sha256.New, tokenHMACKey)
+	hmacKeyMu.RLock()
+	key := tokenHMACKey
+	hmacKeyMu.RUnlock()
+
+	if len(key) > 0 {
+		mac := hmac.New(sha256.New, key)
 		mac.Write([]byte(s))
 		return hex.EncodeToString(mac.Sum(nil))
 	}
