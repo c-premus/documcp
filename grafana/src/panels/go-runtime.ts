@@ -169,7 +169,7 @@ export function activeConnectionsPanel(): StatPanelBuilder {
 export function documentCountPanel(): StatPanelBuilder {
   const query = new DataqueryBuilder()
     .refId('A')
-    .expr('documcp_document_count')
+    .expr('documcp_documents')
     .legendFormat('Documents');
 
   return new StatPanelBuilder()
