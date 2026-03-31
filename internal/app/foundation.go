@@ -56,6 +56,7 @@ type Foundation struct {
 	GitTempDir  string
 
 	tracerShutdown func(context.Context) error
+	sentryFlush    func()
 }
 
 // NewFoundation initializes all shared dependencies: database, repositories,
@@ -184,6 +185,15 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		logger.Info("OpenTelemetry tracing enabled", "endpoint", cfg.OTEL.Endpoint)
 	}
 
+	sentryFlush, err := observability.InitSentry(cfg.Sentry, cfg.App.Env, cfg.DocuMCP.ServerVersion)
+	if err != nil {
+		pgxPool.Close()
+		return nil, fmt.Errorf("initializing sentry: %w", err)
+	}
+	if cfg.Sentry.DSN != "" {
+		logger.Info("Sentry error tracking enabled")
+	}
+
 	return &Foundation{
 		Config:              cfg,
 		Logger:              logger,
@@ -203,11 +213,15 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		StoragePath:         storagePath,
 		GitTempDir:          gitTempDir,
 		tracerShutdown:      tracerShutdown,
+		sentryFlush:         sentryFlush,
 	}, nil
 }
 
 // Close releases all resources held by the Foundation.
 func (f *Foundation) Close() {
+	if f.sentryFlush != nil {
+		f.sentryFlush()
+	}
 	if f.tracerShutdown != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), f.Config.App.TracerStopTimeout)
 		defer cancel()

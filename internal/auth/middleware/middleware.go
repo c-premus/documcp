@@ -15,6 +15,7 @@ import (
 
 	"github.com/c-premus/documcp/internal/auth/oauth"
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/observability"
 )
 
 type contextKey string
@@ -98,6 +99,7 @@ func setBearerContext(r *http.Request, result *bearerResult) *http.Request {
 	ctx := context.WithValue(r.Context(), AccessTokenContextKey, result.token)
 	if result.user != nil {
 		ctx = context.WithValue(ctx, UserContextKey, result.user)
+		observability.SetUser(ctx, result.user.ID, result.user.Email)
 	}
 	return r.WithContext(ctx)
 }
@@ -201,6 +203,7 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store, logger *
 			}
 
 			ctx := context.WithValue(r.Context(), UserContextKey, user)
+			observability.SetUser(ctx, user.ID, user.Email)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -223,6 +226,7 @@ func SessionAuth(store sessions.Store, oauthService *oauth.Service, logger *slog
 			}
 
 			ctx := context.WithValue(r.Context(), UserContextKey, user)
+			observability.SetUser(ctx, user.ID, user.Email)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
