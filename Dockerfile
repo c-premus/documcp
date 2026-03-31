@@ -1,6 +1,6 @@
 # Stage 1: Frontend build
 # node:22-alpine — pinned for supply chain integrity
-FROM node:22-alpine@sha256:1e8b5d68cac394f76c931b266fe5c224c3fe4cdbc33131e064c83b88235fe77e AS frontend
+FROM node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b AS frontend
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
