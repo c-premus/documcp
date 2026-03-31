@@ -259,32 +259,37 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Use the redirect_uri from server-controlled session state (validated in
+	// the GET handler against registered URIs) rather than the POST body value.
+	// This eliminates user-controlled data from the redirect target entirely.
+	pendingRedirectURI, _ := pending["redirect_uri"].(string)
+
 	// Clear pending request from session
 	delete(session.Values, "oauth_pending_request")
 	_ = session.Save(r, w)
 
-	// Look up client to get internal ID and re-validate redirect URI.
-	// The GET handler already validated redirect_uri against registered URIs,
-	// but we re-check here as defense-in-depth since the POST body is user-controlled.
+	// Defense-in-depth: verify the POST body redirect_uri matches the session value.
+	// An attacker who tampers with the POST body cannot change where we redirect.
+	if reqRedirectURI != pendingRedirectURI {
+		http.Error(w, "redirect_uri mismatch", http.StatusBadRequest)
+		return
+	}
+
+	// Look up client to get internal ID.
 	client, err := h.service.FindClient(r.Context(), reqClientID)
 	if err != nil {
 		http.Error(w, "Failed to generate authorization code", http.StatusInternalServerError)
-		return
-	}
-	registeredURIs, uriErr := client.ParseRedirectURIs()
-	if uriErr != nil || !oauth.MatchRedirectURI(reqRedirectURI, registeredURIs) {
-		http.Error(w, "Invalid redirect_uri", http.StatusBadRequest)
 		return
 	}
 
 	// Scope was narrowed to user entitlements in GET /oauth/authorize.
 	// No client scope expansion needed — auth codes are scoped to user entitlements directly.
 
-	// Generate authorization code
+	// Generate authorization code using the session-validated redirect URI.
 	code, err := h.service.GenerateAuthorizationCode(r.Context(), oauth.GenerateAuthorizationCodeParams{
 		ClientID:            client.ID,
 		UserID:              userID,
-		RedirectURI:         reqRedirectURI,
+		RedirectURI:         pendingRedirectURI,
 		Scope:               reqScope,
 		CodeChallenge:       reqCodeChallenge,
 		CodeChallengeMethod: reqCodeChallengeMethod,
@@ -295,8 +300,8 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Redirect with code and state
-	redirectURL := reqRedirectURI + "?code=" + url.QueryEscape(code)
+	// Redirect using session-validated URI — not user-supplied POST body.
+	redirectURL := pendingRedirectURI + "?code=" + url.QueryEscape(code)
 	if reqState != "" {
 		redirectURL += "&state=" + url.QueryEscape(reqState)
 	}
