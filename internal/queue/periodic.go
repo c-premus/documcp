@@ -4,9 +4,9 @@ import (
 	"log/slog"
 
 	"github.com/riverqueue/river"
-	"github.com/robfig/cron/v3"
 
 	"github.com/c-premus/documcp/internal/config"
+	"github.com/c-premus/documcp/internal/cron"
 )
 
 // BuildPeriodicJobs converts scheduler config cron expressions into River periodic jobs.
@@ -28,8 +28,6 @@ func BuildPeriodicJobs(cfg config.SchedulerConfig, logger *slog.Logger) []*river
 		{"health-check", cfg.HealthCheckSchedule, HealthCheckServicesArgs{}, false},
 	}
 
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-
 	var jobs []*river.PeriodicJob
 	for _, e := range entries {
 		if e.schedule == "" {
@@ -39,7 +37,7 @@ func BuildPeriodicJobs(cfg config.SchedulerConfig, logger *slog.Logger) []*river
 			continue
 		}
 
-		schedule, err := parser.Parse(e.schedule)
+		schedule, err := cron.Parse(e.schedule)
 		if err != nil {
 			if logger != nil {
 				logger.Error("failed to parse cron schedule for periodic job",
