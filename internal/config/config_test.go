@@ -142,6 +142,9 @@ func TestLoad_Defaults(t *testing.T) {
 		{"OTEL.Enabled", cfg.OTEL.Enabled, false},
 		{"OTEL.ServiceName", cfg.OTEL.ServiceName, "documcp"},
 		{"OTEL.Insecure", cfg.OTEL.Insecure, false},
+		{"OTEL.SampleRate", cfg.OTEL.SampleRate, 1.0},
+		{"OTEL.Environment", cfg.OTEL.Environment, ""},
+		{"OTEL.Version", cfg.OTEL.Version, ""},
 
 		// DocuMCP
 		{"DocuMCP.Endpoint", cfg.DocuMCP.Endpoint, "/documcp"},
@@ -409,6 +412,26 @@ func TestConfig_Validate(t *testing.T) {
 				return c
 			}(),
 			wantErr: false,
+		},
+		{
+			name: "otel sample rate negative",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.OTEL.SampleRate = -0.1
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "OTEL_SAMPLE_RATE must be between 0.0 and 1.0",
+		},
+		{
+			name: "otel sample rate above 1",
+			cfg: func() Config {
+				c := validBaseConfig()
+				c.OTEL.SampleRate = 1.5
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "OTEL_SAMPLE_RATE must be between 0.0 and 1.0",
 		},
 		// Production-only requirements
 		{
