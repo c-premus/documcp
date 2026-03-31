@@ -11,8 +11,8 @@
     "@grafana/grafana-foundation-sdk": "~11.6.0-cogv0.0.x"
   },
   "devDependencies": {
-    "@types/node": "22.19.10",
+    "@types/node": "24.12.0",
     "tsx": "4.21.0",
-    "typescript": "5.9.3"
+    "typescript": "6.0.2"
   }
 }
