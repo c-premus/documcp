@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/subtle"
 	"net/http"
 	"strings"
@@ -110,8 +111,8 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	if deps.MCPHandler != nil && deps.OAuthService != nil {
 		r.Group(func(r chi.Router) {
 			r.Use(rateLimitByIP(60, time.Minute, deps.RedisClient))
-			r.Use(authmiddleware.BearerToken(deps.OAuthService))
-			r.Use(authmiddleware.RequireScope("mcp:access"))
+			r.Use(authmiddleware.BearerToken(deps.OAuthService, s.logger))
+			r.Use(authmiddleware.RequireScope("mcp:access", s.logger))
 			r.Handle("/documcp/*", deps.MCPHandler)
 			r.Handle("/documcp", deps.MCPHandler)
 		})
@@ -124,9 +125,13 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	health := handler.NewHealthHandler(deps.Version)
 	r.Method(http.MethodGet, "/health", health)
 
-	// Readiness probe (checks dependencies like Postgres)
+	// Readiness probe (checks dependencies like Postgres and Redis)
 	if deps.DB != nil {
-		readiness := handler.NewReadinessHandler(deps.Version, deps.DB)
+		var redisPinger handler.RedisPinger
+		if deps.RedisClient != nil {
+			redisPinger = &redisClientPinger{deps.RedisClient}
+		}
+		readiness := handler.NewReadinessHandler(deps.Version, deps.DB, redisPinger)
 		r.Method(http.MethodGet, "/health/ready", readiness)
 	}
 
@@ -212,7 +217,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	r.Route("/api", func(r chi.Router) {
 		switch {
 		case deps.OAuthService != nil:
-			r.Use(authmiddleware.BearerOrSession(deps.OAuthService, deps.SessionStore))
+			r.Use(authmiddleware.BearerOrSession(deps.OAuthService, deps.SessionStore, s.logger))
 		default:
 			// No authentication backend configured — block all API access.
 			r.Use(func(next http.Handler) http.Handler {
@@ -231,7 +236,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 				r.Group(func(r chi.Router) {
 					r.Use(rateLimitByIP(60, time.Minute, deps.RedisClient))
 					if deps.OAuthService != nil {
-						r.Use(authmiddleware.RequireScope(authscope.DocumentsRead))
+						r.Use(authmiddleware.RequireScope(authscope.DocumentsRead, s.logger))
 					}
 					r.Get("/", deps.DocumentHandler.List)
 					r.Get("/trash", deps.DocumentHandler.ListDeleted)
@@ -243,7 +248,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 				r.Group(func(r chi.Router) {
 					r.Use(rateLimitByIP(30, time.Minute, deps.RedisClient))
 					if deps.OAuthService != nil {
-						r.Use(authmiddleware.RequireScope(authscope.DocumentsWrite))
+						r.Use(authmiddleware.RequireScope(authscope.DocumentsWrite, s.logger))
 					}
 					r.Use(authmiddleware.RequireAdmin)
 					r.Post("/", deps.DocumentHandler.Upload)
@@ -262,7 +267,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			r.Group(func(r chi.Router) {
 				r.Use(rateLimitByIP(120, time.Minute, deps.RedisClient))
 				if deps.OAuthService != nil {
-					r.Use(authmiddleware.RequireScope(authscope.SearchRead))
+					r.Use(authmiddleware.RequireScope(authscope.SearchRead, s.logger))
 				}
 				r.Get("/search", deps.SearchHandler.Search)
 				r.Get("/search/unified", deps.SearchHandler.FederatedSearch)
@@ -277,7 +282,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 			r.Route("/zim/archives", func(r chi.Router) {
 				r.Use(rateLimitByIP(60, time.Minute, deps.RedisClient))
 				if deps.OAuthService != nil {
-					r.Use(authmiddleware.RequireScope(authscope.ZIMRead))
+					r.Use(authmiddleware.RequireScope(authscope.ZIMRead, s.logger))
 				}
 				r.Get("/", deps.ZimHandler.List)
 				r.Get("/{archive}", deps.ZimHandler.Show)
@@ -295,7 +300,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 				r.Group(func(r chi.Router) {
 					r.Use(rateLimitByIP(60, time.Minute, deps.RedisClient))
 					if deps.OAuthService != nil {
-						r.Use(authmiddleware.RequireScope(authscope.TemplatesRead))
+						r.Use(authmiddleware.RequireScope(authscope.TemplatesRead, s.logger))
 					}
 					r.Get("/", deps.GitTemplateHandler.List)
 					r.Get("/search", deps.GitTemplateHandler.Search)
@@ -309,7 +314,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 				r.Group(func(r chi.Router) {
 					r.Use(rateLimitByIP(30, time.Minute, deps.RedisClient))
 					if deps.OAuthService != nil {
-						r.Use(authmiddleware.RequireScope(authscope.TemplatesWrite))
+						r.Use(authmiddleware.RequireScope(authscope.TemplatesWrite, s.logger))
 					}
 					r.Use(authmiddleware.RequireAdmin)
 					r.Post("/", deps.GitTemplateHandler.Create)
@@ -329,7 +334,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 				r.Group(func(r chi.Router) {
 					r.Use(rateLimitByIP(60, time.Minute, deps.RedisClient))
 					if deps.OAuthService != nil {
-						r.Use(authmiddleware.RequireScope(authscope.ServicesRead))
+						r.Use(authmiddleware.RequireScope(authscope.ServicesRead, s.logger))
 					}
 					r.Get("/", deps.ExternalServiceHandler.List)
 					r.Get("/{uuid}", deps.ExternalServiceHandler.Show)
@@ -339,7 +344,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 				r.Group(func(r chi.Router) {
 					r.Use(rateLimitByIP(30, time.Minute, deps.RedisClient))
 					if deps.OAuthService != nil {
-						r.Use(authmiddleware.RequireScope(authscope.ServicesWrite))
+						r.Use(authmiddleware.RequireScope(authscope.ServicesWrite, s.logger))
 					}
 					r.Use(authmiddleware.RequireAdmin)
 					r.Post("/", deps.ExternalServiceHandler.Create)
@@ -356,7 +361,7 @@ func (s *Server) RegisterRoutes(deps Deps) {
 		r.Route("/admin", func(r chi.Router) {
 			r.Use(rateLimitByIP(60, time.Minute, deps.RedisClient))
 			if deps.OAuthService != nil {
-				r.Use(authmiddleware.RequireScope(authscope.Admin))
+				r.Use(authmiddleware.RequireScope(authscope.Admin, s.logger))
 			}
 			r.Use(authmiddleware.RequireAdmin)
 
@@ -472,4 +477,14 @@ func internalTokenAuth(token string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// redisClientPinger adapts *redis.Client to handler.RedisPinger.
+type redisClientPinger struct {
+	client *redis.Client
+}
+
+// Ping checks Redis connectivity.
+func (p *redisClientPinger) Ping(ctx context.Context) error {
+	return p.client.Ping(ctx).Err()
 }

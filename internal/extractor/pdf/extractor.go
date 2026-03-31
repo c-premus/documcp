@@ -15,7 +15,12 @@ import (
 	"github.com/c-premus/documcp/internal/extractor"
 )
 
-const mimeTypePDF = "application/pdf"
+const (
+	mimeTypePDF = "application/pdf"
+
+	// maxExtractedTextSize is the maximum size of extracted text (50 MiB).
+	maxExtractedTextSize = 50 * 1024 * 1024
+)
 
 // PDFExtractor extracts text from PDF files via pure Go libraries.
 //
@@ -66,9 +71,12 @@ func extractText(filePath string) (string, error) {
 		return "", fmt.Errorf("reading PDF text: %w", err)
 	}
 
-	b, err := io.ReadAll(reader)
+	b, err := io.ReadAll(io.LimitReader(reader, maxExtractedTextSize+1))
 	if err != nil {
 		return "", fmt.Errorf("reading PDF text output: %w", err)
+	}
+	if len(b) > maxExtractedTextSize {
+		return "", fmt.Errorf("extracted PDF text exceeds %d bytes limit", maxExtractedTextSize)
 	}
 
 	return string(b), nil

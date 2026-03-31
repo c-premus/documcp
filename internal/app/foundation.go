@@ -78,20 +78,32 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	logger.Info("database connected",
 		"host", cfg.Database.Host,
 		"database", cfg.Database.Database,
+		"max_conns", cfg.Database.MaxOpenConns,
+		"min_conns", cfg.Database.PgxMinConns,
 	)
 
 	// --- Redis ---
-	redisClient := redis.NewClient(&redis.Options{
+	redisOpts := &redis.Options{
 		Addr:     cfg.Redis.Addr,
 		Username: cfg.Redis.Username,
 		Password: cfg.Redis.Password,
 		DB:       cfg.Redis.DB,
-	})
+	}
+	if cfg.Redis.PoolSize > 0 {
+		redisOpts.PoolSize = cfg.Redis.PoolSize
+	}
+	if cfg.Redis.DialTimeout > 0 {
+		redisOpts.DialTimeout = cfg.Redis.DialTimeout
+	}
+	redisClient := redis.NewClient(redisOpts)
 	if err = redisClient.Ping(context.Background()).Err(); err != nil {
 		pgxPool.Close()
 		return nil, fmt.Errorf("connecting to redis: %w", err)
 	}
-	logger.Info("redis connected", "addr", cfg.Redis.Addr)
+	logger.Info("redis connected",
+		"addr", cfg.Redis.Addr,
+		"pool_size", cfg.Redis.PoolSize,
+	)
 
 	// Run database and River schema migrations.
 	if err = runMigrations(pgxPool); err != nil {

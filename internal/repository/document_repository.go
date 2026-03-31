@@ -360,7 +360,10 @@ func (r *DocumentRepository) ListDeleted(ctx context.Context, limit, offset int,
 	}
 
 	selectQuery := fmt.Sprintf(
-		"SELECT * FROM documents WHERE %s ORDER BY deleted_at DESC LIMIT $%d OFFSET $%d",
+		`SELECT id, uuid, title, description, file_type, file_path, file_size, mime_type,
+		url, content_hash, metadata, processed_at, word_count, user_id, is_public,
+		status, error_message, created_at, updated_at, deleted_at
+		FROM documents WHERE %s ORDER BY deleted_at DESC LIMIT $%d OFFSET $%d`,
 		where, argIdx, argIdx+1,
 	)
 	args = append(args, limit, offset)

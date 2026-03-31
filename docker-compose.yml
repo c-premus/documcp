@@ -29,6 +29,9 @@ services:
       DB_DATABASE: ${DB_DATABASE:?DB_DATABASE is required}
       DB_USERNAME: ${DB_USERNAME:?DB_USERNAME is required}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      # SSL mode for PostgreSQL connections. Options: disable, allow, prefer, require, verify-ca, verify-full
+      # For managed databases (AWS RDS, GCP Cloud SQL, etc.), use "require" or stricter.
+      # Only use "disable" for local/dev databases without TLS.
       DB_SSLMODE: ${DB_SSLMODE:-disable}
       # OIDC
       OIDC_PROVIDER_URL: ${OIDC_PROVIDER_URL:-}
@@ -52,7 +55,7 @@ services:
     networks:
       - documcp
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      test: ["CMD", "/documcp", "health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -94,12 +97,18 @@ services:
 
   redis:
     image: redis:8-alpine
+    # Set a password for Redis. Generate one with: openssl rand -base64 32
+    # Then set REDIS_PASSWORD in your .env file. The app service references the same variable.
+    command: >-
+      redis-server --requirepass ${REDIS_PASSWORD:-changeme}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-changeme}
     volumes:
       - redis_data:/data
     networks:
       - documcp
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
