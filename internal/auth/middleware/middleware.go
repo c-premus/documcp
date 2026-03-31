@@ -42,7 +42,7 @@ type bearerResult struct {
 // authenticateBearerToken extracts and validates a bearer token from the
 // Authorization header value. On success it fires-and-forgets
 // TouchClientLastUsed and optionally loads the associated user.
-func authenticateBearerToken(ctx context.Context, authHeader string, oauthService *oauth.Service) (*bearerResult, error) {
+func authenticateBearerToken(ctx context.Context, authHeader string, oauthService *oauth.Service, logger *slog.Logger) (*bearerResult, error) {
 	bearerToken := strings.TrimPrefix(authHeader, "Bearer ")
 	if bearerToken == authHeader {
 		return nil, errNotBearer
@@ -57,7 +57,7 @@ func authenticateBearerToken(ctx context.Context, authHeader string, oauthServic
 		touchCtx, cancel := context.WithTimeout(context.Background(), oauthService.ClientTouchTimeout())
 		defer cancel()
 		if err := oauthService.TouchClientLastUsed(touchCtx, id); err != nil {
-			slog.Warn("updating oauth client last_used_at", "client_id", id, "error", err)
+			logger.Warn("updating oauth client last_used_at", "client_id", id, "error", err)
 		}
 	}(token.ClientID)
 
@@ -65,7 +65,7 @@ func authenticateBearerToken(ctx context.Context, authHeader string, oauthServic
 	if token.UserID.Valid {
 		user, err := oauthService.FindUserByID(ctx, token.UserID.Int64)
 		if err != nil {
-			slog.Warn("loading user for bearer token", "user_id", token.UserID.Int64, "error", err)
+			logger.Warn("loading user for bearer token", "user_id", token.UserID.Int64, "error", err)
 		} else {
 			result.user = user
 		}
@@ -74,10 +74,10 @@ func authenticateBearerToken(ctx context.Context, authHeader string, oauthServic
 }
 
 // loadSessionUser retrieves the authenticated user from the session cookie.
-func loadSessionUser(ctx context.Context, r *http.Request, store sessions.Store, oauthService *oauth.Service) (*model.User, *sessions.Session, error) {
+func loadSessionUser(ctx context.Context, r *http.Request, store sessions.Store, oauthService *oauth.Service, logger *slog.Logger) (*model.User, *sessions.Session, error) {
 	session, err := store.Get(r, "documcp_session")
 	if err != nil {
-		slog.Warn("session decode error", "error", err)
+		logger.Warn("session decode error", "error", err)
 	}
 
 	userID, ok := session.Values["user_id"].(int64)
@@ -112,12 +112,12 @@ func UserFromContext(ctx context.Context) (*model.User, bool) {
 // On success, it sets the access token and user in the request context.
 // When no Authorization header is present, it is bearer-only and rejects the request.
 // Use BearerOrSession to allow session cookie fallback for SPA admin routes.
-func BearerToken(oauthService *oauth.Service) func(http.Handler) http.Handler {
+func BearerToken(oauthService *oauth.Service, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
-				slog.Warn("auth failed: missing bearer token",
+				logger.Warn("auth failed: missing bearer token",
 					"client_ip", r.RemoteAddr,
 					"path", r.URL.Path,
 					"method", r.Method,
@@ -127,10 +127,10 @@ func BearerToken(oauthService *oauth.Service) func(http.Handler) http.Handler {
 				return
 			}
 
-			result, err := authenticateBearerToken(r.Context(), authHeader, oauthService)
+			result, err := authenticateBearerToken(r.Context(), authHeader, oauthService, logger)
 			if err != nil {
 				if errors.Is(err, errInvalidToken) {
-					slog.Warn("auth failed: invalid bearer token",
+					logger.Warn("auth failed: invalid bearer token",
 						"client_ip", r.RemoteAddr,
 						"path", r.URL.Path,
 						"method", r.Method,
@@ -138,7 +138,7 @@ func BearerToken(oauthService *oauth.Service) func(http.Handler) http.Handler {
 					w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
 					jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
 				} else {
-					slog.Warn("auth failed: malformed bearer token",
+					logger.Warn("auth failed: malformed bearer token",
 						"client_ip", r.RemoteAddr,
 						"path", r.URL.Path,
 						"method", r.Method,
@@ -157,15 +157,15 @@ func BearerToken(oauthService *oauth.Service) func(http.Handler) http.Handler {
 // BearerOrSession tries bearer token auth first, then falls back to session
 // cookie auth. This allows the same API routes to serve both MCP/API clients
 // (bearer token) and the admin SPA (session cookie).
-func BearerOrSession(oauthService *oauth.Service, store sessions.Store) func(http.Handler) http.Handler {
+func BearerOrSession(oauthService *oauth.Service, store sessions.Store, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// If Authorization header is present, use bearer token auth.
 			if authHeader := r.Header.Get("Authorization"); authHeader != "" {
-				result, err := authenticateBearerToken(r.Context(), authHeader, oauthService)
+				result, err := authenticateBearerToken(r.Context(), authHeader, oauthService, logger)
 				if err != nil {
 					if errors.Is(err, errInvalidToken) {
-						slog.Warn("auth failed: invalid bearer token",
+						logger.Warn("auth failed: invalid bearer token",
 							"client_ip", r.RemoteAddr,
 							"path", r.URL.Path,
 							"method", r.Method,
@@ -173,7 +173,7 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store) func(htt
 						w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
 						jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
 					} else {
-						slog.Warn("auth failed: malformed bearer token",
+						logger.Warn("auth failed: malformed bearer token",
 							"client_ip", r.RemoteAddr,
 							"path", r.URL.Path,
 							"method", r.Method,
@@ -189,9 +189,9 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store) func(htt
 			}
 
 			// No Authorization header — try session cookie.
-			user, _, err := loadSessionUser(r.Context(), r, store, oauthService)
+			user, _, err := loadSessionUser(r.Context(), r, store, oauthService, logger)
 			if err != nil {
-				slog.Warn("auth failed: invalid session",
+				logger.Warn("auth failed: invalid session",
 					"client_ip", r.RemoteAddr,
 					"path", r.URL.Path,
 					"method", r.Method,
@@ -208,10 +208,10 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store) func(htt
 
 // SessionAuth validates an admin session cookie.
 // On success, it sets the user in the request context.
-func SessionAuth(store sessions.Store, oauthService *oauth.Service) func(http.Handler) http.Handler {
+func SessionAuth(store sessions.Store, oauthService *oauth.Service, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			user, session, err := loadSessionUser(r.Context(), r, store, oauthService)
+			user, session, err := loadSessionUser(r.Context(), r, store, oauthService, logger)
 			if err != nil {
 				if !errors.Is(err, errNoSession) {
 					// User lookup failed — clear stale session.
@@ -258,7 +258,7 @@ func RequireAdmin(next http.Handler) http.Handler {
 //   - External sources (ZIM, git templates) are accessible to all authenticated users
 //
 // Any new endpoint serving user-scoped data MUST enforce ownership for non-admin users.
-func RequireScope(scope string) func(http.Handler) http.Handler {
+func RequireScope(scope string, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token, ok := r.Context().Value(AccessTokenContextKey).(*model.OAuthAccessToken)
@@ -285,7 +285,7 @@ func RequireScope(scope string) func(http.Handler) http.Handler {
 				}
 			}
 
-			slog.Warn("auth failed: insufficient scope",
+			logger.Warn("auth failed: insufficient scope",
 				"client_ip", r.RemoteAddr,
 				"path", r.URL.Path,
 				"method", r.Method,

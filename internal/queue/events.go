@@ -38,6 +38,18 @@ type Event struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// EventPublisher publishes events to subscribers across instances.
+type EventPublisher interface {
+	Publish(event Event)
+}
+
+// EventSubscriber manages subscriptions and receives events.
+type EventSubscriber interface {
+	Subscribe(id string) <-chan Event
+	Unsubscribe(id string)
+	Close()
+}
+
 // EventBus provides in-memory pub/sub for queue events.
 type EventBus struct {
 	mu          sync.RWMutex

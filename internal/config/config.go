@@ -20,6 +20,7 @@ type Config struct {
 	App         AppConfig
 	Server      ServerConfig
 	Database    DatabaseConfig
+	Redis       RedisConfig
 	OIDC OIDCConfig
 	OAuth       OAuthConfig
 	Storage     StorageConfig
@@ -29,6 +30,18 @@ type Config struct {
 	Queue       QueueConfig
 	Kiwix       KiwixConfig
 	Git         GitConfig
+}
+
+// RedisConfig holds Redis connection settings used for distributed rate
+// limiting and cross-instance event delivery (SSE). Supports Redis 6+ ACL
+// authentication with username/password.
+type RedisConfig struct {
+	Addr        string        `mapstructure:"redis_addr"`
+	Username    string        `mapstructure:"redis_username"`
+	Password    string        `mapstructure:"redis_password"`
+	DB          int           `mapstructure:"redis_db"`
+	PoolSize    int           `mapstructure:"redis_pool_size"`
+	DialTimeout time.Duration `mapstructure:"redis_dial_timeout"`
 }
 
 // QueueConfig holds River queue worker concurrency settings.
@@ -85,6 +98,15 @@ type ServerConfig struct {
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
+//
+// Pool sizing guidance:
+//   - Serve-only mode: DB_MAX_OPEN_CONNS=25 is a reasonable default.
+//   - Combined mode (serve --with-worker): HTTP handlers + River workers
+//     (QUEUE_HIGH_WORKERS + QUEUE_DEFAULT_WORKERS + QUEUE_LOW_WORKERS = 17 by
+//     default) share one pool. Set DB_MAX_OPEN_CONNS=40-50 to avoid workers
+//     starving HTTP handlers under load.
+//   - DB_PGX_MIN_CONNS keeps idle connections warm, reducing latency spikes
+//     after quiet periods.
 type DatabaseConfig struct {
 	Host               string        `mapstructure:"db_host"`
 	Port               int           `mapstructure:"db_port"`
@@ -205,6 +227,14 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server_hsts_max_age", 63072000)
 	v.SetDefault("server_sse_heartbeat_interval", 15*time.Second)
 
+	// Redis
+	v.SetDefault("redis_addr", "")
+	v.SetDefault("redis_username", "")
+	v.SetDefault("redis_password", "")
+	v.SetDefault("redis_db", 0)
+	v.SetDefault("redis_pool_size", 10)
+	v.SetDefault("redis_dial_timeout", 5*time.Second)
+
 	// Database
 	v.SetDefault("db_host", "127.0.0.1")
 	v.SetDefault("db_port", 5432)
@@ -215,7 +245,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("db_max_open_conns", 25)
 	v.SetDefault("db_max_idle_conns", 5)
 	v.SetDefault("db_max_lifetime", 5*time.Minute)
-	v.SetDefault("db_pgx_min_conns", int32(2))
+	v.SetDefault("db_pgx_min_conns", int32(5))
 	v.SetDefault("db_pgx_max_conn_lifetime", 30*time.Minute)
 	v.SetDefault("db_pgx_max_conn_idle_time", 5*time.Minute)
 
@@ -358,6 +388,15 @@ func Load() (*Config, error) {
 		SSEHeartbeatInterval: v.GetDuration("server_sse_heartbeat_interval"),
 	}
 
+	cfg.Redis = RedisConfig{
+		Addr:        v.GetString("redis_addr"),
+		Username:    v.GetString("redis_username"),
+		Password:    v.GetString("redis_password"),
+		DB:          v.GetInt("redis_db"),
+		PoolSize:    v.GetInt("redis_pool_size"),
+		DialTimeout: v.GetDuration("redis_dial_timeout"),
+	}
+
 	cfg.Database = DatabaseConfig{
 		Host:               v.GetString("db_host"),
 		Port:               v.GetInt("db_port"),
@@ -462,6 +501,9 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	var errs []string
 
 	// --- Always required ---
+	if c.Redis.Addr == "" {
+		errs = append(errs, "redis address is required (REDIS_ADDR)")
+	}
 	if c.Database.Host == "" {
 		errs = append(errs, "database host is required (DB_HOST)")
 	}
@@ -502,6 +544,12 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	}
 	if c.Database.MaxOpenConns > 0 && c.Database.MaxIdleConns > c.Database.MaxOpenConns {
 		errs = append(errs, "DB_MAX_IDLE_CONNS must not exceed DB_MAX_OPEN_CONNS")
+	}
+	if c.Database.PgxMinConns > 0 && int(c.Database.PgxMinConns) > c.Database.MaxOpenConns {
+		errs = append(errs, "DB_PGX_MIN_CONNS must not exceed DB_MAX_OPEN_CONNS")
+	}
+	if c.Redis.PoolSize < 0 {
+		errs = append(errs, "REDIS_POOL_SIZE must be non-negative")
 	}
 	if c.Git.MaxFileSize <= 0 {
 		errs = append(errs, "GIT_MAX_FILE_SIZE must be positive")

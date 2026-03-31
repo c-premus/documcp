@@ -19,7 +19,7 @@ import (
 type RiverClient struct {
 	client          *river.Client[pgx.Tx]
 	pool            *pgxpool.Pool
-	eventBus        *EventBus
+	eventBus        EventPublisher
 	metrics         *observability.Metrics
 	logger          *slog.Logger
 	cancelSubscribe func()
@@ -30,7 +30,7 @@ type RiverClient struct {
 // RiverConfig holds configuration for the River queue client.
 type RiverConfig struct {
 	Pool     *pgxpool.Pool
-	EventBus *EventBus
+	EventBus EventPublisher
 	Logger   *slog.Logger
 	Metrics  *observability.Metrics
 	Workers  *river.Workers
@@ -228,7 +228,7 @@ func (rc *RiverClient) QueueStats(ctx context.Context) (map[string]int, error) {
 
 // riverErrorHandler implements river.ErrorHandler to publish failure events.
 type riverErrorHandler struct {
-	eventBus *EventBus
+	eventBus EventPublisher
 	metrics  *observability.Metrics
 	logger   *slog.Logger
 }

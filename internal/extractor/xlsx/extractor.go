@@ -12,7 +12,15 @@ import (
 	"github.com/c-premus/documcp/internal/extractor"
 )
 
-const mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+const (
+	mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+	// maxUnzipSize is the maximum total unzip size for XLSX files (50 MiB).
+	maxUnzipSize = 50 * 1024 * 1024
+
+	// maxUnzipXMLSize is the maximum unzip size for a single XML file (50 MiB).
+	maxUnzipXMLSize = 50 * 1024 * 1024
+)
 
 // Compile-time check that XLSXExtractor implements extractor.Extractor.
 var _ extractor.Extractor = (*XLSXExtractor)(nil)
@@ -35,7 +43,10 @@ func (e *XLSXExtractor) Supports(mime string) bool {
 // Extract reads the XLSX file at filePath and returns its text content
 // formatted as markdown tables.
 func (e *XLSXExtractor) Extract(ctx context.Context, filePath string) (result *extractor.ExtractedContent, retErr error) {
-	f, err := excelize.OpenFile(filePath)
+	f, err := excelize.OpenFile(filePath, excelize.Options{
+		UnzipSizeLimit:    maxUnzipSize,
+		UnzipXMLSizeLimit: maxUnzipXMLSize,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("opening xlsx file: %w", err)
 	}
