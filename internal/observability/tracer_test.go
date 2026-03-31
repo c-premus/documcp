@@ -70,3 +70,23 @@ func TestInitTracer_DisabledIgnoresEndpoint(t *testing.T) {
 		t.Fatal("InitTracer() returned nil shutdown function")
 	}
 }
+
+func TestInitTracer_DisabledIgnoresNewFields(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.OTELConfig{
+		Enabled:     false,
+		SampleRate:  0.5,
+		Environment: "production",
+		Version:     "v1.0.0",
+	}
+
+	shutdown, err := observability.InitTracer(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("InitTracer() unexpected error: %v", err)
+	}
+
+	if err := shutdown(context.Background()); err != nil {
+		t.Errorf("shutdown() returned error: %v", err)
+	}
+}
