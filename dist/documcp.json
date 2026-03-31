@@ -1044,7 +1044,7 @@
       },
       "targets": [
         {
-          "expr": "documcp_document_count",
+          "expr": "documcp_documents",
           "refId": "A",
           "legendFormat": "Documents"
         }
