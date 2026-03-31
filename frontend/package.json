@@ -21,7 +21,6 @@
     "@heroicons/vue": "^2.2.0",
     "@scalar/api-reference": "^1.49.7",
     "@tanstack/vue-table": "^8.21.3",
-    "@types/dompurify": "^3.0.5",
     "date-fns": "^4.1.0",
     "dompurify": "^3.3.2",
     "marked": "^17.0.4",
