@@ -236,6 +236,7 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 					"path", path,
 					"status", ww.Status(),
 					"duration", time.Since(start),
+					"client_ip", r.RemoteAddr,
 					"request_id", middleware.GetReqID(r.Context()),
 				)
 			}()
