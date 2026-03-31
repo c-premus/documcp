@@ -12,7 +12,7 @@ DocuMCP gives AI agents structured access to your documentation via MCP tools an
 - **External Integrations** -- Kiwix ZIM archives (federated article search) and Git template repositories.
 - **Background Jobs** -- [River](https://riverqueue.com/) Postgres-native job queue with 11 worker types, 3 priority queues, and 6 periodic schedules.
 - **Admin UI** -- Vue 3 + TypeScript SPA for managing documents, users, OAuth clients, external services, and queue status.
-- **Observability** -- OpenTelemetry tracing (OTLP), Prometheus metrics (15 collectors), structured logging with `slog`, and optional Sentry/GlitchTip error tracking.
+- **Observability** -- OpenTelemetry tracing (OTLP HTTP export, W3C propagation, configurable sampling), Prometheus metrics (15 collectors), structured logging with `slog` (trace/span ID injection), and optional Sentry/GlitchTip error tracking.
 - **OIDC Authentication** -- User login via any OpenID Connect provider.
 
 ## Quick Start
@@ -191,7 +191,12 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `STORAGE_DRIVER` | No | `local` | File storage driver |
 | `STORAGE_BASE_PATH` | No | -- | Base path for local file storage |
 | `OTEL_ENABLED` | No | `false` | Enable OpenTelemetry tracing |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | -- | OTLP exporter endpoint |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | -- | OTLP HTTP exporter endpoint (e.g., `tempo:4318`) |
+| `OTEL_SERVICE_NAME` | No | `documcp` | Service name in traces |
+| `OTEL_INSECURE` | No | `false` | Use HTTP instead of HTTPS for OTLP exporter |
+| `OTEL_SAMPLE_RATE` | No | `1.0` | Trace sampling rate (0.0--1.0); ignores upstream sampling decisions |
+| `OTEL_ENVIRONMENT` | No | -- | `deployment.environment` resource attribute |
+| `OTEL_SERVICE_VERSION` | No | -- | `service.version` resource attribute |
 | `SENTRY_DSN` | No | -- | Sentry/GlitchTip DSN for error tracking (empty = disabled) |
 | `SENTRY_ENVIRONMENT` | No | `APP_ENV` | Sentry environment tag |
 | `SENTRY_SAMPLE_RATE` | No | `1.0` | Error sample rate (0.0--1.0) |

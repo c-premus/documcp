@@ -8,14 +8,15 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // Tracing returns HTTP middleware that creates a span for each incoming request.
-// It records standard HTTP semantic convention attributes and propagates the
-// trace context to downstream handlers.
+// It records standard HTTP semantic convention attributes, sets span status on
+// server errors, and propagates the trace context to downstream handlers.
 func Tracing(tracerName string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +42,10 @@ func Tracing(tracerName string) func(http.Handler) http.Handler {
 				)
 			}
 
+			// Inject trace context into response headers so downstream
+			// consumers (browser dev tools, Traefik) can correlate.
+			propagator.Inject(ctx, propagation.HeaderCarrier(w.Header()))
+
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			next.ServeHTTP(ww, r.WithContext(ctx))
 
@@ -54,8 +59,14 @@ func Tracing(tracerName string) func(http.Handler) http.Handler {
 				attribute.Int("http.response_content_length", ww.BytesWritten()),
 			)
 
+			// Mark server errors (5xx) on the span so trace backends
+			// surface them in error dashboards and alerting.
+			if statusCode >= http.StatusInternalServerError {
+				span.SetStatus(codes.Error, fmt.Sprintf("HTTP %d", statusCode))
+			}
+
 			// Update the span name with the matched route pattern for better
-			// grouping in trace backends.
+			// grouping in trace backends (reduces cardinality from raw paths).
 			if rctx := chi.RouteContext(ctx); rctx != nil {
 				if pattern := rctx.RoutePattern(); pattern != "" {
 					span.SetName(fmt.Sprintf("%s %s", r.Method, pattern))

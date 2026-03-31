@@ -188,10 +188,13 @@ type StorageConfig struct {
 
 // OTELConfig holds OpenTelemetry observability settings.
 type OTELConfig struct {
-	Enabled     bool   `mapstructure:"otel_enabled"`
-	Endpoint    string `mapstructure:"otel_exporter_otlp_endpoint"`
-	ServiceName string `mapstructure:"otel_service_name"`
-	Insecure    bool   `mapstructure:"otel_insecure"`
+	Enabled     bool    `mapstructure:"otel_enabled"`
+	Endpoint    string  `mapstructure:"otel_exporter_otlp_endpoint"`
+	ServiceName string  `mapstructure:"otel_service_name"`
+	Insecure    bool    `mapstructure:"otel_insecure"`
+	SampleRate  float64 `mapstructure:"otel_sample_rate"`
+	Environment string  `mapstructure:"otel_environment"`
+	Version     string  `mapstructure:"otel_service_version"`
 }
 
 // DocuMCPConfig holds MCP server-specific settings.
@@ -296,6 +299,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("otel_exporter_otlp_endpoint", "")
 	v.SetDefault("otel_service_name", "documcp")
 	v.SetDefault("otel_insecure", false)
+	v.SetDefault("otel_sample_rate", 1.0)
+	v.SetDefault("otel_environment", "")
+	v.SetDefault("otel_service_version", "")
 
 	// DocuMCP
 	v.SetDefault("documcp_endpoint", "/documcp")
@@ -467,6 +473,9 @@ func Load() (*Config, error) {
 		Endpoint:    v.GetString("otel_exporter_otlp_endpoint"),
 		ServiceName: v.GetString("otel_service_name"),
 		Insecure:    v.GetBool("otel_insecure"),
+		SampleRate:  v.GetFloat64("otel_sample_rate"),
+		Environment: v.GetString("otel_environment"),
+		Version:     v.GetString("otel_service_version"),
 	}
 
 	cfg.DocuMCP = DocuMCPConfig{
@@ -555,6 +564,9 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 
 	if c.OTEL.Enabled && c.OTEL.Endpoint == "" {
 		errs = append(errs, "OTEL_EXPORTER_OTLP_ENDPOINT is required when OTEL_ENABLED=true")
+	}
+	if c.OTEL.SampleRate < 0 || c.OTEL.SampleRate > 1.0 {
+		errs = append(errs, "OTEL_SAMPLE_RATE must be between 0.0 and 1.0")
 	}
 
 	// --- Numeric range validation ---

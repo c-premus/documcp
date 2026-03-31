@@ -19,6 +19,12 @@ import (
 // InitTracer sets up the OpenTelemetry TracerProvider with an OTLP HTTP
 // exporter. It returns a shutdown function that flushes remaining spans and
 // releases resources. If cfg.Enabled is false, it returns a no-op shutdown.
+//
+// The sampler uses AlwaysSample as the root decision, ignoring upstream
+// sampling decisions from reverse proxies (e.g., Traefik). This ensures
+// DocuMCP always generates its own traces regardless of whether the proxy
+// marked the request as unsampled. When SampleRate < 1.0, TraceIDRatioBased
+// is used instead.
 func InitTracer(ctx context.Context, cfg config.OTELConfig) (shutdown func(context.Context) error, err error) {
 	if !cfg.Enabled {
 		return func(context.Context) error { return nil }, nil
@@ -36,18 +42,37 @@ func InitTracer(ctx context.Context, cfg config.OTELConfig) (shutdown func(conte
 		return nil, fmt.Errorf("creating OTLP HTTP exporter: %w", err)
 	}
 
-	res, err := resource.New(ctx,
-		resource.WithAttributes(
-			semconv.ServiceName(cfg.ServiceName),
-		),
-	)
+	// Build resource attributes for trace metadata.
+	attrs := []resource.Option{
+		resource.WithAttributes(semconv.ServiceName(cfg.ServiceName)),
+	}
+	if cfg.Version != "" {
+		attrs = append(attrs, resource.WithAttributes(semconv.ServiceVersion(cfg.Version)))
+	}
+	if cfg.Environment != "" {
+		attrs = append(attrs, resource.WithAttributes(semconv.DeploymentEnvironment(cfg.Environment)))
+	}
+
+	res, err := resource.New(ctx, attrs...)
 	if err != nil {
 		return nil, fmt.Errorf("creating OTEL resource: %w", err)
+	}
+
+	// Use AlwaysSample by default. This is critical: the default
+	// ParentBased(AlwaysSample) respects the parent's sampling decision,
+	// which means if a reverse proxy (Traefik) sends traceparent with
+	// sampled=0, DocuMCP would silently drop the trace. By using
+	// AlwaysSample (not wrapped in ParentBased), we always record spans
+	// regardless of upstream decisions.
+	sampler := sdktrace.AlwaysSample()
+	if cfg.SampleRate > 0 && cfg.SampleRate < 1.0 {
+		sampler = sdktrace.TraceIDRatioBased(cfg.SampleRate)
 	}
 
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
+		sdktrace.WithSampler(sampler),
 	)
 
 	otel.SetTracerProvider(tp)
