@@ -86,16 +86,17 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Scan container image with Trivy
+        id: trivy
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # 0.35.0
         with:
-          image-ref: ${{ env.GHCR_IMAGE }}:${{ github.ref_name }}
+          image-ref: ${{ env.GHCR_IMAGE }}:${{ steps.meta.outputs.version }}
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
           exit-code: "1"
 
       - name: Upload Trivy SARIF to GitHub Security
-        if: always()
+        if: always() && steps.trivy.outcome != 'skipped'
         uses: github/codeql-action/upload-sarif@7fc1baf373eb073c686865bd453d412d506a05a2  # v3.35.1
         with:
           sarif_file: trivy-results.sarif
