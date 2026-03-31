@@ -23,7 +23,7 @@ import (
 type WorkerApp struct {
 	Foundation   *Foundation
 	RiverClient  *queue.RiverClient
-	EventBus     *queue.EventBus
+	EventBus     queue.EventSubscriber
 	HealthServer *http.Server
 }
 
@@ -31,8 +31,8 @@ type WorkerApp struct {
 func NewWorkerApp(f *Foundation) (*WorkerApp, error) {
 	logger := f.Logger
 
-	// --- EventBus ---
-	eventBus := queue.NewEventBus(logger)
+	// --- EventBus (Redis-backed for cross-instance event delivery) ---
+	eventBus := queue.NewRedisEventBus(context.Background(), f.RedisClient, logger)
 
 	// Token HMAC key — needed by workers that process token-related jobs.
 	sessionSecret := f.Config.OAuth.SessionSecret

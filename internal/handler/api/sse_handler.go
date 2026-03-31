@@ -13,12 +13,12 @@ import (
 
 // SSEHandler streams real-time queue events via Server-Sent Events.
 type SSEHandler struct {
-	eventBus          *queue.EventBus
+	eventBus          queue.EventSubscriber
 	heartbeatInterval time.Duration
 }
 
 // NewSSEHandler creates an SSEHandler with the given heartbeat interval.
-func NewSSEHandler(eventBus *queue.EventBus, heartbeatInterval time.Duration) *SSEHandler {
+func NewSSEHandler(eventBus queue.EventSubscriber, heartbeatInterval time.Duration) *SSEHandler {
 	return &SSEHandler{eventBus: eventBus, heartbeatInterval: heartbeatInterval}
 }
 

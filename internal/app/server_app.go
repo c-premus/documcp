@@ -35,7 +35,7 @@ type ServerApp struct {
 	Foundation  *Foundation
 	Server      *server.Server
 	RiverClient *queue.RiverClient
-	EventBus    *queue.EventBus
+	EventBus    queue.EventSubscriber
 	MCPHandler  *mcphandler.Handler
 	WithWorker  bool
 }
@@ -59,8 +59,8 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	}
 	oauth.SetTokenHMACKey(hmacKey)
 
-	// --- EventBus ---
-	eventBus := queue.NewEventBus(logger)
+	// --- EventBus (Redis-backed for cross-instance SSE delivery) ---
+	eventBus := queue.NewRedisEventBus(context.Background(), f.RedisClient, logger)
 
 	// --- River Workers + Client ---
 	rs, err := buildRiverClient(f, eventBus, !withWorker)
@@ -192,6 +192,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	}, logger)
 
 	srv.RegisterRoutes(server.Deps{
+		RedisClient:            f.RedisClient,
 		Version:                cfg.DocuMCP.ServerVersion,
 		MCPHandler:             mcpH,
 		OAuthHandler:           oauthH,
@@ -346,7 +347,7 @@ type riverSetup struct {
 // buildRiverClient creates the River client with all workers registered.
 // When insertOnly is true, queues and periodic jobs are omitted.
 // Returns the client and document worker references for pipeline wiring.
-func buildRiverClient(f *Foundation, eventBus *queue.EventBus, insertOnly bool) (*riverSetup, error) {
+func buildRiverClient(f *Foundation, eventBus queue.EventPublisher, insertOnly bool) (*riverSetup, error) {
 	cfg := f.Config
 
 	schedulerDeps := queue.SchedulerDeps{

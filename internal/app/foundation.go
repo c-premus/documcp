@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/c-premus/documcp/internal/client/kiwix"
 	"github.com/c-premus/documcp/internal/config"
@@ -26,10 +27,11 @@ import (
 
 // Foundation holds shared dependencies used by both ServerApp and WorkerApp.
 type Foundation struct {
-	Config  *config.Config
-	Logger  *slog.Logger
-	PgxPool *pgxpool.Pool
-	Metrics *observability.Metrics
+	Config      *config.Config
+	Logger      *slog.Logger
+	PgxPool     *pgxpool.Pool
+	RedisClient *redis.Client
+	Metrics     *observability.Metrics
 
 	// Repositories
 	DocumentRepo        *repository.DocumentRepository
@@ -77,6 +79,19 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		"host", cfg.Database.Host,
 		"database", cfg.Database.Database,
 	)
+
+	// --- Redis ---
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     cfg.Redis.Addr,
+		Username: cfg.Redis.Username,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
+	if err = redisClient.Ping(context.Background()).Err(); err != nil {
+		pgxPool.Close()
+		return nil, fmt.Errorf("connecting to redis: %w", err)
+	}
+	logger.Info("redis connected", "addr", cfg.Redis.Addr)
 
 	// Run database and River schema migrations.
 	if err = runMigrations(pgxPool); err != nil {
@@ -160,6 +175,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		Config:              cfg,
 		Logger:              logger,
 		PgxPool:             pgxPool,
+		RedisClient:         redisClient,
 		Metrics:             metrics,
 		DocumentRepo:        documentRepo,
 		ExternalServiceRepo: externalServiceRepo,
@@ -184,6 +200,11 @@ func (f *Foundation) Close() {
 		defer cancel()
 		if err := f.tracerShutdown(ctx); err != nil {
 			f.Logger.Error("flushing tracer spans", "error", err)
+		}
+	}
+	if f.RedisClient != nil {
+		if err := f.RedisClient.Close(); err != nil {
+			f.Logger.Error("closing redis client", "error", err)
 		}
 	}
 	if f.PgxPool != nil {

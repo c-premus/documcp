@@ -20,6 +20,7 @@ type Config struct {
 	App         AppConfig
 	Server      ServerConfig
 	Database    DatabaseConfig
+	Redis       RedisConfig
 	OIDC OIDCConfig
 	OAuth       OAuthConfig
 	Storage     StorageConfig
@@ -29,6 +30,16 @@ type Config struct {
 	Queue       QueueConfig
 	Kiwix       KiwixConfig
 	Git         GitConfig
+}
+
+// RedisConfig holds Redis connection settings used for distributed rate
+// limiting and cross-instance event delivery (SSE). Supports Redis 6+ ACL
+// authentication with username/password.
+type RedisConfig struct {
+	Addr     string `mapstructure:"redis_addr"`
+	Username string `mapstructure:"redis_username"`
+	Password string `mapstructure:"redis_password"`
+	DB       int    `mapstructure:"redis_db"`
 }
 
 // QueueConfig holds River queue worker concurrency settings.
@@ -205,6 +216,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server_hsts_max_age", 63072000)
 	v.SetDefault("server_sse_heartbeat_interval", 15*time.Second)
 
+	// Redis
+	v.SetDefault("redis_addr", "")
+	v.SetDefault("redis_username", "")
+	v.SetDefault("redis_password", "")
+	v.SetDefault("redis_db", 0)
+
 	// Database
 	v.SetDefault("db_host", "127.0.0.1")
 	v.SetDefault("db_port", 5432)
@@ -358,6 +375,13 @@ func Load() (*Config, error) {
 		SSEHeartbeatInterval: v.GetDuration("server_sse_heartbeat_interval"),
 	}
 
+	cfg.Redis = RedisConfig{
+		Addr:     v.GetString("redis_addr"),
+		Username: v.GetString("redis_username"),
+		Password: v.GetString("redis_password"),
+		DB:       v.GetInt("redis_db"),
+	}
+
 	cfg.Database = DatabaseConfig{
 		Host:               v.GetString("db_host"),
 		Port:               v.GetInt("db_port"),
@@ -462,6 +486,9 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	var errs []string
 
 	// --- Always required ---
+	if c.Redis.Addr == "" {
+		errs = append(errs, "redis address is required (REDIS_ADDR)")
+	}
 	if c.Database.Host == "" {
 		errs = append(errs, "database host is required (DB_HOST)")
 	}
