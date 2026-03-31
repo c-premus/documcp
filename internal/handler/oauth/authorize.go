@@ -263,10 +263,17 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	delete(session.Values, "oauth_pending_request")
 	_ = session.Save(r, w)
 
-	// Look up client to get internal ID
+	// Look up client to get internal ID and re-validate redirect URI.
+	// The GET handler already validated redirect_uri against registered URIs,
+	// but we re-check here as defense-in-depth since the POST body is user-controlled.
 	client, err := h.service.FindClient(r.Context(), reqClientID)
 	if err != nil {
 		http.Error(w, "Failed to generate authorization code", http.StatusInternalServerError)
+		return
+	}
+	registeredURIs, uriErr := client.ParseRedirectURIs()
+	if uriErr != nil || !oauth.MatchRedirectURI(reqRedirectURI, registeredURIs) {
+		http.Error(w, "Invalid redirect_uri", http.StatusBadRequest)
 		return
 	}
 

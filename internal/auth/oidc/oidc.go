@@ -368,15 +368,21 @@ func isSafeRedirect(redirect string) bool {
 	if redirect == "" {
 		return false
 	}
-	// Must start with /
-	if !strings.HasPrefix(redirect, "/") {
+	// Must start with / and second char must not be / or \ (prevents
+	// protocol-relative URLs like //evil.com and \/evil.com). Explicit
+	// second-char check satisfies static analysis (CodeQL go/bad-redirect-check)
+	// in addition to the broader Contains checks below.
+	if redirect[0] != '/' {
 		return false
 	}
-	// Must not contain // (protocol-relative URL)
+	if len(redirect) > 1 && (redirect[1] == '/' || redirect[1] == '\\') {
+		return false
+	}
+	// Must not contain // anywhere (protocol-relative URL)
 	if strings.Contains(redirect, "//") {
 		return false
 	}
-	// Must not contain backslash (some browsers normalize \\ to //)
+	// Must not contain backslash anywhere (some browsers normalize \\ to //)
 	if strings.Contains(redirect, "\\") {
 		return false
 	}
