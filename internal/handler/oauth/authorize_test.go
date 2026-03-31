@@ -498,6 +498,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientID:                "cid",
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
+					RedirectURIs:            `["https://example.com/cb"]`,
 					IsActive:                true,
 				}, nil
 			},
@@ -542,6 +543,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientID:                "cid",
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
+					RedirectURIs:            `["https://example.com/cb"]`,
 					IsActive:                true,
 				}, nil
 			},
@@ -614,6 +616,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientID:                "cid",
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
+					RedirectURIs:            `["https://example.com/cb"]`,
 					IsActive:                true,
 				}, nil
 			},
@@ -653,6 +656,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientID:                "cid",
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
+					RedirectURIs:            `["https://example.com/cb"]`,
 					IsActive:                true,
 				}, nil
 			},
@@ -695,6 +699,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientID:                "cid",
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
+					RedirectURIs:            `["https://example.com/cb"]`,
 					IsActive:                true,
 				}, nil
 			},
@@ -737,6 +742,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientID:                "cid",
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
+					RedirectURIs:            `["https://example.com/cb"]`,
 					IsActive:                true,
 				}, nil
 			},
