@@ -4,86 +4,84 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"sync"
 	"testing"
 )
 
 // ---------------------------------------------------------------------------
 // TestSetTokenHMACKey
-//
-// SetTokenHMACKey uses sync.Once, so only the first call in a process takes
-// effect. These tests verify the function contract without relying on global
-// state set by other tests. We test the underlying hashToken behavior
-// directly by exercising both code paths through a local helper.
 // ---------------------------------------------------------------------------
 
 func TestSetTokenHMACKey_CallingMultipleTimesDoesNotPanic(t *testing.T) {
-	t.Parallel()
+	t.Cleanup(resetTokenHMACKey)
 
-	// SetTokenHMACKey uses sync.Once internally, so repeated calls are safe.
-	// We deliberately pass nil/empty to avoid setting an actual key that would
-	// change hashToken behavior for other tests in this package.
+	// Repeated calls are safe — only the first non-nil key takes effect.
+	SetTokenHMACKey([]byte("first"))
+	SetTokenHMACKey([]byte("second"))
 	SetTokenHMACKey(nil)
-	SetTokenHMACKey(nil)
-	SetTokenHMACKey([]byte{})
 }
 
 func TestSetTokenHMACKey_OnlyFirstCallTakesEffect(t *testing.T) {
-	t.Parallel()
+	t.Cleanup(resetTokenHMACKey)
 
-	// Demonstrate that sync.Once only executes the inner function once.
-	var value string
-	var once sync.Once
+	key1 := []byte("first-key")
+	key2 := []byte("second-key")
 
-	once.Do(func() { value = "first" })
-	once.Do(func() { value = "second" })
+	SetTokenHMACKey(key1)
+	SetTokenHMACKey(key2) // should be ignored
 
-	if value != "first" {
-		t.Errorf("sync.Once executed second call: got %q, want %q", value, "first")
+	input := "test-token"
+	got := hashToken(input)
+
+	// Expect HMAC with key1, not key2
+	mac := hmac.New(sha256.New, key1)
+	mac.Write([]byte(input))
+	want := hex.EncodeToString(mac.Sum(nil))
+
+	if got != want {
+		t.Errorf("hashToken used wrong key: got %s, want %s", got[:16], want[:16])
 	}
 }
 
 // ---------------------------------------------------------------------------
 // TestHashTokenPaths
-//
-// Verify the two code paths in hashToken: HMAC-SHA256 vs plain SHA-256.
-// We test the expected hash outputs directly since the hashToken function
-// is package-private and its behavior depends on the global tokenHMACKey.
 // ---------------------------------------------------------------------------
 
 func TestHashTokenPaths_PlainSHA256(t *testing.T) {
-	t.Parallel()
+	t.Cleanup(resetTokenHMACKey)
+	resetTokenHMACKey() // ensure no key is set
 
-	// Plain SHA-256 path: hash = hex(SHA256(input))
 	input := "test-token-value"
+	got := hashToken(input)
+
 	h := sha256.Sum256([]byte(input))
 	want := hex.EncodeToString(h[:])
 
-	if len(want) != 64 {
-		t.Errorf("SHA-256 hex length = %d, want 64", len(want))
+	if got != want {
+		t.Errorf("hashToken without key: got %s, want %s", got[:16], want[:16])
 	}
 }
 
 func TestHashTokenPaths_HMACSHA256(t *testing.T) {
-	t.Parallel()
+	t.Cleanup(resetTokenHMACKey)
 
-	// HMAC-SHA256 path: hash = hex(HMAC-SHA256(key, input))
 	key := []byte("my-secret-key")
+	SetTokenHMACKey(key)
+
 	input := "test-token-value"
+	got := hashToken(input)
 
 	mac := hmac.New(sha256.New, key)
 	mac.Write([]byte(input))
-	hmacHash := hex.EncodeToString(mac.Sum(nil))
+	want := hex.EncodeToString(mac.Sum(nil))
 
-	// HMAC hash should differ from plain SHA-256 of the same input
-	h := sha256.Sum256([]byte(input))
-	plainHash := hex.EncodeToString(h[:])
-
-	if hmacHash == plainHash {
-		t.Error("HMAC-SHA256 and plain SHA-256 produced the same hash")
+	if got != want {
+		t.Errorf("hashToken with key: got %s, want %s", got[:16], want[:16])
 	}
 
-	if len(hmacHash) != 64 {
-		t.Errorf("HMAC-SHA256 hex length = %d, want 64", len(hmacHash))
+	// HMAC hash should differ from plain SHA-256
+	h := sha256.Sum256([]byte(input))
+	plainHash := hex.EncodeToString(h[:])
+	if got == plainHash {
+		t.Error("HMAC-SHA256 and plain SHA-256 produced the same hash")
 	}
 }
