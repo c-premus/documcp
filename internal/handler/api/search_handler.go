@@ -11,6 +11,12 @@ import (
 	"github.com/c-premus/documcp/internal/search"
 )
 
+// documentSearcher performs full-text search queries.
+type documentSearcher interface {
+	Search(ctx context.Context, params search.SearchParams) (*search.SearchResponse, error)
+	FederatedSearch(ctx context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error)
+}
+
 // searchQueryLister retrieves popular search queries.
 type searchQueryLister interface {
 	PopularQueries(ctx context.Context, limit int) ([]repository.PopularQuery, error)
@@ -23,14 +29,14 @@ type titleSuggester interface {
 
 // SearchHandler handles REST API endpoints for search.
 type SearchHandler struct {
-	searcher    *search.Searcher
+	searcher    documentSearcher
 	queryLister searchQueryLister
 	suggester   titleSuggester
 	logger      *slog.Logger
 }
 
 // NewSearchHandler creates a new SearchHandler.
-func NewSearchHandler(searcher *search.Searcher, queryLister searchQueryLister, suggester titleSuggester, logger *slog.Logger) *SearchHandler {
+func NewSearchHandler(searcher documentSearcher, queryLister searchQueryLister, suggester titleSuggester, logger *slog.Logger) *SearchHandler {
 	return &SearchHandler{
 		searcher:    searcher,
 		queryLister: queryLister,

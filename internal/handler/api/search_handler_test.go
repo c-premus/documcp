@@ -14,20 +14,49 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/c-premus/documcp/internal/repository"
+	"github.com/c-premus/documcp/internal/search"
 )
 
 // ---------------------------------------------------------------------------
+// Mock searcher implementing documentSearcher
+// ---------------------------------------------------------------------------
+
+type mockDocumentSearcher struct {
+	searchFn          func(ctx context.Context, params search.SearchParams) (*search.SearchResponse, error)
+	federatedSearchFn func(ctx context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error)
+}
+
+func (m *mockDocumentSearcher) Search(ctx context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+	if m.searchFn != nil {
+		return m.searchFn(ctx, params)
+	}
+	return &search.SearchResponse{Hits: []search.SearchResult{}}, nil
+}
+
+func (m *mockDocumentSearcher) FederatedSearch(ctx context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+	if m.federatedSearchFn != nil {
+		return m.federatedSearchFn(ctx, params)
+	}
+	return &search.FederatedSearchResponse{Hits: []search.SearchResult{}}, nil
+}
+
+// ---------------------------------------------------------------------------
 // SearchHandler tests
-//
-// The SearchHandler depends on *search.Searcher which wraps the PostgreSQL FTS
-// backend. Since we cannot mock the search backend without a real database, we
-// test the early-return error paths (parameter validation) and the response
-// format logic.
 // ---------------------------------------------------------------------------
 
 func newTestSearchHandler() *SearchHandler {
 	return &SearchHandler{
-		searcher:    nil, // will cause panic if Search/FederatedSearch reaches the search backend
+		searcher:    &mockDocumentSearcher{},
+		queryLister: nil,
+		suggester:   nil,
+		logger:      slog.New(slog.DiscardHandler),
+	}
+}
+
+// newSearchHandlerWithSearcher creates a SearchHandler with a mock searcher.
+func newSearchHandlerWithSearcher(ms *mockDocumentSearcher) *SearchHandler {
+	return &SearchHandler{
+		searcher:    ms,
 		queryLister: nil,
 		suggester:   nil,
 		logger:      slog.New(slog.DiscardHandler),
@@ -41,14 +70,15 @@ func newTestSearchHandler() *SearchHandler {
 func TestNewSearchHandler(t *testing.T) {
 	t.Parallel()
 
+	ms := &mockDocumentSearcher{}
 	ql := &mockQueryLister{}
 	ts := &mockTitleSuggester{}
 	logger := slog.New(slog.DiscardHandler)
 
-	h := NewSearchHandler(nil, ql, ts, logger)
+	h := NewSearchHandler(ms, ql, ts, logger)
 
 	require.NotNil(t, h, "NewSearchHandler should return a non-nil handler")
-	assert.Nil(t, h.searcher, "searcher should be nil when passed nil")
+	assert.Equal(t, ms, h.searcher, "searcher should be set")
 	assert.Equal(t, ql, h.queryLister, "queryLister should be set")
 	assert.Equal(t, ts, h.suggester, "suggester should be set")
 	assert.Equal(t, logger, h.logger, "logger should be set")
@@ -129,41 +159,29 @@ func TestSearchHandler_Search(t *testing.T) {
 		}
 	})
 
-	t.Run("accepts all valid file_type values without returning 400", func(t *testing.T) {
+	t.Run("accepts all valid file_type values and returns 200", func(t *testing.T) {
 		t.Parallel()
 
-		// Valid file_type values pass validation and proceed to the searcher call.
-		// Since searcher is nil, the handler will panic if it reaches that point.
-		// We use recover to confirm validation passed (no 400 returned).
 		validTypes := []string{"pdf", "docx", "xlsx", "html", "markdown"}
 		for _, ft := range validTypes {
 			t.Run(ft, func(t *testing.T) {
 				t.Parallel()
 
-				h := newTestSearchHandler()
+				var capturedFileType string
+				ms := &mockDocumentSearcher{
+					searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+						capturedFileType = params.FileType
+						return &search.SearchResponse{Hits: []search.SearchResult{}}, nil
+					},
+				}
+				h := newSearchHandlerWithSearcher(ms)
 				req := httptest.NewRequest(http.MethodGet, "/api/search?q=test&file_type="+ft, http.NoBody)
 				rr := httptest.NewRecorder()
 
-				// The handler will panic on the nil searcher after passing validation.
-				// A panic means validation succeeded; a non-panic 400 means it failed.
-				panicked := true
-				func() {
-					defer func() {
-						if r := recover(); r != nil {
-							panicked = true
-						}
-					}()
-					h.Search(rr, req)
-					panicked = false
-				}()
+				h.Search(rr, req)
 
-				if !panicked {
-					// If no panic, then the handler returned without reaching the searcher,
-					// which means it returned an error response.
-					assert.NotEqual(t, http.StatusBadRequest, rr.Code,
-						"file_type %q should be accepted as valid", ft)
-				}
-				// If panicked, validation passed and the nil searcher was reached — success.
+				assert.Equal(t, http.StatusOK, rr.Code)
+				assert.Equal(t, ft, capturedFileType, "file_type should be passed to searcher")
 			})
 		}
 	})
@@ -187,6 +205,226 @@ func TestSearchHandler_Search(t *testing.T) {
 		if msg := body["message"]; msg != "invalid file_type filter" {
 			t.Errorf("message = %v, want 'invalid file_type filter'", msg)
 		}
+	})
+
+	t.Run("returns 200 with search results on happy path", func(t *testing.T) {
+		t.Parallel()
+
+		ms := &mockDocumentSearcher{
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+				assert.Equal(t, "golang tutorial", params.Query)
+				assert.Equal(t, search.IndexDocuments, params.IndexUID)
+				assert.Equal(t, int64(20), params.Limit)
+				assert.Equal(t, int64(0), params.Offset)
+				return &search.SearchResponse{
+					Hits: []search.SearchResult{
+						{UUID: "doc-1", Title: "Go Tutorial", Description: "Learn Go", Source: "document", Score: 0.9},
+						{UUID: "doc-2", Title: "Golang Basics", Source: "document", Score: 0.7},
+					},
+					EstimatedTotal:   2,
+					ProcessingTimeMs: 42,
+				}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
+		req := httptest.NewRequest(http.MethodGet, "/api/search?q=golang+tutorial", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+
+		var body map[string]any
+		err := json.NewDecoder(rr.Body).Decode(&body)
+		require.NoError(t, err)
+
+		data, ok := body["data"].([]any)
+		require.True(t, ok, "expected 'data' key with array value")
+		assert.Len(t, data, 2)
+
+		first := data[0].(map[string]any)
+		assert.Equal(t, "doc-1", first["uuid"])
+		assert.Equal(t, "Go Tutorial", first["title"])
+
+		meta, ok := body["meta"].(map[string]any)
+		require.True(t, ok, "expected 'meta' key")
+		assert.Equal(t, "golang tutorial", meta["query"])
+		assert.InEpsilon(t, float64(2), meta["total"], 1e-9)
+		assert.InEpsilon(t, float64(42), meta["processing_time_ms"], 1e-9)
+		assert.InEpsilon(t, float64(20), meta["limit"], 1e-9)
+		assert.Equal(t, float64(0), meta["offset"])
+	})
+
+	t.Run("returns 500 when searcher returns error", func(t *testing.T) {
+		t.Parallel()
+
+		ms := &mockDocumentSearcher{
+			searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
+				return nil, errors.New("database unavailable")
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
+		req := httptest.NewRequest(http.MethodGet, "/api/search?q=test", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		var body map[string]any
+		err := json.NewDecoder(rr.Body).Decode(&body)
+		require.NoError(t, err)
+		assert.Equal(t, "search failed", body["message"])
+		assert.Equal(t, "Internal Server Error", body["error"])
+	})
+
+	t.Run("passes custom limit and offset to searcher", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedLimit, capturedOffset int64
+		ms := &mockDocumentSearcher{
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+				capturedLimit = params.Limit
+				capturedOffset = params.Offset
+				return &search.SearchResponse{Hits: []search.SearchResult{}}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
+		req := httptest.NewRequest(http.MethodGet, "/api/search?q=test&limit=50&offset=10", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, int64(50), capturedLimit)
+		assert.Equal(t, int64(10), capturedOffset)
+	})
+
+	t.Run("clamps limit to maximum 100", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedLimit int64
+		ms := &mockDocumentSearcher{
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+				capturedLimit = params.Limit
+				return &search.SearchResponse{Hits: []search.SearchResult{}}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
+		req := httptest.NewRequest(http.MethodGet, "/api/search?q=test&limit=999", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, int64(100), capturedLimit, "limit should be clamped to 100")
+	})
+
+	t.Run("uses default limit 20 when limit is zero", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedLimit int64
+		ms := &mockDocumentSearcher{
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+				capturedLimit = params.Limit
+				return &search.SearchResponse{Hits: []search.SearchResult{}}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
+		req := httptest.NewRequest(http.MethodGet, "/api/search?q=test&limit=0", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, int64(20), capturedLimit, "limit=0 should default to 20")
+	})
+
+	t.Run("always sets IndexUID to documents", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedIndex string
+		ms := &mockDocumentSearcher{
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+				capturedIndex = params.IndexUID
+				return &search.SearchResponse{Hits: []search.SearchResult{}}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
+		req := httptest.NewRequest(http.MethodGet, "/api/search?q=test", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, search.IndexDocuments, capturedIndex)
+	})
+
+	t.Run("returns empty data array when no results found", func(t *testing.T) {
+		t.Parallel()
+
+		ms := &mockDocumentSearcher{
+			searchFn: func(_ context.Context, _ search.SearchParams) (*search.SearchResponse, error) {
+				return &search.SearchResponse{
+					Hits:             []search.SearchResult{},
+					EstimatedTotal:   0,
+					ProcessingTimeMs: 3,
+				}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
+		req := httptest.NewRequest(http.MethodGet, "/api/search?q=nonexistent", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var body map[string]any
+		err := json.NewDecoder(rr.Body).Decode(&body)
+		require.NoError(t, err)
+		data, ok := body["data"].([]any)
+		require.True(t, ok)
+		assert.Empty(t, data)
+	})
+
+	t.Run("does not pass file_type when not specified", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedFileType string
+		ms := &mockDocumentSearcher{
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+				capturedFileType = params.FileType
+				return &search.SearchResponse{Hits: []search.SearchResult{}}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
+		req := httptest.NewRequest(http.MethodGet, "/api/search?q=test", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Empty(t, capturedFileType, "file_type should be empty when not specified")
+	})
+
+	t.Run("negative offset is clamped to zero", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedOffset int64
+		ms := &mockDocumentSearcher{
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+				capturedOffset = params.Offset
+				return &search.SearchResponse{Hits: []search.SearchResult{}}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
+		req := httptest.NewRequest(http.MethodGet, "/api/search?q=test&offset=-5", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Search(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, int64(0), capturedOffset, "negative offset should be clamped to 0")
 	})
 }
 
@@ -267,167 +505,226 @@ func TestSearchHandler_FederatedSearch(t *testing.T) {
 		}
 	})
 
-	// The following tests exercise the types-filter parsing and limit/offset
-	// clamping logic. All valid-query paths reach h.searcher.FederatedSearch
-	// which panics because the searcher is nil (no real search backend available).
-	// We use recover() to confirm the code reached the searcher (validation
-	// passed) rather than returning a 400 early.
-
-	t.Run("limit zero is clamped to 20 before reaching searcher", func(t *testing.T) {
+	t.Run("limit zero is clamped to default 20", func(t *testing.T) {
 		t.Parallel()
 
-		h := newTestSearchHandler()
+		var capturedLimit int64
+		ms := &mockDocumentSearcher{
+			federatedSearchFn: func(_ context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				capturedLimit = params.Limit
+				return &search.FederatedSearchResponse{Hits: []search.SearchResult{}}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
 		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=test&limit=0", http.NoBody)
 		rr := httptest.NewRecorder()
 
-		panicked := false
-		func() {
-			defer func() {
-				if recover() != nil {
-					panicked = true
-				}
-			}()
-			h.FederatedSearch(rr, req)
-		}()
+		h.FederatedSearch(rr, req)
 
-		// A panic means validation passed and the nil searcher was reached.
-		// A clean return (no panic) means the handler returned an error before the searcher.
-		if !panicked {
-			assert.NotEqual(t, http.StatusBadRequest, rr.Code, "limit=0 should not be rejected with 400")
-		}
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, int64(20), capturedLimit, "limit=0 should be clamped to default 20")
 	})
 
-	t.Run("limit over 100 is clamped before reaching searcher", func(t *testing.T) {
+	t.Run("limit over 100 is clamped to 100", func(t *testing.T) {
 		t.Parallel()
 
-		h := newTestSearchHandler()
+		var capturedLimit int64
+		ms := &mockDocumentSearcher{
+			federatedSearchFn: func(_ context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				capturedLimit = params.Limit
+				return &search.FederatedSearchResponse{Hits: []search.SearchResult{}}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
 		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=test&limit=500", http.NoBody)
 		rr := httptest.NewRecorder()
 
-		panicked := false
-		func() {
-			defer func() {
-				if recover() != nil {
-					panicked = true
-				}
-			}()
-			h.FederatedSearch(rr, req)
-		}()
+		h.FederatedSearch(rr, req)
 
-		if !panicked {
-			assert.NotEqual(t, http.StatusBadRequest, rr.Code, "limit=500 should be clamped, not rejected")
-		}
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, int64(100), capturedLimit, "limit=500 should be clamped to 100")
 	})
 
 	t.Run("types=document maps to documents index", func(t *testing.T) {
 		t.Parallel()
 
-		h := newTestSearchHandler()
+		var capturedIndexes []string
+		ms := &mockDocumentSearcher{
+			federatedSearchFn: func(_ context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				capturedIndexes = params.Indexes
+				return &search.FederatedSearchResponse{Hits: []search.SearchResult{}}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
 		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=test&types=document", http.NoBody)
 		rr := httptest.NewRecorder()
 
-		panicked := false
-		func() {
-			defer func() {
-				if recover() != nil {
-					panicked = true
-				}
-			}()
-			h.FederatedSearch(rr, req)
-		}()
+		h.FederatedSearch(rr, req)
 
-		if !panicked {
-			assert.NotEqual(t, http.StatusBadRequest, rr.Code, "types=document should be accepted")
-		}
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, []string{search.IndexDocuments}, capturedIndexes)
 	})
 
 	t.Run("types=zim_archive maps to zim archives index", func(t *testing.T) {
 		t.Parallel()
 
-		h := newTestSearchHandler()
+		var capturedIndexes []string
+		ms := &mockDocumentSearcher{
+			federatedSearchFn: func(_ context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				capturedIndexes = params.Indexes
+				return &search.FederatedSearchResponse{Hits: []search.SearchResult{}}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
 		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=test&types=zim_archive", http.NoBody)
 		rr := httptest.NewRecorder()
 
-		panicked := false
-		func() {
-			defer func() {
-				if recover() != nil {
-					panicked = true
-				}
-			}()
-			h.FederatedSearch(rr, req)
-		}()
+		h.FederatedSearch(rr, req)
 
-		if !panicked {
-			assert.NotEqual(t, http.StatusBadRequest, rr.Code, "types=zim_archive should be accepted")
-		}
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, []string{search.IndexZimArchives}, capturedIndexes)
 	})
 
 	t.Run("types=git_template maps to git templates index", func(t *testing.T) {
 		t.Parallel()
 
-		h := newTestSearchHandler()
+		var capturedIndexes []string
+		ms := &mockDocumentSearcher{
+			federatedSearchFn: func(_ context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				capturedIndexes = params.Indexes
+				return &search.FederatedSearchResponse{Hits: []search.SearchResult{}}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
 		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=test&types=git_template", http.NoBody)
 		rr := httptest.NewRecorder()
 
-		panicked := false
-		func() {
-			defer func() {
-				if recover() != nil {
-					panicked = true
-				}
-			}()
-			h.FederatedSearch(rr, req)
-		}()
+		h.FederatedSearch(rr, req)
 
-		if !panicked {
-			assert.NotEqual(t, http.StatusBadRequest, rr.Code, "types=git_template should be accepted")
-		}
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, []string{search.IndexGitTemplates}, capturedIndexes)
 	})
 
-	t.Run("multiple types in comma-separated list are all accepted", func(t *testing.T) {
+	t.Run("multiple types in comma-separated list are all mapped", func(t *testing.T) {
 		t.Parallel()
 
-		h := newTestSearchHandler()
+		var capturedIndexes []string
+		ms := &mockDocumentSearcher{
+			federatedSearchFn: func(_ context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				capturedIndexes = params.Indexes
+				return &search.FederatedSearchResponse{Hits: []search.SearchResult{}}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
 		req := httptest.NewRequest(http.MethodGet,
 			"/api/search/unified?q=test&types=document,zim_archive,git_template", http.NoBody)
 		rr := httptest.NewRecorder()
 
-		panicked := false
-		func() {
-			defer func() {
-				if recover() != nil {
-					panicked = true
-				}
-			}()
-			h.FederatedSearch(rr, req)
-		}()
+		h.FederatedSearch(rr, req)
 
-		if !panicked {
-			assert.NotEqual(t, http.StatusBadRequest, rr.Code, "multiple valid types should be accepted")
-		}
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, []string{search.IndexDocuments, search.IndexZimArchives, search.IndexGitTemplates}, capturedIndexes)
 	})
 
-	t.Run("unknown type is silently ignored and does not cause 400", func(t *testing.T) {
+	t.Run("unknown type is silently ignored", func(t *testing.T) {
 		t.Parallel()
 
-		h := newTestSearchHandler()
+		var capturedIndexes []string
+		ms := &mockDocumentSearcher{
+			federatedSearchFn: func(_ context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				capturedIndexes = params.Indexes
+				return &search.FederatedSearchResponse{Hits: []search.SearchResult{}}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
 		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=test&types=unknown_type", http.NoBody)
 		rr := httptest.NewRecorder()
 
-		panicked := false
-		func() {
-			defer func() {
-				if recover() != nil {
-					panicked = true
-				}
-			}()
-			h.FederatedSearch(rr, req)
-		}()
+		h.FederatedSearch(rr, req)
 
-		if !panicked {
-			assert.NotEqual(t, http.StatusBadRequest, rr.Code, "unknown types should be ignored, not rejected")
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Empty(t, capturedIndexes, "unknown types should be ignored, resulting in empty indexes")
+	})
+
+	t.Run("returns search results with correct response structure", func(t *testing.T) {
+		t.Parallel()
+
+		ms := &mockDocumentSearcher{
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				return &search.FederatedSearchResponse{
+					Hits: []search.SearchResult{
+						{UUID: "abc-123", Title: "Go Guide", Description: "A guide", Source: "document", Score: 0.95},
+						{UUID: "def-456", Title: "Docker Intro", Source: "zim_archive", Score: 0.80},
+					},
+					EstimatedTotal:   2,
+					ProcessingTimeMs: 15,
+				}, nil
+			},
 		}
+		h := newSearchHandlerWithSearcher(ms)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=go&limit=10&offset=5", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.FederatedSearch(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+
+		var body map[string]any
+		err := json.NewDecoder(rr.Body).Decode(&body)
+		require.NoError(t, err)
+
+		data, ok := body["data"].([]any)
+		require.True(t, ok)
+		assert.Len(t, data, 2)
+
+		meta, ok := body["meta"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "go", meta["query"])
+		assert.InEpsilon(t, float64(2), meta["total"], 1e-9)
+		assert.InEpsilon(t, float64(15), meta["processing_time_ms"], 1e-9)
+		assert.InEpsilon(t, float64(10), meta["limit"], 1e-9)
+		assert.InEpsilon(t, float64(5), meta["offset"], 1e-9)
+	})
+
+	t.Run("returns 500 when searcher fails", func(t *testing.T) {
+		t.Parallel()
+
+		ms := &mockDocumentSearcher{
+			federatedSearchFn: func(_ context.Context, _ search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				return nil, errors.New("connection refused")
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=test", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.FederatedSearch(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		var body map[string]any
+		err := json.NewDecoder(rr.Body).Decode(&body)
+		require.NoError(t, err)
+		assert.Equal(t, "search failed", body["message"])
+	})
+
+	t.Run("no types parameter results in nil indexes", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedIndexes []string
+		ms := &mockDocumentSearcher{
+			federatedSearchFn: func(_ context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				capturedIndexes = params.Indexes
+				return &search.FederatedSearchResponse{Hits: []search.SearchResult{}}, nil
+			},
+		}
+		h := newSearchHandlerWithSearcher(ms)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=test", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.FederatedSearch(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Nil(t, capturedIndexes, "no types param should pass nil indexes to searcher")
 	})
 }
 
