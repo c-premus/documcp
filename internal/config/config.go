@@ -37,12 +37,14 @@ type Config struct {
 // limiting and cross-instance event delivery (SSE). Supports Redis 6+ ACL
 // authentication with username/password.
 type RedisConfig struct {
-	Addr        string        `mapstructure:"redis_addr"`
-	Username    string        `mapstructure:"redis_username"`
-	Password    string        `mapstructure:"redis_password"`
-	DB          int           `mapstructure:"redis_db"`
-	PoolSize    int           `mapstructure:"redis_pool_size"`
-	DialTimeout time.Duration `mapstructure:"redis_dial_timeout"`
+	Addr            string        `mapstructure:"redis_addr"`
+	Username        string        `mapstructure:"redis_username"`
+	Password        string        `mapstructure:"redis_password"`
+	DB              int           `mapstructure:"redis_db"`
+	PoolSize        int           `mapstructure:"redis_pool_size"`
+	MinIdleConns    int           `mapstructure:"redis_min_idle_conns"`
+	ConnMaxIdleTime time.Duration `mapstructure:"redis_conn_max_idle_time"`
+	DialTimeout     time.Duration `mapstructure:"redis_dial_timeout"`
 }
 
 // QueueConfig holds River queue worker concurrency settings.
@@ -245,6 +247,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("redis_password", "")
 	v.SetDefault("redis_db", 0)
 	v.SetDefault("redis_pool_size", 10)
+	v.SetDefault("redis_min_idle_conns", 2)
+	v.SetDefault("redis_conn_max_idle_time", 5*time.Minute)
 	v.SetDefault("redis_dial_timeout", 5*time.Second)
 
 	// Database
@@ -414,8 +418,10 @@ func Load() (*Config, error) {
 		Username:    v.GetString("redis_username"),
 		Password:    v.GetString("redis_password"),
 		DB:          v.GetInt("redis_db"),
-		PoolSize:    v.GetInt("redis_pool_size"),
-		DialTimeout: v.GetDuration("redis_dial_timeout"),
+		PoolSize:        v.GetInt("redis_pool_size"),
+		MinIdleConns:    v.GetInt("redis_min_idle_conns"),
+		ConnMaxIdleTime: v.GetDuration("redis_conn_max_idle_time"),
+		DialTimeout:     v.GetDuration("redis_dial_timeout"),
 	}
 
 	cfg.Database = DatabaseConfig{
