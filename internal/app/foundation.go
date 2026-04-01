@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
-	"github.com/redis/go-redis/v9/maintnotifications"
 
 	"github.com/c-premus/documcp/internal/client/kiwix"
 	"github.com/c-premus/documcp/internal/config"
@@ -94,17 +94,13 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		Username: cfg.Redis.Username,
 		Password: cfg.Redis.Password,
 		DB:       cfg.Redis.DB,
-		Protocol: 3,
-		// Disable maintenance notifications (default: auto). With RESP3,
-		// go-redis sends CLIENT MAINT_NOTIFICATIONS ON, causing Redis 8 to
-		// push unsolicited notifications on pool connections. Under request
-		// bursts the 5-second drain optimization skips processing, so these
-		// arrive between command completion and putConn — triggering
-		// "Conn has unread data (not push notification), removing it" and
-		// connection churn. Not needed for standalone Docker deployments.
-		MaintNotificationsConfig: &maintnotifications.Config{
-			Mode: maintnotifications.ModeDisabled,
-		},
+		Protocol: 2,
+		// RESP2 avoids the "Conn has unread data (not push notification)"
+		// warnings caused by RESP3 push notifications on Redis 8. We don't
+		// use RESP3-only features (client-side caching, push notifications).
+		// Pool tuning: rotate idle connections to prevent stale state.
+		MinIdleConns:    cfg.Redis.MinIdleConns,
+		ConnMaxIdleTime: cfg.Redis.ConnMaxIdleTime,
 	}
 	if cfg.Redis.PoolSize > 0 {
 		redisOpts.PoolSize = cfg.Redis.PoolSize
@@ -117,15 +113,32 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		pgxPool.Close()
 		return nil, fmt.Errorf("connecting to redis: %w", err)
 	}
+
+	// Instrument Redis with OpenTelemetry tracing.
+	if err = redisotel.InstrumentTracing(redisClient); err != nil {
+		_ = redisClient.Close()
+		pgxPool.Close()
+		return nil, fmt.Errorf("instrumenting redis tracing: %w", err)
+	}
+
 	logger.Info("redis connected",
 		"addr", cfg.Redis.Addr,
 		"pool_size", cfg.Redis.PoolSize,
 	)
 
+	// After this point both pgxPool and redisClient are live resources.
+	// Use a deferred cleanup to close both on any initialization error.
+	var initOK bool
+	defer func() {
+		if !initOK {
+			_ = redisClient.Close()
+			pgxPool.Close()
+		}
+	}()
+
 	// Run database and River schema migrations.
-	if err = runMigrations(pgxPool); err != nil {
-		pgxPool.Close()
-		return nil, err
+	if migErr := runMigrations(pgxPool); migErr != nil {
+		return nil, migErr
 	}
 	logger.Info("database and river migrations applied")
 
@@ -135,7 +148,6 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		var encErr error
 		encryptor, encErr = crypto.NewEncryptor(cfg.App.EncryptionKeyBytes)
 		if encErr != nil {
-			pgxPool.Close()
 			return nil, fmt.Errorf("initializing encryptor: %w", encErr)
 		}
 		logger.Info("encryption at rest enabled")
@@ -174,25 +186,24 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	// --- Storage ---
 	storagePath := filepath.Join(cfg.Storage.BasePath, cfg.Storage.DocumentPath)
 	if err = os.MkdirAll(storagePath, 0o750); err != nil {
-		pgxPool.Close()
 		return nil, fmt.Errorf("creating document storage path: %w", err)
 	}
 
 	gitTempDir := filepath.Join(cfg.Storage.BasePath, "git")
 	if err = os.MkdirAll(gitTempDir, 0o750); err != nil {
-		pgxPool.Close()
 		return nil, fmt.Errorf("creating git temp path: %w", err)
 	}
 
 	// --- Observability ---
 	metrics := observability.NewMetrics()
 	observability.RegisterDBMetrics(pgxPool)
+	observability.RegisterRedisMetrics(redisClient)
+	observability.RegisterDocumentCount(pgxPool)
 	searcher.SetMetrics(metrics)
 	logger.Info("Prometheus metrics registered")
 
 	tracerShutdown, err := observability.InitTracer(context.Background(), cfg.OTEL)
 	if err != nil {
-		pgxPool.Close()
 		return nil, fmt.Errorf("initializing tracer: %w", err)
 	}
 	if cfg.OTEL.Enabled {
@@ -202,13 +213,13 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 
 	sentryFlush, err := observability.InitSentry(cfg.Sentry, cfg.App.Env, cfg.DocuMCP.ServerVersion)
 	if err != nil {
-		pgxPool.Close()
 		return nil, fmt.Errorf("initializing sentry: %w", err)
 	}
 	if cfg.Sentry.DSN != "" {
 		logger.Info("Sentry error tracking enabled")
 	}
 
+	initOK = true
 	return &Foundation{
 		Config:              cfg,
 		Logger:              logger,

@@ -18,16 +18,11 @@ import {
   VizTooltipOptionsBuilder,
 } from '@grafana/grafana-foundation-sdk/common';
 import {
-  FieldColorBuilder,
-  FieldColorModeId,
   ThresholdsConfigBuilder,
   ThresholdsMode,
 } from '@grafana/grafana-foundation-sdk/dashboard';
 
 const PROMETHEUS_DATASOURCE = { type: 'prometheus', uid: 'prometheus' } as const;
-
-const LATENCY_BUCKET_METRIC = 'traces_spanmetrics_latency_bucket';
-const SERVICE_FILTER = 'service="documcp"';
 
 function buildLegend(): VizLegendOptionsBuilder {
   return new VizLegendOptionsBuilder()
@@ -62,7 +57,7 @@ export function dbConnectionPoolPanel(): PanelBuilder {
   const panel = new PanelBuilder()
     .title('DB Connection Pool')
     .description('PostgreSQL connection pool: open, in-use, and idle connections')
-    .gridPos({ h: 8, w: 8, x: 0, y: 34 })
+    .gridPos({ h: 8, w: 8, x: 0, y: 42 })
     .unit('short');
 
   applyTimeseriesStyle(panel);
@@ -104,7 +99,7 @@ export function dbWaitPanel(): PanelBuilder {
   const panel = new PanelBuilder()
     .title('DB Connection Wait')
     .description('Rate of connections waited for and cumulative wait time')
-    .gridPos({ h: 8, w: 8, x: 8, y: 34 })
+    .gridPos({ h: 8, w: 8, x: 8, y: 42 })
     .unit('short');
 
   applyTimeseriesStyle(panel);
@@ -134,6 +129,66 @@ export function dbWaitPanel(): PanelBuilder {
   return panel;
 }
 
+export function redisConnectionPoolPanel(): PanelBuilder {
+  const panel = new PanelBuilder()
+    .title('Redis Connection Pool')
+    .description('Redis connection pool: active, idle, hits, misses, and timeouts')
+    .gridPos({ h: 8, w: 8, x: 16, y: 42 })
+    .unit('short');
+
+  applyTimeseriesStyle(panel);
+
+  panel
+    .withTarget(
+      new DataqueryBuilder()
+        .refId('A')
+        .expr('documcp_redis_active_connections')
+        .legendFormat('Active'),
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .refId('B')
+        .expr('documcp_redis_idle_connections')
+        .legendFormat('Idle'),
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .refId('C')
+        .expr('rate(documcp_redis_pool_hits_total[$__rate_interval])')
+        .legendFormat('Hits/s'),
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .refId('D')
+        .expr('rate(documcp_redis_pool_misses_total[$__rate_interval])')
+        .legendFormat('Misses/s'),
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .refId('E')
+        .expr('rate(documcp_redis_pool_timeouts_total[$__rate_interval])')
+        .legendFormat('Timeouts/s'),
+    );
+
+  panel.overrideByName('Active', [
+    { id: 'color', value: { fixedColor: 'orange', mode: 'fixed' } },
+  ]);
+  panel.overrideByName('Idle', [
+    { id: 'color', value: { fixedColor: 'green', mode: 'fixed' } },
+  ]);
+  panel.overrideByName('Hits/s', [
+    { id: 'color', value: { fixedColor: 'blue', mode: 'fixed' } },
+  ]);
+  panel.overrideByName('Misses/s', [
+    { id: 'color', value: { fixedColor: 'yellow', mode: 'fixed' } },
+  ]);
+  panel.overrideByName('Timeouts/s', [
+    { id: 'color', value: { fixedColor: 'red', mode: 'fixed' } },
+  ]);
+
+  return panel;
+}
+
 // --- HTTP & Application Metrics ---
 
 export function activeConnectionsPanel(): StatPanelBuilder {
@@ -145,7 +200,7 @@ export function activeConnectionsPanel(): StatPanelBuilder {
   return new StatPanelBuilder()
     .title('Active Connections')
     .description('Currently active HTTP connections')
-    .gridPos({ h: 4, w: 4, x: 16, y: 34 })
+    .gridPos({ h: 4, w: 4, x: 0, y: 50 })
     .datasource(PROMETHEUS_DATASOURCE)
     .withTarget(query)
     .unit('short')
@@ -175,7 +230,7 @@ export function documentCountPanel(): StatPanelBuilder {
   return new StatPanelBuilder()
     .title('Document Count')
     .description('Total documents managed')
-    .gridPos({ h: 4, w: 4, x: 20, y: 34 })
+    .gridPos({ h: 4, w: 4, x: 4, y: 50 })
     .datasource(PROMETHEUS_DATASOURCE)
     .withTarget(query)
     .unit('short')
@@ -200,7 +255,7 @@ export function searchLatencyPanel(): PanelBuilder {
   const panel = new PanelBuilder()
     .title('Search Latency')
     .description('P50, P95, P99 search query latency')
-    .gridPos({ h: 8, w: 8, x: 16, y: 38 })
+    .gridPos({ h: 8, w: 8, x: 16, y: 50 })
     .unit('s');
 
   applyTimeseriesStyle(panel);
@@ -230,8 +285,8 @@ export function searchLatencyPanel(): PanelBuilder {
 export function nativeHttpRatePanel(): PanelBuilder {
   const panel = new PanelBuilder()
     .title('HTTP Requests (Native)')
-    .description('Request rate from native Prometheus counter by method and route')
-    .gridPos({ h: 8, w: 12, x: 0, y: 38 })
+    .description('Request rate from native Prometheus counter by method')
+    .gridPos({ h: 8, w: 8, x: 8, y: 50 })
     .unit('reqps');
 
   applyTimeseriesStyle(panel);
@@ -246,11 +301,43 @@ export function nativeHttpRatePanel(): PanelBuilder {
   return panel;
 }
 
-export function mcpKiwixPanel(): PanelBuilder {
+export function queueJobRatePanel(): PanelBuilder {
   const panel = new PanelBuilder()
-    .title('MCP & Kiwix Operations')
-    .description('MCP tool and Kiwix service operation latency (P95)')
-    .gridPos({ h: 8, w: 12, x: 12, y: 38 })
+    .title('Queue Job Rate')
+    .description('Jobs dispatched, completed, and failed per second by type')
+    .gridPos({ h: 8, w: 12, x: 0, y: 58 })
+    .unit('ops');
+
+  applyTimeseriesStyle(panel);
+
+  panel
+    .withTarget(
+      new DataqueryBuilder()
+        .refId('A')
+        .expr('sum by (job_kind) (rate(documcp_queue_jobs_completed_total[$__rate_interval]))')
+        .legendFormat('{{job_kind}} completed'),
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .refId('B')
+        .expr('sum by (job_kind) (rate(documcp_queue_jobs_failed_total[$__rate_interval]))')
+        .legendFormat('{{job_kind}} failed'),
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .refId('C')
+        .expr('sum(rate(documcp_queue_jobs_dispatched_total[$__rate_interval]))')
+        .legendFormat('dispatched (all)'),
+    );
+
+  return panel;
+}
+
+export function queueJobDurationPanel(): PanelBuilder {
+  const panel = new PanelBuilder()
+    .title('Queue Job Duration (P95)')
+    .description('P95 job execution time by type')
+    .gridPos({ h: 8, w: 12, x: 12, y: 58 })
     .unit('s');
 
   applyTimeseriesStyle(panel);
@@ -259,9 +346,9 @@ export function mcpKiwixPanel(): PanelBuilder {
     new DataqueryBuilder()
       .refId('A')
       .expr(
-        `histogram_quantile(0.95, sum by (span_name, le) (rate(${LATENCY_BUCKET_METRIC}{${SERVICE_FILTER}, span_name=~"mcp.*|kiwix.*|action.zim.*"}[$__rate_interval])))`,
+        `histogram_quantile(0.95, sum by (job_kind, le) (rate(documcp_queue_job_duration_seconds_bucket[$__rate_interval])))`,
       )
-      .legendFormat('{{span_name}}'),
+      .legendFormat('{{job_kind}}'),
   );
 
   return panel;

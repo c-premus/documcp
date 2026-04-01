@@ -14,6 +14,7 @@ import (
 
 	"github.com/c-premus/documcp/internal/client/git"
 	"github.com/c-premus/documcp/internal/client/kiwix"
+	"github.com/c-premus/documcp/internal/observability"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/security"
@@ -65,6 +66,7 @@ type SchedulerDeps struct {
 	GitRepo           GitTemplateRepoDeps
 	OAuthRepo         OAuthTokenPurger
 	DocRepo           DocumentRepoDeps
+	Metrics           *observability.Metrics
 	GitTempDir        string
 	StoragePath       string
 	Logger            *slog.Logger
@@ -83,7 +85,8 @@ type SyncKiwixWorker struct {
 }
 
 // Work executes the SyncKiwixWorker job, syncing ZIM archives from the Kiwix catalog.
-func (w *SyncKiwixWorker) Work(ctx context.Context, _ *river.Job[SyncKiwixArgs]) error {
+func (w *SyncKiwixWorker) Work(ctx context.Context, job *river.Job[SyncKiwixArgs]) error {
+	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
@@ -145,6 +148,7 @@ func (w *SyncKiwixWorker) Work(ctx context.Context, _ *river.Job[SyncKiwixArgs])
 		}
 		svcLogger.Info("kiwix service sync completed", "entries", len(entries))
 	}
+	recordJobCompleted(w.Deps.Metrics, job.Queue, job.Kind, time.Since(start))
 	return nil
 }
 
@@ -155,7 +159,8 @@ type SyncGitTemplatesWorker struct {
 }
 
 // Work executes the SyncGitTemplatesWorker job, syncing Git template repositories.
-func (w *SyncGitTemplatesWorker) Work(ctx context.Context, _ *river.Job[SyncGitTemplatesArgs]) error {
+func (w *SyncGitTemplatesWorker) Work(ctx context.Context, job *river.Job[SyncGitTemplatesArgs]) error {
+	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
@@ -196,6 +201,7 @@ func (w *SyncGitTemplatesWorker) Work(ctx context.Context, _ *river.Job[SyncGitT
 
 		tmplLogger.Info("git template sync completed")
 	}
+	recordJobCompleted(w.Deps.Metrics, job.Queue, job.Kind, time.Since(start))
 	return nil
 }
 
@@ -208,7 +214,8 @@ type CleanupOAuthTokensWorker struct {
 }
 
 // Work executes the CleanupOAuthTokensWorker job, purging expired OAuth tokens.
-func (w *CleanupOAuthTokensWorker) Work(ctx context.Context, _ *river.Job[CleanupOAuthTokensArgs]) error {
+func (w *CleanupOAuthTokensWorker) Work(ctx context.Context, job *river.Job[CleanupOAuthTokensArgs]) error {
+	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
@@ -225,6 +232,7 @@ func (w *CleanupOAuthTokensWorker) Work(ctx context.Context, _ *river.Job[Cleanu
 	}
 
 	w.Deps.Logger.Info("OAuth token cleanup completed", "purged_count", count)
+	recordJobCompleted(w.Deps.Metrics, job.Queue, job.Kind, time.Since(start))
 	return nil
 }
 
@@ -235,7 +243,8 @@ type CleanupOrphanedFilesWorker struct {
 }
 
 // Work executes the CleanupOrphanedFilesWorker job, removing unreferenced files from storage.
-func (w *CleanupOrphanedFilesWorker) Work(ctx context.Context, _ *river.Job[CleanupOrphanedFilesArgs]) error {
+func (w *CleanupOrphanedFilesWorker) Work(ctx context.Context, job *river.Job[CleanupOrphanedFilesArgs]) error {
+	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
@@ -280,6 +289,7 @@ func (w *CleanupOrphanedFilesWorker) Work(ctx context.Context, _ *river.Job[Clea
 	}
 
 	logger.Info("orphaned files cleanup completed", "deleted_count", deletedCount)
+	recordJobCompleted(w.Deps.Metrics, job.Queue, job.Kind, time.Since(start))
 	return nil
 }
 
@@ -290,7 +300,8 @@ type PurgeSoftDeletedWorker struct {
 }
 
 // Work executes the PurgeSoftDeletedWorker job, permanently removing documents soft-deleted over 30 days ago.
-func (w *PurgeSoftDeletedWorker) Work(ctx context.Context, _ *river.Job[PurgeSoftDeletedArgs]) error {
+func (w *PurgeSoftDeletedWorker) Work(ctx context.Context, job *river.Job[PurgeSoftDeletedArgs]) error {
+	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
@@ -317,6 +328,7 @@ func (w *PurgeSoftDeletedWorker) Work(ctx context.Context, _ *river.Job[PurgeSof
 	}
 
 	logger.Info("soft-delete purge completed", "purged_count", len(purged))
+	recordJobCompleted(w.Deps.Metrics, job.Queue, job.Kind, time.Since(start))
 	return nil
 }
 
@@ -327,7 +339,8 @@ type HealthCheckServicesWorker struct {
 }
 
 // Work executes the HealthCheckServicesWorker job, performing HTTP health checks on external services.
-func (w *HealthCheckServicesWorker) Work(ctx context.Context, _ *river.Job[HealthCheckServicesArgs]) error {
+func (w *HealthCheckServicesWorker) Work(ctx context.Context, job *river.Job[HealthCheckServicesArgs]) error {
+	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
@@ -361,9 +374,9 @@ func (w *HealthCheckServicesWorker) Work(ctx context.Context, _ *river.Job[Healt
 			continue
 		}
 
-		start := time.Now()
+		reqStart := time.Now()
 		resp, err := httpClient.Do(req)
-		latencyMs := int(time.Since(start).Milliseconds())
+		latencyMs := int(time.Since(reqStart).Milliseconds())
 
 		if err != nil {
 			svcLogger.Warn("health check failed", "error", err, "latency_ms", latencyMs)
@@ -395,6 +408,7 @@ func (w *HealthCheckServicesWorker) Work(ctx context.Context, _ *river.Job[Healt
 		"healthy", healthyCount,
 		"unhealthy", unhealthyCount,
 	)
+	recordJobCompleted(w.Deps.Metrics, job.Queue, job.Kind, time.Since(start))
 	return nil
 }
 

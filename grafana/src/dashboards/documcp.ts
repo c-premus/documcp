@@ -15,16 +15,21 @@ import { routesTablePanel, slowestRoutesPanel } from '../panels/routes.js';
 import {
   sqlRatePanel,
   sqlLatencyPanel,
-  httpCallsPanel,
+  redisCommandRatePanel,
+  externalCallsPanel,
+  redisCommandLatencyPanel,
+  gitOperationLatencyPanel,
 } from '../panels/dependencies.js';
 import {
   dbConnectionPoolPanel,
   dbWaitPanel,
+  redisConnectionPoolPanel,
   activeConnectionsPanel,
   documentCountPanel,
   searchLatencyPanel,
   nativeHttpRatePanel,
-  mcpKiwixPanel,
+  queueJobRatePanel,
+  queueJobDurationPanel,
 } from '../panels/go-runtime.js';
 import {
   hopLatencyPanel,
@@ -85,34 +90,42 @@ export function buildDocuMCPDashboard(): DashboardBuilder {
     .withPanel(routesTablePanel())
     .withPanel(slowestRoutesPanel())
 
-    // Section 3: Dependencies (SQL, HTTP)
-    .withRow(new RowBuilder('Dependencies (SQL, HTTP)'))
+    // Section 3: Dependencies (SQL, Redis, HTTP, Git)
+    .withRow(new RowBuilder('Dependencies (SQL, Redis, HTTP, Git)'))
     .withPanel(sqlRatePanel())
     .withPanel(sqlLatencyPanel())
-    .withPanel(httpCallsPanel())
+    .withPanel(redisCommandRatePanel())
+    .withPanel(externalCallsPanel())
+    .withPanel(redisCommandLatencyPanel())
+    .withPanel(gitOperationLatencyPanel())
 
-    // Section 4: Go Runtime & Application Metrics
-    .withRow(new RowBuilder('Go Runtime & Application Metrics'))
+    // Section 4: Connection Pools & Application Metrics
+    .withRow(new RowBuilder('Connection Pools & Application Metrics'))
     .withPanel(dbConnectionPoolPanel())
     .withPanel(dbWaitPanel())
+    .withPanel(redisConnectionPoolPanel())
     .withPanel(activeConnectionsPanel())
     .withPanel(documentCountPanel())
     .withPanel(nativeHttpRatePanel())
-    .withPanel(mcpKiwixPanel())
     .withPanel(searchLatencyPanel())
 
-    // Section 5: Cross-Service Topology
+    // Section 5: Queue Operations
+    .withRow(new RowBuilder('Queue Operations'))
+    .withPanel(queueJobRatePanel())
+    .withPanel(queueJobDurationPanel())
+
+    // Section 6: Cross-Service Topology
     .withRow(new RowBuilder('Cross-Service Topology'))
     .withPanel(hopLatencyPanel())
     .withPanel(edgeRequestRatePanel())
     .withPanel(edgeErrorRatePanel())
 
-    // Section 6: Trace Explorer
+    // Section 7: Trace Explorer
     .withRow(new RowBuilder('Trace Explorer'))
     .withPanel(recentTracesPanel())
     .withPanel(serviceMapPanel())
 
-    // Section 7: Logs
+    // Section 8: Logs
     .withRow(new RowBuilder('Logs'))
     .withPanel(logVolumePanel())
     .withPanel(recentLogsPanel());

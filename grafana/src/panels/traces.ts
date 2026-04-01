@@ -10,7 +10,7 @@ import type { DynamicConfigValue } from '@grafana/grafana-foundation-sdk/dashboa
 const TEMPO_DATASOURCE = { type: 'tempo' as const, uid: 'tempo' };
 
 const TRACE_QUERY =
-  '{ resource.service.name = "documcp" && kind = server }';
+  '{ resource.service.name = "documcp" && kind != internal }';
 
 const TRACE_EXPLORE_URL = [
   '/explore?orgId=1&left=%7B%22datasource%22:%22tempo%22,',
@@ -54,9 +54,9 @@ export function recentTracesPanel(): PanelBuilder {
   return new PanelBuilder()
     .title('Recent Traces')
     .description(
-      'Recent traces from Tempo — click trace ID to explore',
+      'Recent server and client traces from Tempo — click trace ID to explore',
     )
-    .gridPos({ h: 10, w: 24, x: 0, y: 52 })
+    .gridPos({ h: 10, w: 24, x: 0, y: 76 })
     .datasource(TEMPO_DATASOURCE)
     .withTarget(
       new TempoQueryBuilder()
@@ -89,7 +89,7 @@ export function serviceMapPanel(): NodeGraphPanelBuilder {
     .description(
       'Service dependency graph for DocuMCP stack derived from Tempo service graph metrics',
     )
-    .gridPos({ h: 12, w: 24, x: 0, y: 62 })
+    .gridPos({ h: 12, w: 24, x: 0, y: 86 })
     .datasource(TEMPO_DATASOURCE)
     .withTarget(
       new TempoQueryBuilder()

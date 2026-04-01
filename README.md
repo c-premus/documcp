@@ -1,5 +1,11 @@
 # DocuMCP
 
+[![CI](https://github.com/c-premus/documcp/actions/workflows/ci.yaml/badge.svg)](https://github.com/c-premus/documcp/actions/workflows/ci.yaml)
+[![Release](https://img.shields.io/github/v/release/c-premus/documcp)](https://github.com/c-premus/documcp/releases)
+[![Image Size](https://img.shields.io/docker/image-size/c-premus/documcp?sort=semver&label=image%20size)](https://hub.docker.com/r/c-premus/documcp)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/c-premus/documcp)](https://go.dev/)
+[![License](https://img.shields.io/github/license/c-premus/documcp)](LICENSE)
+
 A documentation server that exposes knowledge bases through the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), enabling AI agents to search, read, and manage documentation.
 
 DocuMCP gives AI agents structured access to your documentation via MCP tools and prompts. It handles document ingestion, full-text search, and OAuth 2.1 authorization. Written in Go for single-binary deployment with low resource usage.
@@ -12,7 +18,7 @@ DocuMCP gives AI agents structured access to your documentation via MCP tools an
 - **External Integrations** -- Kiwix ZIM archives (federated article search) and Git template repositories.
 - **Background Jobs** -- [River](https://riverqueue.com/) Postgres-native job queue with 11 worker types, 3 priority queues, and 6 periodic schedules.
 - **Admin UI** -- Vue 3 + TypeScript SPA for managing documents, users, OAuth clients, external services, and queue status.
-- **Observability** -- OpenTelemetry tracing (OTLP HTTP export, W3C propagation, configurable sampling), Prometheus metrics (14 collectors), structured logging with `slog` (trace/span ID injection), and optional Sentry/GlitchTip error tracking. See `docs/OBSERVABILITY.md` for architecture and configuration.
+- **Observability** -- OpenTelemetry tracing with automatic instrumentation for database queries (otelpgx), Redis commands (redisotel), and outbound HTTP (otelhttp). Prometheus metrics (19 collectors covering HTTP, database pool, Redis pool, search, and queue). Structured logging with `slog` (trace/span ID injection). Optional Sentry/GlitchTip error tracking. See `docs/OBSERVABILITY.md` for architecture and configuration.
 - **OIDC Authentication** -- User login via any OpenID Connect provider.
 
 ## Quick Start
