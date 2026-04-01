@@ -21,7 +21,7 @@ const PROMETHEUS_DATASOURCE = { type: 'prometheus', uid: 'prometheus' } as const
 
 const CALLS_METRIC = 'traces_spanmetrics_calls_total';
 const LATENCY_METRIC = 'traces_spanmetrics_latency_bucket';
-const SPAN_FILTER = 'service="DocuMCP", span_kind=~"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL"';
+const SPAN_FILTER = 'service="documcp", span_kind=~"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL"';
 
 function defaultLegend(): VizLegendOptionsBuilder {
   return new VizLegendOptionsBuilder()
