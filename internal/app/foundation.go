@@ -94,21 +94,30 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		Username: cfg.Redis.Username,
 		Password: cfg.Redis.Password,
 		DB:       cfg.Redis.DB,
-		Protocol: 2,
-		// RESP2: we don't use RESP3-only features (client-side caching,
-		// push notifications). Note: "Conn has unread data" warnings may
-		// still occur due to the HELLO 2 handshake with Redis 8 (RESP3
-		// response parsed during protocol switch) or pipeline error paths
-		// in go-redis that return before draining all responses.
-		// Pool tuning: rotate idle connections to prevent stale state.
+		Protocol: 2, // RESP2: no RESP3-only features in use
+
+		// Timeouts — explicit to prevent go-redis defaults (3s) from causing
+		// unread data when retries open new connections before old responses
+		// are drained from the buffer.
+		DialTimeout:  cfg.Redis.DialTimeout,
+		ReadTimeout:  cfg.Redis.ReadTimeout,
+		WriteTimeout: cfg.Redis.WriteTimeout,
+
+		// ContextTimeoutEnabled propagates context deadlines to socket I/O.
+		// Without this, a canceled context returns an error to the caller
+		// but the socket keeps reading — leaving unread data in the buffer.
+		ContextTimeoutEnabled: true,
+
+		// Retry config — retries after timeout are the primary cause of
+		// "Conn has unread data" warnings (old conn has server response
+		// buffered, new conn used for retry).
+		MaxRetries: cfg.Redis.MaxRetries,
+
+		// Pool
+		PoolSize:        cfg.Redis.PoolSize,
 		MinIdleConns:    cfg.Redis.MinIdleConns,
+		MaxActiveConns:  cfg.Redis.MaxActiveConns,
 		ConnMaxIdleTime: cfg.Redis.ConnMaxIdleTime,
-	}
-	if cfg.Redis.PoolSize > 0 {
-		redisOpts.PoolSize = cfg.Redis.PoolSize
-	}
-	if cfg.Redis.DialTimeout > 0 {
-		redisOpts.DialTimeout = cfg.Redis.DialTimeout
 	}
 	redisClient := redis.NewClient(redisOpts)
 	if err = redisClient.Ping(context.Background()).Err(); err != nil {
@@ -125,7 +134,11 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 
 	logger.Info("redis connected",
 		"addr", cfg.Redis.Addr,
-		"pool_size", cfg.Redis.PoolSize,
+		"pool_size", redisOpts.PoolSize,
+		"max_retries", redisOpts.MaxRetries,
+		"read_timeout", redisOpts.ReadTimeout,
+		"write_timeout", redisOpts.WriteTimeout,
+		"context_timeout_enabled", true,
 	)
 
 	// After this point both pgxPool and redisClient are live resources.
