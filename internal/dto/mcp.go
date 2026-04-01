@@ -44,6 +44,14 @@ type DeleteDocumentInput struct {
 	UUID string `json:"uuid" jsonschema:"UUID of document to delete,required"`
 }
 
+// ListDocumentsInput holds parameters for listing documents with optional filters.
+type ListDocumentsInput struct {
+	FileType string `json:"file_type,omitempty" jsonschema:"Filter by file type: markdown, pdf, docx, xlsx, html"`
+	Status   string `json:"status,omitempty" jsonschema:"Filter by processing status: pending, processed, failed"`
+	Limit    int    `json:"limit,omitempty" jsonschema:"Maximum results (default 50, max 100)"`
+	Offset   int    `json:"offset,omitempty" jsonschema:"Pagination offset (default 0)"`
+}
+
 // --- ZIM tools ---.
 
 // ListZimArchivesInput holds parameters for listing available ZIM archives.
