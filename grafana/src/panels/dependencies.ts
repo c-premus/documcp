@@ -16,7 +16,8 @@ import {
 const PROMETHEUS_DATASOURCE = { type: 'prometheus', uid: 'prometheus' } as const;
 
 const SQL_OPERATIONS = 'SELECT|INSERT|UPDATE|DELETE';
-const HTTP_CLIENT_PATTERN = '(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS) .+';
+const REDIS_COMMANDS = '[a-z]+';
+const GIT_OPERATIONS = 'git\\\\..*';
 
 function buildLegend(): VizLegendOptionsBuilder {
   return new VizLegendOptionsBuilder()
@@ -79,24 +80,80 @@ export function sqlLatencyPanel(): PanelBuilder {
   return panel.withTarget(query);
 }
 
-export function httpCallsPanel(): PanelBuilder {
+export function redisCommandRatePanel(): PanelBuilder {
   const panel = new PanelBuilder()
-    .title('External HTTP Calls')
-    .description('Outbound HTTP request rate (Kiwix, Git)')
+    .title('Redis Command Rate')
+    .description('Redis operations per second by command')
     .gridPos({ h: 8, w: 8, x: 16, y: 25 })
+    .unit('ops');
+
+  applyCommonStyle(panel, 25);
+
+  const query = new DataqueryBuilder()
+    .refId('A')
+    .expr(`sum by (span_name) (rate(traces_spanmetrics_calls_total{service="documcp", span_kind="SPAN_KIND_CLIENT", span_name=~"${REDIS_COMMANDS}"}[$__rate_interval]))`)
+    .legendFormat('{{span_name}}');
+
+  return panel.withTarget(query);
+}
+
+export function externalCallsPanel(): PanelBuilder {
+  const panel = new PanelBuilder()
+    .title('External Service Calls')
+    .description('Outbound HTTP (Kiwix) and Git operation rates')
+    .gridPos({ h: 8, w: 8, x: 0, y: 33 })
     .unit('ops');
 
   applyCommonStyle(panel, 25);
 
   const httpQuery = new DataqueryBuilder()
     .refId('A')
-    .expr(`sum(rate(traces_spanmetrics_calls_total{service="documcp", span_kind="SPAN_KIND_CLIENT", span_name=~"${HTTP_CLIENT_PATTERN}"}[$__rate_interval]))`)
-    .legendFormat('HTTP calls');
+    .expr('sum(rate(traces_spanmetrics_calls_total{service="documcp", span_kind="SPAN_KIND_CLIENT", span_name=~"HTTP .*"}[$__rate_interval]))')
+    .legendFormat('HTTP (Kiwix)');
 
-  const kiwixQuery = new DataqueryBuilder()
+  const gitQuery = new DataqueryBuilder()
     .refId('B')
-    .expr('sum(rate(traces_spanmetrics_calls_total{service="documcp", span_name=~"kiwix.*"}[$__rate_interval]))')
-    .legendFormat('Kiwix calls');
+    .expr(`sum(rate(traces_spanmetrics_calls_total{service="documcp", span_kind="SPAN_KIND_CLIENT", span_name=~"${GIT_OPERATIONS}"}[$__rate_interval]))`)
+    .legendFormat('Git ops');
 
-  return panel.withTarget(httpQuery).withTarget(kiwixQuery);
+  return panel.withTarget(httpQuery).withTarget(gitQuery);
+}
+
+export function redisCommandLatencyPanel(): PanelBuilder {
+  const panel = new PanelBuilder()
+    .title('Redis Latency (P95)')
+    .description('P95 latency for Redis commands')
+    .gridPos({ h: 8, w: 8, x: 8, y: 33 })
+    .unit('s');
+
+  applyCommonStyle(panel, 20);
+
+  const query = new DataqueryBuilder()
+    .refId('A')
+    .expr(`histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service="documcp", span_kind="SPAN_KIND_CLIENT", span_name=~"${REDIS_COMMANDS}"}[$__rate_interval])))`)
+    .legendFormat('{{span_name}}');
+
+  return panel.withTarget(query);
+}
+
+export function gitOperationLatencyPanel(): PanelBuilder {
+  const panel = new PanelBuilder()
+    .title('Git & HTTP Latency (P95)')
+    .description('P95 latency for Git operations and outbound HTTP calls')
+    .gridPos({ h: 8, w: 8, x: 16, y: 33 })
+    .unit('s');
+
+  applyCommonStyle(panel, 20);
+
+  const gitQuery = new DataqueryBuilder()
+    .refId('A')
+    .expr(`histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service="documcp", span_kind="SPAN_KIND_CLIENT", span_name=~"${GIT_OPERATIONS}"}[$__rate_interval])))`)
+    .legendFormat('{{span_name}}');
+
+  const httpQuery = new DataqueryBuilder()
+    .refId('B')
+    .expr('histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{service="documcp", span_kind="SPAN_KIND_CLIENT", span_name=~"HTTP .*"}[$__rate_interval])))')
+    .legendFormat('HTTP (Kiwix)');
+
+  return panel.withTarget(gitQuery).withTarget(httpQuery);
 }
