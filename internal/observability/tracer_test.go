@@ -90,3 +90,41 @@ func TestInitTracer_DisabledIgnoresNewFields(t *testing.T) {
 		t.Errorf("shutdown() returned error: %v", err)
 	}
 }
+
+func TestInitTracer_EndpointURLFormat(t *testing.T) {
+	t.Parallel()
+
+	// Both URL and host:port formats should initialize without error.
+	// The exporter connects lazily, so these succeed even with unreachable hosts.
+	tests := []struct {
+		name     string
+		endpoint string
+		insecure bool
+	}{
+		{"bare host:port", "localhost:4318", true},
+		{"http URL", "http://alloy:4318", false},
+		{"https URL", "https://otel.example.com:4318", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := config.OTELConfig{
+				Enabled:     true,
+				Endpoint:    tt.endpoint,
+				Insecure:    tt.insecure,
+				ServiceName: "test",
+			}
+
+			shutdown, err := observability.InitTracer(context.Background(), cfg)
+			if err != nil {
+				t.Fatalf("InitTracer(%q) unexpected error: %v", tt.endpoint, err)
+			}
+
+			if err := shutdown(context.Background()); err != nil {
+				t.Errorf("shutdown() returned error: %v", err)
+			}
+		})
+	}
+}

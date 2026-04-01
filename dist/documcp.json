@@ -94,7 +94,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__rate_interval]))",
+          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"documcp\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "Total"
         }
@@ -149,7 +149,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval]))",
+          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"documcp\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "Errors"
         }
@@ -282,17 +282,17 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(traces_spanmetrics_latency_bucket{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.50, sum(rate(traces_spanmetrics_latency_bucket{service=\"documcp\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__rate_interval])) by (le))",
           "refId": "A",
           "legendFormat": "P50"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(traces_spanmetrics_latency_bucket{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(traces_spanmetrics_latency_bucket{service=\"documcp\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__rate_interval])) by (le))",
           "refId": "B",
           "legendFormat": "P95"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(traces_spanmetrics_latency_bucket{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(traces_spanmetrics_latency_bucket{service=\"documcp\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__rate_interval])) by (le))",
           "refId": "C",
           "legendFormat": "P99"
         }
@@ -329,7 +329,7 @@
       },
       "targets": [
         {
-          "expr": "topk(15, sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__range])))",
+          "expr": "topk(15, sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"documcp\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__range])))",
           "refId": "A",
           "legendFormat": "{{span_name}}",
           "instant": true,
@@ -337,7 +337,7 @@
           "format": "table"
         },
         {
-          "expr": "100 * sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\", status_code=\"STATUS_CODE_ERROR\"}[$__range])) / sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__range]))",
+          "expr": "100 * sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"documcp\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\", status_code=\"STATUS_CODE_ERROR\"}[$__range])) / sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"documcp\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__range]))",
           "refId": "B",
           "legendFormat": "{{span_name}}",
           "instant": true,
@@ -345,7 +345,7 @@
           "format": "table"
         },
         {
-          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"documcp\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__range])))",
           "refId": "C",
           "legendFormat": "{{span_name}}",
           "instant": true,
@@ -528,7 +528,7 @@
       },
       "targets": [
         {
-          "expr": "topk(10, histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"DocuMCP\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__range]))))",
+          "expr": "topk(10, histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"documcp\", span_kind=~\"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL\"}[$__range]))))",
           "refId": "A",
           "legendFormat": "{{span_name}}"
         }
@@ -640,7 +640,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_name=~\"SELECT|INSERT|UPDATE|DELETE\"}[$__rate_interval]))",
+          "expr": "sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"documcp\", span_name=~\"SELECT|INSERT|UPDATE|DELETE\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{span_name}}"
         }
@@ -691,7 +691,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"DocuMCP\", span_name=~\"SELECT|INSERT|UPDATE|DELETE\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"documcp\", span_name=~\"SELECT|INSERT|UPDATE|DELETE\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "{{span_name}}"
         }
@@ -742,12 +742,12 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_kind=\"SPAN_KIND_CLIENT\", span_name=~\"(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS) .+\"}[$__rate_interval]))",
+          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"documcp\", span_kind=\"SPAN_KIND_CLIENT\", span_name=~\"(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS) .+\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "HTTP calls"
         },
         {
-          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"DocuMCP\", span_name=~\"kiwix.*\"}[$__rate_interval]))",
+          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"documcp\", span_name=~\"kiwix.*\"}[$__rate_interval]))",
           "refId": "B",
           "legendFormat": "Kiwix calls"
         }
@@ -1044,7 +1044,7 @@
       },
       "targets": [
         {
-          "expr": "documcp_document_count",
+          "expr": "documcp_documents",
           "refId": "A",
           "legendFormat": "Documents"
         }
@@ -1176,7 +1176,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"DocuMCP\", span_name=~\"mcp.*|kiwix.*|action.zim.*\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"documcp\", span_name=~\"mcp.*|kiwix.*|action.zim.*\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "{{span_name}}"
         }
@@ -1347,7 +1347,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{client=\"DocuMCP\"}[$__rate_interval]) or rate(traces_service_graph_request_server_seconds_bucket{server=\"DocuMCP\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{client=~\"DocuMCP|documcp\"}[$__rate_interval]) or rate(traces_service_graph_request_server_seconds_bucket{server=~\"DocuMCP|documcp\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "{{client}} → {{server}}"
         }
@@ -1398,7 +1398,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (client, server) (rate(traces_service_graph_request_total{client=\"DocuMCP\"}[$__rate_interval]) or rate(traces_service_graph_request_total{server=\"DocuMCP\"}[$__rate_interval]))",
+          "expr": "sum by (client, server) (rate(traces_service_graph_request_total{client=~\"DocuMCP|documcp\"}[$__rate_interval]) or rate(traces_service_graph_request_total{server=~\"DocuMCP|documcp\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{client}} → {{server}}"
         }
@@ -1465,7 +1465,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (client, server) (rate(traces_service_graph_request_failed_total{client=\"DocuMCP\"}[$__rate_interval]) or rate(traces_service_graph_request_failed_total{server=\"DocuMCP\"}[$__rate_interval]))",
+          "expr": "sum by (client, server) (rate(traces_service_graph_request_failed_total{client=~\"DocuMCP|documcp\"}[$__rate_interval]) or rate(traces_service_graph_request_failed_total{server=~\"DocuMCP|documcp\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{client}} → {{server}}"
         }
@@ -1509,7 +1509,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"DocuMCP\" && kind = server }",
+          "query": "{ resource.service.name = \"documcp\" && kind = server }",
           "limit": 100,
           "tableType": "spans"
         }
@@ -1658,7 +1658,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (level) (count_over_time({service_name=\"DocuMCP\"} [$__auto]))",
+          "expr": "sum by (level) (count_over_time({service_name=\"documcp-app\"} [$__auto]))",
           "refId": "A",
           "legendFormat": "{{level}}"
         }
@@ -1770,7 +1770,7 @@
       },
       "targets": [
         {
-          "expr": "{service_name=\"DocuMCP\"}",
+          "expr": "{service_name=\"documcp-app\"}",
           "refId": "A",
           "maxLines": 200
         }

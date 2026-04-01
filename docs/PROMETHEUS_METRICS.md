@@ -2,7 +2,7 @@
 
 ## Overview
 
-DocuMCP exposes application metrics in Prometheus format at `GET /metrics`. Metrics are collected using `prometheus/client_golang`. All metrics use the `documcp` namespace.
+DocuMCP exposes 14 application metrics in Prometheus format at `GET /metrics`. Metrics are collected using `prometheus/client_golang`. All metrics use the `documcp` namespace.
 
 When `INTERNAL_API_TOKEN` is set, the endpoint requires `Authorization: Bearer <token>`. When not configured, the endpoint is publicly accessible.
 
@@ -26,10 +26,6 @@ Number of active HTTP connections currently being served.
 Latency of search operations in seconds.
 Labels: `index`
 Buckets: 1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s
-
-**`documcp_search_reconciliation_actions_total`** (Counter)
-Total number of search index reconciliation actions.
-Labels: `index`, `action`
 
 ## Application Metrics
 
@@ -56,6 +52,8 @@ Labels: `queue`, `job_kind`
 Buckets: 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s, 30s, 60s, 120s, 300s
 
 ## Database Connection Pool Metrics
+
+These metrics are collected from `pgxpool.Stat()` on each Prometheus scrape.
 
 **`documcp_db_open_connections`** (Gauge)
 Number of open connections.

@@ -28,7 +28,7 @@ const LEVEL_COLORS: ReadonlyArray<{ name: string; color: string }> = [
 export function logVolumePanel(): TimeseriesPanelBuilder {
   const query = new DataqueryBuilder()
     .refId('A')
-    .expr('sum by (level) (count_over_time({service_name="DocuMCP"} [$__auto]))')
+    .expr('sum by (level) (count_over_time({service_name="documcp-app"} [$__auto]))')
     .legendFormat('{{level}}');
 
   const legend = new VizLegendOptionsBuilder()
@@ -69,7 +69,7 @@ export function logVolumePanel(): TimeseriesPanelBuilder {
 export function recentLogsPanel(): LogsPanelBuilder {
   const query = new DataqueryBuilder()
     .refId('A')
-    .expr('{service_name="DocuMCP"}')
+    .expr('{service_name="documcp-app"}')
     .maxLines(200);
 
   return new LogsPanelBuilder()
