@@ -129,6 +129,24 @@ func (r *DocumentRepository) TagsForDocument(ctx context.Context, documentID int
 	return tags, nil
 }
 
+// TagsForDocuments returns tags for multiple documents in a single query,
+// grouped by document ID. Documents with no tags are absent from the map.
+func (r *DocumentRepository) TagsForDocuments(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error) {
+	if len(documentIDs) == 0 {
+		return map[int64][]model.DocumentTag{}, nil
+	}
+	tags, err := database.Select[model.DocumentTag](ctx, r.db,
+		`SELECT * FROM document_tags WHERE document_id = ANY($1) ORDER BY document_id, tag`, documentIDs)
+	if err != nil {
+		return nil, fmt.Errorf("finding tags for %d documents: %w", len(documentIDs), err)
+	}
+	result := make(map[int64][]model.DocumentTag, len(documentIDs))
+	for _, tag := range tags {
+		result[tag.DocumentID] = append(result[tag.DocumentID], tag)
+	}
+	return result, nil
+}
+
 // ReplaceTags deletes existing tags and inserts new ones within a transaction.
 func (r *DocumentRepository) ReplaceTags(ctx context.Context, documentID int64, tags []string) error {
 	tx, err := r.db.Begin(ctx)

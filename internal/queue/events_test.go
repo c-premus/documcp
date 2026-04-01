@@ -299,6 +299,7 @@ func TestEventType_constants(t *testing.T) {
 		{"dispatched", EventJobDispatched, "job.dispatched"},
 		{"completed", EventJobCompleted, "job.completed"},
 		{"failed", EventJobFailed, "job.failed"},
+		{"snoozed", EventJobSnoozed, "job.snoozed"},
 		{"retrying", EventJobRetrying, "job.retrying"},
 	}
 
@@ -307,5 +308,223 @@ func TestEventType_constants(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, EventType(tt.want), tt.et)
 		})
+	}
+}
+
+func TestEventBus_DroppedCount(t *testing.T) {
+	t.Parallel()
+
+	t.Run("zero when no events dropped", func(t *testing.T) {
+		t.Parallel()
+
+		eb := NewEventBus(discardLogger())
+		ch := eb.Subscribe("sub-1")
+
+		eb.Publish(Event{Type: EventJobCompleted, JobID: 1})
+
+		// Drain the event so the channel is not full.
+		<-ch
+
+		assert.Equal(t, int64(0), eb.DroppedCount())
+	})
+
+	t.Run("increments for each dropped event per subscriber", func(t *testing.T) {
+		t.Parallel()
+
+		eb := NewEventBus(discardLogger())
+		eb.Subscribe("slow-1")
+		eb.Subscribe("slow-2")
+
+		// Fill both subscriber buffers.
+		for i := range eventBusBufferSize {
+			eb.Publish(Event{JobID: int64(i), Type: EventJobDispatched})
+		}
+		assert.Equal(t, int64(0), eb.DroppedCount(), "no drops while buffers have capacity")
+
+		// One more publish should drop for both subscribers.
+		eb.Publish(Event{JobID: 999, Type: EventJobFailed})
+		assert.Equal(t, int64(2), eb.DroppedCount(), "one drop per slow subscriber")
+
+		// Another publish drops two more.
+		eb.Publish(Event{JobID: 1000, Type: EventJobFailed})
+		assert.Equal(t, int64(4), eb.DroppedCount(), "cumulative drops across publishes")
+	})
+}
+
+func TestEventBus_Subscribe_duplicateID(t *testing.T) {
+	t.Parallel()
+
+	eb := NewEventBus(discardLogger())
+	ch1 := eb.Subscribe("dup")
+	ch2 := eb.Subscribe("dup")
+
+	// The second subscribe should overwrite the first. The subscriber map
+	// should still have exactly one entry.
+	eb.mu.RLock()
+	assert.Len(t, eb.subscribers, 1)
+	eb.mu.RUnlock()
+
+	// Publishing should deliver to the new channel, not the old one.
+	eb.Publish(Event{Type: EventJobCompleted, JobID: 1})
+
+	select {
+	case received := <-ch2:
+		assert.Equal(t, int64(1), received.JobID)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for event on new channel")
+	}
+
+	// Old channel should NOT receive the event (it was replaced, not closed).
+	select {
+	case <-ch1:
+		t.Fatal("old channel should not receive events after being replaced")
+	default:
+		// Expected: nothing on old channel.
+	}
+}
+
+func TestEventBus_Unsubscribe_thenPublish(t *testing.T) {
+	t.Parallel()
+
+	eb := NewEventBus(discardLogger())
+	ch := eb.Subscribe("sub-1")
+	eb.Subscribe("sub-2")
+
+	eb.Unsubscribe("sub-1")
+
+	// Publish should only reach sub-2, not panic or block.
+	eb.Publish(Event{Type: EventJobDispatched, JobID: 42})
+
+	// ch is closed so reading should return zero value with ok=false.
+	_, ok := <-ch
+	assert.False(t, ok, "unsubscribed channel should be closed")
+
+	// sub-2 still in the map.
+	eb.mu.RLock()
+	assert.Len(t, eb.subscribers, 1)
+	eb.mu.RUnlock()
+}
+
+func TestEventBus_ResubscribeAfterUnsubscribe(t *testing.T) {
+	t.Parallel()
+
+	eb := NewEventBus(discardLogger())
+	ch1 := eb.Subscribe("sub-1")
+	eb.Unsubscribe("sub-1")
+
+	// Old channel is closed.
+	_, ok := <-ch1
+	assert.False(t, ok)
+
+	// Re-subscribe with the same ID.
+	ch2 := eb.Subscribe("sub-1")
+	require.NotNil(t, ch2)
+
+	eb.Publish(Event{Type: EventJobCompleted, JobID: 7})
+
+	select {
+	case received := <-ch2:
+		assert.Equal(t, int64(7), received.JobID)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for event on re-subscribed channel")
+	}
+}
+
+func TestEventBus_Close_idempotent(t *testing.T) {
+	t.Parallel()
+
+	eb := NewEventBus(discardLogger())
+	eb.Subscribe("sub-1")
+	eb.Subscribe("sub-2")
+
+	eb.Close()
+
+	// Second close should not panic (channels already closed, map empty).
+	assert.NotPanics(t, func() {
+		eb.Close()
+	})
+
+	eb.mu.RLock()
+	assert.Empty(t, eb.subscribers)
+	eb.mu.RUnlock()
+}
+
+func TestEventBus_ConcurrentSubscribeUnsubscribe(t *testing.T) {
+	t.Parallel()
+
+	eb := NewEventBus(discardLogger())
+	const iterations = 100
+
+	var wg sync.WaitGroup
+
+	// Rapidly subscribe and unsubscribe from many goroutines.
+	for i := range iterations {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			subID := "sub-" + string(rune('A'+id%26)) + string(rune('0'+id/26))
+			eb.Subscribe(subID)
+			eb.Unsubscribe(subID)
+		}(i)
+	}
+
+	// Concurrent close while subscribe/unsubscribe is happening.
+	wg.Go(func() {
+		// Let some goroutines get started.
+		time.Sleep(time.Millisecond)
+		eb.Close()
+	})
+
+	wg.Wait()
+	// Reaching here without deadlock or panic is the test.
+}
+
+func TestEvent_FieldValues(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	event := Event{
+		Type:      EventJobFailed,
+		JobKind:   "document_extract",
+		JobID:     123,
+		Queue:     "high",
+		Attempt:   3,
+		Error:     "timeout exceeded",
+		Timestamp: now,
+	}
+
+	assert.Equal(t, EventJobFailed, event.Type)
+	assert.Equal(t, "document_extract", event.JobKind)
+	assert.Equal(t, int64(123), event.JobID)
+	assert.Equal(t, "high", event.Queue)
+	assert.Equal(t, 3, event.Attempt)
+	assert.Equal(t, "timeout exceeded", event.Error)
+	assert.Equal(t, now, event.Timestamp)
+}
+
+func TestEventBus_Publish_eventFieldsPreserved(t *testing.T) {
+	t.Parallel()
+
+	eb := NewEventBus(discardLogger())
+	ch := eb.Subscribe("sub-1")
+
+	now := time.Now()
+	event := Event{
+		Type:      EventJobSnoozed,
+		JobKind:   "sync_kiwix",
+		JobID:     55,
+		Queue:     "low",
+		Attempt:   2,
+		Error:     "rate limited",
+		Timestamp: now,
+	}
+
+	eb.Publish(event)
+
+	select {
+	case received := <-ch:
+		assert.Equal(t, event, received, "published event should be received with all fields intact")
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for event")
 	}
 }

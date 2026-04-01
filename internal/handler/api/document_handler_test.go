@@ -158,6 +158,7 @@ type mockHandlerRepo struct {
 	findByUUIDFn                 func(ctx context.Context, uuid string) (*model.Document, error)
 	findByUUIDIncludingDeletedFn func(ctx context.Context, uuid string) (*model.Document, error)
 	tagsForDocumentFn            func(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
+	tagsForDocumentsFn           func(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error)
 	restoreFn                    func(ctx context.Context, id int64) error
 	purgeSingleFn                func(ctx context.Context, id int64) (string, error)
 	purgeSoftDeletedFn           func(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
@@ -190,6 +191,13 @@ func (m *mockHandlerRepo) TagsForDocument(ctx context.Context, documentID int64)
 		return m.tagsForDocumentFn(ctx, documentID)
 	}
 	return nil, nil
+}
+
+func (m *mockHandlerRepo) TagsForDocuments(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error) {
+	if m.tagsForDocumentsFn != nil {
+		return m.tagsForDocumentsFn(ctx, documentIDs)
+	}
+	return map[int64][]model.DocumentTag{}, nil
 }
 
 func (m *mockHandlerRepo) Restore(ctx context.Context, id int64) error {
@@ -1694,11 +1702,10 @@ func TestDocumentHandler_List(t *testing.T) {
 					Total:     42,
 				}, nil
 			},
-			tagsForDocumentFn: func(_ context.Context, docID int64) ([]model.DocumentTag, error) {
-				if docID == 10 {
-					return []model.DocumentTag{{Tag: "go"}}, nil
-				}
-				return nil, nil
+			tagsForDocumentsFn: func(_ context.Context, _ []int64) (map[int64][]model.DocumentTag, error) {
+				return map[int64][]model.DocumentTag{
+					10: {{Tag: "go"}},
+				}, nil
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
@@ -1771,7 +1778,7 @@ func TestDocumentHandler_List(t *testing.T) {
 		assert.Equal(t, "failed to list documents", body["message"])
 	})
 
-	t.Run("continues when TagsForDocument fails for a document", func(t *testing.T) {
+	t.Run("continues when TagsForDocuments fails", func(t *testing.T) {
 		t.Parallel()
 
 		doc := *newTestDocument("tags-fail-uuid")
@@ -1782,7 +1789,7 @@ func TestDocumentHandler_List(t *testing.T) {
 					Total:     1,
 				}, nil
 			},
-			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
+			tagsForDocumentsFn: func(_ context.Context, _ []int64) (map[int64][]model.DocumentTag, error) {
 				return nil, errors.New("tags error")
 			},
 		}
@@ -2273,8 +2280,10 @@ func TestDocumentHandler_ListDeleted(t *testing.T) {
 			listDeletedFn: func(_ context.Context, _ int, _ int, _ *int64) ([]model.Document, int, error) {
 				return []model.Document{doc}, 1, nil
 			},
-			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
-				return []model.DocumentTag{{Tag: "trash"}}, nil
+			tagsForDocumentsFn: func(_ context.Context, _ []int64) (map[int64][]model.DocumentTag, error) {
+				return map[int64][]model.DocumentTag{
+					doc.ID: {{Tag: "trash"}},
+				}, nil
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
@@ -2345,7 +2354,7 @@ func TestDocumentHandler_ListDeleted(t *testing.T) {
 			listDeletedFn: func(_ context.Context, _ int, _ int, _ *int64) ([]model.Document, int, error) {
 				return []model.Document{doc}, 1, nil
 			},
-			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
+			tagsForDocumentsFn: func(_ context.Context, _ []int64) (map[int64][]model.DocumentTag, error) {
 				return nil, errors.New("tags unavailable")
 			},
 		}

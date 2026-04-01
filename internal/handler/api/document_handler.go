@@ -61,6 +61,7 @@ type documentRepo interface {
 	FindByUUID(ctx context.Context, uuid string) (*model.Document, error)
 	FindByUUIDIncludingDeleted(ctx context.Context, uuid string) (*model.Document, error)
 	TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
+	TagsForDocuments(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error)
 	Restore(ctx context.Context, id int64) error
 	PurgeSingle(ctx context.Context, id int64) (string, error)
 	PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
@@ -136,14 +137,21 @@ func (h *DocumentHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Batch-load tags for all documents in a single query (avoids N+1).
+	docIDs := make([]int64, len(result.Documents))
+	for i := range result.Documents {
+		docIDs[i] = result.Documents[i].ID
+	}
+	tagsByDoc, tagsErr := h.repo.TagsForDocuments(r.Context(), docIDs)
+	if tagsErr != nil {
+		h.logger.Warn("batch-loading tags", "error", tagsErr)
+		tagsByDoc = map[int64][]model.DocumentTag{}
+	}
+
 	docs := make([]documentResponse, 0, len(result.Documents))
 	for i := range result.Documents {
 		doc := &result.Documents[i]
-		tags, tagsErr := h.repo.TagsForDocument(r.Context(), doc.ID)
-		if tagsErr != nil {
-			h.logger.Warn("loading tags for document", "doc_id", doc.ID, "error", tagsErr)
-		}
-		docs = append(docs, toDocumentResponse(doc, tags))
+		docs = append(docs, toDocumentResponse(doc, tagsByDoc[doc.ID]))
 	}
 
 	jsonResponse(w, http.StatusOK, listResponse(docs, result.Total, params.Limit, params.Offset))
@@ -783,14 +791,21 @@ func (h *DocumentHandler) ListDeleted(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Batch-load tags for all documents in a single query (avoids N+1).
+	docIDs := make([]int64, len(docs))
+	for i := range docs {
+		docIDs[i] = docs[i].ID
+	}
+	tagsByDoc, tagsErr := h.repo.TagsForDocuments(r.Context(), docIDs)
+	if tagsErr != nil {
+		h.logger.Warn("batch-loading tags", "error", tagsErr)
+		tagsByDoc = map[int64][]model.DocumentTag{}
+	}
+
 	responses := make([]documentResponse, 0, len(docs))
 	for i := range docs {
 		doc := &docs[i]
-		tags, tagsErr := h.repo.TagsForDocument(r.Context(), doc.ID)
-		if tagsErr != nil {
-			h.logger.Warn("loading tags for document", "doc_id", doc.ID, "error", tagsErr)
-		}
-		responses = append(responses, toDocumentResponse(doc, tags))
+		responses = append(responses, toDocumentResponse(doc, tagsByDoc[doc.ID]))
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]any{
