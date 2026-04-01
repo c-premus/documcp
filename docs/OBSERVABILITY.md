@@ -200,16 +200,17 @@ This produces `dist/documcp.json`. CI validates that the checked-in JSON matches
 
 ### Panel Groups
 
-The dashboard has 7 panel groups across 3 datasources (Prometheus, Tempo, Loki):
+The dashboard has 8 panel groups across 3 datasources (Prometheus, Tempo, Loki):
 
 | Group | Datasource | What It Shows |
 |-------|------------|---------------|
 | RED Metrics | Prometheus (via Tempo span metrics) | Request rate, error rate, latency percentiles |
 | Routes | Prometheus (via Tempo span metrics) | Per-route request table, slowest routes bar gauge |
-| Dependencies | Prometheus (via Tempo span metrics) | SQL query rate/latency, external HTTP calls |
-| Go Runtime | Prometheus (native) | DB pool, wait time, active connections, document count, HTTP rate, search latency, MCP/Kiwix operations |
+| Dependencies | Prometheus (via Tempo span metrics) | SQL rate/latency, Redis command rate/latency, external HTTP (Kiwix) and Git operation rates and latency |
+| Connection Pools & App Metrics | Prometheus (native) | DB pool, DB wait, Redis pool, active connections, document count, HTTP rate, search latency |
+| Queue Operations | Prometheus (native) | Job rate by kind (dispatched/completed/failed), job duration P95 |
 | Cross-Service Topology | Prometheus (via Tempo service graph) | Hop latency, edge request/error rates |
-| Traces | Tempo | Recent traces table with drill-down links, service map |
+| Traces | Tempo | Recent server and client traces with drill-down links, service map |
 | Logs | Loki | Log volume by level, recent logs with trace correlation |
 
 ### Service Identifiers
