@@ -5,6 +5,7 @@ package observability
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -30,8 +31,14 @@ func InitTracer(ctx context.Context, cfg config.OTELConfig) (shutdown func(conte
 		return func(context.Context) error { return nil }, nil
 	}
 
-	opts := []otlptracehttp.Option{
-		otlptracehttp.WithEndpoint(cfg.Endpoint),
+	// WithEndpoint expects host:port, WithEndpointURL expects a full URL.
+	// Accept either format so OTEL_EXPORTER_OTLP_ENDPOINT works as both
+	// "alloy:4318" and "http://alloy:4318" (the OTLP convention).
+	var opts []otlptracehttp.Option
+	if strings.HasPrefix(cfg.Endpoint, "http://") || strings.HasPrefix(cfg.Endpoint, "https://") {
+		opts = append(opts, otlptracehttp.WithEndpointURL(cfg.Endpoint))
+	} else {
+		opts = append(opts, otlptracehttp.WithEndpoint(cfg.Endpoint))
 	}
 	if cfg.Insecure {
 		opts = append(opts, otlptracehttp.WithInsecure())
