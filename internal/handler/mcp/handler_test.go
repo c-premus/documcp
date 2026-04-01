@@ -13,6 +13,7 @@ import (
 	"github.com/c-premus/documcp/internal/client/kiwix"
 	"github.com/c-premus/documcp/internal/dto"
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/search"
 	"github.com/c-premus/documcp/internal/service"
 )
@@ -270,10 +271,30 @@ func (m *mockSearcher) SearchGitTemplateFiles(ctx context.Context, query string,
 	return nil, nil
 }
 
+type mockDocumentRepo struct {
+	listFn             func(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error)
+	tagsForDocumentsFn func(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error)
+}
+
+func (m *mockDocumentRepo) List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+	if m.listFn != nil {
+		return m.listFn(ctx, params)
+	}
+	return &repository.DocumentListResult{}, nil
+}
+
+func (m *mockDocumentRepo) TagsForDocuments(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error) {
+	if m.tagsForDocumentsFn != nil {
+		return m.tagsForDocumentsFn(ctx, documentIDs)
+	}
+	return nil, nil
+}
+
 // newHandlerWithMocks creates a Handler with a real MCP server and the provided
 // mock dependencies. Pass nil for any dependency you don't need.
 func newHandlerWithMocks(opts struct {
 	docSvc   *mockDocumentService
+	docRepo  *mockDocumentRepo
 	zimRepo  *mockZimArchiveRepo
 	gitRepo  *mockGitTemplateRepo
 	kiwixC   *mockKiwixClient
@@ -289,6 +310,9 @@ func newHandlerWithMocks(opts struct {
 	}
 	if opts.docSvc != nil {
 		h.documentService = opts.docSvc
+	}
+	if opts.docRepo != nil {
+		h.documentRepo = opts.docRepo
 	}
 	if opts.zimRepo != nil {
 		h.zimArchiveRepo = opts.zimRepo
@@ -390,6 +414,7 @@ func TestHandleReadDocument(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -428,6 +453,7 @@ func TestHandleReadDocument(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -448,6 +474,7 @@ func TestHandleReadDocument(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -477,6 +504,7 @@ func TestHandleReadDocument(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -509,6 +537,7 @@ func TestHandleReadDocument(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -533,6 +562,7 @@ func TestHandleReadDocument(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -557,6 +587,7 @@ func TestHandleReadDocument(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -586,6 +617,7 @@ func TestHandleCreateDocument(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -620,6 +652,7 @@ func TestHandleCreateDocument(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -652,6 +685,7 @@ func TestHandleUpdateDocument(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -681,6 +715,7 @@ func TestHandleUpdateDocument(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -705,6 +740,7 @@ func TestHandleDeleteDocument(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -731,6 +767,7 @@ func TestHandleDeleteDocument(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -750,6 +787,7 @@ func TestHandleSearchDocuments(t *testing.T) {
 	t.Run("returns not configured when searcher is nil", func(t *testing.T) {
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -777,6 +815,7 @@ func TestHandleSearchDocuments(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -799,6 +838,7 @@ func TestHandleSearchDocuments(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -828,6 +868,7 @@ func TestHandleSearchDocuments(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -871,6 +912,7 @@ func TestHandleListZimArchives(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -908,6 +950,7 @@ func TestHandleListZimArchives(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -933,6 +976,7 @@ func TestHandleListZimArchives(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -952,6 +996,7 @@ func TestHandleSearchZim(t *testing.T) {
 	t.Run("returns not configured when client is nil", func(t *testing.T) {
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -981,6 +1026,7 @@ func TestHandleSearchZim(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1013,6 +1059,7 @@ func TestHandleSearchZim(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1035,6 +1082,7 @@ func TestHandleSearchZim(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1060,6 +1108,7 @@ func TestHandleSearchZim(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1079,6 +1128,7 @@ func TestHandleReadZimArticle(t *testing.T) {
 	t.Run("returns not configured when client is nil", func(t *testing.T) {
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1105,6 +1155,7 @@ func TestHandleReadZimArticle(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1134,6 +1185,7 @@ func TestHandleReadZimArticle(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1164,6 +1216,7 @@ func TestHandleReadZimArticle(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1201,6 +1254,7 @@ func TestHandleListGitTemplates(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1241,6 +1295,7 @@ func TestHandleListGitTemplates(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1266,6 +1321,7 @@ func TestHandleListGitTemplates(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1296,6 +1352,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		repo := &mockGitTemplateRepo{}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1324,6 +1381,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1349,6 +1407,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1370,6 +1429,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		repo := &mockGitTemplateRepo{}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1395,6 +1455,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1436,6 +1497,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		repo := &mockGitTemplateRepo{}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1478,6 +1540,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		repo := &mockGitTemplateRepo{}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1506,6 +1569,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 		repo := &mockGitTemplateRepo{}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1545,6 +1609,7 @@ func TestHandleGetTemplateStructure(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1580,6 +1645,7 @@ func TestHandleGetTemplateStructure(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1606,6 +1672,7 @@ func TestHandleGetTemplateStructure(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1639,6 +1706,7 @@ func TestHandleGetTemplateFile(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1679,6 +1747,7 @@ func TestHandleGetTemplateFile(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1713,6 +1782,7 @@ func TestHandleGetTemplateFile(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1737,6 +1807,7 @@ func TestHandleGetTemplateFile(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1763,6 +1834,7 @@ func TestHandleGetTemplateFile(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1802,6 +1874,7 @@ func TestHandleGetDeploymentGuide(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1840,6 +1913,7 @@ func TestHandleGetDeploymentGuide(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1866,6 +1940,7 @@ func TestHandleGetDeploymentGuide(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1898,6 +1973,7 @@ func TestHandleDownloadTemplate(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1941,6 +2017,7 @@ func TestHandleDownloadTemplate(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1972,6 +2049,7 @@ func TestHandleDownloadTemplate(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -1998,6 +2076,7 @@ func TestHandleDownloadTemplate(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2022,6 +2101,7 @@ func TestHandleUnifiedSearch(t *testing.T) {
 	t.Run("returns not configured when searcher is nil", func(t *testing.T) {
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2049,6 +2129,7 @@ func TestHandleUnifiedSearch(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2071,6 +2152,7 @@ func TestHandleUnifiedSearch(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2098,6 +2180,7 @@ func TestHandleUnifiedSearch(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2129,6 +2212,7 @@ func TestHandleUnifiedSearch(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2184,6 +2268,7 @@ func TestHandleSearchDocumentsResults(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2237,6 +2322,7 @@ func TestHandleSearchDocumentsResults(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2275,6 +2361,7 @@ func TestHandleSearchDocumentsResults(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2310,6 +2397,7 @@ func TestHandleSearchDocumentsResults(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2339,6 +2427,7 @@ func TestHandleSearchDocumentsResults(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2383,6 +2472,7 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2434,6 +2524,7 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2467,6 +2558,7 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2500,6 +2592,7 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2532,6 +2625,7 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -2569,6 +2663,7 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient

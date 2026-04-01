@@ -57,6 +57,12 @@ type kiwixClientFactory interface {
 	Get(ctx context.Context) (kiwixSearcher, error)
 }
 
+// documentLister abstracts the document repository methods used by list_documents.
+type documentLister interface {
+	List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error)
+	TagsForDocuments(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error)
+}
+
 // contentSearcher abstracts the search.Searcher methods.
 type contentSearcher interface {
 	Search(ctx context.Context, params search.SearchParams) (*search.SearchResponse, error)
@@ -104,7 +110,7 @@ type Handler struct {
 
 	// Dependencies for tools (interface-typed for testability)
 	documentService     documentServicer
-	documentRepo        *repository.DocumentRepository
+	documentRepo        documentLister
 	externalServiceRepo *repository.ExternalServiceRepository
 	zimArchiveRepo  zimArchiveLister
 	gitTemplateRepo gitTemplateStore
@@ -129,7 +135,7 @@ type Config struct {
 
 	// Always required
 	DocumentService documentServicer
-	DocumentRepo    *repository.DocumentRepository
+	DocumentRepo    documentLister
 	SearchQueryRepo *repository.SearchQueryRepository
 
 	// Conditionally registered

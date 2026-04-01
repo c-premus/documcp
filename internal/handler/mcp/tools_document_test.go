@@ -1,11 +1,19 @@
 package mcphandler
 
 import (
+	"context"
 	"database/sql"
+	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
+	"github.com/c-premus/documcp/internal/dto"
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/repository"
 )
 
 func TestTruncateContent(t *testing.T) {
@@ -314,6 +322,395 @@ func TestBuildDocumentMeta(t *testing.T) {
 
 		if len(got.Tags) != 0 {
 			t.Errorf("Tags length = %d, want 0", len(got.Tags))
+		}
+	})
+}
+
+// testHandler creates a Handler with the given documentRepo mock for list_documents tests.
+func testHandler(repo *mockDocumentRepo) *Handler {
+	return &Handler{
+		server:       mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v0.0.0"}, nil),
+		logger:       slog.Default(),
+		documentRepo: repo,
+	}
+}
+
+// twoDocResult returns a DocumentListResult with two sample documents and a matching tag map.
+func twoDocResult() (result *repository.DocumentListResult, tags map[int64][]model.DocumentTag) {
+	now := time.Date(2025, 6, 15, 10, 0, 0, 0, time.UTC)
+	result = &repository.DocumentListResult{
+		Documents: []model.Document{
+			{
+				ID:          1,
+				UUID:        "uuid-1",
+				Title:       "First Doc",
+				Description: sql.NullString{String: "desc one", Valid: true},
+				FileType:    "markdown",
+				FileSize:    1024,
+				WordCount:   sql.NullInt64{Int64: 200, Valid: true},
+				IsPublic:    true,
+				Status:      "processed",
+				CreatedAt:   sql.NullTime{Time: now, Valid: true},
+				UpdatedAt:   sql.NullTime{Time: now.Add(time.Hour), Valid: true},
+			},
+			{
+				ID:          2,
+				UUID:        "uuid-2",
+				Title:       "Second Doc",
+				Description: sql.NullString{Valid: false},
+				FileType:    "pdf",
+				FileSize:    2048,
+				WordCount:   sql.NullInt64{Valid: false},
+				IsPublic:    false,
+				Status:      "pending",
+				CreatedAt:   sql.NullTime{Time: now.Add(2 * time.Hour), Valid: true},
+				UpdatedAt:   sql.NullTime{Valid: false},
+			},
+		},
+		Total: 2,
+	}
+	tags = map[int64][]model.DocumentTag{
+		1: {{Tag: "golang"}, {Tag: "testing"}},
+		2: {{Tag: "report"}},
+	}
+	return result, tags
+}
+
+func TestHandleListDocuments(t *testing.T) {
+	t.Run("admin sees all documents", func(t *testing.T) {
+		result, tags := twoDocResult()
+		var capturedParams repository.DocumentListParams
+
+		repo := &mockDocumentRepo{
+			listFn: func(_ context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				capturedParams = params
+				return result, nil
+			},
+			tagsForDocumentsFn: func(_ context.Context, _ []int64) (map[int64][]model.DocumentTag, error) {
+				return tags, nil
+			},
+		}
+		h := testHandler(repo)
+		ctx := ctxWithAdminUser()
+
+		_, resp, err := h.handleListDocuments(ctx, nil, dto.ListDocumentsInput{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Admin should have no visibility filter.
+		if capturedParams.IsPublic != nil {
+			t.Error("expected IsPublic to be nil for admin")
+		}
+		if capturedParams.OwnerOrPublic != nil {
+			t.Error("expected OwnerOrPublic to be nil for admin")
+		}
+		if !resp.Success {
+			t.Error("expected Success to be true")
+		}
+		if resp.Total != 2 {
+			t.Errorf("Total = %d, want 2", resp.Total)
+		}
+		if resp.Count != 2 {
+			t.Errorf("Count = %d, want 2", resp.Count)
+		}
+		if len(resp.Documents) != 2 {
+			t.Fatalf("Documents length = %d, want 2", len(resp.Documents))
+		}
+		doc0 := resp.Documents[0]
+		if doc0.UUID != "uuid-1" {
+			t.Errorf("doc[0].UUID = %q, want %q", doc0.UUID, "uuid-1")
+		}
+		if doc0.Title != "First Doc" {
+			t.Errorf("doc[0].Title = %q, want %q", doc0.Title, "First Doc")
+		}
+		if doc0.Description != "desc one" {
+			t.Errorf("doc[0].Description = %q, want %q", doc0.Description, "desc one")
+		}
+		if doc0.FileType != "markdown" {
+			t.Errorf("doc[0].FileType = %q, want %q", doc0.FileType, "markdown")
+		}
+		if doc0.FileSize != 1024 {
+			t.Errorf("doc[0].FileSize = %d, want 1024", doc0.FileSize)
+		}
+		if doc0.WordCount != 200 {
+			t.Errorf("doc[0].WordCount = %d, want 200", doc0.WordCount)
+		}
+		if doc0.CreatedAt != "2025-06-15T10:00:00Z" {
+			t.Errorf("doc[0].CreatedAt = %q, want %q", doc0.CreatedAt, "2025-06-15T10:00:00Z")
+		}
+		if doc0.UpdatedAt != "2025-06-15T11:00:00Z" {
+			t.Errorf("doc[0].UpdatedAt = %q, want %q", doc0.UpdatedAt, "2025-06-15T11:00:00Z")
+		}
+	})
+
+	t.Run("M2M token sees public only", func(t *testing.T) {
+		var capturedParams repository.DocumentListParams
+		repo := &mockDocumentRepo{
+			listFn: func(_ context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				capturedParams = params
+				return &repository.DocumentListResult{}, nil
+			},
+		}
+		h := testHandler(repo)
+		ctx := ctxWithTokenOnly()
+
+		_, _, err := h.handleListDocuments(ctx, nil, dto.ListDocumentsInput{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if capturedParams.IsPublic == nil || !*capturedParams.IsPublic {
+			t.Error("expected IsPublic = true for M2M token")
+		}
+		if capturedParams.OwnerOrPublic != nil {
+			t.Error("expected OwnerOrPublic to be nil for M2M token")
+		}
+	})
+
+	t.Run("non-admin user gets OwnerOrPublic filter", func(t *testing.T) {
+		var capturedParams repository.DocumentListParams
+		repo := &mockDocumentRepo{
+			listFn: func(_ context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				capturedParams = params
+				return &repository.DocumentListResult{}, nil
+			},
+		}
+		h := testHandler(repo)
+
+		ctx := context.Background()
+		ctx = context.WithValue(ctx, authmiddleware.UserContextKey, &model.User{ID: 42, IsAdmin: false})
+		ctx = context.WithValue(ctx, authmiddleware.AccessTokenContextKey, mcpToken())
+
+		_, _, err := h.handleListDocuments(ctx, nil, dto.ListDocumentsInput{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if capturedParams.OwnerOrPublic == nil {
+			t.Fatal("expected OwnerOrPublic to be set")
+		}
+		if *capturedParams.OwnerOrPublic != 42 {
+			t.Errorf("OwnerOrPublic = %d, want 42", *capturedParams.OwnerOrPublic)
+		}
+		if capturedParams.IsPublic != nil {
+			t.Error("expected IsPublic to be nil for non-admin user")
+		}
+	})
+
+	t.Run("default limit is 50", func(t *testing.T) {
+		var capturedParams repository.DocumentListParams
+		repo := &mockDocumentRepo{
+			listFn: func(_ context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				capturedParams = params
+				return &repository.DocumentListResult{}, nil
+			},
+		}
+		h := testHandler(repo)
+
+		_, resp, err := h.handleListDocuments(ctxWithAdminUser(), nil, dto.ListDocumentsInput{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if capturedParams.Limit != 50 {
+			t.Errorf("params.Limit = %d, want 50", capturedParams.Limit)
+		}
+		if resp.Limit != 50 {
+			t.Errorf("resp.Limit = %d, want 50", resp.Limit)
+		}
+	})
+
+	t.Run("limit clamped to 100", func(t *testing.T) {
+		var capturedParams repository.DocumentListParams
+		repo := &mockDocumentRepo{
+			listFn: func(_ context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				capturedParams = params
+				return &repository.DocumentListResult{}, nil
+			},
+		}
+		h := testHandler(repo)
+
+		_, resp, err := h.handleListDocuments(ctxWithAdminUser(), nil, dto.ListDocumentsInput{Limit: 200})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if capturedParams.Limit != 100 {
+			t.Errorf("params.Limit = %d, want 100", capturedParams.Limit)
+		}
+		if resp.Limit != 100 {
+			t.Errorf("resp.Limit = %d, want 100", resp.Limit)
+		}
+	})
+
+	t.Run("negative offset becomes 0", func(t *testing.T) {
+		var capturedParams repository.DocumentListParams
+		repo := &mockDocumentRepo{
+			listFn: func(_ context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				capturedParams = params
+				return &repository.DocumentListResult{}, nil
+			},
+		}
+		h := testHandler(repo)
+
+		_, resp, err := h.handleListDocuments(ctxWithAdminUser(), nil, dto.ListDocumentsInput{Offset: -5})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if capturedParams.Offset != 0 {
+			t.Errorf("params.Offset = %d, want 0", capturedParams.Offset)
+		}
+		if resp.Offset != 0 {
+			t.Errorf("resp.Offset = %d, want 0", resp.Offset)
+		}
+	})
+
+	t.Run("invalid file_type ignored", func(t *testing.T) {
+		var capturedParams repository.DocumentListParams
+		repo := &mockDocumentRepo{
+			listFn: func(_ context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				capturedParams = params
+				return &repository.DocumentListResult{}, nil
+			},
+		}
+		h := testHandler(repo)
+
+		_, _, err := h.handleListDocuments(ctxWithAdminUser(), nil, dto.ListDocumentsInput{FileType: "invalid"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if capturedParams.FileType != "" {
+			t.Errorf("params.FileType = %q, want empty", capturedParams.FileType)
+		}
+	})
+
+	t.Run("valid file_type passed through", func(t *testing.T) {
+		var capturedParams repository.DocumentListParams
+		repo := &mockDocumentRepo{
+			listFn: func(_ context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				capturedParams = params
+				return &repository.DocumentListResult{}, nil
+			},
+		}
+		h := testHandler(repo)
+
+		_, _, err := h.handleListDocuments(ctxWithAdminUser(), nil, dto.ListDocumentsInput{FileType: "pdf"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if capturedParams.FileType != "pdf" {
+			t.Errorf("params.FileType = %q, want %q", capturedParams.FileType, "pdf")
+		}
+	})
+
+	t.Run("repo List error propagated", func(t *testing.T) {
+		repo := &mockDocumentRepo{
+			listFn: func(_ context.Context, _ repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				return nil, errors.New("db connection lost")
+			},
+		}
+		h := testHandler(repo)
+
+		_, _, err := h.handleListDocuments(ctxWithAdminUser(), nil, dto.ListDocumentsInput{})
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !errors.Is(err, errors.Unwrap(err)) && err.Error() != "listing documents: db connection lost" {
+			t.Errorf("error = %q, want wrapped db error", err.Error())
+		}
+	})
+
+	t.Run("empty result set", func(t *testing.T) {
+		repo := &mockDocumentRepo{
+			listFn: func(_ context.Context, _ repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				return &repository.DocumentListResult{Documents: []model.Document{}, Total: 0}, nil
+			},
+		}
+		h := testHandler(repo)
+
+		_, resp, err := h.handleListDocuments(ctxWithAdminUser(), nil, dto.ListDocumentsInput{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !resp.Success {
+			t.Error("expected Success to be true")
+		}
+		if resp.Total != 0 {
+			t.Errorf("Total = %d, want 0", resp.Total)
+		}
+		if resp.Count != 0 {
+			t.Errorf("Count = %d, want 0", resp.Count)
+		}
+		if len(resp.Documents) != 0 {
+			t.Errorf("Documents length = %d, want 0", len(resp.Documents))
+		}
+	})
+
+	t.Run("no scope returns error", func(t *testing.T) {
+		repo := &mockDocumentRepo{}
+		h := testHandler(repo)
+
+		// Context with no bearer token at all.
+		ctx := context.Background()
+
+		_, _, err := h.handleListDocuments(ctx, nil, dto.ListDocumentsInput{})
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if err.Error() != "mcp:read scope required for listing documents" {
+			t.Errorf("error = %q, want scope error message", err.Error())
+		}
+	})
+
+	t.Run("tags loaded and mapped correctly", func(t *testing.T) {
+		result, tags := twoDocResult()
+
+		var capturedDocIDs []int64
+		repo := &mockDocumentRepo{
+			listFn: func(_ context.Context, _ repository.DocumentListParams) (*repository.DocumentListResult, error) {
+				return result, nil
+			},
+			tagsForDocumentsFn: func(_ context.Context, docIDs []int64) (map[int64][]model.DocumentTag, error) {
+				capturedDocIDs = docIDs
+				return tags, nil
+			},
+		}
+		h := testHandler(repo)
+
+		_, resp, err := h.handleListDocuments(ctxWithAdminUser(), nil, dto.ListDocumentsInput{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Verify TagsForDocuments was called with correct IDs.
+		if len(capturedDocIDs) != 2 {
+			t.Fatalf("TagsForDocuments called with %d IDs, want 2", len(capturedDocIDs))
+		}
+		if capturedDocIDs[0] != 1 || capturedDocIDs[1] != 2 {
+			t.Errorf("TagsForDocuments IDs = %v, want [1 2]", capturedDocIDs)
+		}
+
+		// First doc should have two tags.
+		doc0 := resp.Documents[0]
+		if len(doc0.Tags) != 2 {
+			t.Fatalf("doc[0].Tags length = %d, want 2", len(doc0.Tags))
+		}
+		if doc0.Tags[0] != "golang" || doc0.Tags[1] != "testing" {
+			t.Errorf("doc[0].Tags = %v, want [golang testing]", doc0.Tags)
+		}
+
+		// Second doc should have one tag.
+		doc1 := resp.Documents[1]
+		if len(doc1.Tags) != 1 {
+			t.Fatalf("doc[1].Tags length = %d, want 1", len(doc1.Tags))
+		}
+		if doc1.Tags[0] != "report" {
+			t.Errorf("doc[1].Tags = %v, want [report]", doc1.Tags)
 		}
 	})
 }
