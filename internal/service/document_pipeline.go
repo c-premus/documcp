@@ -20,6 +20,7 @@ import (
 	"github.com/c-premus/documcp/internal/extractor"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/queue"
+	"github.com/c-premus/documcp/internal/security"
 )
 
 // JobInserter inserts jobs into the queue. Defined here (where consumed).
@@ -187,7 +188,10 @@ func (p *DocumentPipeline) ProcessDocument(ctx context.Context, docID int64) err
 		return fmt.Errorf("finding document %d for processing: %w", docID, err)
 	}
 
-	absPath := filepath.Join(p.storagePath, doc.FilePath)
+	absPath, err := security.SafeStoragePath(p.storagePath, doc.FilePath)
+	if err != nil {
+		return p.markFailed(ctx, doc, fmt.Sprintf("unsafe file path: %v", err))
+	}
 
 	ext, err := p.extractorRegistry.ForMIMEType(doc.MIMEType)
 	if err != nil {
