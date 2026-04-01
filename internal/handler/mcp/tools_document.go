@@ -14,6 +14,7 @@ import (
 	authscope "github.com/c-premus/documcp/internal/auth/scope"
 	"github.com/c-premus/documcp/internal/dto"
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/search"
 	"github.com/c-premus/documcp/internal/service"
 )
@@ -85,10 +86,51 @@ type deleteDocumentResponse struct {
 	UUID    string `json:"uuid"`
 }
 
+type listDocumentsResponse struct {
+	Success   bool               `json:"success"`
+	Documents []documentListItem `json:"documents"`
+	Total     int                `json:"total"`
+	Count     int                `json:"count"`
+	Limit     int                `json:"limit"`
+	Offset    int                `json:"offset"`
+}
+
+type documentListItem struct {
+	UUID        string   `json:"uuid"`
+	Title       string   `json:"title"`
+	Description string   `json:"description,omitempty"`
+	FileType    string   `json:"file_type"`
+	FileSize    int64    `json:"file_size"`
+	WordCount   int64    `json:"word_count,omitempty"`
+	IsPublic    bool     `json:"is_public"`
+	Status      string   `json:"status"`
+	Tags        []string `json:"tags"`
+	CreatedAt   string   `json:"created_at,omitempty"`
+	UpdatedAt   string   `json:"updated_at,omitempty"`
+}
+
 // --- Tool registration ---
 
 // registerDocumentTools registers document CRUD and search tools on the MCP server.
 func (h *Handler) registerDocumentTools() {
+	mcp.AddTool(h.server, &mcp.Tool{
+		Name: "list_documents",
+		Description: "List documents with optional filters and pagination.\n\n" +
+			"Returns all accessible documents (respects visibility: admins see all, " +
+			"users see own + public, M2M tokens see public only).\n\n" +
+			"**Filters:**\n" +
+			"- `file_type`: markdown, pdf, docx, xlsx, html\n" +
+			"- `status`: pending, processed, failed\n\n" +
+			"Returns UUID, title, description, file type, file size, word count, tags, and timestamps. " +
+			"Sorted by creation date (newest first). Max 100 results per page.\n\n" +
+			"**Workflow:** Use `uuid` from results with `read_document` to fetch full content, " +
+			"or `search_documents` for keyword search.",
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:   true,
+			IdempotentHint: true,
+		},
+	}, h.handleListDocuments)
+
 	mcp.AddTool(h.server, &mcp.Tool{
 		Name: "search_documents",
 		Description: "Full-text search across documents.\n\n" +
@@ -132,6 +174,98 @@ func (h *Handler) registerDocumentTools() {
 }
 
 // --- Tool handlers ---
+
+func (h *Handler) handleListDocuments(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	input dto.ListDocumentsInput,
+) (*mcp.CallToolResult, listDocumentsResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
+		return nil, listDocumentsResponse{}, errors.New("mcp:read scope required for listing documents")
+	}
+
+	limit := input.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	offset := max(input.Offset, 0)
+
+	params := repository.DocumentListParams{
+		Status:   input.Status,
+		Limit:    limit,
+		Offset:   offset,
+		OrderBy:  "created_at",
+		OrderDir: "desc",
+	}
+	if input.FileType != "" && isValidFileType(input.FileType) {
+		params.FileType = input.FileType
+	}
+
+	// Restrict visibility based on authentication context.
+	user, _ := authmiddleware.UserFromContext(ctx)
+	switch {
+	case user == nil:
+		// M2M tokens: public documents only.
+		pub := true
+		params.IsPublic = &pub
+	case user.IsAdmin:
+		// Admins see all documents (no filter).
+	default:
+		// Non-admin users: own + public.
+		params.OwnerOrPublic = &user.ID
+	}
+
+	result, err := h.documentRepo.List(ctx, params)
+	if err != nil {
+		return nil, listDocumentsResponse{}, fmt.Errorf("listing documents: %w", err)
+	}
+
+	// Batch-load tags to avoid N+1 queries.
+	docIDs := make([]int64, len(result.Documents))
+	for i := range result.Documents {
+		docIDs[i] = result.Documents[i].ID
+	}
+	tagsByDoc, _ := h.documentRepo.TagsForDocuments(ctx, docIDs)
+
+	items := make([]documentListItem, 0, len(result.Documents))
+	for i := range result.Documents {
+		doc := &result.Documents[i]
+		tags := make([]string, 0)
+		for _, t := range tagsByDoc[doc.ID] {
+			tags = append(tags, t.Tag)
+		}
+		item := documentListItem{
+			UUID:        doc.UUID,
+			Title:       doc.Title,
+			Description: doc.Description.String,
+			FileType:    doc.FileType,
+			FileSize:    doc.FileSize,
+			WordCount:   doc.WordCount.Int64,
+			IsPublic:    doc.IsPublic,
+			Status:      doc.Status,
+			Tags:        tags,
+		}
+		if doc.CreatedAt.Valid {
+			item.CreatedAt = doc.CreatedAt.Time.Format(time.RFC3339)
+		}
+		if doc.UpdatedAt.Valid {
+			item.UpdatedAt = doc.UpdatedAt.Time.Format(time.RFC3339)
+		}
+		items = append(items, item)
+	}
+
+	return nil, listDocumentsResponse{
+		Success:   true,
+		Documents: items,
+		Total:     result.Total,
+		Count:     len(items),
+		Limit:     limit,
+		Offset:    offset,
+	}, nil
+}
 
 func (h *Handler) handleSearchDocuments(
 	ctx context.Context,

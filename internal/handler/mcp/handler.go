@@ -72,6 +72,7 @@ const serverInstructions = `Documentation knowledge base with full-text search.
 - ` + "`unified_search`" + ` - Search across ALL sources in one request: documents, git templates, ZIM archive metadata, AND ZIM article content (via Kiwix fan-out). Use for discovery; type-specific tools for deep search.
 
 **Documents**
+- ` + "`list_documents`" + ` - List all accessible documents with optional filters (file type, status). Paginated.
 - ` + "`search_documents`" + ` - Full-text search with filters (file type, tags). Returns metadata and snippets.
 - ` + "`read_document`" + ` - Retrieve document content by UUID. Supports ` + "`summary_only`" + ` and ` + "`max_paragraphs`" + `.
 - ` + "`create_document`" + ` - Create documents (markdown, pdf, docx, xlsx, html). Auto-indexed for search.
