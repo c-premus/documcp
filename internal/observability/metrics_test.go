@@ -34,9 +34,6 @@ func TestNewMetrics(t *testing.T) {
 	if m.HTTPActiveConnections == nil {
 		t.Fatal("HTTPActiveConnections is nil")
 	}
-	if m.DocumentCount == nil {
-		t.Fatal("DocumentCount is nil")
-	}
 	if m.SearchLatency == nil {
 		t.Fatal("SearchLatency is nil")
 	}
@@ -49,7 +46,6 @@ func TestNewMetrics(t *testing.T) {
 
 	wantNames := map[string]bool{
 		"documcp_http_active_connections": false,
-		"documcp_documents":               false,
 	}
 
 	for _, f := range families {

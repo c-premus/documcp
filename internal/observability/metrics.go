@@ -3,6 +3,7 @@
 package observability
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,7 +18,6 @@ type Metrics struct {
 	HTTPRequestDuration   *prometheus.HistogramVec
 	HTTPRequestsTotal     *prometheus.CounterVec
 	HTTPActiveConnections prometheus.Gauge
-	DocumentCount         prometheus.Gauge
 	SearchLatency         *prometheus.HistogramVec
 
 	// Queue metrics
@@ -57,13 +57,6 @@ func NewMetrics() *Metrics {
 				Subsystem: "http",
 				Name:      "active_connections",
 				Help:      "Number of active HTTP connections currently being served.",
-			},
-		),
-		DocumentCount: prometheus.NewGauge(
-			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Name:      "documents",
-				Help:      "Current number of indexed documents.",
 			},
 		),
 		SearchLatency: prometheus.NewHistogramVec(
@@ -119,7 +112,6 @@ func NewMetrics() *Metrics {
 		m.HTTPRequestDuration,
 		m.HTTPRequestsTotal,
 		m.HTTPActiveConnections,
-		m.DocumentCount,
 		m.SearchLatency,
 		m.QueueJobsDispatched,
 		m.QueueJobsCompleted,
@@ -128,6 +120,27 @@ func NewMetrics() *Metrics {
 	)
 
 	return m
+}
+
+// RegisterDocumentCount registers a gauge that queries the database for the
+// current non-deleted document count on each Prometheus scrape.
+func RegisterDocumentCount(pool *pgxpool.Pool) {
+	prometheus.MustRegister(prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "documents",
+			Help:      "Current number of indexed documents.",
+		},
+		func() float64 {
+			var count int
+			err := pool.QueryRow(context.Background(),
+				`SELECT COUNT(*) FROM documents WHERE deleted_at IS NULL`).Scan(&count)
+			if err != nil {
+				return 0
+			}
+			return float64(count)
+		},
+	))
 }
 
 // RegisterDBMetrics registers Prometheus gauges for pgxpool connection stats.
