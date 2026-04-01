@@ -527,7 +527,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 
 		h.AuthorizeApprove(rr, req)
 
-		require.Equal(t, http.StatusFound, rr.Code)
+		require.Equal(t, http.StatusSeeOther, rr.Code)
 		location := rr.Header().Get("Location")
 		assert.Contains(t, location, "https://example.com/cb")
 		assert.Contains(t, location, "code=")
@@ -572,7 +572,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 
 		h.AuthorizeApprove(rr, req)
 
-		require.Equal(t, http.StatusFound, rr.Code)
+		require.Equal(t, http.StatusSeeOther, rr.Code)
 		_, exists := store.session.Values["oauth_pending_request"]
 		assert.False(t, exists, "pending request should be cleared from session")
 	})
@@ -685,7 +685,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 
 		h.AuthorizeApprove(rr, req)
 
-		require.Equal(t, http.StatusFound, rr.Code)
+		require.Equal(t, http.StatusSeeOther, rr.Code)
 		location := rr.Header().Get("Location")
 		assert.Contains(t, location, "code=")
 	})
@@ -728,7 +728,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 
 		h.AuthorizeApprove(rr, req)
 
-		require.Equal(t, http.StatusFound, rr.Code)
+		require.Equal(t, http.StatusSeeOther, rr.Code)
 		location := rr.Header().Get("Location")
 		assert.NotContains(t, location, "state=")
 	})
@@ -775,9 +775,121 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 
 		h.AuthorizeApprove(rr, req)
 
-		require.Equal(t, http.StatusFound, rr.Code)
+		require.Equal(t, http.StatusSeeOther, rr.Code)
 		location := rr.Header().Get("Location")
 		assert.Contains(t, location, "code=")
+	})
+
+	t.Run("stores completed redirect in session for idempotent retry", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID: 1, ClientID: "cid", ClientName: "Test App",
+					TokenEndpointAuthMethod: "none",
+					RedirectURIs:            `["https://example.com/cb"]`,
+					IsActive:                true,
+				}, nil
+			},
+			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
+				code.ID = 99
+				return nil
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+		store.session.Values["oauth_pending_request"] = map[string]any{
+			"nonce": "idempotent-nonce", "client_id": "cid",
+			"state": "my_state_", "redirect_uri": "https://example.com/cb",
+			"code_challenge": "", "code_challenge_method": "",
+			"scope": "", "timestamp": time.Now().Unix(),
+		}
+
+		formBody := "client_id=cid&redirect_uri=https://example.com/cb&state=my_state_&nonce=idempotent-nonce"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/authorize/approve", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.AuthorizeApprove(rr, req)
+
+		require.Equal(t, http.StatusSeeOther, rr.Code)
+		completedURL, ok := store.session.Values["oauth_completed_redirect"].(string)
+		require.True(t, ok, "completed redirect URL should be stored in session")
+		assert.Contains(t, completedURL, "https://example.com/cb")
+		assert.Contains(t, completedURL, "code=")
+		completedNonce, ok := store.session.Values["oauth_completed_nonce"].(string)
+		require.True(t, ok, "completed nonce should be stored in session")
+		assert.Equal(t, "idempotent-nonce", completedNonce)
+	})
+
+	t.Run("retried POST re-redirects using completed state", func(t *testing.T) {
+		t.Parallel()
+		h, store := newHandlerWithRepo(&mockOAuthRepo{})
+		store.session.Values["user_id"] = int64(42)
+		// Simulate state after a successful first approval.
+		store.session.Values["oauth_completed_redirect"] = "https://example.com/cb?code=abc123&state=my_state_"
+		store.session.Values["oauth_completed_nonce"] = "retry-nonce"
+
+		formBody := "client_id=cid&redirect_uri=https://example.com/cb&state=my_state_&nonce=retry-nonce"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/authorize/approve", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.AuthorizeApprove(rr, req)
+
+		require.Equal(t, http.StatusSeeOther, rr.Code)
+		location := rr.Header().Get("Location")
+		assert.Equal(t, "https://example.com/cb?code=abc123&state=my_state_", location)
+	})
+
+	t.Run("retried POST with wrong nonce does not re-redirect", func(t *testing.T) {
+		t.Parallel()
+		h, store := newHandlerWithRepo(&mockOAuthRepo{})
+		store.session.Values["user_id"] = int64(42)
+		store.session.Values["oauth_completed_redirect"] = "https://example.com/cb?code=abc123"
+		store.session.Values["oauth_completed_nonce"] = "correct-nonce"
+
+		formBody := "client_id=cid&redirect_uri=https://example.com/cb&state=my_state_&nonce=wrong-nonce"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/authorize/approve", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.AuthorizeApprove(rr, req)
+
+		// Should fall through to pending request check and fail (no pending request).
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("new authorize GET clears completed state", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID: 1, ClientID: "cid", ClientName: "Test App",
+					TokenEndpointAuthMethod: "none",
+					RedirectURIs:            `["https://example.com/cb"]`,
+					IsActive:                true,
+				}, nil
+			},
+			FindUserByIDFunc: func(_ context.Context, _ int64) (*model.User, error) {
+				return &model.User{ID: 42, IsAdmin: false}, nil
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+		store.session.Values["oauth_completed_redirect"] = "https://stale.example.com/cb?code=old"
+		store.session.Values["oauth_completed_nonce"] = "old-nonce"
+
+		req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&code_challenge=challenge&code_challenge_method=S256&scope=mcp:access", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Authorize(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		_, hasRedirect := store.session.Values["oauth_completed_redirect"]
+		assert.False(t, hasRedirect, "completed redirect should be cleared on new authorization")
+		_, hasNonce := store.session.Values["oauth_completed_nonce"]
+		assert.False(t, hasNonce, "completed nonce should be cleared on new authorization")
 	})
 }
 
@@ -856,7 +968,7 @@ func TestHandler_AuthorizeDeny(t *testing.T) {
 
 		h.AuthorizeDeny(rr, req)
 
-		require.Equal(t, http.StatusFound, rr.Code)
+		require.Equal(t, http.StatusSeeOther, rr.Code)
 		location := rr.Header().Get("Location")
 		assert.Contains(t, location, "https://example.com/cb")
 		assert.Contains(t, location, "error=access_denied")
@@ -882,7 +994,7 @@ func TestHandler_AuthorizeDeny(t *testing.T) {
 
 		h.AuthorizeDeny(rr, req)
 
-		require.Equal(t, http.StatusFound, rr.Code)
+		require.Equal(t, http.StatusSeeOther, rr.Code)
 		_, exists := store.session.Values["oauth_pending_request"]
 		assert.False(t, exists, "pending request should be cleared from session")
 	})
