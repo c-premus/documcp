@@ -3,6 +3,7 @@ package observability
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -20,6 +21,14 @@ import (
 func Tracing(tracerName string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip tracing for health and metrics probe endpoints.
+			// These generate high-volume, low-value spans that drown out
+			// actual API traffic in trace backends.
+			if strings.HasPrefix(r.URL.Path, "/health") || r.URL.Path == "/metrics" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			tracer := otel.Tracer(tracerName)
 			propagator := otel.GetTextMapPropagator()
 

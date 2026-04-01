@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9/maintnotifications"
 
 	"github.com/c-premus/documcp/internal/client/kiwix"
 	"github.com/c-premus/documcp/internal/config"
@@ -84,12 +85,26 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	)
 
 	// --- Redis ---
+	// Bridge go-redis internal logger to slog so pool warnings appear
+	// in structured logs instead of raw stderr.
+	redis.SetLogger(&redisSlogLogger{logger: logger})
+
 	redisOpts := &redis.Options{
 		Addr:     cfg.Redis.Addr,
 		Username: cfg.Redis.Username,
 		Password: cfg.Redis.Password,
 		DB:       cfg.Redis.DB,
-		Protocol: 2, // RESP2 — avoids "Conn has unread data" from RESP3 push notifications (go-redis#3582)
+		Protocol: 3,
+		// Disable maintenance notifications (default: auto). With RESP3,
+		// go-redis sends CLIENT MAINT_NOTIFICATIONS ON, causing Redis 8 to
+		// push unsolicited notifications on pool connections. Under request
+		// bursts the 5-second drain optimization skips processing, so these
+		// arrive between command completion and putConn — triggering
+		// "Conn has unread data (not push notification), removing it" and
+		// connection churn. Not needed for standalone Docker deployments.
+		MaintNotificationsConfig: &maintnotifications.Config{
+			Mode: maintnotifications.ModeDisabled,
+		},
 	}
 	if cfg.Redis.PoolSize > 0 {
 		redisOpts.PoolSize = cfg.Redis.PoolSize

@@ -82,12 +82,14 @@ func (s *Server) RegisterRoutes(deps Deps) {
 	r.Use(RealIP(s.trustedProxies))
 	r.Use(SafeRecoverer(s.logger))
 	r.Use(SecurityHeaders(deps.HSTSMaxAge))
-	r.Use(RequestLogger(s.logger))
 
-	// OpenTelemetry tracing middleware
+	// OpenTelemetry tracing middleware — must run before RequestLogger so the
+	// span context is available for trace_id/span_id injection into logs.
 	if deps.OTELEnabled {
 		r.Use(observability.Tracing("documcp"))
 	}
+
+	r.Use(RequestLogger(s.logger))
 
 	// Prometheus metrics middleware (before application middleware so it
 	// captures the full request lifecycle including logging overhead).

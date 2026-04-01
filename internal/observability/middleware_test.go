@@ -222,6 +222,39 @@ func TestTracing_DefaultStatusCodeWhenNotExplicitlySet(t *testing.T) {
 	}
 }
 
+func TestTracing_SkipsHealthAndMetricsPaths(t *testing.T) {
+	t.Parallel()
+
+	paths := []string{"/health", "/health/ready", "/metrics"}
+
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			var handlerCalled bool
+			inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				handlerCalled = true
+				w.WriteHeader(http.StatusOK)
+			})
+
+			mw := observability.Tracing("test-tracer")
+			handler := mw(inner)
+
+			req := httptest.NewRequest(http.MethodGet, path, http.NoBody)
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			if !handlerCalled {
+				t.Fatal("inner handler was not called for probe path")
+			}
+			if rec.Code != http.StatusOK {
+				t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+			}
+		})
+	}
+}
+
 func TestTracing_WithContentLength(t *testing.T) {
 	t.Parallel()
 

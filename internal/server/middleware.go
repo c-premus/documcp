@@ -237,7 +237,7 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 				if strings.HasPrefix(path, "/health") || path == "/metrics" {
 					return
 				}
-				logger.Info("request completed",
+				logger.InfoContext(r.Context(), "request completed",
 					"method", r.Method,
 					"path", path,
 					"status", ww.Status(),
