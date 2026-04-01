@@ -293,6 +293,13 @@ linters:
           - gosec
         text: "G118"
 
+      # gosec G118: RedisEventBus stores cancel in a struct field and calls it
+      # in Close(). gosec cannot track this pattern through struct assignment.
+      - path: internal/queue/events_redis\.go
+        linters:
+          - gosec
+        text: "G118"
+
       # gosec G706: Log injection via taint analysis. The values logged here are
       # integer IDs (int64) extracted from validated JWT tokens or database records,
       # not user-supplied strings. Integer values cannot carry log-injection payloads.

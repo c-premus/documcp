@@ -20,6 +20,10 @@ import (
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Default size limits for file extraction.
@@ -84,7 +88,18 @@ func tokenAuth(token string) *http.BasicAuth {
 // set, HTTP basic auth is used to authenticate.
 // Returns the path to the cloned directory.
 func (c *Client) Clone(ctx context.Context, params CloneParams) (string, error) {
+	ctx, span := otel.Tracer("documcp/git").Start(ctx, "git.clone",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("git.url", params.URL),
+			attribute.String("git.branch", params.Branch),
+		),
+	)
+	defer span.End()
+
 	if err := validateBranch(params.Branch); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return "", err
 	}
 
@@ -112,7 +127,10 @@ func (c *Client) Clone(ctx context.Context, params CloneParams) (string, error) 
 
 	_, err := gogit.PlainCloneContext(ctx, dest, false, cloneOpts)
 	if err != nil {
-		return "", fmt.Errorf("git clone failed: %w", sanitizeErr(err))
+		err = fmt.Errorf("git clone failed: %w", sanitizeErr(err))
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return "", err
 	}
 
 	return dest, nil
@@ -120,14 +138,26 @@ func (c *Client) Clone(ctx context.Context, params CloneParams) (string, error) 
 
 // Pull fetches and fast-forward merges the latest changes in an existing clone.
 func (c *Client) Pull(ctx context.Context, repoDir, token string) error {
+	ctx, span := otel.Tracer("documcp/git").Start(ctx, "git.pull",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(attribute.String("git.dir", repoDir)),
+	)
+	defer span.End()
+
 	repo, err := gogit.PlainOpen(repoDir)
 	if err != nil {
-		return fmt.Errorf("git pull failed: %w", sanitizeErr(err))
+		err = fmt.Errorf("git pull failed: %w", sanitizeErr(err))
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
 	}
 
 	wt, err := repo.Worktree()
 	if err != nil {
-		return fmt.Errorf("git pull failed: %w", sanitizeErr(err))
+		err = fmt.Errorf("git pull failed: %w", sanitizeErr(err))
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
 	}
 
 	pullOpts := &gogit.PullOptions{}
@@ -139,9 +169,13 @@ func (c *Client) Pull(ctx context.Context, repoDir, token string) error {
 
 	if err := wt.PullContext(ctx, pullOpts); err != nil {
 		if errors.Is(err, gogit.NoErrAlreadyUpToDate) {
+			span.SetAttributes(attribute.Bool("git.already_up_to_date", true))
 			return nil
 		}
-		return fmt.Errorf("git pull failed: %w", sanitizeErr(err))
+		err = fmt.Errorf("git pull failed: %w", sanitizeErr(err))
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
 	}
 
 	return nil
