@@ -10,7 +10,7 @@ import type { DynamicConfigValue } from '@grafana/grafana-foundation-sdk/dashboa
 const TEMPO_DATASOURCE = { type: 'tempo' as const, uid: 'tempo' };
 
 const TRACE_QUERY =
-  '{ resource.service.name = "documcp" && kind != internal }';
+  '{ resource.service.name = "documcp" && rootServiceName = "documcp" }';
 
 const TRACE_EXPLORE_URL = [
   '/explore?orgId=1&left=%7B%22datasource%22:%22tempo%22,',
@@ -54,7 +54,7 @@ export function recentTracesPanel(): PanelBuilder {
   return new PanelBuilder()
     .title('Recent Traces')
     .description(
-      'Recent server and client traces from Tempo — click trace ID to explore',
+      'Recent traces from Tempo — click trace ID to explore full span tree',
     )
     .gridPos({ h: 10, w: 24, x: 0, y: 76 })
     .datasource(TEMPO_DATASOURCE)
@@ -65,7 +65,7 @@ export function recentTracesPanel(): PanelBuilder {
         .queryType('traceql')
         .query(TRACE_QUERY)
         .limit(100)
-        .tableType(SearchTableType.Spans),
+        .tableType(SearchTableType.Traces),
     )
     .showHeader(true)
     .sortBy([

@@ -1868,7 +1868,7 @@
       "transparent": false,
       "repeatDirection": "h",
       "title": "Recent Traces",
-      "description": "Recent server and client traces from Tempo — click trace ID to explore",
+      "description": "Recent traces from Tempo — click trace ID to explore full span tree",
       "gridPos": {
         "h": 10,
         "w": 24,
@@ -1888,9 +1888,9 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"documcp\" && kind != internal }",
+          "query": "{ resource.service.name = \"documcp\" && rootServiceName = \"documcp\" }",
           "limit": 100,
-          "tableType": "spans"
+          "tableType": "traces"
         }
       ],
       "options": {
