@@ -17,7 +17,7 @@ import {
 
 const DATASOURCE = { type: 'prometheus', uid: 'prometheus' } as const;
 
-const SPAN_FILTER = 'service="DocuMCP", span_kind=~"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL"';
+const SPAN_FILTER = 'service="documcp", span_kind=~"SPAN_KIND_SERVER|SPAN_KIND_INTERNAL"';
 
 const TABLE_RATE_WINDOW = '$__range';
 

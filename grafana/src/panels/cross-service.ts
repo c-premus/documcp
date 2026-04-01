@@ -18,8 +18,8 @@ const PROMETHEUS_DATASOURCE = { type: 'prometheus', uid: 'prometheus' } as const
 const SG_SERVER_LATENCY = 'traces_service_graph_request_server_seconds_bucket';
 const SG_REQUEST_TOTAL = 'traces_service_graph_request_total';
 const SG_FAILED_TOTAL = 'traces_service_graph_request_failed_total';
-const CLIENT_FILTER = 'client="DocuMCP"';
-const SERVER_FILTER = 'server="DocuMCP"';
+const CLIENT_FILTER = 'client=~"DocuMCP|documcp"';
+const SERVER_FILTER = 'server=~"DocuMCP|documcp"';
 
 function buildLegend(): VizLegendOptionsBuilder {
   return new VizLegendOptionsBuilder()

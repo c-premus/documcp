@@ -27,7 +27,7 @@ import {
 const PROMETHEUS_DATASOURCE = { type: 'prometheus', uid: 'prometheus' } as const;
 
 const LATENCY_BUCKET_METRIC = 'traces_spanmetrics_latency_bucket';
-const SERVICE_FILTER = 'service="DocuMCP"';
+const SERVICE_FILTER = 'service="documcp"';
 
 function buildLegend(): VizLegendOptionsBuilder {
   return new VizLegendOptionsBuilder()

@@ -56,7 +56,7 @@ export function sqlRatePanel(): PanelBuilder {
 
   const query = new DataqueryBuilder()
     .refId('A')
-    .expr(`sum by (span_name) (rate(traces_spanmetrics_calls_total{service="DocuMCP", span_name=~"${SQL_OPERATIONS}"}[$__rate_interval]))`)
+    .expr(`sum by (span_name) (rate(traces_spanmetrics_calls_total{service="documcp", span_name=~"${SQL_OPERATIONS}"}[$__rate_interval]))`)
     .legendFormat('{{span_name}}');
 
   return panel.withTarget(query);
@@ -73,7 +73,7 @@ export function sqlLatencyPanel(): PanelBuilder {
 
   const query = new DataqueryBuilder()
     .refId('A')
-    .expr(`histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service="DocuMCP", span_name=~"${SQL_OPERATIONS}"}[$__rate_interval])))`)
+    .expr(`histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service="documcp", span_name=~"${SQL_OPERATIONS}"}[$__rate_interval])))`)
     .legendFormat('{{span_name}}');
 
   return panel.withTarget(query);
@@ -90,12 +90,12 @@ export function httpCallsPanel(): PanelBuilder {
 
   const httpQuery = new DataqueryBuilder()
     .refId('A')
-    .expr(`sum(rate(traces_spanmetrics_calls_total{service="DocuMCP", span_kind="SPAN_KIND_CLIENT", span_name=~"${HTTP_CLIENT_PATTERN}"}[$__rate_interval]))`)
+    .expr(`sum(rate(traces_spanmetrics_calls_total{service="documcp", span_kind="SPAN_KIND_CLIENT", span_name=~"${HTTP_CLIENT_PATTERN}"}[$__rate_interval]))`)
     .legendFormat('HTTP calls');
 
   const kiwixQuery = new DataqueryBuilder()
     .refId('B')
-    .expr('sum(rate(traces_spanmetrics_calls_total{service="DocuMCP", span_name=~"kiwix.*"}[$__rate_interval]))')
+    .expr('sum(rate(traces_spanmetrics_calls_total{service="documcp", span_name=~"kiwix.*"}[$__rate_interval]))')
     .legendFormat('Kiwix calls');
 
   return panel.withTarget(httpQuery).withTarget(kiwixQuery);

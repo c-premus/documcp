@@ -12,7 +12,7 @@ DocuMCP gives AI agents structured access to your documentation via MCP tools an
 - **External Integrations** -- Kiwix ZIM archives (federated article search) and Git template repositories.
 - **Background Jobs** -- [River](https://riverqueue.com/) Postgres-native job queue with 11 worker types, 3 priority queues, and 6 periodic schedules.
 - **Admin UI** -- Vue 3 + TypeScript SPA for managing documents, users, OAuth clients, external services, and queue status.
-- **Observability** -- OpenTelemetry tracing (OTLP HTTP export, W3C propagation, configurable sampling), Prometheus metrics (15 collectors), structured logging with `slog` (trace/span ID injection), and optional Sentry/GlitchTip error tracking.
+- **Observability** -- OpenTelemetry tracing (OTLP HTTP export, W3C propagation, configurable sampling), Prometheus metrics (14 collectors), structured logging with `slog` (trace/span ID injection), and optional Sentry/GlitchTip error tracking. See `docs/OBSERVABILITY.md` for architecture and configuration.
 - **OIDC Authentication** -- User login via any OpenID Connect provider.
 
 ## Quick Start
