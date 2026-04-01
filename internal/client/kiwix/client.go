@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/c-premus/documcp/internal/security"
 )
 
@@ -59,7 +61,7 @@ func NewClient(cfg ClientConfig, logger *slog.Logger) (*Client, error) {
 		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
 		httpClient: &http.Client{
 			Timeout:   cfg.HTTPTimeout,
-			Transport: security.SafeTransportAllowPrivate(cfg.SSRFDialerTimeout),
+			Transport: otelhttp.NewTransport(security.SafeTransportAllowPrivate(cfg.SSRFDialerTimeout)),
 		},
 		cache:              newCache(),
 		logger:             logger,

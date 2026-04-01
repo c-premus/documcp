@@ -7,6 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // SyncParams holds dependencies for syncing a git template.
@@ -42,7 +47,22 @@ type TemplateRepo interface {
 // Sync clones or pulls a template repository, extracts files, and persists
 // them to the database. Search indexing is handled automatically by PostgreSQL
 // triggers on the git_templates table.
-func Sync(ctx context.Context, params SyncParams) error {
+func Sync(ctx context.Context, params SyncParams) (retErr error) {
+	ctx, span := otel.Tracer("documcp/git").Start(ctx, "git.sync",
+		trace.WithAttributes(
+			attribute.String("git.template_id", params.Template.UUID),
+			attribute.String("git.url", params.Template.RepositoryURL),
+			attribute.String("git.branch", params.Template.Branch),
+		),
+	)
+	defer func() {
+		if retErr != nil {
+			span.RecordError(retErr)
+			span.SetStatus(codes.Error, retErr.Error())
+		}
+		span.End()
+	}()
+
 	tmpl := params.Template
 	logger := params.Logger
 	if logger == nil {
@@ -151,6 +171,12 @@ func Sync(ctx context.Context, params SyncParams) error {
 	if err := params.Repo.UpdateSearchContent(ctx, tmpl.ID, readmeContent, filePaths); err != nil {
 		logger.Warn("failed to update search content", "template_id", tmpl.ID, "error", err)
 	}
+
+	span.SetAttributes(
+		attribute.String("git.commit_sha", commitSHA),
+		attribute.Int("git.file_count", len(files)),
+		attribute.Int64("git.total_bytes", totalSize),
+	)
 
 	logger.Info("template sync complete",
 		"template_id", tmpl.ID,

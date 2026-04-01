@@ -73,11 +73,43 @@ Three attributes are set on the tracer resource:
 
 The tracing middleware is mounted at the router root, before all application middleware. Every route is traced.
 
+### External Connection Tracing
+
+In addition to the HTTP server middleware, DocuMCP instruments all outbound connections so traces show the full request lifecycle -- not just the server span.
+
+**PostgreSQL (otelpgx)**
+
+Every database query automatically creates a child span named by SQL verb (`SELECT`, `INSERT`, `UPDATE`, `DELETE`). The `db.statement` attribute contains the query text. No manual instrumentation is needed in repository code.
+
+Package: `github.com/exaring/otelpgx`, configured in `internal/database/pgxpool.go`.
+
+**Redis (redisotel)**
+
+Every Redis command creates a child span (`SET`, `GET`, `PUBLISH`, etc.). This covers rate limiting, Pub/Sub event delivery, and health checks.
+
+Package: `github.com/redis/go-redis/extra/redisotel/v9`, configured in `internal/app/foundation.go`.
+
+**Kiwix HTTP Client (otelhttp)**
+
+Outbound HTTP requests to Kiwix Serve instances create `SPAN_KIND_CLIENT` spans with `http.method`, `http.url`, and `http.status_code` attributes. The `traceparent` header is injected automatically for cross-service correlation.
+
+Package: `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp`, configured in `internal/client/kiwix/client.go`.
+
+**Git Operations (manual spans)**
+
+Clone, pull, and sync operations create spans via `otel.Tracer("documcp/git")`. These are `SPAN_KIND_CLIENT` spans with `git.url`, `git.branch`, `git.commit_sha`, `git.file_count`, and `git.total_bytes` attributes.
+
+Package: `go.opentelemetry.io/otel/trace`, instrumented in `internal/client/git/client.go` and `internal/client/git/sync.go`.
+
+**OIDC (not instrumented)**
+
+OIDC provider discovery and token exchange use the default HTTP client. These are infrequent (login-only) operations. Adding `otelhttp` transport is possible but low priority.
+
 ## Metrics (Prometheus)
 
 Package: `internal/observability/metrics.go`
 
-DocuMCP exposes 14 application metrics at `GET /metrics`. When `INTERNAL_API_TOKEN` is set, the endpoint requires `Authorization: Bearer <token>`. See [PROMETHEUS_METRICS.md](PROMETHEUS_METRICS.md) for the full metric listing, PromQL examples, and scrape configuration.
+DocuMCP exposes 19 application metrics at `GET /metrics`. When `INTERNAL_API_TOKEN` is set, the endpoint requires `Authorization: Bearer <token>`. See [PROMETHEUS_METRICS.md](PROMETHEUS_METRICS.md) for the full metric listing, PromQL examples, and scrape configuration.
 
 Metrics at a glance:
 
@@ -86,6 +118,7 @@ Metrics at a glance:
 - **1 application metric** -- document count gauge
 - **4 queue metrics** -- jobs dispatched, completed, failed, duration
 - **5 database metrics** -- connection pool stats collected from `pgxpool.Stat()` via a custom `prometheus.Collector`
+- **5 Redis metrics** -- connection pool stats collected from `redis.PoolStats()` via a custom `prometheus.Collector`
 
 ## Structured Logging (slog)
 

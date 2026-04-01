@@ -6,9 +6,14 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
+
+// publishTimeout is the deadline for Redis PUBLISH operations.
+// Prevents goroutine hangs when Redis is unresponsive.
+const publishTimeout = 3 * time.Second
 
 const redisEventChannel = "documcp:events"
 
@@ -22,6 +27,7 @@ type RedisEventBus struct {
 	cancel      context.CancelFunc
 	done        chan struct{}
 	dropped     atomic.Int64
+	closeOnce   sync.Once
 }
 
 // NewRedisEventBus creates a RedisEventBus and starts a background goroutine
@@ -95,7 +101,9 @@ func (reb *RedisEventBus) Publish(event Event) {
 		reb.logger.Error("redis event bus: marshaling event", "error", err)
 		return
 	}
-	if err := reb.client.Publish(context.Background(), redisEventChannel, data).Err(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), publishTimeout)
+	defer cancel()
+	if err := reb.client.Publish(ctx, redisEventChannel, data).Err(); err != nil {
 		reb.logger.Error("redis event bus: publishing event", "error", err)
 	}
 }
@@ -121,16 +129,19 @@ func (reb *RedisEventBus) Unsubscribe(id string) {
 }
 
 // Close cancels the background Redis subscription and closes all subscriber channels.
+// Safe to call multiple times.
 func (reb *RedisEventBus) Close() {
-	reb.cancel()
-	<-reb.done
+	reb.closeOnce.Do(func() {
+		reb.cancel()
+		<-reb.done
 
-	reb.mu.Lock()
-	defer reb.mu.Unlock()
-	for id, ch := range reb.subscribers {
-		close(ch)
-		delete(reb.subscribers, id)
-	}
+		reb.mu.Lock()
+		defer reb.mu.Unlock()
+		for id, ch := range reb.subscribers {
+			close(ch)
+			delete(reb.subscribers, id)
+		}
+	})
 }
 
 // DroppedCount returns the total number of events dropped across all subscribers.

@@ -2,7 +2,7 @@
 
 ## Overview
 
-DocuMCP exposes 14 application metrics in Prometheus format at `GET /metrics`. Metrics are collected using `prometheus/client_golang`. All metrics use the `documcp` namespace.
+DocuMCP exposes 19 application metrics in Prometheus format at `GET /metrics`. Metrics are collected using `prometheus/client_golang`. All metrics use the `documcp` namespace.
 
 When `INTERNAL_API_TOKEN` is set, the endpoint requires `Authorization: Bearer <token>`. When not configured, the endpoint is publicly accessible.
 
@@ -70,6 +70,25 @@ Total number of connections waited for.
 **`documcp_db_wait_duration_seconds_total`** (Counter)
 Total time waited for connections.
 
+## Redis Connection Pool Metrics
+
+These metrics are collected from `redis.PoolStats()` on each Prometheus scrape.
+
+**`documcp_redis_pool_hits_total`** (Counter)
+Total number of times a connection was found in the pool.
+
+**`documcp_redis_pool_misses_total`** (Counter)
+Total number of times a connection was not found in the pool.
+
+**`documcp_redis_pool_timeouts_total`** (Counter)
+Total number of times a wait for a connection timed out.
+
+**`documcp_redis_active_connections`** (Gauge)
+Number of active connections in the pool.
+
+**`documcp_redis_idle_connections`** (Gauge)
+Number of idle connections in the pool.
+
 ## Prometheus Configuration
 
 ```yaml
@@ -103,4 +122,10 @@ sum(rate(documcp_queue_jobs_failed_total[5m])) by (job_kind)
 
 # Active database connections
 documcp_db_in_use_connections
+
+# Redis pool hit rate
+rate(documcp_redis_pool_hits_total[5m]) / (rate(documcp_redis_pool_hits_total[5m]) + rate(documcp_redis_pool_misses_total[5m])) * 100
+
+# Redis pool timeouts (should be 0)
+rate(documcp_redis_pool_timeouts_total[5m])
 ```

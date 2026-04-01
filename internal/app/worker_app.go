@@ -160,11 +160,17 @@ func newHealthServer(port int, f *Foundation) *http.Server {
 		_, _ = fmt.Fprint(w, "ok")
 	})
 
-	// Readiness probe — verifies database connectivity.
+	// Readiness probe — verifies database and Redis connectivity.
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		if err := f.PgxPool.Ping(r.Context()); err != nil {
 			http.Error(w, "database not ready", http.StatusServiceUnavailable)
 			return
+		}
+		if f.RedisClient != nil {
+			if err := f.RedisClient.Ping(r.Context()).Err(); err != nil {
+				http.Error(w, "redis not ready", http.StatusServiceUnavailable)
+				return
+			}
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprint(w, "ready")

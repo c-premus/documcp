@@ -2,6 +2,7 @@
 bin/
 /documcp
 /server
+coverage.out
 
 # Local settings with permissions (may contain sensitive patterns)
 .claude/settings.local.json

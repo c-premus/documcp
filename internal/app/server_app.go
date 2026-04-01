@@ -288,6 +288,10 @@ func (s *ServerApp) Start(ctx context.Context) error {
 
 // Close releases ServerApp-specific resources.
 func (s *ServerApp) Close() error {
+	// Close EventBus first to stop Pub/Sub goroutine (matches WorkerApp pattern).
+	if s.EventBus != nil {
+		s.EventBus.Close()
+	}
 	if s.RiverClient != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), s.Foundation.Config.App.QueueStopTimeout)
 		defer cancel()
@@ -357,6 +361,7 @@ func buildRiverClient(f *Foundation, eventBus queue.EventPublisher, insertOnly b
 		GitRepo:           f.GitTemplateRepo,
 		OAuthRepo:         f.OAuthRepo,
 		DocRepo:           f.DocumentRepo,
+		Metrics:           f.Metrics,
 		GitTempDir:        f.GitTempDir,
 		StoragePath:       f.StoragePath,
 		Logger:            f.Logger,
