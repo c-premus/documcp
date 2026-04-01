@@ -167,7 +167,9 @@ func newHealthServer(port int, f *Foundation) *http.Server {
 			return
 		}
 		if f.RedisClient != nil {
-			if err := f.RedisClient.Ping(r.Context()).Err(); err != nil {
+			pingCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			if err := f.RedisClient.Ping(pingCtx).Err(); err != nil {
 				http.Error(w, "redis not ready", http.StatusServiceUnavailable)
 				return
 			}
