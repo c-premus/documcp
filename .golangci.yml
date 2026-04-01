@@ -185,18 +185,9 @@ linters:
           - gocritic
           - revive
 
-      # gosec G302: credential.go creates a shell script (GIT_ASKPASS helper) that
-      # must be executable. The 0o700 permission is the minimum required for the
-      # script to function as a git credential helper. The file is created in a
-      # temp directory and removed immediately after use.
-      - path: internal/client/git/credential\.go
-        linters:
-          - gosec
-        text: "G302"
-
       # gosec G304: The document pipeline reads uploaded files from the storage
-      # directory for text extraction. The path originates from the pipeline's own
-      # storage layer, not from user-supplied input at the point of the os.Open call.
+      # directory for text extraction. The path is validated by security.SafeStoragePath
+      # before being passed to extractors.
       - path: internal/service/document_pipeline\.go
         linters:
           - gosec

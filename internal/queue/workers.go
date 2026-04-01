@@ -6,6 +6,9 @@ import (
 	"time"
 
 	"github.com/riverqueue/river"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/c-premus/documcp/internal/observability"
 )
@@ -37,7 +40,19 @@ type DocumentExtractWorker struct {
 }
 
 // Work executes the document extraction job for a single document.
-func (w *DocumentExtractWorker) Work(ctx context.Context, job *river.Job[DocumentExtractArgs]) error {
+func (w *DocumentExtractWorker) Work(ctx context.Context, job *river.Job[DocumentExtractArgs]) (retErr error) {
+	ctx, span := workerTracer.Start(ctx, "job."+job.Kind,
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(attribute.String("job.kind", job.Kind)),
+	)
+	defer func() {
+		if retErr != nil {
+			span.RecordError(retErr)
+			span.SetStatus(codes.Error, retErr.Error())
+		}
+		span.End()
+	}()
+
 	if w.Pipeline == nil {
 		return errors.New("extract worker not configured: pipeline is nil")
 	}

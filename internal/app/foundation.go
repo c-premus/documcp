@@ -95,9 +95,11 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		Password: cfg.Redis.Password,
 		DB:       cfg.Redis.DB,
 		Protocol: 2,
-		// RESP2 avoids the "Conn has unread data (not push notification)"
-		// warnings caused by RESP3 push notifications on Redis 8. We don't
-		// use RESP3-only features (client-side caching, push notifications).
+		// RESP2: we don't use RESP3-only features (client-side caching,
+		// push notifications). Note: "Conn has unread data" warnings may
+		// still occur due to the HELLO 2 handshake with Redis 8 (RESP3
+		// response parsed during protocol switch) or pipeline error paths
+		// in go-redis that return before draining all responses.
 		// Pool tuning: rotate idle connections to prevent stale state.
 		MinIdleConns:    cfg.Redis.MinIdleConns,
 		ConnMaxIdleTime: cfg.Redis.ConnMaxIdleTime,

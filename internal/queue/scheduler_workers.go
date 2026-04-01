@@ -11,11 +11,15 @@ import (
 	"time"
 
 	"github.com/riverqueue/river"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/c-premus/documcp/internal/client/git"
 	"github.com/c-premus/documcp/internal/client/kiwix"
-	"github.com/c-premus/documcp/internal/observability"
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/observability"
 	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/security"
 )
@@ -76,6 +80,9 @@ type SchedulerDeps struct {
 	KiwixConfig       kiwix.ClientConfig
 }
 
+// workerTracer is the shared tracer for River worker spans.
+var workerTracer = otel.Tracer("documcp/worker")
+
 // --- Sync Workers ---.
 
 // SyncKiwixWorker syncs Kiwix ZIM archives from external services.
@@ -85,7 +92,19 @@ type SyncKiwixWorker struct {
 }
 
 // Work executes the SyncKiwixWorker job, syncing ZIM archives from the Kiwix catalog.
-func (w *SyncKiwixWorker) Work(ctx context.Context, job *river.Job[SyncKiwixArgs]) error {
+func (w *SyncKiwixWorker) Work(ctx context.Context, job *river.Job[SyncKiwixArgs]) (retErr error) {
+	ctx, span := workerTracer.Start(ctx, "job."+job.Kind,
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(attribute.String("job.kind", job.Kind)),
+	)
+	defer func() {
+		if retErr != nil {
+			span.RecordError(retErr)
+			span.SetStatus(codes.Error, retErr.Error())
+		}
+		span.End()
+	}()
+
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -159,7 +178,19 @@ type SyncGitTemplatesWorker struct {
 }
 
 // Work executes the SyncGitTemplatesWorker job, syncing Git template repositories.
-func (w *SyncGitTemplatesWorker) Work(ctx context.Context, job *river.Job[SyncGitTemplatesArgs]) error {
+func (w *SyncGitTemplatesWorker) Work(ctx context.Context, job *river.Job[SyncGitTemplatesArgs]) (retErr error) {
+	ctx, span := workerTracer.Start(ctx, "job."+job.Kind,
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(attribute.String("job.kind", job.Kind)),
+	)
+	defer func() {
+		if retErr != nil {
+			span.RecordError(retErr)
+			span.SetStatus(codes.Error, retErr.Error())
+		}
+		span.End()
+	}()
+
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -214,7 +245,19 @@ type CleanupOAuthTokensWorker struct {
 }
 
 // Work executes the CleanupOAuthTokensWorker job, purging expired OAuth tokens.
-func (w *CleanupOAuthTokensWorker) Work(ctx context.Context, job *river.Job[CleanupOAuthTokensArgs]) error {
+func (w *CleanupOAuthTokensWorker) Work(ctx context.Context, job *river.Job[CleanupOAuthTokensArgs]) (retErr error) {
+	ctx, span := workerTracer.Start(ctx, "job."+job.Kind,
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(attribute.String("job.kind", job.Kind)),
+	)
+	defer func() {
+		if retErr != nil {
+			span.RecordError(retErr)
+			span.SetStatus(codes.Error, retErr.Error())
+		}
+		span.End()
+	}()
+
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -243,7 +286,19 @@ type CleanupOrphanedFilesWorker struct {
 }
 
 // Work executes the CleanupOrphanedFilesWorker job, removing unreferenced files from storage.
-func (w *CleanupOrphanedFilesWorker) Work(ctx context.Context, job *river.Job[CleanupOrphanedFilesArgs]) error {
+func (w *CleanupOrphanedFilesWorker) Work(ctx context.Context, job *river.Job[CleanupOrphanedFilesArgs]) (retErr error) {
+	ctx, span := workerTracer.Start(ctx, "job."+job.Kind,
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(attribute.String("job.kind", job.Kind)),
+	)
+	defer func() {
+		if retErr != nil {
+			span.RecordError(retErr)
+			span.SetStatus(codes.Error, retErr.Error())
+		}
+		span.End()
+	}()
+
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -300,7 +355,19 @@ type PurgeSoftDeletedWorker struct {
 }
 
 // Work executes the PurgeSoftDeletedWorker job, permanently removing documents soft-deleted over 30 days ago.
-func (w *PurgeSoftDeletedWorker) Work(ctx context.Context, job *river.Job[PurgeSoftDeletedArgs]) error {
+func (w *PurgeSoftDeletedWorker) Work(ctx context.Context, job *river.Job[PurgeSoftDeletedArgs]) (retErr error) {
+	ctx, span := workerTracer.Start(ctx, "job."+job.Kind,
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(attribute.String("job.kind", job.Kind)),
+	)
+	defer func() {
+		if retErr != nil {
+			span.RecordError(retErr)
+			span.SetStatus(codes.Error, retErr.Error())
+		}
+		span.End()
+	}()
+
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -339,7 +406,19 @@ type HealthCheckServicesWorker struct {
 }
 
 // Work executes the HealthCheckServicesWorker job, performing HTTP health checks on external services.
-func (w *HealthCheckServicesWorker) Work(ctx context.Context, job *river.Job[HealthCheckServicesArgs]) error {
+func (w *HealthCheckServicesWorker) Work(ctx context.Context, job *river.Job[HealthCheckServicesArgs]) (retErr error) {
+	ctx, span := workerTracer.Start(ctx, "job."+job.Kind,
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(attribute.String("job.kind", job.Kind)),
+	)
+	defer func() {
+		if retErr != nil {
+			span.RecordError(retErr)
+			span.SetStatus(codes.Error, retErr.Error())
+		}
+		span.End()
+	}()
+
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
