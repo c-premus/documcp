@@ -41,7 +41,7 @@ DocuMCP exposes three types of content to MCP clients:
 - **Git templates** — syncs project template repositories on a schedule. Agents can search across files, read specific files, or download entire templates.
 - **ZIM archives** — integrates with [Kiwix](https://www.kiwix.org/) to serve offline documentation. DevDocs, Wikipedia, Stack Exchange — whatever ZIM archives you point it at.
 
-There are 15 MCP tools and 6 prompts. OAuth 2.1 with PKCE handles auth (authorization code, device flow, dynamic client registration). A Vue 3 admin panel is embedded in the binary for managing everything.
+There are 16 MCP tools and 6 prompts. OAuth 2.1 with PKCE handles auth (authorization code, device flow, dynamic client registration). A Vue 3 admin panel is embedded in the binary for managing everything.
 
 The entire stack is one Go binary plus PostgreSQL. PostgreSQL handles the database, full-text search (`tsvector`/`tsquery` + `pg_trgm`), and the job queue ([River](https://riverqueue.com/)). The binary includes the HTTP server, queue workers, and a scheduler for periodic jobs — git syncs, archive discovery, token cleanup.
 

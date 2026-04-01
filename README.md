@@ -12,7 +12,7 @@ DocuMCP gives AI agents structured access to your documentation via MCP tools an
 
 ## Features
 
-- **MCP Server** -- 15 tools and 6 prompts via the official [Go MCP SDK](https://github.com/modelcontextprotocol/go-sdk). Search, read, create, update, and delete documents. Federated search across documents, ZIM archives, and Git templates in a single query.
+- **MCP Server** -- 16 tools and 6 prompts via the official [Go MCP SDK](https://github.com/modelcontextprotocol/go-sdk). Search, read, create, update, and delete documents. Federated search across documents, ZIM archives, and Git templates in a single query.
 - **OAuth 2.1 Authorization Server** -- PKCE, device authorization ([RFC 8628](https://datatracker.ietf.org/doc/html/rfc8628)), dynamic client registration ([RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591)), and [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) Protected Resource Metadata for automatic discovery.
 - **Document Pipeline** -- Upload PDF, DOCX, XLSX, HTML, or Markdown. Text is extracted, indexed via PostgreSQL full-text search, and searchable within seconds.
 - **External Integrations** -- Kiwix ZIM archives (federated article search) and Git template repositories.

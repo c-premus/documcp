@@ -43,8 +43,12 @@ type RedisConfig struct {
 	DB              int           `mapstructure:"redis_db"`
 	PoolSize        int           `mapstructure:"redis_pool_size"`
 	MinIdleConns    int           `mapstructure:"redis_min_idle_conns"`
+	MaxActiveConns  int           `mapstructure:"redis_max_active_conns"`
 	ConnMaxIdleTime time.Duration `mapstructure:"redis_conn_max_idle_time"`
 	DialTimeout     time.Duration `mapstructure:"redis_dial_timeout"`
+	ReadTimeout     time.Duration `mapstructure:"redis_read_timeout"`
+	WriteTimeout    time.Duration `mapstructure:"redis_write_timeout"`
+	MaxRetries      int           `mapstructure:"redis_max_retries"`
 }
 
 // QueueConfig holds River queue worker concurrency settings.
@@ -250,6 +254,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("redis_min_idle_conns", 2)
 	v.SetDefault("redis_conn_max_idle_time", 5*time.Minute)
 	v.SetDefault("redis_dial_timeout", 5*time.Second)
+	v.SetDefault("redis_read_timeout", 5*time.Second)
+	v.SetDefault("redis_write_timeout", 5*time.Second)
+	v.SetDefault("redis_max_retries", 3)
+	v.SetDefault("redis_max_active_conns", 0)
 
 	// Database
 	v.SetDefault("db_host", "127.0.0.1")
@@ -414,14 +422,18 @@ func Load() (*Config, error) {
 	}
 
 	cfg.Redis = RedisConfig{
-		Addr:        v.GetString("redis_addr"),
-		Username:    v.GetString("redis_username"),
-		Password:    v.GetString("redis_password"),
-		DB:          v.GetInt("redis_db"),
+		Addr:            v.GetString("redis_addr"),
+		Username:        v.GetString("redis_username"),
+		Password:        v.GetString("redis_password"),
+		DB:              v.GetInt("redis_db"),
 		PoolSize:        v.GetInt("redis_pool_size"),
 		MinIdleConns:    v.GetInt("redis_min_idle_conns"),
+		MaxActiveConns:  v.GetInt("redis_max_active_conns"),
 		ConnMaxIdleTime: v.GetDuration("redis_conn_max_idle_time"),
 		DialTimeout:     v.GetDuration("redis_dial_timeout"),
+		ReadTimeout:     v.GetDuration("redis_read_timeout"),
+		WriteTimeout:    v.GetDuration("redis_write_timeout"),
+		MaxRetries:      v.GetInt("redis_max_retries"),
 	}
 
 	cfg.Database = DatabaseConfig{

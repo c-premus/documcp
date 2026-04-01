@@ -26,6 +26,7 @@ func TestSearchKiwixArchives(t *testing.T) {
 		t.Parallel()
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -65,6 +66,7 @@ func TestSearchKiwixArchives(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -116,6 +118,7 @@ func TestSearchKiwixArchives(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -182,6 +185,7 @@ func TestSearchKiwixArchives(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -236,6 +240,7 @@ func TestSearchKiwixArchives(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -301,6 +306,7 @@ func TestSearchKiwixArchives(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -375,6 +381,7 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -456,6 +463,7 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -516,6 +524,7 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -583,6 +592,7 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 		}
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -645,6 +655,7 @@ func TestSearchKiwixArchives_FTSSelection(t *testing.T) {
 
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -717,6 +728,7 @@ func TestSearchKiwixArchives_FTSSelection(t *testing.T) {
 
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -764,6 +776,7 @@ func TestSearchKiwixArchives_FTSSelection(t *testing.T) {
 
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -807,6 +820,7 @@ func TestSearchKiwixArchives_FTSSelection(t *testing.T) {
 
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient
@@ -869,6 +883,7 @@ func TestSearchKiwixArchives_FTSSelection(t *testing.T) {
 
 		h := newHandlerWithMocks(struct {
 			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
 			zimRepo  *mockZimArchiveRepo
 			gitRepo  *mockGitTemplateRepo
 			kiwixC   *mockKiwixClient

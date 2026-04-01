@@ -57,6 +57,12 @@ type kiwixClientFactory interface {
 	Get(ctx context.Context) (kiwixSearcher, error)
 }
 
+// documentLister abstracts the document repository methods used by list_documents.
+type documentLister interface {
+	List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error)
+	TagsForDocuments(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error)
+}
+
 // contentSearcher abstracts the search.Searcher methods.
 type contentSearcher interface {
 	Search(ctx context.Context, params search.SearchParams) (*search.SearchResponse, error)
@@ -72,6 +78,7 @@ const serverInstructions = `Documentation knowledge base with full-text search.
 - ` + "`unified_search`" + ` - Search across ALL sources in one request: documents, git templates, ZIM archive metadata, AND ZIM article content (via Kiwix fan-out). Use for discovery; type-specific tools for deep search.
 
 **Documents**
+- ` + "`list_documents`" + ` - List all accessible documents with optional filters (file type, status). Paginated.
 - ` + "`search_documents`" + ` - Full-text search with filters (file type, tags). Returns metadata and snippets.
 - ` + "`read_document`" + ` - Retrieve document content by UUID. Supports ` + "`summary_only`" + ` and ` + "`max_paragraphs`" + `.
 - ` + "`create_document`" + ` - Create documents (markdown, pdf, docx, xlsx, html). Auto-indexed for search.
@@ -103,7 +110,7 @@ type Handler struct {
 
 	// Dependencies for tools (interface-typed for testability)
 	documentService     documentServicer
-	documentRepo        *repository.DocumentRepository
+	documentRepo        documentLister
 	externalServiceRepo *repository.ExternalServiceRepository
 	zimArchiveRepo  zimArchiveLister
 	gitTemplateRepo gitTemplateStore
@@ -128,7 +135,7 @@ type Config struct {
 
 	// Always required
 	DocumentService documentServicer
-	DocumentRepo    *repository.DocumentRepository
+	DocumentRepo    documentLister
 	SearchQueryRepo *repository.SearchQueryRepository
 
 	// Conditionally registered
