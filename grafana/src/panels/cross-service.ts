@@ -52,7 +52,7 @@ export function hopLatencyPanel(): PanelBuilder {
   const panel = new PanelBuilder()
     .title('Hop Latency (P95)')
     .description('P95 server-side latency for each hop in the request chain')
-    .gridPos({ h: 8, w: 8, x: 0, y: 43 })
+    .gridPos({ h: 8, w: 8, x: 0, y: 67 })
     .unit('s');
 
   applyCommonStyle(panel, 25);
@@ -73,7 +73,7 @@ export function edgeRequestRatePanel(): PanelBuilder {
   const panel = new PanelBuilder()
     .title('Edge Request Rate')
     .description('Request rate for each service-to-service edge in the topology')
-    .gridPos({ h: 8, w: 8, x: 8, y: 43 })
+    .gridPos({ h: 8, w: 8, x: 8, y: 67 })
     .unit('reqps');
 
   applyCommonStyle(panel, 25);
@@ -94,7 +94,7 @@ export function edgeErrorRatePanel(): PanelBuilder {
   const panel = new PanelBuilder()
     .title('Edge Error Rate')
     .description('Failed requests per second for each service edge')
-    .gridPos({ h: 8, w: 8, x: 16, y: 43 })
+    .gridPos({ h: 8, w: 8, x: 16, y: 67 })
     .unit('reqps');
 
   applyCommonStyle(panel, 25);

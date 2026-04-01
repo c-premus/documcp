@@ -587,7 +587,7 @@
       "collapsed": false,
       "id": 0,
       "panels": [],
-      "title": "Dependencies (SQL, HTTP)",
+      "title": "Dependencies (SQL, Redis, HTTP, Git)",
       "gridPos": {
         "x": 0,
         "y": 24,
@@ -701,8 +701,8 @@
       "type": "timeseries",
       "transparent": false,
       "repeatDirection": "h",
-      "title": "External HTTP Calls",
-      "description": "Outbound HTTP request rate (Kiwix, Git)",
+      "title": "Redis Command Rate",
+      "description": "Redis operations per second by command",
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -742,14 +742,172 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"documcp\", span_kind=\"SPAN_KIND_CLIENT\", span_name=~\"(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS) .+\"}[$__rate_interval]))",
+          "expr": "sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"documcp\", span_kind=\"SPAN_KIND_CLIENT\", span_name=~\"[a-z]+\"}[$__rate_interval]))",
           "refId": "A",
-          "legendFormat": "HTTP calls"
+          "legendFormat": "{{span_name}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "External Service Calls",
+      "description": "Outbound HTTP (Kiwix) and Git operation rates",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 25,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"documcp\", span_kind=\"SPAN_KIND_CLIENT\", span_name=~\"HTTP .*\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "HTTP (Kiwix)"
         },
         {
-          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"documcp\", span_name=~\"kiwix.*\"}[$__rate_interval]))",
+          "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"documcp\", span_kind=\"SPAN_KIND_CLIENT\", span_name=~\"git\\\\..*\"}[$__rate_interval]))",
           "refId": "B",
-          "legendFormat": "Kiwix calls"
+          "legendFormat": "Git ops"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Redis Latency (P95)",
+      "description": "P95 latency for Redis commands",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"documcp\", span_kind=\"SPAN_KIND_CLIENT\", span_name=~\"[a-z]+\"}[$__rate_interval])))",
+          "refId": "A",
+          "legendFormat": "{{span_name}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Git & HTTP Latency (P95)",
+      "description": "P95 latency for Git operations and outbound HTTP calls",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"documcp\", span_kind=\"SPAN_KIND_CLIENT\", span_name=~\"git\\\\..*\"}[$__rate_interval])))",
+          "refId": "A",
+          "legendFormat": "{{span_name}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{service=\"documcp\", span_kind=\"SPAN_KIND_CLIENT\", span_name=~\"HTTP .*\"}[$__rate_interval])))",
+          "refId": "B",
+          "legendFormat": "HTTP (Kiwix)"
         }
       ]
     },
@@ -758,10 +916,10 @@
       "collapsed": false,
       "id": 0,
       "panels": [],
-      "title": "Go Runtime & Application Metrics",
+      "title": "Connection Pools & Application Metrics",
       "gridPos": {
         "x": 0,
-        "y": 33,
+        "y": 41,
         "h": 1,
         "w": 24
       }
@@ -776,7 +934,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 34
+        "y": 42
       },
       "fieldConfig": {
         "defaults": {
@@ -883,7 +1041,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 34
+        "y": 42
       },
       "fieldConfig": {
         "defaults": {
@@ -965,6 +1123,153 @@
       ]
     },
     {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Redis Connection Pool",
+      "description": "Redis connection pool: active, idle, hits, misses, and timeouts",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 42
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Active"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Idle"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Hits/s"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Misses/s"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Timeouts/s"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "documcp_redis_active_connections",
+          "refId": "A",
+          "legendFormat": "Active"
+        },
+        {
+          "expr": "documcp_redis_idle_connections",
+          "refId": "B",
+          "legendFormat": "Idle"
+        },
+        {
+          "expr": "rate(documcp_redis_pool_hits_total[$__rate_interval])",
+          "refId": "C",
+          "legendFormat": "Hits/s"
+        },
+        {
+          "expr": "rate(documcp_redis_pool_misses_total[$__rate_interval])",
+          "refId": "D",
+          "legendFormat": "Misses/s"
+        },
+        {
+          "expr": "rate(documcp_redis_pool_timeouts_total[$__rate_interval])",
+          "refId": "E",
+          "legendFormat": "Timeouts/s"
+        }
+      ]
+    },
+    {
       "type": "stat",
       "transparent": false,
       "repeatDirection": "h",
@@ -973,8 +1278,8 @@
       "gridPos": {
         "h": 4,
         "w": 4,
-        "x": 16,
-        "y": 34
+        "x": 0,
+        "y": 50
       },
       "datasource": {
         "type": "prometheus",
@@ -1035,8 +1340,8 @@
       "gridPos": {
         "h": 4,
         "w": 4,
-        "x": 20,
-        "y": 34
+        "x": 4,
+        "y": 50
       },
       "datasource": {
         "type": "prometheus",
@@ -1085,12 +1390,12 @@
       "transparent": false,
       "repeatDirection": "h",
       "title": "HTTP Requests (Native)",
-      "description": "Request rate from native Prometheus counter by method and route",
+      "description": "Request rate from native Prometheus counter by method",
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 38
+        "w": 8,
+        "x": 8,
+        "y": 50
       },
       "fieldConfig": {
         "defaults": {
@@ -1135,64 +1440,13 @@
       "type": "timeseries",
       "transparent": false,
       "repeatDirection": "h",
-      "title": "MCP & Kiwix Operations",
-      "description": "MCP tool and Kiwix service operation latency (P95)",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 38
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "smooth",
-            "lineWidth": 3,
-            "fillOpacity": 20,
-            "gradientMode": "scheme",
-            "showPoints": "auto",
-            "pointSize": 4
-          }
-        },
-        "overrides": []
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true,
-          "calcs": []
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"documcp\", span_name=~\"mcp.*|kiwix.*|action.zim.*\"}[$__rate_interval])))",
-          "refId": "A",
-          "legendFormat": "{{span_name}}"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "transparent": false,
-      "repeatDirection": "h",
       "title": "Search Latency",
       "description": "P50, P95, P99 search query latency",
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 38
+        "y": 50
       },
       "fieldConfig": {
         "defaults": {
@@ -1294,10 +1548,135 @@
       "collapsed": false,
       "id": 0,
       "panels": [],
-      "title": "Cross-Service Topology",
+      "title": "Queue Operations",
       "gridPos": {
         "x": 0,
         "y": 58,
+        "h": 1,
+        "w": 24
+      }
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Queue Job Rate",
+      "description": "Jobs dispatched, completed, and failed per second by type",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 58
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (job_kind) (rate(documcp_queue_jobs_completed_total[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{job_kind}} completed"
+        },
+        {
+          "expr": "sum by (job_kind) (rate(documcp_queue_jobs_failed_total[$__rate_interval]))",
+          "refId": "B",
+          "legendFormat": "{{job_kind}} failed"
+        },
+        {
+          "expr": "sum(rate(documcp_queue_jobs_dispatched_total[$__rate_interval]))",
+          "refId": "C",
+          "legendFormat": "dispatched (all)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
+      "title": "Queue Job Duration (P95)",
+      "description": "P95 job execution time by type",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 58
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (job_kind, le) (rate(documcp_queue_job_duration_seconds_bucket[$__rate_interval])))",
+          "refId": "A",
+          "legendFormat": "{{job_kind}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "collapsed": false,
+      "id": 0,
+      "panels": [],
+      "title": "Cross-Service Topology",
+      "gridPos": {
+        "x": 0,
+        "y": 67,
         "h": 1,
         "w": 24
       }
@@ -1312,7 +1691,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 43
+        "y": 67
       },
       "fieldConfig": {
         "defaults": {
@@ -1363,7 +1742,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 43
+        "y": 67
       },
       "fieldConfig": {
         "defaults": {
@@ -1414,7 +1793,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 43
+        "y": 67
       },
       "fieldConfig": {
         "defaults": {
@@ -1479,7 +1858,7 @@
       "title": "Trace Explorer",
       "gridPos": {
         "x": 0,
-        "y": 67,
+        "y": 76,
         "h": 1,
         "w": 24
       }
@@ -1489,12 +1868,12 @@
       "transparent": false,
       "repeatDirection": "h",
       "title": "Recent Traces",
-      "description": "Recent traces from Tempo — click trace ID to explore",
+      "description": "Recent server and client traces from Tempo — click trace ID to explore",
       "gridPos": {
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 52
+        "y": 76
       },
       "datasource": {
         "type": "tempo",
@@ -1509,7 +1888,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"documcp\" && kind = server }",
+          "query": "{ resource.service.name = \"documcp\" && kind != internal }",
           "limit": 100,
           "tableType": "spans"
         }
@@ -1609,7 +1988,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 62
+        "y": 86
       },
       "datasource": {
         "type": "tempo",
@@ -1635,7 +2014,7 @@
       "title": "Logs",
       "gridPos": {
         "x": 0,
-        "y": 90,
+        "y": 99,
         "h": 1,
         "w": 24
       }
@@ -1650,7 +2029,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 75
+        "y": 99
       },
       "datasource": {
         "type": "loki",
@@ -1762,7 +2141,7 @@
         "h": 20,
         "w": 24,
         "x": 0,
-        "y": 81
+        "y": 105
       },
       "datasource": {
         "type": "loki",
