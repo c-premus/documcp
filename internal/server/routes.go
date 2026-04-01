@@ -63,9 +63,9 @@ type Deps struct {
 	IsSecure bool // true when running behind TLS (reserved for future use)
 
 	// Infrastructure
-	RedisClient      *redis.Client   // for distributed rate limiting
+	RedisClient      *redis.Client    // for distributed rate limiting
 	DB               handler.DBPinger // for readiness checks (nil disables /health/ready)
-	InternalAPIToken string  // protects /metrics and /health/ready (empty = unrestricted)
+	InternalAPIToken string           // protects /metrics and /health/ready (empty = unrestricted)
 
 	// Server tuning (populated from config)
 	MaxBodySize    int64         // max request body size in bytes (excludes multipart)
@@ -477,7 +477,10 @@ type redisClientPinger struct {
 	client *redis.Client
 }
 
-// Ping checks Redis connectivity.
-func (p *redisClientPinger) Ping(ctx context.Context) error {
+// Ping checks Redis connectivity using an independent context so that
+// HTTP request cancellation cannot leave unread data on the connection.
+func (p *redisClientPinger) Ping(_ context.Context) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 	return p.client.Ping(ctx).Err()
 }

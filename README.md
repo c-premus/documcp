@@ -1,8 +1,8 @@
 # DocuMCP
 
 [![CI](https://github.com/c-premus/documcp/actions/workflows/ci.yaml/badge.svg)](https://github.com/c-premus/documcp/actions/workflows/ci.yaml)
-[![Release](https://img.shields.io/github/v/release/c-premus/documcp)](https://github.com/c-premus/documcp/releases)
-[![Image Size](https://img.shields.io/docker/image-size/c-premus/documcp?sort=semver&label=image%20size)](https://hub.docker.com/r/c-premus/documcp)
+[![Release](https://img.shields.io/github/v/tag/c-premus/documcp?label=release)](https://github.com/c-premus/documcp/tags)
+[![Image Size](https://img.shields.io/docker/image-size/cpremus/documcp?sort=semver&label=image%20size)](https://hub.docker.com/r/cpremus/documcp)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/c-premus/documcp)](https://go.dev/)
 [![License](https://img.shields.io/github/license/c-premus/documcp)](LICENSE)
 
