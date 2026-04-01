@@ -68,3 +68,14 @@ func (a *docStatusAdapter) FindByStatus(ctx context.Context, status string) ([]q
 func newDocStatusAdapter(repo *repository.DocumentRepository) *docStatusAdapter {
 	return &docStatusAdapter{repo: repo}
 }
+
+// redisSlogLogger bridges go-redis internal logging to slog so pool warnings
+// and errors appear in structured logs instead of raw stderr output.
+type redisSlogLogger struct {
+	logger *slog.Logger
+}
+
+// Printf implements the go-redis internal.Logging interface.
+func (l *redisSlogLogger) Printf(ctx context.Context, format string, v ...any) {
+	l.logger.WarnContext(ctx, fmt.Sprintf(format, v...))
+}

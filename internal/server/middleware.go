@@ -26,7 +26,7 @@ func SecurityHeaders(hstsMaxAge int) func(http.Handler) http.Handler {
 			w.Header().Set("X-XSS-Protection", "0")
 			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 			w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'")
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'")
 			w.Header().Set("Cache-Control", "no-store")
 
 			// HSTS: instruct browsers to only use HTTPS. Only set when the
@@ -237,7 +237,7 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 				if strings.HasPrefix(path, "/health") || path == "/metrics" {
 					return
 				}
-				logger.Info("request completed",
+				logger.InfoContext(r.Context(), "request completed",
 					"method", r.Method,
 					"path", path,
 					"status", ww.Status(),

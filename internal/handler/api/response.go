@@ -8,6 +8,10 @@ import (
 )
 
 // jsonResponse writes a JSON response with the given status code.
+// Note: the error path uses the global slog logger because this function has
+// no context.Context parameter. This is acceptable — encoding failures are
+// extremely rare (only on broken io.Writer or unmarshalable types), and
+// threading context through every call site is not worth the churn.
 func jsonResponse(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
