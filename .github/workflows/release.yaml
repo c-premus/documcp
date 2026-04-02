@@ -84,14 +84,15 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-      - name: Clean up old Docker Hub tags
+      - name: Clean up old Docker Hub tags and images
         continue-on-error: true
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           set -euo pipefail
-          REPO="cpremus/documcp"
+          NAMESPACE="cpremus"
+          IMAGE="documcp"
           KEEP=10
 
           HUB_TOKEN=$(curl -sf "https://hub.docker.com/v2/users/login/" \
@@ -99,22 +100,44 @@ jobs:
             -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
             | jq -r .token)
 
-          TAGS=$(curl -sf "https://hub.docker.com/v2/repositories/${REPO}/tags/?page_size=100" \
+          # Step 1: Delete old tags (keeps latest KEEP by last_updated)
+          TAGS=$(curl -sf "https://hub.docker.com/v2/repositories/${NAMESPACE}/${IMAGE}/tags/?page_size=100" \
             -H "Authorization: Bearer ${HUB_TOKEN}" \
             | jq -r "[.results | sort_by(.last_updated) | reverse | .[${KEEP}:][] | .name] | .[]")
 
-          if [ -z "${TAGS}" ]; then
-            echo "No old tags to clean up"
+          if [ -n "${TAGS}" ]; then
+            for TAG in ${TAGS}; do
+              echo "Removing tag ${IMAGE}:${TAG}"
+              curl -sf -X DELETE "https://hub.docker.com/v2/repositories/${NAMESPACE}/${IMAGE}/tags/${TAG}/" \
+                -H "Authorization: Bearer ${HUB_TOKEN}"
+            done
+          fi
+
+          # Step 2: Delete inactive images via Advanced Image Management API (Docker Pro)
+          # status=inactive returns manifests with no tags AND not referenced by any tagged manifest
+          DIGESTS=$(curl -sf \
+            "https://hub.docker.com/v2/namespaces/${NAMESPACE}/repositories/${IMAGE}/images?status=inactive&page_size=100&ordering=-last_activity" \
+            -H "Authorization: Bearer ${HUB_TOKEN}" \
+            | jq -r '[.results[].digest] | .[]')
+
+          if [ -z "${DIGESTS}" ]; then
+            echo "No inactive images to clean up"
             exit 0
           fi
 
-          for TAG in ${TAGS}; do
-            echo "Deleting ${REPO}:${TAG}"
-            curl -sf -X DELETE "https://hub.docker.com/v2/repositories/${REPO}/tags/${TAG}/" \
-              -H "Authorization: Bearer ${HUB_TOKEN}"
-          done
+          # Bulk delete by digest — actually reclaims storage
+          MANIFESTS=$(echo "${DIGESTS}" \
+            | jq -Rsc '[split("\n") | .[] | select(length > 0) | {repository: "'"${IMAGE}"'", digest: .}]')
+          COUNT=$(echo "${DIGESTS}" | grep -c . || true)
 
-          echo "Docker Hub cleanup complete"
+          echo "Deleting ${COUNT} inactive image(s)"
+          curl -sf -X POST \
+            "https://hub.docker.com/v2/namespaces/${NAMESPACE}/repositories/${IMAGE}/images/delete" \
+            -H "Authorization: Bearer ${HUB_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"manifests\": ${MANIFESTS}, \"dry_run\": false}"
+
+          echo "Docker Hub cleanup complete — tags removed, inactive images deleted"
 
       # Multi-arch builds + attestations create ~5 versions per release
       - name: Clean up old GHCR versions
