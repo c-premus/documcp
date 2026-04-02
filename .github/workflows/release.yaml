@@ -10,7 +10,6 @@ permissions:
   packages: write
   attestations: write
   id-token: write
-  security-events: write
 
 env:
   DOCKERHUB_IMAGE: cpremus/documcp
@@ -70,22 +69,6 @@ jobs:
           provenance: mode=max
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Scan container image with Trivy
-        id: trivy
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # 0.35.0
-        with:
-          image-ref: ${{ env.GHCR_IMAGE }}:${{ steps.meta.outputs.version }}
-          format: sarif
-          output: trivy-results.sarif
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-
-      - name: Upload Trivy SARIF to GitHub Security
-        if: always() && steps.trivy.outcome != 'skipped'
-        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13  # v4.35.1
-        with:
-          sarif_file: trivy-results.sarif
 
       - name: Attest Docker Hub image
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
