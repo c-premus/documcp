@@ -83,3 +83,45 @@ jobs:
           subject-name: ${{ env.GHCR_IMAGE }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+
+      - name: Clean up old Docker Hub tags
+        continue-on-error: true
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="cpremus/documcp"
+          KEEP=10
+
+          HUB_TOKEN=$(curl -sf "https://hub.docker.com/v2/users/login/" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
+            | jq -r .token)
+
+          TAGS=$(curl -sf "https://hub.docker.com/v2/repositories/${REPO}/tags/?page_size=100&ordering=-last_updated" \
+            -H "Authorization: Bearer ${HUB_TOKEN}" \
+            | jq -r ".results[${KEEP}:][].name")
+
+          if [ -z "${TAGS}" ]; then
+            echo "No old tags to clean up"
+            exit 0
+          fi
+
+          for TAG in ${TAGS}; do
+            echo "Deleting ${REPO}:${TAG}"
+            curl -sf -X DELETE "https://hub.docker.com/v2/repositories/${REPO}/tags/${TAG}/" \
+              -H "Authorization: Bearer ${HUB_TOKEN}"
+          done
+
+          echo "Docker Hub cleanup complete"
+
+      # Multi-arch builds + attestations create ~5 versions per release
+      - name: Clean up old GHCR versions
+        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55  # v5.0.0
+        continue-on-error: true
+        with:
+          package-name: documcp
+          package-type: container
+          min-versions-to-keep: 25
+          delete-only-untagged-versions: false
