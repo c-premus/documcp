@@ -282,6 +282,37 @@ export function searchLatencyPanel(): PanelBuilder {
   return panel;
 }
 
+export function nativeHttpLatencyPanel(): PanelBuilder {
+  const panel = new PanelBuilder()
+    .title('HTTP Latency (Native)')
+    .description('P50, P95, P99 request latency from native Prometheus histogram (always sampled, no trace gaps)')
+    .gridPos({ h: 4, w: 8, x: 0, y: 54 })
+    .unit('s');
+
+  applyTimeseriesStyle(panel);
+
+  const quantiles: ReadonlyArray<{ refId: string; quantile: string; legend: string; color: string }> = [
+    { refId: 'A', quantile: '0.50', legend: 'P50', color: 'green' },
+    { refId: 'B', quantile: '0.95', legend: 'P95', color: 'orange' },
+    { refId: 'C', quantile: '0.99', legend: 'P99', color: 'red' },
+  ];
+
+  for (const q of quantiles) {
+    panel.withTarget(
+      new DataqueryBuilder()
+        .refId(q.refId)
+        .expr(`histogram_quantile(${q.quantile}, sum(rate(documcp_http_request_duration_seconds_bucket[$__rate_interval])) by (le))`)
+        .legendFormat(q.legend),
+    );
+
+    panel.overrideByName(q.legend, [
+      { id: 'color', value: { fixedColor: q.color, mode: 'fixed' } },
+    ]);
+  }
+
+  return panel;
+}
+
 export function nativeHttpRatePanel(): PanelBuilder {
   const panel = new PanelBuilder()
     .title('HTTP Requests (Native)')
