@@ -18,7 +18,7 @@ DocuMCP gives AI agents structured access to your documentation via MCP tools an
 - **External Integrations** -- Kiwix ZIM archives (federated article search) and Git template repositories.
 - **Background Jobs** -- [River](https://riverqueue.com/) Postgres-native job queue with 11 worker types, 3 priority queues, and 6 periodic schedules.
 - **Admin UI** -- Vue 3 + TypeScript SPA for managing documents, users, OAuth clients, external services, and queue status.
-- **Observability** -- OpenTelemetry tracing with automatic instrumentation for database queries (otelpgx), Redis commands (redisotel), and outbound HTTP (otelhttp). Prometheus metrics (19 collectors covering HTTP, database pool, Redis pool, search, and queue). Structured logging with `slog` (trace/span ID injection). Optional Sentry/GlitchTip error tracking. See `docs/OBSERVABILITY.md` for architecture and configuration.
+- **Observability** -- OpenTelemetry tracing with automatic instrumentation for database queries (otelpgx), Redis commands (redisotel), and outbound HTTP (otelhttp). Prometheus metrics (19 collectors covering HTTP, database pool, Redis pool, search, and queue). Structured logging with `slog` (trace/span ID injection). Optional Sentry/GlitchTip error tracking. See [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) for architecture and configuration.
 - **OIDC Authentication** -- User login via any OpenID Connect provider.
 
 ## Quick Start
@@ -34,7 +34,7 @@ DB_DATABASE=documcp
 DB_USERNAME=documcp
 DB_PASSWORD=$(openssl rand -base64 32)
 
-# Redis
+# Redis (see docs/REDIS.md for ACL requirements)
 REDIS_ADDR=redis:6379
 
 # Secrets
@@ -62,7 +62,7 @@ Migrations run automatically on first start.
 
 > **OIDC required for login:** The admin panel authenticates users via an OpenID Connect provider. Set the `OIDC_*` variables in your `.env` file -- see `.env.example` for the full list.
 
-See `docs/OAUTH_CLIENT_GUIDE.md` for connecting AI agents and CLI tools.
+See [docs/OAUTH_CLIENT_GUIDE.md](docs/OAUTH_CLIENT_GUIDE.md) for connecting AI agents and CLI tools.
 
 ## Development
 
@@ -152,6 +152,7 @@ The application uses a single Cobra binary with `serve`, `worker`, `migrate`, an
 
 | Tool | Description |
 |------|-------------|
+| `list_documents` | List documents with optional filters |
 | `search_documents` | Full-text search across documents |
 | `read_document` | Retrieve document content by UUID |
 | `create_document` | Create a new document |
@@ -221,6 +222,18 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `DB_PGX_MIN_CONNS` | No | `5` | Minimum idle database connections |
 
 See `.env.example` for all ~60 configurable variables with defaults.
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [OAuth Client Guide](docs/OAUTH_CLIENT_GUIDE.md) | Connecting AI agents, CLI tools, and Claude.ai |
+| [Observability](docs/OBSERVABILITY.md) | Tracing, metrics, logging, error tracking, Grafana dashboard |
+| [Prometheus Metrics](docs/PROMETHEUS_METRICS.md) | Metric listing, PromQL examples, scrape configuration |
+| [Redis](docs/REDIS.md) | ACL requirements, client architecture, troubleshooting |
+| [OpenAPI Spec](docs/contracts/openapi.yaml) | REST API specification |
+| [MCP Contract](docs/contracts/mcp-contract.json) | MCP tools and prompts schema |
+| [OAuth Flows](docs/contracts/oauth-flows.md) | OAuth 2.1 flow diagrams |
 
 ## License
 
