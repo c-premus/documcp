@@ -94,7 +94,7 @@ jobs:
 
       - name: Build and scan binary
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
           go build -o bin/documcp ./cmd/documcp
           govulncheck -mode=binary ./bin/documcp
 

@@ -277,16 +277,28 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use the redirect_uri from server-controlled session state (validated in
-	// the GET handler against registered URIs) rather than the POST body value.
-	// This eliminates user-controlled data from the redirect target entirely.
+	// Use server-controlled session state (validated in the GET handler) rather
+	// than POST body values. This eliminates user-controlled data from the
+	// authorization code grant entirely.
 	pendingRedirectURI, _ := pending["redirect_uri"].(string)
+	pendingScope, _ := pending["scope"].(string)
+	pendingCodeChallenge, _ := pending["code_challenge"].(string)
+	pendingCodeChallengeMethod, _ := pending["code_challenge_method"].(string)
 
-	// Defense-in-depth: verify the POST body redirect_uri matches the session value.
-	// An attacker who tampers with the POST body cannot change where we redirect.
+	// Defense-in-depth: verify POST body values match session state.
+	// An attacker who tampers with the POST body cannot alter the grant.
 	if reqRedirectURI != pendingRedirectURI {
 		http.Error(w, "redirect_uri mismatch", http.StatusBadRequest)
 		return
+	}
+	if reqScope != pendingScope {
+		h.logger.Warn("scope mismatch between POST body and session", "post", reqScope, "session", pendingScope)
+	}
+	if reqCodeChallenge != pendingCodeChallenge {
+		h.logger.Warn("code_challenge mismatch between POST body and session", "post", reqCodeChallenge, "session", pendingCodeChallenge)
+	}
+	if reqCodeChallengeMethod != pendingCodeChallengeMethod {
+		h.logger.Warn("code_challenge_method mismatch between POST body and session", "post", reqCodeChallengeMethod, "session", pendingCodeChallengeMethod)
 	}
 
 	// Look up client to get internal ID.
@@ -296,17 +308,16 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Scope was narrowed to user entitlements in GET /oauth/authorize.
-	// No client scope expansion needed — auth codes are scoped to user entitlements directly.
-
-	// Generate authorization code using the session-validated redirect URI.
+	// Generate authorization code using session-validated values.
+	// Scope was narrowed to user entitlements in GET /oauth/authorize;
+	// PKCE challenge was validated there as well.
 	code, err := h.service.GenerateAuthorizationCode(r.Context(), oauth.GenerateAuthorizationCodeParams{
 		ClientID:            client.ID,
 		UserID:              userID,
 		RedirectURI:         pendingRedirectURI,
-		Scope:               reqScope,
-		CodeChallenge:       reqCodeChallenge,
-		CodeChallengeMethod: reqCodeChallengeMethod,
+		Scope:               pendingScope,
+		CodeChallenge:       pendingCodeChallenge,
+		CodeChallengeMethod: pendingCodeChallengeMethod,
 	})
 	if err != nil {
 		h.logger.Error("generating authorization code", "error", err)

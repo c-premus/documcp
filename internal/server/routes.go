@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -470,7 +471,10 @@ func internalTokenAuth(token string) func(http.Handler) http.Handler {
 func jsonErrorResponse(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_, _ = w.Write([]byte(`{"error":"` + http.StatusText(status) + `","message":"` + message + `"}`))
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error":   http.StatusText(status),
+		"message": message,
+	})
 }
 
 // redisClientPinger adapts *redis.Client to handler.RedisPinger.
