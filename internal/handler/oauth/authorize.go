@@ -116,6 +116,10 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	// Generate consent nonce
 	nonce := uuid.New().String()
 
+	// Clear any completed redirect from a previous flow.
+	delete(session.Values, "oauth_completed_redirect")
+	delete(session.Values, "oauth_completed_nonce")
+
 	// Store pending request in session
 	session.Values["oauth_pending_request"] = map[string]any{
 		"nonce":                 nonce,
@@ -212,6 +216,20 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 		reqNonce = r.FormValue("nonce")
 	}
 
+	// Check for idempotent retry: if we already approved this nonce and stored
+	// the redirect URL, re-issue the same redirect. This handles Safari's
+	// tendency to replay POST requests after a cross-origin redirect.
+	completedURL, hasCompleted := session.Values["oauth_completed_redirect"].(string)
+	if hasCompleted {
+		completedNonce, _ := session.Values["oauth_completed_nonce"].(string)
+		if completedNonce != "" && subtle.ConstantTimeCompare([]byte(reqNonce), []byte(completedNonce)) == 1 {
+			// 303 See Other: tells the browser to follow the redirect with GET,
+			// preventing further POST replays.
+			http.Redirect(w, r, completedURL, http.StatusSeeOther)
+			return
+		}
+	}
+
 	// Get pending request from session
 	pendingRaw, exists := session.Values["oauth_pending_request"]
 	if !exists || pendingRaw == nil {
@@ -264,10 +282,6 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	// This eliminates user-controlled data from the redirect target entirely.
 	pendingRedirectURI, _ := pending["redirect_uri"].(string)
 
-	// Clear pending request from session
-	delete(session.Values, "oauth_pending_request")
-	_ = session.Save(r, w)
-
 	// Defense-in-depth: verify the POST body redirect_uri matches the session value.
 	// An attacker who tampers with the POST body cannot change where we redirect.
 	if reqRedirectURI != pendingRedirectURI {
@@ -300,12 +314,24 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Redirect using session-validated URI — not user-supplied POST body.
+	// Build redirect URL using session-validated URI — not user-supplied POST body.
 	redirectURL := pendingRedirectURI + "?code=" + url.QueryEscape(code)
 	if reqState != "" {
 		redirectURL += "&state=" + url.QueryEscape(reqState)
 	}
-	http.Redirect(w, r, redirectURL, http.StatusFound)
+
+	// Replace pending state with completed state so retries re-redirect
+	// instead of returning 400. The auth code is single-use at the token
+	// endpoint, so replaying this redirect is safe.
+	delete(session.Values, "oauth_pending_request")
+	session.Values["oauth_completed_redirect"] = redirectURL
+	session.Values["oauth_completed_nonce"] = reqNonce
+	_ = session.Save(r, w)
+
+	// 303 See Other: tells the browser to follow the redirect with GET,
+	// preventing POST replay. 302 Found is ambiguous after POST — Safari
+	// may re-POST instead of switching to GET.
+	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }
 
 // AuthorizeDeny handles POST /oauth/authorize/deny — user denies consent.
@@ -381,7 +407,7 @@ func (h *Handler) AuthorizeDeny(w http.ResponseWriter, r *http.Request) {
 			q.Set("state", state)
 		}
 		redirectURL := redirectURI + "?" + q.Encode()
-		http.Redirect(w, r, redirectURL, http.StatusFound)
+		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 		return
 	}
 
