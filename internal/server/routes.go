@@ -478,8 +478,8 @@ type redisClientPinger struct {
 	client *redis.Client
 }
 
-// Ping checks Redis connectivity using an independent context so that
-// HTTP request cancellation cannot leave unread data on the connection.
+// Ping checks Redis connectivity using an independent context to avoid
+// tying the health check to the caller's request lifecycle.
 func (p *redisClientPinger) Ping(_ context.Context) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
