@@ -106,7 +106,7 @@ jobs:
 
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Install dependencies
         run: cd frontend && npm ci
@@ -125,7 +125,7 @@ jobs:
 
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Generate Grafana dashboard
         run: cd grafana && npm ci && npm run generate
