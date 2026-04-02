@@ -99,9 +99,9 @@ jobs:
             -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
             | jq -r .token)
 
-          TAGS=$(curl -sf "https://hub.docker.com/v2/repositories/${REPO}/tags/?page_size=100&ordering=-last_updated" \
+          TAGS=$(curl -sf "https://hub.docker.com/v2/repositories/${REPO}/tags/?page_size=100" \
             -H "Authorization: Bearer ${HUB_TOKEN}" \
-            | jq -r ".results[${KEEP}:][].name")
+            | jq -r "[.results | sort_by(.last_updated) | reverse | .[${KEEP}:][] | .name] | .[]")
 
           if [ -z "${TAGS}" ]; then
             echo "No old tags to clean up"
