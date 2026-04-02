@@ -26,6 +26,7 @@ import {
   redisConnectionPoolPanel,
   activeConnectionsPanel,
   documentCountPanel,
+  nativeHttpLatencyPanel,
   searchLatencyPanel,
   nativeHttpRatePanel,
   queueJobRatePanel,
@@ -106,6 +107,7 @@ export function buildDocuMCPDashboard(): DashboardBuilder {
     .withPanel(redisConnectionPoolPanel())
     .withPanel(activeConnectionsPanel())
     .withPanel(documentCountPanel())
+    .withPanel(nativeHttpLatencyPanel())
     .withPanel(nativeHttpRatePanel())
     .withPanel(searchLatencyPanel())
 
