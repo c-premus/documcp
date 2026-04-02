@@ -1,0 +1,11 @@
+# Gitleaks configuration — allowlist for known false positives.
+#
+# Mirrors the gosec G101 exclusion rationale in .golangci.yml:
+# test files contain hardcoded credentials as fixtures, not real secrets.
+# Documentation files contain placeholder tokens in curl examples.
+
+[allowlist]
+  paths = [
+    '''_test\.go$''',
+    '''docs/.*\.md$''',
+  ]
