@@ -1,6 +1,6 @@
-# Stage 1: Frontend build
+# Stage 1: Frontend build (always native — output is static files)
 # node:24-alpine — pinned for supply chain integrity
-FROM node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b AS frontend
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b AS frontend
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -8,9 +8,12 @@ COPY frontend/ ./
 COPY docs/contracts/openapi.yaml ../docs/contracts/openapi.yaml
 RUN npm run build
 
-# Stage 2: Go build
+# Stage 2: Go build (always native — cross-compile for target arch)
 # golang:1.26.1-alpine — pinned for supply chain integrity
-FROM golang:1.26.1-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.1-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS builder
+
+# Target architecture injected by Buildx (e.g., amd64, arm64).
+ARG TARGETARCH
 
 # Install build dependencies.
 # - git: required for go mod download with private modules
@@ -32,8 +35,8 @@ COPY --from=frontend /app/web/frontend/dist ./web/frontend/dist
 ARG VERSION=dev
 ARG BUILD_TIME=unknown
 
-# Compile a statically linked binary with version metadata.
-RUN CGO_ENABLED=0 GOOS=linux go build \
+# Cross-compile a statically linked binary for the target architecture.
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -ldflags "-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" \
     -o /bin/documcp ./cmd/documcp
 
