@@ -63,7 +63,8 @@ type Deps struct {
 	IsSecure bool // true when running behind TLS (reserved for future use)
 
 	// Infrastructure
-	RedisClient      *redis.Client    // for distributed rate limiting
+	RateLimitRedisClient *redis.Client    // dedicated client for httprate-redis (no retries, no otel)
+	RedisClient          *redis.Client    // main client for readiness checks
 	DB               handler.DBPinger // for readiness checks (nil disables /health/ready)
 	InternalAPIToken string           // protects /metrics and /health/ready (empty = unrestricted)
 
@@ -124,7 +125,7 @@ func (s *Server) registerInfraRoutes(deps Deps) {
 	// OAuth MUST be configured; without it, all MCP tools would be unauthenticated.
 	if deps.MCPHandler != nil && deps.OAuthService != nil {
 		r.Group(func(r chi.Router) {
-			r.Use(rateLimitByIP(60, time.Minute, deps.RedisClient))
+			r.Use(rateLimitByIP(60, time.Minute, deps.RateLimitRedisClient))
 			r.Use(authmiddleware.BearerToken(deps.OAuthService, s.logger))
 			r.Use(authmiddleware.RequireScope("mcp:access", s.logger))
 			r.Handle("/documcp/*", deps.MCPHandler)
@@ -186,20 +187,20 @@ func (s *Server) registerAuthRoutes(deps Deps) {
 
 			// Machine-to-machine endpoints — no CSRF (clients don't have browser cookies).
 			r.Group(func(r chi.Router) {
-				r.Use(rateLimitByIP(30, time.Minute, deps.RedisClient))
-				r.Use(rateLimitByIP(100, time.Hour, deps.RedisClient))
+				r.Use(rateLimitByIP(30, time.Minute, deps.RateLimitRedisClient))
+				r.Use(rateLimitByIP(100, time.Hour, deps.RateLimitRedisClient))
 				r.Post("/token", deps.OAuthHandler.Token)
 				r.Post("/revoke", deps.OAuthHandler.Revoke)
 			})
 
 			r.Group(func(r chi.Router) {
-				r.Use(rateLimitByIP(10, time.Hour, deps.RedisClient))
-				r.Use(rateLimitByIP(50, 24*time.Hour, deps.RedisClient))
+				r.Use(rateLimitByIP(10, time.Hour, deps.RateLimitRedisClient))
+				r.Use(rateLimitByIP(50, 24*time.Hour, deps.RateLimitRedisClient))
 				r.Post("/register", deps.OAuthHandler.Register)
 			})
 
 			r.Group(func(r chi.Router) {
-				r.Use(rateLimitByIP(30, time.Minute, deps.RedisClient))
+				r.Use(rateLimitByIP(30, time.Minute, deps.RateLimitRedisClient))
 				r.Post("/device/code", deps.OAuthHandler.DeviceAuthorization)
 			})
 		})
@@ -208,7 +209,7 @@ func (s *Server) registerAuthRoutes(deps Deps) {
 
 	if deps.OIDCHandler != nil {
 		r.Route("/auth", func(r chi.Router) {
-			r.Use(rateLimitByIP(30, time.Minute, deps.RedisClient))
+			r.Use(rateLimitByIP(30, time.Minute, deps.RateLimitRedisClient))
 			r.Get("/login", deps.OIDCHandler.Login)
 			r.Get("/callback", deps.OIDCHandler.Callback)
 			r.Post("/logout", deps.OIDCHandler.Logout)
@@ -218,7 +219,7 @@ func (s *Server) registerAuthRoutes(deps Deps) {
 
 	if deps.AuthHandler != nil {
 		r.Group(func(r chi.Router) {
-			r.Use(rateLimitByIP(60, time.Minute, deps.RedisClient))
+			r.Use(rateLimitByIP(60, time.Minute, deps.RateLimitRedisClient))
 			r.Get("/api/auth/me", deps.AuthHandler.Me)
 		})
 		s.logger.Info("auth/me endpoint registered", "path", "/api/auth/me")
@@ -251,7 +252,7 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 		if deps.DocumentHandler != nil {
 			r.Route("/documents", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
-					r.Use(rateLimitByIP(60, time.Minute, deps.RedisClient))
+					r.Use(rateLimitByIP(60, time.Minute, deps.RateLimitRedisClient))
 					r.Use(authmiddleware.RequireScope(authscope.DocumentsRead, s.logger))
 					r.Get("/", deps.DocumentHandler.List)
 					r.Get("/trash", deps.DocumentHandler.ListDeleted)
@@ -260,7 +261,7 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 				})
 
 				r.Group(func(r chi.Router) {
-					r.Use(rateLimitByIP(30, time.Minute, deps.RedisClient))
+					r.Use(rateLimitByIP(30, time.Minute, deps.RateLimitRedisClient))
 					r.Use(authmiddleware.RequireScope(authscope.DocumentsWrite, s.logger))
 					r.Use(authmiddleware.RequireAdmin)
 					r.Post("/", deps.DocumentHandler.Upload)
@@ -277,7 +278,7 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 		// Search endpoints (120/min per IP)
 		if deps.SearchHandler != nil {
 			r.Group(func(r chi.Router) {
-				r.Use(rateLimitByIP(120, time.Minute, deps.RedisClient))
+				r.Use(rateLimitByIP(120, time.Minute, deps.RateLimitRedisClient))
 				r.Use(authmiddleware.RequireScope(authscope.SearchRead, s.logger))
 				r.Get("/search", deps.SearchHandler.Search)
 				r.Get("/search/unified", deps.SearchHandler.FederatedSearch)
@@ -290,7 +291,7 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 		// ZIM archive endpoints (60/min per IP)
 		if deps.ZimHandler != nil {
 			r.Route("/zim/archives", func(r chi.Router) {
-				r.Use(rateLimitByIP(60, time.Minute, deps.RedisClient))
+				r.Use(rateLimitByIP(60, time.Minute, deps.RateLimitRedisClient))
 				r.Use(authmiddleware.RequireScope(authscope.ZIMRead, s.logger))
 				r.Get("/", deps.ZimHandler.List)
 				r.Get("/{archive}", deps.ZimHandler.Show)
@@ -305,7 +306,7 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 		if deps.GitTemplateHandler != nil {
 			r.Route("/git-templates", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
-					r.Use(rateLimitByIP(60, time.Minute, deps.RedisClient))
+					r.Use(rateLimitByIP(60, time.Minute, deps.RateLimitRedisClient))
 					r.Use(authmiddleware.RequireScope(authscope.TemplatesRead, s.logger))
 					r.Get("/", deps.GitTemplateHandler.List)
 					r.Get("/search", deps.GitTemplateHandler.Search)
@@ -316,7 +317,7 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 				})
 
 				r.Group(func(r chi.Router) {
-					r.Use(rateLimitByIP(30, time.Minute, deps.RedisClient))
+					r.Use(rateLimitByIP(30, time.Minute, deps.RateLimitRedisClient))
 					r.Use(authmiddleware.RequireScope(authscope.TemplatesWrite, s.logger))
 					r.Use(authmiddleware.RequireAdmin)
 					r.Post("/", deps.GitTemplateHandler.Create)
@@ -333,14 +334,14 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 		if deps.ExternalServiceHandler != nil {
 			r.Route("/external-services", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
-					r.Use(rateLimitByIP(60, time.Minute, deps.RedisClient))
+					r.Use(rateLimitByIP(60, time.Minute, deps.RateLimitRedisClient))
 					r.Use(authmiddleware.RequireScope(authscope.ServicesRead, s.logger))
 					r.Get("/", deps.ExternalServiceHandler.List)
 					r.Get("/{uuid}", deps.ExternalServiceHandler.Show)
 				})
 
 				r.Group(func(r chi.Router) {
-					r.Use(rateLimitByIP(30, time.Minute, deps.RedisClient))
+					r.Use(rateLimitByIP(30, time.Minute, deps.RateLimitRedisClient))
 					r.Use(authmiddleware.RequireScope(authscope.ServicesWrite, s.logger))
 					r.Use(authmiddleware.RequireAdmin)
 					r.Post("/", deps.ExternalServiceHandler.Create)
@@ -355,7 +356,7 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 
 		// Admin API endpoints (60/min, requires admin scope + role)
 		r.Route("/admin", func(r chi.Router) {
-			r.Use(rateLimitByIP(60, time.Minute, deps.RedisClient))
+			r.Use(rateLimitByIP(60, time.Minute, deps.RateLimitRedisClient))
 			r.Use(authmiddleware.RequireScope(authscope.Admin, s.logger))
 			r.Use(authmiddleware.RequireAdmin)
 

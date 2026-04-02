@@ -192,6 +192,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	}, logger)
 
 	srv.RegisterRoutes(server.Deps{
+		RateLimitRedisClient:   f.RateLimitRedisClient,
 		RedisClient:            f.RedisClient,
 		Version:                cfg.DocuMCP.ServerVersion,
 		MCPHandler:             mcpH,
