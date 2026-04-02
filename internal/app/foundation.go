@@ -102,7 +102,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		Username: cfg.Redis.Username,
 		Password: cfg.Redis.Password,
 		DB:       cfg.Redis.DB,
-		Protocol: 2, // RESP2: no RESP3-only features in use
+		Protocol: 2, // RESP2: go-redis v9.18 defaults to RESP3; pin to avoid push notification overhead
 
 		// DisableIdentity skips CLIENT SETINFO on new connections — avoids
 		// unnecessary round-trips and prevents stale buffer data on high-latency
@@ -146,7 +146,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		Username:        cfg.Redis.Username,
 		Password:        cfg.Redis.Password,
 		DB:              cfg.Redis.DB,
-		Protocol:        2,
+		Protocol:        2, // RESP2: match main client; avoid RESP3 push notifications
 		DisableIdentity: true,
 		PoolSize:        3,
 		MinIdleConns:    1,
