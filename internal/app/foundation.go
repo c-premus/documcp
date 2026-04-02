@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/extra/redisotel/v9"
@@ -33,6 +34,13 @@ type Foundation struct {
 	PgxPool     *pgxpool.Pool
 	RedisClient *redis.Client
 	Metrics     *observability.Metrics
+
+	// RateLimitRedisClient is a dedicated, bare client for httprate-redis.
+	// Separate from RedisClient because httprate-redis TxPipeline (MULTI/INCR/
+	// EXPIRE/EXEC) corrupts connections when retries are enabled — partial
+	// pipeline responses sit unread in the old connection's buffer. This client
+	// mirrors httprate-redis's own preference: MaxRetries -1, no otel hooks.
+	RateLimitRedisClient *redis.Client
 
 	// Repositories
 	DocumentRepo        *repository.DocumentRepository
@@ -108,9 +116,6 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		// but the socket keeps reading — leaving unread data in the buffer.
 		ContextTimeoutEnabled: true,
 
-		// Retry config — retries after timeout are the primary cause of
-		// "Conn has unread data" warnings (old conn has server response
-		// buffered, new conn used for retry).
 		MaxRetries: cfg.Redis.MaxRetries,
 
 		// Pool
@@ -132,6 +137,30 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		return nil, fmt.Errorf("instrumenting redis tracing: %w", err)
 	}
 
+	// Dedicated rate-limit client — httprate-redis runs TxPipeline
+	// (MULTI/INCR/EXPIRE/EXEC) on every request. Retries on pipelines leave
+	// partial responses in the old connection's buffer ("Conn has unread
+	// data" warnings). MaxRetries -1 matches httprate-redis's own preference.
+	// No redisotel hook — counter increments are high-frequency, low-value to trace.
+	rateLimitRedisClient := redis.NewClient(&redis.Options{
+		Addr:              cfg.Redis.Addr,
+		Username:          cfg.Redis.Username,
+		Password:          cfg.Redis.Password,
+		DB:                cfg.Redis.DB,
+		Protocol:          2,
+		PoolSize:          3,
+		MinIdleConns:      1,
+		MaxRetries:        -1,
+		ReadTimeout:       500 * time.Millisecond,
+		WriteTimeout:      500 * time.Millisecond,
+		ContextTimeoutEnabled: true,
+	})
+	if err = rateLimitRedisClient.Ping(context.Background()).Err(); err != nil {
+		_ = redisClient.Close()
+		pgxPool.Close()
+		return nil, fmt.Errorf("connecting to redis (rate limit): %w", err)
+	}
+
 	logger.Info("redis connected",
 		"addr", cfg.Redis.Addr,
 		"pool_size", redisOpts.PoolSize,
@@ -139,13 +168,15 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		"read_timeout", redisOpts.ReadTimeout,
 		"write_timeout", redisOpts.WriteTimeout,
 		"context_timeout_enabled", true,
+		"rate_limit_pool_size", 3,
 	)
 
-	// After this point both pgxPool and redisClient are live resources.
-	// Use a deferred cleanup to close both on any initialization error.
+	// After this point pgxPool, redisClient, and rateLimitRedisClient are live.
+	// Use a deferred cleanup to close all on any initialization error.
 	var initOK bool
 	defer func() {
 		if !initOK {
+			_ = rateLimitRedisClient.Close()
 			_ = redisClient.Close()
 			pgxPool.Close()
 		}
@@ -239,8 +270,9 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		Config:              cfg,
 		Logger:              logger,
 		PgxPool:             pgxPool,
-		RedisClient:         redisClient,
-		Metrics:             metrics,
+		RedisClient:          redisClient,
+		RateLimitRedisClient: rateLimitRedisClient,
+		Metrics:              metrics,
 		DocumentRepo:        documentRepo,
 		ExternalServiceRepo: externalServiceRepo,
 		ZimArchiveRepo:      zimArchiveRepo,
@@ -268,6 +300,11 @@ func (f *Foundation) Close() {
 		defer cancel()
 		if err := f.tracerShutdown(ctx); err != nil {
 			f.Logger.Error("flushing tracer spans", "error", err)
+		}
+	}
+	if f.RateLimitRedisClient != nil {
+		if err := f.RateLimitRedisClient.Close(); err != nil {
+			f.Logger.Error("closing rate limit redis client", "error", err)
 		}
 	}
 	if f.RedisClient != nil {
