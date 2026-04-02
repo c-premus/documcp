@@ -104,16 +104,16 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		DB:       cfg.Redis.DB,
 		Protocol: 2, // RESP2: no RESP3-only features in use
 
-		// Timeouts — explicit to prevent go-redis defaults (3s) from causing
-		// unread data when retries open new connections before old responses
-		// are drained from the buffer.
+		// DisableIdentity prevents go-redis from sending CLIENT SETINFO on
+		// every new connection. When SETINFO responses arrive late (Docker
+		// bridge network latency), they remain in the read buffer and trigger
+		// "Conn has unread data" warnings. See CVE-2025-29923 / GHSA-92cp-5422-2mw7.
+		DisableIdentity: true,
+
 		DialTimeout:  cfg.Redis.DialTimeout,
 		ReadTimeout:  cfg.Redis.ReadTimeout,
 		WriteTimeout: cfg.Redis.WriteTimeout,
 
-		// ContextTimeoutEnabled propagates context deadlines to socket I/O.
-		// Without this, a canceled context returns an error to the caller
-		// but the socket keeps reading — leaving unread data in the buffer.
 		ContextTimeoutEnabled: true,
 
 		MaxRetries: cfg.Redis.MaxRetries,
@@ -138,21 +138,22 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	}
 
 	// Dedicated rate-limit client — httprate-redis runs TxPipeline
-	// (MULTI/INCR/EXPIRE/EXEC) on every request. Retries on pipelines leave
-	// partial responses in the old connection's buffer ("Conn has unread
-	// data" warnings). MaxRetries -1 matches httprate-redis's own preference.
+	// (MULTI/INCR/EXPIRE/EXEC) on every request. MaxRetries -1 prevents
+	// retries that would leave partial responses in connection buffers.
+	// DisableIdentity removes CLIENT SETINFO on new connections (same CVE fix).
 	// No redisotel hook — counter increments are high-frequency, low-value to trace.
 	rateLimitRedisClient := redis.NewClient(&redis.Options{
-		Addr:              cfg.Redis.Addr,
-		Username:          cfg.Redis.Username,
-		Password:          cfg.Redis.Password,
-		DB:                cfg.Redis.DB,
-		Protocol:          2,
-		PoolSize:          3,
-		MinIdleConns:      1,
-		MaxRetries:        -1,
-		ReadTimeout:       500 * time.Millisecond,
-		WriteTimeout:      500 * time.Millisecond,
+		Addr:            cfg.Redis.Addr,
+		Username:        cfg.Redis.Username,
+		Password:        cfg.Redis.Password,
+		DB:              cfg.Redis.DB,
+		Protocol:        2,
+		DisableIdentity: true,
+		PoolSize:        3,
+		MinIdleConns:    1,
+		MaxRetries:      -1,
+		ReadTimeout:     500 * time.Millisecond,
+		WriteTimeout:    500 * time.Millisecond,
 		ContextTimeoutEnabled: true,
 	})
 	if err = rateLimitRedisClient.Ping(context.Background()).Err(); err != nil {
