@@ -36,10 +36,10 @@ type Foundation struct {
 	Metrics     *observability.Metrics
 
 	// RateLimitRedisClient is a dedicated, bare client for httprate-redis.
-	// Separate from RedisClient because httprate-redis TxPipeline (MULTI/INCR/
-	// EXPIRE/EXEC) corrupts connections when retries are enabled — partial
-	// pipeline responses sit unread in the old connection's buffer. This client
-	// mirrors httprate-redis's own preference: MaxRetries -1, no otel hooks.
+	// Separate from RedisClient to isolate high-frequency TxPipeline ops
+	// (MULTI/INCR/EXPIRE/EXEC) from the main pool. MaxRetries -1 prevents
+	// retry-induced partial responses; no redisotel hook to avoid tracing
+	// overhead on every rate-limit check.
 	RateLimitRedisClient *redis.Client
 
 	// Repositories
@@ -102,7 +102,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		Username: cfg.Redis.Username,
 		Password: cfg.Redis.Password,
 		DB:       cfg.Redis.DB,
-		Protocol: 2, // RESP2: no RESP3-only features in use
+		Protocol: 2, // RESP2: go-redis v9.18 defaults to RESP3; pin to avoid push notification overhead
 
 		// DisableIdentity skips CLIENT SETINFO on new connections — avoids
 		// unnecessary round-trips and prevents stale buffer data on high-latency
@@ -136,17 +136,17 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		return nil, fmt.Errorf("instrumenting redis tracing: %w", err)
 	}
 
-	// Dedicated rate-limit client — httprate-redis runs TxPipeline
-	// (MULTI/INCR/EXPIRE/EXEC) on every request. MaxRetries -1 prevents
-	// retries that would leave partial responses in connection buffers.
-	// DisableIdentity skips CLIENT SETINFO on new connections.
+	// Dedicated rate-limit client — isolates httprate-redis TxPipeline
+	// (MULTI/INCR/EXPIRE/EXEC) from the main pool. MaxRetries -1 avoids
+	// retry-induced partial responses. DisableIdentity skips CLIENT SETINFO.
 	// No redisotel hook — counter increments are high-frequency, low-value to trace.
+	// NOTE: Redis ACL must include +@transaction for MULTI/EXEC to succeed.
 	rateLimitRedisClient := redis.NewClient(&redis.Options{
 		Addr:            cfg.Redis.Addr,
 		Username:        cfg.Redis.Username,
 		Password:        cfg.Redis.Password,
 		DB:              cfg.Redis.DB,
-		Protocol:        2,
+		Protocol:        2, // RESP2: match main client; avoid RESP3 push notifications
 		DisableIdentity: true,
 		PoolSize:        3,
 		MinIdleConns:    1,
