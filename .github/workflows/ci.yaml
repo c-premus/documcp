@@ -28,7 +28,7 @@ jobs:
           go-version: "1.26.1"
           cache: false
 
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: |
             ~/go/pkg/mod
@@ -39,7 +39,7 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20  # v9.2.0
         with:
-          version: v2.11.3
+          version: v2.11.4
 
   test:
     name: Test
@@ -52,7 +52,7 @@ jobs:
           go-version: "1.26.1"
           cache: false
 
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: |
             ~/go/pkg/mod
@@ -84,7 +84,7 @@ jobs:
           go-version: "1.26.1"
           cache: false
 
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: |
             ~/go/pkg/mod
