@@ -640,7 +640,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"documcp\", span_name=~\"SELECT|INSERT|UPDATE|DELETE\"}[$__rate_interval]))",
+          "expr": "sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"documcp\", db_system=\"postgresql\", span_name=~\"SELECT|INSERT|UPDATE|DELETE\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{span_name}}"
         }
@@ -691,7 +691,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"documcp\", span_name=~\"SELECT|INSERT|UPDATE|DELETE\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"documcp\", db_system=\"postgresql\", span_name=~\"SELECT|INSERT|UPDATE|DELETE\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "{{span_name}}"
         }
@@ -742,7 +742,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"documcp\", span_kind=\"SPAN_KIND_CLIENT\", span_name=~\"[a-z]+\"}[$__rate_interval]))",
+          "expr": "sum by (span_name) (rate(traces_spanmetrics_calls_total{service=\"documcp\", db_system=\"redis\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{span_name}}"
         }
@@ -849,7 +849,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"documcp\", span_kind=\"SPAN_KIND_CLIENT\", span_name=~\"[a-z]+\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=\"documcp\", db_system=\"redis\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "{{span_name}}"
         }
@@ -1389,6 +1389,113 @@
       "type": "timeseries",
       "transparent": false,
       "repeatDirection": "h",
+      "title": "HTTP Latency (Native)",
+      "description": "P50, P95, P99 request latency from native Prometheus histogram (always sampled, no trace gaps)",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 54
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 20,
+            "gradientMode": "scheme",
+            "showPoints": "auto",
+            "pointSize": 4
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "P50"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "P95"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "P99"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(documcp_http_request_duration_seconds_bucket[$__rate_interval])) by (le))",
+          "refId": "A",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(documcp_http_request_duration_seconds_bucket[$__rate_interval])) by (le))",
+          "refId": "B",
+          "legendFormat": "P95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(documcp_http_request_duration_seconds_bucket[$__rate_interval])) by (le))",
+          "refId": "C",
+          "legendFormat": "P99"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "transparent": false,
+      "repeatDirection": "h",
       "title": "HTTP Requests (Native)",
       "description": "Request rate from native Prometheus counter by method",
       "gridPos": {
@@ -1551,7 +1658,7 @@
       "title": "Queue Operations",
       "gridPos": {
         "x": 0,
-        "y": 58,
+        "y": 66,
         "h": 1,
         "w": 24
       }
@@ -1676,7 +1783,7 @@
       "title": "Cross-Service Topology",
       "gridPos": {
         "x": 0,
-        "y": 67,
+        "y": 75,
         "h": 1,
         "w": 24
       }
@@ -1858,7 +1965,7 @@
       "title": "Trace Explorer",
       "gridPos": {
         "x": 0,
-        "y": 76,
+        "y": 84,
         "h": 1,
         "w": 24
       }
@@ -2014,7 +2121,7 @@
       "title": "Logs",
       "gridPos": {
         "x": 0,
-        "y": 99,
+        "y": 107,
         "h": 1,
         "w": 24
       }

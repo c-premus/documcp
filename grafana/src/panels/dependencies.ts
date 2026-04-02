@@ -15,8 +15,9 @@ import {
 
 const PROMETHEUS_DATASOURCE = { type: 'prometheus', uid: 'prometheus' } as const;
 
+const SQL_FILTER = 'service="documcp", db_system="postgresql"';
 const SQL_OPERATIONS = 'SELECT|INSERT|UPDATE|DELETE';
-const REDIS_COMMANDS = '[a-z]+';
+const REDIS_FILTER = 'service="documcp", db_system="redis"';
 const GIT_OPERATIONS = 'git\\\\..*';
 
 function buildLegend(): VizLegendOptionsBuilder {
@@ -57,7 +58,7 @@ export function sqlRatePanel(): PanelBuilder {
 
   const query = new DataqueryBuilder()
     .refId('A')
-    .expr(`sum by (span_name) (rate(traces_spanmetrics_calls_total{service="documcp", span_name=~"${SQL_OPERATIONS}"}[$__rate_interval]))`)
+    .expr(`sum by (span_name) (rate(traces_spanmetrics_calls_total{${SQL_FILTER}, span_name=~"${SQL_OPERATIONS}"}[$__rate_interval]))`)
     .legendFormat('{{span_name}}');
 
   return panel.withTarget(query);
@@ -74,7 +75,7 @@ export function sqlLatencyPanel(): PanelBuilder {
 
   const query = new DataqueryBuilder()
     .refId('A')
-    .expr(`histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service="documcp", span_name=~"${SQL_OPERATIONS}"}[$__rate_interval])))`)
+    .expr(`histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{${SQL_FILTER}, span_name=~"${SQL_OPERATIONS}"}[$__rate_interval])))`)
     .legendFormat('{{span_name}}');
 
   return panel.withTarget(query);
@@ -91,7 +92,7 @@ export function redisCommandRatePanel(): PanelBuilder {
 
   const query = new DataqueryBuilder()
     .refId('A')
-    .expr(`sum by (span_name) (rate(traces_spanmetrics_calls_total{service="documcp", span_kind="SPAN_KIND_CLIENT", span_name=~"${REDIS_COMMANDS}"}[$__rate_interval]))`)
+    .expr(`sum by (span_name) (rate(traces_spanmetrics_calls_total{${REDIS_FILTER}}[$__rate_interval]))`)
     .legendFormat('{{span_name}}');
 
   return panel.withTarget(query);
@@ -130,7 +131,7 @@ export function redisCommandLatencyPanel(): PanelBuilder {
 
   const query = new DataqueryBuilder()
     .refId('A')
-    .expr(`histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service="documcp", span_kind="SPAN_KIND_CLIENT", span_name=~"${REDIS_COMMANDS}"}[$__rate_interval])))`)
+    .expr(`histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{${REDIS_FILTER}}[$__rate_interval])))`)
     .legendFormat('{{span_name}}');
 
   return panel.withTarget(query);

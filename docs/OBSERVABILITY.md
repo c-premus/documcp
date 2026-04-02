@@ -79,7 +79,9 @@ In addition to the HTTP server middleware, DocuMCP instruments all outbound conn
 
 **PostgreSQL (otelpgx)**
 
-Every database query automatically creates a child span named by SQL verb (`SELECT`, `INSERT`, `UPDATE`, `DELETE`). The `db.statement` attribute contains the query text. No manual instrumentation is needed in repository code.
+Every database query automatically creates a child span named by SQL verb (`SELECT`, `INSERT`, `UPDATE`, `DELETE`). The `db.statement` attribute contains the full query text. No manual instrumentation is needed in repository code.
+
+The tracer uses `WithTrimSQLInSpanName()` to extract only the SQL verb and `WithDisableQuerySpanNamePrefix()` to drop the `query`/`prepare` prefix. This keeps span names low-cardinality in Tempo's span metrics (4 series instead of one per unique SQL query).
 
 Package: `github.com/exaring/otelpgx`, configured in `internal/database/pgxpool.go`.
 
@@ -206,8 +208,8 @@ The dashboard has 8 panel groups across 3 datasources (Prometheus, Tempo, Loki):
 |-------|------------|---------------|
 | RED Metrics | Prometheus (via Tempo span metrics) | Request rate, error rate, latency percentiles |
 | Routes | Prometheus (via Tempo span metrics) | Per-route request table, slowest routes bar gauge |
-| Dependencies | Prometheus (via Tempo span metrics) | SQL rate/latency, Redis command rate/latency, external HTTP (Kiwix) and Git operation rates and latency |
-| Connection Pools & App Metrics | Prometheus (native) | DB pool, DB wait, Redis pool, active connections, document count, HTTP rate, search latency |
+| Dependencies | Prometheus (via Tempo span metrics) | SQL rate/latency (filtered by `db_system="postgresql"`), Redis command rate/latency (`db_system="redis"`), external HTTP (Kiwix) and Git operation rates and latency |
+| Connection Pools & App Metrics | Prometheus (native) | DB pool, DB wait, Redis pool, active connections, document count, HTTP rate, HTTP latency (P50/P95/P99), search latency |
 | Queue Operations | Prometheus (native) | Job rate by kind (dispatched/completed/failed), job duration P95 |
 | Cross-Service Topology | Prometheus (via Tempo service graph) | Hop latency, edge request/error rates |
 | Traces | Tempo | Recent server and client traces with drill-down links, service map |

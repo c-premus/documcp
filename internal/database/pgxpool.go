@@ -19,7 +19,10 @@ func NewPgxPool(ctx context.Context, dsn string, maxConns, minConns int32, maxCo
 	cfg.MinConns = minConns
 	cfg.MaxConnLifetime = maxConnLifetime
 	cfg.MaxConnIdleTime = maxConnIdleTime
-	cfg.ConnConfig.Tracer = otelpgx.NewTracer()
+	cfg.ConnConfig.Tracer = otelpgx.NewTracer(
+		otelpgx.WithTrimSQLInSpanName(),
+		otelpgx.WithDisableQuerySpanNamePrefix(),
+	)
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
