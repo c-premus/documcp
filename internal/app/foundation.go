@@ -104,10 +104,9 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		DB:       cfg.Redis.DB,
 		Protocol: 2, // RESP2: no RESP3-only features in use
 
-		// DisableIdentity prevents go-redis from sending CLIENT SETINFO on
-		// every new connection. When SETINFO responses arrive late (Docker
-		// bridge network latency), they remain in the read buffer and trigger
-		// "Conn has unread data" warnings. See CVE-2025-29923 / GHSA-92cp-5422-2mw7.
+		// DisableIdentity skips CLIENT SETINFO on new connections — avoids
+		// unnecessary round-trips and prevents stale buffer data on high-latency
+		// Docker bridge networks.
 		DisableIdentity: true,
 
 		DialTimeout:  cfg.Redis.DialTimeout,
@@ -140,7 +139,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	// Dedicated rate-limit client — httprate-redis runs TxPipeline
 	// (MULTI/INCR/EXPIRE/EXEC) on every request. MaxRetries -1 prevents
 	// retries that would leave partial responses in connection buffers.
-	// DisableIdentity removes CLIENT SETINFO on new connections (same CVE fix).
+	// DisableIdentity skips CLIENT SETINFO on new connections.
 	// No redisotel hook — counter increments are high-frequency, low-value to trace.
 	rateLimitRedisClient := redis.NewClient(&redis.Options{
 		Addr:            cfg.Redis.Addr,
