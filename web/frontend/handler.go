@@ -5,6 +5,7 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	stdpath "path"
 	"strings"
 )
 
@@ -24,6 +25,12 @@ var rootAssetAllowlist = map[string]bool{
 	"/web-app-manifest-512x512.png": true,
 }
 
+// rootAssetContentTypes overrides Content-Type for extensions not reliably
+// present in all system MIME databases (e.g. CI containers).
+var rootAssetContentTypes = map[string]string{
+	".webmanifest": "application/manifest+json",
+}
+
 // RootAssetHandler returns an http.Handler that serves whitelisted static
 // files from the embedded dist assets. Mount individual routes at the root
 // (e.g. "/favicon.ico", "/apple-touch-icon.png") so external clients can
@@ -39,6 +46,9 @@ func RootAssetHandler() http.Handler {
 		if !rootAssetAllowlist[r.URL.Path] {
 			http.NotFound(w, r)
 			return
+		}
+		if ct, ok := rootAssetContentTypes[stdpath.Ext(r.URL.Path)]; ok {
+			w.Header().Set("Content-Type", ct)
 		}
 		fileServer.ServeHTTP(w, r)
 	})
