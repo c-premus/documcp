@@ -4,17 +4,19 @@ import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
 
 // Vite rewrites all "/" paths in HTML to "/admin/" due to the base config.
-// Favicons and icons must be served at the root (unauthenticated), so this
-// plugin rewrites them back after Vite's built-in HTML transform.
-function rootFavicons() {
+// Favicons, icons, and the web app manifest must be served at the root
+// (unauthenticated), so this plugin rewrites them back after Vite's built-in
+// HTML transform.
+function rootAssets() {
   const rootPaths = [
     '/favicon.ico',
-    '/favicon-16x16.png',
-    '/favicon-32x32.png',
+    '/favicon.svg',
+    '/favicon-96x96.png',
     '/apple-touch-icon.png',
+    '/site.webmanifest',
   ]
   return {
-    name: 'root-favicons',
+    name: 'root-assets',
     transformIndexHtml: {
       order: 'post' as const,
       handler(html: string) {
@@ -28,7 +30,7 @@ function rootFavicons() {
 }
 
 export default defineConfig({
-  plugins: [vue(), tailwindcss(), rootFavicons()],
+  plugins: [vue(), tailwindcss(), rootAssets()],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
