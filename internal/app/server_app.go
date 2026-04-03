@@ -151,6 +151,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	mcpCfg := mcphandler.Config{
 		ServerName:          cfg.DocuMCP.ServerName,
 		ServerVersion:       cfg.DocuMCP.ServerVersion,
+		AppURL:              cfg.App.URL,
 		Logger:              logger,
 		DocumentService:     documentService,
 		DocumentRepo:        f.DocumentRepo,
