@@ -327,6 +327,17 @@ func (r *OAuthRepository) UpdateDeviceCodeStatus(ctx context.Context, id int64, 
 	return nil
 }
 
+// UpdateDeviceCodeStatusAndScope atomically updates status, user_id, and scope of a device code.
+func (r *OAuthRepository) UpdateDeviceCodeStatusAndScope(ctx context.Context, id int64, status string, userID *int64, scope string) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE oauth_device_codes SET status = $1, user_id = $2, scope = $3, updated_at = NOW() WHERE id = $4`,
+		status, userID, sql.NullString{String: scope, Valid: scope != ""}, id)
+	if err != nil {
+		return fmt.Errorf("updating device code %d status+scope: %w", id, err)
+	}
+	return nil
+}
+
 // UpdateDeviceCodeLastPolled updates the last_polled_at timestamp and polling interval.
 func (r *OAuthRepository) UpdateDeviceCodeLastPolled(ctx context.Context, id int64, interval int) error {
 	tag, err := r.db.Exec(ctx,
