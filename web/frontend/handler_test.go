@@ -101,3 +101,31 @@ func TestHandler(t *testing.T) {
 		})
 	}
 }
+
+func TestFaviconHandler(t *testing.T) {
+	t.Parallel()
+
+	handler := frontend.FaviconHandler()
+
+	t.Run("returns favicon with 200", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest(http.MethodGet, "/favicon.ico", http.NoBody)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+
+		ct := rec.Header().Get("Content-Type")
+		if !strings.Contains(ct, "image/") {
+			t.Errorf("Content-Type = %q, want it to contain %q", ct, "image/")
+		}
+
+		if rec.Body.Len() == 0 {
+			t.Error("expected non-empty response body")
+		}
+	})
+}
