@@ -175,9 +175,11 @@ func TestOAuthRepository_Clients(t *testing.T) {
 	})
 
 	t.Run("CountClients", func(t *testing.T) {
+		// Only 1 client remains: client-abc was hard-deleted, client-xyz was
+		// created in ListClients_WithQuery.
 		count, err := repo.CountClients(ctx)
 		require.NoError(t, err)
-		assert.Equal(t, 2, count)
+		assert.Equal(t, 1, count)
 	})
 }
 
