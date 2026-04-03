@@ -102,30 +102,84 @@ func TestHandler(t *testing.T) {
 	}
 }
 
-func TestFaviconHandler(t *testing.T) {
+func TestRootAssetHandler(t *testing.T) {
 	t.Parallel()
 
-	handler := frontend.FaviconHandler()
+	handler := frontend.RootAssetHandler()
 
-	t.Run("returns favicon with 200", func(t *testing.T) {
-		t.Parallel()
+	tests := []struct {
+		name            string
+		path            string
+		wantStatus      int
+		wantContentType string
+	}{
+		{
+			name:            "favicon.ico returns 200",
+			path:            "/favicon.ico",
+			wantStatus:      http.StatusOK,
+			wantContentType: "image/",
+		},
+		{
+			name:            "favicon.svg returns 200",
+			path:            "/favicon.svg",
+			wantStatus:      http.StatusOK,
+			wantContentType: "image/svg+xml",
+		},
+		{
+			name:            "favicon-96x96.png returns 200",
+			path:            "/favicon-96x96.png",
+			wantStatus:      http.StatusOK,
+			wantContentType: "image/png",
+		},
+		{
+			name:            "site.webmanifest returns 200",
+			path:            "/site.webmanifest",
+			wantStatus:      http.StatusOK,
+			wantContentType: "application/",
+		},
+		{
+			name:            "web-app-manifest-192x192.png returns 200",
+			path:            "/web-app-manifest-192x192.png",
+			wantStatus:      http.StatusOK,
+			wantContentType: "image/png",
+		},
+		{
+			name:            "web-app-manifest-512x512.png returns 200",
+			path:            "/web-app-manifest-512x512.png",
+			wantStatus:      http.StatusOK,
+			wantContentType: "image/png",
+		},
+		{
+			name:            "non-allowlisted path returns 404",
+			path:            "/index.html",
+			wantStatus:      http.StatusNotFound,
+			wantContentType: "",
+		},
+	}
 
-		req := httptest.NewRequest(http.MethodGet, "/favicon.ico", http.NoBody)
-		rec := httptest.NewRecorder()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		handler.ServeHTTP(rec, req)
+			req := httptest.NewRequest(http.MethodGet, tt.path, http.NoBody)
+			rec := httptest.NewRecorder()
 
-		if rec.Code != http.StatusOK {
-			t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
-		}
+			handler.ServeHTTP(rec, req)
 
-		ct := rec.Header().Get("Content-Type")
-		if !strings.Contains(ct, "image/") {
-			t.Errorf("Content-Type = %q, want it to contain %q", ct, "image/")
-		}
+			if rec.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)
+			}
 
-		if rec.Body.Len() == 0 {
-			t.Error("expected non-empty response body")
-		}
-	})
+			if tt.wantContentType != "" {
+				ct := rec.Header().Get("Content-Type")
+				if !strings.Contains(ct, tt.wantContentType) {
+					t.Errorf("Content-Type = %q, want it to contain %q", ct, tt.wantContentType)
+				}
+			}
+
+			if tt.wantStatus == http.StatusOK && rec.Body.Len() == 0 {
+				t.Error("expected non-empty response body")
+			}
+		})
+	}
 }

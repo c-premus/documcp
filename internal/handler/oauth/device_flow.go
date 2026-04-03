@@ -273,10 +273,14 @@ const deviceVerificationHTML = `<!DOCTYPE html>
 <html>
 <head><title>Device Authorization</title>
 <style>
-body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px}
+body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a;background:#ffffff}
 h1{font-size:1.5em}
-input[type=text]{font-size:1.5em;padding:10px;width:200px;text-align:center;letter-spacing:4px;text-transform:uppercase}
+input[type=text]{font-size:1.5em;padding:10px;width:200px;text-align:center;letter-spacing:4px;text-transform:uppercase;border:1px solid #cbd5e1;border-radius:6px;background:#ffffff;color:#0f172a}
 button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:pointer;background:#2563eb;color:white}
+@media(prefers-color-scheme:dark){
+body{color:#e2e8f0;background:#0f172a}
+input[type=text]{background:#1e293b;color:#e2e8f0;border-color:#475569}
+}
 </style>
 </head>
 <body>
@@ -294,13 +298,19 @@ const deviceConsentHTML = `<!DOCTYPE html>
 <html>
 <head><title>Authorize Device</title>
 <style>
-body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px}
+body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a;background:#ffffff}
 h1{font-size:1.5em}
 .client-name{font-weight:bold;color:#2563eb}
 .scope{background:#f1f5f9;padding:4px 8px;border-radius:4px;font-family:monospace}
 button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:pointer;margin-right:8px}
 .approve{background:#2563eb;color:white}
 .deny{background:#e2e8f0;color:#334155}
+@media(prefers-color-scheme:dark){
+body{color:#e2e8f0;background:#0f172a}
+.client-name{color:#60a5fa}
+.scope{background:#1e293b;color:#e2e8f0}
+.deny{background:#334155;color:#e2e8f0}
+}
 </style>
 </head>
 <body>
@@ -318,7 +328,11 @@ button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:poin
 const deviceSuccessHTML = `<!DOCTYPE html>
 <html>
 <head><title>Authorization Successful</title>
-<style>body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;text-align:center}h1{color:#16a34a}</style>
+<style>
+body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;text-align:center;color:#0f172a;background:#ffffff}
+h1{color:#16a34a}
+@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#0f172a}h1{color:#4ade80}}
+</style>
 </head>
 <body>
 <h1>Authorization Successful!</h1>
@@ -329,7 +343,11 @@ const deviceSuccessHTML = `<!DOCTYPE html>
 const deviceDeniedHTML = `<!DOCTYPE html>
 <html>
 <head><title>Authorization Denied</title>
-<style>body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;text-align:center}h1{color:#dc2626}</style>
+<style>
+body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;text-align:center;color:#0f172a;background:#ffffff}
+h1{color:#dc2626}
+@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#0f172a}h1{color:#f87171}}
+</style>
 </head>
 <body>
 <h1>Authorization Denied</h1>
@@ -340,7 +358,11 @@ const deviceDeniedHTML = `<!DOCTYPE html>
 const deviceErrorHTML = `<!DOCTYPE html>
 <html>
 <head><title>Error</title>
-<style>body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;text-align:center}h1{color:#dc2626}</style>
+<style>
+body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;text-align:center;color:#0f172a;background:#ffffff}
+h1{color:#dc2626}
+@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#0f172a}h1{color:#f87171}}
+</style>
 </head>
 <body>
 <h1>Error</h1>
