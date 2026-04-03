@@ -113,6 +113,19 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Expand the client's registered scope to include scopes the user is
+	// entitled to grant. This allows auto-registered (read-only) clients to
+	// gain write/admin scopes when an admin approves consent.
+	if effectiveScope != "" {
+		expandedScope, expandErr := h.service.ExpandClientScope(r.Context(), client.ID, effectiveScope)
+		if expandErr != nil {
+			h.logger.Error("expanding client scope", "error", expandErr)
+			// Non-fatal: proceed with existing client scope.
+		} else {
+			client.Scope = sql.NullString{String: expandedScope, Valid: expandedScope != ""}
+		}
+	}
+
 	// Further narrow to the client's registered scope. A client should not
 	// receive scopes beyond what it registered for, even if the user could
 	// grant them. This prevents over-scoping when clients (e.g. Claude.ai)

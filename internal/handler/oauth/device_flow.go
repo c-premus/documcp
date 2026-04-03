@@ -169,7 +169,16 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 			_, _ = fmt.Fprintf(w, deviceErrorHTML, "An error occurred while processing your authorization.")
 			return
 		}
-		scope = authscope.Intersect(scope, authscope.UserScopes(user.IsAdmin))
+		// Expand the client's registered scope with the user's entitlements so
+		// auto-registered clients gain write/admin scopes when an admin approves.
+		userEntitlements := authscope.UserScopes(user.IsAdmin)
+		if entitled := authscope.Intersect(scope, userEntitlements); entitled != "" {
+			if _, expandErr := h.service.ExpandClientScope(r.Context(), dc.ClientID, entitled); expandErr != nil {
+				h.logger.Error("expanding client scope for device consent", "error", expandErr)
+			}
+		}
+
+		scope = authscope.Intersect(scope, userEntitlements)
 		if scope == "" {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_, _ = fmt.Fprintf(w, deviceErrorHTML, "None of the requested scopes are available to your account.")
