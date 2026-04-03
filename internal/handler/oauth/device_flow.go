@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/c-premus/documcp/internal/auth/oauth"
+	authscope "github.com/c-premus/documcp/internal/auth/scope"
 )
 
 // DeviceAuthorization handles POST /oauth/device/code — issue device_code + user_code.
@@ -155,9 +156,25 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Show the scope the user can actually grant (narrowed to their entitlements).
 	scope := ""
 	if dc.Scope.Valid {
 		scope = dc.Scope.String
+	}
+	if scope != "" {
+		user, err := h.service.FindUserByID(r.Context(), userID)
+		if err != nil {
+			h.logger.Error("looking up user for device consent", "error", err)
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = fmt.Fprintf(w, deviceErrorHTML, "An error occurred while processing your authorization.")
+			return
+		}
+		scope = authscope.Intersect(scope, authscope.UserScopes(user.IsAdmin))
+		if scope == "" {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = fmt.Fprintf(w, deviceErrorHTML, "None of the requested scopes are available to your account.")
+			return
+		}
 	}
 
 	// Show consent screen

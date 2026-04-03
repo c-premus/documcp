@@ -113,6 +113,18 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Further narrow to the client's registered scope. A client should not
+	// receive scopes beyond what it registered for, even if the user could
+	// grant them. This prevents over-scoping when clients (e.g. Claude.ai)
+	// request all scopes_supported in the authorize URL.
+	if effectiveScope != "" && client.Scope.Valid && client.Scope.String != "" {
+		effectiveScope = authscope.Intersect(effectiveScope, client.Scope.String)
+		if effectiveScope == "" {
+			oauthError(w, http.StatusBadRequest, "invalid_scope", "None of the requested scopes are available for this client.")
+			return
+		}
+	}
+
 	// Generate consent nonce
 	nonce := uuid.New().String()
 

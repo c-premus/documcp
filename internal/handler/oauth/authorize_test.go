@@ -746,10 +746,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					IsActive:                true,
 				}, nil
 			},
-			UpdateClientScopeFunc: func(_ context.Context, _ int64, _ string) error {
-				t.Fatal("ExpandClientScope should not be called")
-				return nil
-			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
 				code.ID = 99
 				return nil

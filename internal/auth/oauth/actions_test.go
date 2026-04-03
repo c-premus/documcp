@@ -29,7 +29,6 @@ type mockOAuthRepo struct {
 	FindClientByClientIDFunc func(ctx context.Context, clientID string) (*model.OAuthClient, error)
 	FindClientByIDFunc       func(ctx context.Context, id int64) (*model.OAuthClient, error)
 	TouchClientLastUsedFunc  func(ctx context.Context, clientID int64) error
-	UpdateClientScopeFunc    func(ctx context.Context, clientID int64, scope string) error
 	// Authorization Codes
 	CreateAuthorizationCodeFunc     func(ctx context.Context, code *model.OAuthAuthorizationCode) error
 	FindAuthorizationCodeByCodeFunc func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
@@ -49,8 +48,9 @@ type mockOAuthRepo struct {
 	CreateDeviceCodeFunc           func(ctx context.Context, dc *model.OAuthDeviceCode) error
 	FindDeviceCodeByDeviceCodeFunc func(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error)
 	FindDeviceCodeByUserCodeFunc   func(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
-	UpdateDeviceCodeStatusFunc     func(ctx context.Context, id int64, status string, userID *int64) error
-	UpdateDeviceCodeLastPolledFunc func(ctx context.Context, id int64, interval int) error
+	UpdateDeviceCodeStatusFunc         func(ctx context.Context, id int64, status string, userID *int64) error
+	UpdateDeviceCodeStatusAndScopeFunc func(ctx context.Context, id int64, status string, userID *int64, scope string) error
+	UpdateDeviceCodeLastPolledFunc     func(ctx context.Context, id int64, interval int) error
 	// Users
 	FindUserByIDFunc func(ctx context.Context, id int64) (*model.User, error)
 }
@@ -79,13 +79,6 @@ func (m *mockOAuthRepo) FindClientByID(ctx context.Context, id int64) (*model.OA
 func (m *mockOAuthRepo) TouchClientLastUsed(ctx context.Context, clientID int64) error {
 	if m.TouchClientLastUsedFunc != nil {
 		return m.TouchClientLastUsedFunc(ctx, clientID)
-	}
-	return nil
-}
-
-func (m *mockOAuthRepo) UpdateClientScope(ctx context.Context, clientID int64, scope string) error {
-	if m.UpdateClientScopeFunc != nil {
-		return m.UpdateClientScopeFunc(ctx, clientID, scope)
 	}
 	return nil
 }
@@ -198,6 +191,13 @@ func (m *mockOAuthRepo) FindDeviceCodeByUserCode(ctx context.Context, userCode s
 func (m *mockOAuthRepo) UpdateDeviceCodeStatus(ctx context.Context, id int64, status string, userID *int64) error {
 	if m.UpdateDeviceCodeStatusFunc != nil {
 		return m.UpdateDeviceCodeStatusFunc(ctx, id, status, userID)
+	}
+	return nil
+}
+
+func (m *mockOAuthRepo) UpdateDeviceCodeStatusAndScope(ctx context.Context, id int64, status string, userID *int64, scope string) error {
+	if m.UpdateDeviceCodeStatusAndScopeFunc != nil {
+		return m.UpdateDeviceCodeStatusAndScopeFunc(ctx, id, status, userID, scope)
 	}
 	return nil
 }
@@ -1170,7 +1170,7 @@ func TestExchangeAuthorizationCode(t *testing.T) {
 		assert.Contains(t, err.Error(), "invalid authorization code")
 	})
 
-	t.Run("auth code scope exceeding client scope logs warning but succeeds", func(t *testing.T) {
+	t.Run("auth code scope exceeding client scope is narrowed", func(t *testing.T) {
 		t.Parallel()
 
 		codePlaintext, codeHash, client, authCode := setupValidExchange(t)
@@ -1208,7 +1208,39 @@ func TestExchangeAuthorizationCode(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, result)
-		assert.Equal(t, "documents:read documents:write", result.Scope)
+		// Scope narrowed to client registration (documents:write removed)
+		assert.Equal(t, "documents:read", result.Scope)
+	})
+
+	t.Run("auth code scope with zero overlap with client scope returns error", func(t *testing.T) {
+		t.Parallel()
+
+		codePlaintext, codeHash, client, authCode := setupValidExchange(t)
+		client.Scope = sql.NullString{String: "zim:read", Valid: true}
+		authCode.Scope = sql.NullString{String: "documents:write", Valid: true}
+
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return client, nil
+			},
+			FindAuthorizationCodeByCodeFunc: func(_ context.Context, hash string) (*model.OAuthAuthorizationCode, error) {
+				if hash == codeHash {
+					return authCode, nil
+				}
+				return nil, sql.ErrNoRows
+			},
+			RevokeAuthorizationCodeFunc: func(_ context.Context, _ int64) error { return nil },
+		}
+		svc := testService(repo)
+
+		_, err := svc.ExchangeAuthorizationCode(context.Background(), ExchangeAuthorizationCodeParams{
+			Code:        codePlaintext,
+			ClientID:    testClientID,
+			RedirectURI: testRedirectURI,
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "none of the granted scopes are allowed")
 	})
 }
 
@@ -2055,23 +2087,30 @@ func TestGenerateDeviceCode(t *testing.T) {
 func TestAuthorizeDeviceCode(t *testing.T) {
 	t.Parallel()
 
-	t.Run("approve sets authorized status", func(t *testing.T) {
+	t.Run("approve narrows scope to user entitlements", func(t *testing.T) {
 		t.Parallel()
 
 		var capturedStatus string
 		var capturedUserID *int64
+		var capturedScope string
 		repo := &mockOAuthRepo{
 			FindDeviceCodeByUserCodeFunc: func(_ context.Context, _ string) (*model.OAuthDeviceCode, error) {
 				return &model.OAuthDeviceCode{
 					ID:        600,
+					Scope:     sql.NullString{String: "mcp:access admin documents:read", Valid: true},
 					Status:    "pending",
 					ExpiresAt: time.Now().Add(5 * time.Minute),
 				}, nil
 			},
-			UpdateDeviceCodeStatusFunc: func(_ context.Context, id int64, status string, userID *int64) error {
+			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
+				assert.Equal(t, int64(42), id)
+				return &model.User{ID: 42, IsAdmin: false}, nil
+			},
+			UpdateDeviceCodeStatusAndScopeFunc: func(_ context.Context, id int64, status string, userID *int64, scope string) error {
 				assert.Equal(t, int64(600), id)
 				capturedStatus = status
 				capturedUserID = userID
+				capturedScope = scope
 				return nil
 			},
 		}
@@ -2083,6 +2122,64 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 		assert.Equal(t, "authorized", capturedStatus)
 		require.NotNil(t, capturedUserID)
 		assert.Equal(t, int64(42), *capturedUserID)
+		// Non-admin user cannot grant "admin" scope
+		assert.NotContains(t, capturedScope, "admin")
+		assert.Contains(t, capturedScope, "mcp:access")
+		assert.Contains(t, capturedScope, "documents:read")
+	})
+
+	t.Run("approve with admin user preserves all scopes", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedScope string
+		repo := &mockOAuthRepo{
+			FindDeviceCodeByUserCodeFunc: func(_ context.Context, _ string) (*model.OAuthDeviceCode, error) {
+				return &model.OAuthDeviceCode{
+					ID:        600,
+					Scope:     sql.NullString{String: "mcp:access admin", Valid: true},
+					Status:    "pending",
+					ExpiresAt: time.Now().Add(5 * time.Minute),
+				}, nil
+			},
+			FindUserByIDFunc: func(_ context.Context, _ int64) (*model.User, error) {
+				return &model.User{ID: 42, IsAdmin: true}, nil
+			},
+			UpdateDeviceCodeStatusAndScopeFunc: func(_ context.Context, _ int64, _ string, _ *int64, scope string) error {
+				capturedScope = scope
+				return nil
+			},
+		}
+		svc := testService(repo)
+
+		err := svc.AuthorizeDeviceCode(context.Background(), "BCDF-GHJK", 42, true)
+
+		require.NoError(t, err)
+		assert.Contains(t, capturedScope, "mcp:access")
+		assert.Contains(t, capturedScope, "admin")
+	})
+
+	t.Run("approve rejects when no scopes overlap with user entitlements", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockOAuthRepo{
+			FindDeviceCodeByUserCodeFunc: func(_ context.Context, _ string) (*model.OAuthDeviceCode, error) {
+				return &model.OAuthDeviceCode{
+					ID:        600,
+					Scope:     sql.NullString{String: "admin", Valid: true},
+					Status:    "pending",
+					ExpiresAt: time.Now().Add(5 * time.Minute),
+				}, nil
+			},
+			FindUserByIDFunc: func(_ context.Context, _ int64) (*model.User, error) {
+				return &model.User{ID: 42, IsAdmin: false}, nil
+			},
+		}
+		svc := testService(repo)
+
+		err := svc.AuthorizeDeviceCode(context.Background(), "BCDF-GHJK", 42, true)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "none of the requested scopes")
 	})
 
 	t.Run("deny sets denied status", func(t *testing.T) {

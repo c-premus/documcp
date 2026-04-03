@@ -26,7 +26,6 @@ type OAuthRepo interface {
 	FindClientByClientID(ctx context.Context, clientID string) (*model.OAuthClient, error)
 	FindClientByID(ctx context.Context, id int64) (*model.OAuthClient, error)
 	TouchClientLastUsed(ctx context.Context, clientID int64) error
-	UpdateClientScope(ctx context.Context, clientID int64, scope string) error
 	// Authorization Codes
 	CreateAuthorizationCode(ctx context.Context, code *model.OAuthAuthorizationCode) error
 	FindAuthorizationCodeByCode(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
@@ -47,6 +46,7 @@ type OAuthRepo interface {
 	FindDeviceCodeByDeviceCode(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error)
 	FindDeviceCodeByUserCode(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
 	UpdateDeviceCodeStatus(ctx context.Context, id int64, status string, userID *int64) error
+	UpdateDeviceCodeStatusAndScope(ctx context.Context, id int64, status string, userID *int64, scope string) error
 	UpdateDeviceCodeLastPolled(ctx context.Context, id int64, interval int) error
 	// Users
 	FindUserByID(ctx context.Context, id int64) (*model.User, error)
@@ -97,26 +97,6 @@ func (s *Service) FindClientByInternalID(ctx context.Context, id int64) (*model.
 // TouchClientLastUsed records that a client's token was used.
 func (s *Service) TouchClientLastUsed(ctx context.Context, clientID int64) error {
 	return s.repo.TouchClientLastUsed(ctx, clientID)
-}
-
-// ExpandClientScope widens the client's registered scope to include
-// additionalScopes. Deprecated: no longer called during authorization.
-// Retained for potential admin tooling use. Client scope should remain as
-// registered; auth codes are scoped to user entitlements directly.
-func (s *Service) ExpandClientScope(ctx context.Context, clientID int64, additionalScopes string) error {
-	client, err := s.repo.FindClientByID(ctx, clientID)
-	if err != nil {
-		return fmt.Errorf("looking up client: %w", err)
-	}
-	if client == nil {
-		return errors.New("client not found")
-	}
-	currentScope := ""
-	if client.Scope.Valid {
-		currentScope = client.Scope.String
-	}
-	newScope := authscope.Union(currentScope, additionalScopes)
-	return s.repo.UpdateClientScope(ctx, client.ID, newScope)
 }
 
 // FindDeviceCodeByUserCode looks up a pending device code by user code.
@@ -379,21 +359,20 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 		scope = authCode.Scope.String
 	}
 
-	// Defense-in-depth: log if auth code scope exceeds client's registered scope.
-	// This can happen legitimately when a user grants scopes beyond the client's
-	// initial registration (e.g., admin approving admin scope for a dynamically
-	// registered client). The auth code scope is trustworthy — it was computed
-	// server-side from user entitlements.
-	if scope != "" {
-		clientScope := ""
-		if client.Scope.Valid {
-			clientScope = client.Scope.String
-		}
-		if clientScope != "" && !authscope.IsSubset(scope, clientScope) {
-			s.logger.Warn("auth code scope exceeds client registered scope",
-				"code_scope", scope, "client_scope", clientScope,
+	// Defense-in-depth: narrow scope to client's registered scope.
+	// The authorize handler already intersects, but enforce here too so a
+	// regression in the handler cannot produce over-scoped tokens.
+	if scope != "" && client.Scope.Valid && client.Scope.String != "" {
+		narrowed := authscope.Intersect(scope, client.Scope.String)
+		if narrowed != scope {
+			s.logger.Warn("narrowed auth code scope to client registration",
+				"original_scope", scope, "effective_scope", narrowed,
 				"client_id", params.ClientID,
 			)
+			scope = narrowed
+		}
+		if scope == "" {
+			return nil, errors.New("none of the granted scopes are allowed for this client")
 		}
 	}
 
@@ -645,6 +624,8 @@ func (s *Service) GenerateDeviceCode(ctx context.Context, params DeviceAuthoriza
 }
 
 // AuthorizeDeviceCode approves or denies a device authorization request.
+// When approved, the device code scope is narrowed to the intersection of the
+// requested scope and the approving user's entitlements (admin vs regular).
 func (s *Service) AuthorizeDeviceCode(ctx context.Context, userCode string, userID int64, approved bool) error {
 	dc, err := s.repo.FindDeviceCodeByUserCode(ctx, userCode)
 	if err != nil {
@@ -659,12 +640,27 @@ func (s *Service) AuthorizeDeviceCode(ctx context.Context, userCode string, user
 		return errors.New("device code is not in valid state for authorization")
 	}
 
-	status := "authorized"
 	if !approved {
-		status = "denied"
+		return s.repo.UpdateDeviceCodeStatus(ctx, dc.ID, "denied", &userID)
 	}
 
-	return s.repo.UpdateDeviceCodeStatus(ctx, dc.ID, status, &userID)
+	// Narrow scope to the approving user's entitlements.
+	scope := ""
+	if dc.Scope.Valid {
+		scope = dc.Scope.String
+	}
+	if scope != "" {
+		user, err := s.repo.FindUserByID(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("looking up approving user: %w", err)
+		}
+		scope = authscope.Intersect(scope, authscope.UserScopes(user.IsAdmin))
+		if scope == "" {
+			return errors.New("none of the requested scopes are available to your account")
+		}
+	}
+
+	return s.repo.UpdateDeviceCodeStatusAndScope(ctx, dc.ID, "authorized", &userID, scope)
 }
 
 // DeviceCodeError represents an error in the device code exchange flow.
