@@ -481,8 +481,9 @@ const denyHTML = `<!DOCTYPE html>
 <html>
 <head><title>Authorization Denied</title>
 <style>
-body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px}
+body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a;background:#ffffff}
 h1{font-size:1.5em}
+@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#0f172a}}
 </style>
 </head>
 <body>
@@ -499,7 +500,7 @@ const consentHTML = `<!DOCTYPE html>
 <html>
 <head><title>Authorize Application</title>
 <style>
-body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px}
+body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a;background:#ffffff}
 h1{font-size:1.5em}
 .client-name{font-weight:bold;color:#2563eb}
 .scope{background:#f1f5f9;padding:4px 8px;border-radius:4px;font-family:monospace}
@@ -507,6 +508,12 @@ form{margin-top:24px}
 button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:pointer;margin-right:8px}
 .approve{background:#2563eb;color:white}
 .deny{background:#e2e8f0;color:#334155}
+@media(prefers-color-scheme:dark){
+body{color:#e2e8f0;background:#0f172a}
+.client-name{color:#60a5fa}
+.scope{background:#1e293b;color:#e2e8f0}
+.deny{background:#334155;color:#e2e8f0}
+}
 </style>
 </head>
 <body>

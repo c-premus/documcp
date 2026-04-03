@@ -129,7 +129,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	// --- Auth & SPA Handlers ---
 	authH := apihandler.NewAuthHandler(sessionStore, f.OAuthRepo, logger)
 	spaHandler := frontend.Handler()
-	faviconHandler := frontend.FaviconHandler()
+	rootAssetHandler := frontend.RootAssetHandler()
 
 	// --- Dashboard Handler ---
 	dashboardH := apihandler.NewDashboardHandler(
@@ -210,7 +210,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		OAuthClientHandler:     oauthClientH,
 		AuthHandler:            authH,
 		SPAHandler:             spaHandler,
-		FaviconHandler:         faviconHandler,
+		RootAssetHandler:       rootAssetHandler,
 		DashboardHandler:       dashboardH,
 		SSEHandler:             sseH,
 		QueueHandler:           queueH,

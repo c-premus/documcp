@@ -11,18 +11,36 @@ import (
 //go:embed all:dist
 var distFS embed.FS
 
-// FaviconHandler returns an http.Handler that serves favicon.ico from the
-// embedded dist assets. Intended to be mounted at the root ("/favicon.ico")
-// so that external clients (e.g. Claude.ai) can fetch it without auth.
-func FaviconHandler() http.Handler {
+// rootAssetAllowlist is the set of static files served at the root without
+// authentication. Browsers and external clients (e.g. Claude.ai) expect these
+// at well-known paths outside the SPA mount.
+var rootAssetAllowlist = map[string]bool{
+	"/favicon.ico":                    true,
+	"/favicon.svg":                    true,
+	"/favicon-96x96.png":             true,
+	"/apple-touch-icon.png":          true,
+	"/site.webmanifest":              true,
+	"/web-app-manifest-192x192.png": true,
+	"/web-app-manifest-512x512.png": true,
+}
+
+// RootAssetHandler returns an http.Handler that serves whitelisted static
+// files from the embedded dist assets. Mount individual routes at the root
+// (e.g. "/favicon.ico", "/apple-touch-icon.png") so external clients can
+// fetch them without auth.
+func RootAssetHandler() http.Handler {
 	dist, err := fs.Sub(distFS, "dist")
 	if err != nil {
 		panic("frontend dist not embedded: " + err.Error())
 	}
+	fileServer := http.FileServer(http.FS(dist))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.URL.Path = "/favicon.ico"
-		http.FileServer(http.FS(dist)).ServeHTTP(w, r)
+		if !rootAssetAllowlist[r.URL.Path] {
+			http.NotFound(w, r)
+			return
+		}
+		fileServer.ServeHTTP(w, r)
 	})
 }
 
