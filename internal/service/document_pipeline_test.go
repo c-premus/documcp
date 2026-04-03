@@ -915,7 +915,7 @@ func TestDocumentPipeline_ReplaceContent(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(oldFullPath), 0o750); err != nil {
 			t.Fatalf("creating old dir: %v", err)
 		}
-		if err := os.WriteFile(oldFullPath, []byte("old content"), 0o644); err != nil {
+		if err := os.WriteFile(oldFullPath, []byte("old content"), 0o600); err != nil {
 			t.Fatalf("writing old file: %v", err)
 		}
 
@@ -980,7 +980,7 @@ func TestDocumentPipeline_ReplaceContent(t *testing.T) {
 		// New file should exist.
 		newRelPath := "md/" + docUUID + ".md"
 		newFullPath := filepath.Join(storagePath, newRelPath)
-		data, readErr := os.ReadFile(newFullPath)
+		data, readErr := os.ReadFile(newFullPath) //nolint:gosec // test file path from t.TempDir, not user input
 		if readErr != nil {
 			t.Fatalf("expected new file at %s: %v", newFullPath, readErr)
 		}

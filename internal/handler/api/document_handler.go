@@ -868,7 +868,7 @@ func (h *DocumentHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 
 	tags, err := h.repo.ListDistinctTags(r.Context(), q, limit)
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "failed to list tags", slog.String("error", err.Error()))
+		h.logger.ErrorContext(r.Context(), "failed to list tags", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to list tags")
 		return
 	}
