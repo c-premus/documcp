@@ -62,11 +62,15 @@ const table = useVueTable({
                   ? 'descending'
                   : 'none'
             "
+            :tabindex="header.column.getCanSort() ? 0 : undefined"
             :class="[
-              'px-3 py-3.5 text-left text-sm font-semibold text-text-primary cursor-pointer select-none',
+              'px-3 py-3.5 text-left text-sm font-semibold text-text-primary select-none',
+              header.column.getCanSort() ? 'cursor-pointer' : '',
               header.column.columnDef.meta?.className,
             ]"
             @click="header.column.getToggleSortingHandler()?.($event)"
+            @keydown.enter.prevent="header.column.getToggleSortingHandler()?.($event)"
+            @keydown.space.prevent="header.column.getToggleSortingHandler()?.($event)"
           >
             <div class="flex items-center gap-1">
               <FlexRender :render="header.column.columnDef.header" :props="header.getContext()" />

@@ -106,11 +106,14 @@ watch(
     <!-- Loading state -->
     <div
       v-if="store.loading && !store.currentDocument"
+      role="status"
+      aria-live="polite"
       class="flex items-center justify-center py-20"
     >
       <div
         class="h-8 w-8 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400"
       />
+      <span class="sr-only">Loading document...</span>
     </div>
 
     <!-- Error state -->

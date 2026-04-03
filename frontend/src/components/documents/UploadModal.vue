@@ -220,7 +220,12 @@ function retry(): void {
               </div>
             </div>
 
-            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">
+            <p
+              v-if="error"
+              id="upload-file-error"
+              role="alert"
+              class="mt-3 text-sm text-red-600 dark:text-red-400"
+            >
               {{ error }}
             </p>
 
@@ -263,6 +268,7 @@ function retry(): void {
                   id="upload-title"
                   v-model="title"
                   type="text"
+                  :aria-describedby="error ? 'upload-metadata-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
@@ -277,6 +283,7 @@ function retry(): void {
                   id="upload-description"
                   v-model="description"
                   rows="3"
+                  :aria-describedby="error ? 'upload-metadata-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
@@ -303,7 +310,12 @@ function retry(): void {
               </div>
             </div>
 
-            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">
+            <p
+              v-if="error"
+              id="upload-metadata-error"
+              role="alert"
+              class="mt-3 text-sm text-red-600 dark:text-red-400"
+            >
               {{ error }}
             </p>
 
@@ -327,7 +339,12 @@ function retry(): void {
 
           <!-- Step 3: Uploading -->
           <div v-if="step === 3">
-            <div v-if="uploading && !error" class="flex flex-col items-center py-8">
+            <div
+              v-if="uploading && !error"
+              role="status"
+              aria-live="polite"
+              class="flex flex-col items-center py-8"
+            >
               <div
                 class="h-10 w-10 animate-spin rounded-full border-4 border-border-default border-t-indigo-600 dark:border-t-indigo-400"
               />

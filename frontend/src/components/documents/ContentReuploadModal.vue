@@ -172,10 +172,16 @@ async function handleReplace(): Promise<void> {
           </div>
 
           <!-- Uploading spinner -->
-          <div v-if="uploading" class="mt-4 flex items-center justify-center py-4">
+          <div
+            v-if="uploading"
+            role="status"
+            aria-live="polite"
+            class="mt-4 flex items-center justify-center py-4"
+          >
             <div
               class="h-8 w-8 animate-spin rounded-full border-4 border-border-default border-t-indigo-600 dark:border-t-indigo-400"
             />
+            <span class="sr-only">Replacing file content...</span>
           </div>
 
           <p

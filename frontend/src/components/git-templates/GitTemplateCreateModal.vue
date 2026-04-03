@@ -158,6 +158,7 @@ async function handleSubmit(): Promise<void> {
                   v-model="name"
                   type="text"
                   required
+                  :aria-describedby="error ? 'template-create-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
@@ -174,7 +175,7 @@ async function handleSubmit(): Promise<void> {
                     required
                     placeholder="https://github.com/org/repo.git"
                     :aria-invalid="urlValid === false ? true : undefined"
-                    :aria-describedby="urlError ? 'template-url-error' : undefined"
+                    :aria-describedby="[urlError ? 'template-url-error' : '', error ? 'template-create-form-error' : ''].filter(Boolean).join(' ') || undefined"
                     class="block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm pr-10"
                     @blur="handleUrlBlur"
                   />
@@ -210,6 +211,7 @@ async function handleSubmit(): Promise<void> {
                   v-model="gitToken"
                   type="password"
                   placeholder="ghp_xxxx or glpat-xxxx"
+                  :aria-describedby="error ? 'template-create-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
@@ -223,6 +225,7 @@ async function handleSubmit(): Promise<void> {
                   v-model="branch"
                   type="text"
                   required
+                  :aria-describedby="error ? 'template-create-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
@@ -234,6 +237,7 @@ async function handleSubmit(): Promise<void> {
                 <select
                   id="template-category"
                   v-model="category"
+                  :aria-describedby="error ? 'template-create-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 >
                   <option v-for="cat in CATEGORIES" :key="cat.value" :value="cat.value">
@@ -252,6 +256,7 @@ async function handleSubmit(): Promise<void> {
                   id="template-description"
                   v-model="description"
                   rows="3"
+                  :aria-describedby="error ? 'template-create-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>

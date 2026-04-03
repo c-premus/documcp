@@ -112,6 +112,7 @@ async function handleSubmit(): Promise<void> {
                   v-model="name"
                   type="text"
                   required
+                  :aria-describedby="error ? 'template-edit-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
@@ -127,6 +128,7 @@ async function handleSubmit(): Promise<void> {
                   v-model="branch"
                   type="text"
                   required
+                  :aria-describedby="error ? 'template-edit-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
@@ -140,6 +142,7 @@ async function handleSubmit(): Promise<void> {
                 <select
                   id="edit-template-category"
                   v-model="category"
+                  :aria-describedby="error ? 'template-edit-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 >
                   <option v-for="cat in CATEGORIES" :key="cat.value" :value="cat.value">
@@ -158,6 +161,7 @@ async function handleSubmit(): Promise<void> {
                   id="edit-template-description"
                   v-model="description"
                   rows="3"
+                  :aria-describedby="error ? 'template-edit-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
@@ -175,6 +179,7 @@ async function handleSubmit(): Promise<void> {
                   v-model="gitToken"
                   type="password"
                   placeholder="********"
+                  :aria-describedby="error ? 'template-edit-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
