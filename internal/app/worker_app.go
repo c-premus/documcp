@@ -161,15 +161,16 @@ func newHealthServer(port int, f *Foundation) *http.Server {
 	})
 
 	// Readiness probe — verifies database and Redis connectivity.
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		if err := f.PgxPool.Ping(r.Context()); err != nil {
+	// Uses pool stats and bare Redis client to avoid otelpgx/redisotel trace noise.
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
+		if f.PgxPool.Stat().TotalConns() == 0 {
 			http.Error(w, "database not ready", http.StatusServiceUnavailable)
 			return
 		}
-		if f.RedisClient != nil {
+		if f.BareRedisClient != nil {
 			pingCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			if err := f.RedisClient.Ping(pingCtx).Err(); err != nil {
+			if err := f.BareRedisClient.Ping(pingCtx).Err(); err != nil {
 				http.Error(w, "redis not ready", http.StatusServiceUnavailable)
 				return
 			}

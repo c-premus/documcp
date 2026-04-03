@@ -10,7 +10,7 @@ import type { DynamicConfigValue } from '@grafana/grafana-foundation-sdk/dashboa
 const TEMPO_DATASOURCE = { type: 'tempo' as const, uid: 'tempo' };
 
 const TRACE_QUERY =
-  '{ resource.service.name = "documcp" && rootServiceName = "documcp" }';
+  '{ resource.service.name = "documcp" && rootServiceName = "documcp" && name != "ping" && name != "pool.acquire" }';
 
 const TRACE_EXPLORE_URL = [
   '/explore?orgId=1&left=%7B%22datasource%22:%22tempo%22,',
