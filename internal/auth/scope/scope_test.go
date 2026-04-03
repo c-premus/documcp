@@ -42,12 +42,38 @@ func TestParseScopes(t *testing.T) {
 		{"single scope", "admin", []string{"admin"}},
 		{"empty string", "", nil},
 		{"extra spaces", "  mcp:access   search:read  ", []string{"mcp:access", "search:read"}},
+		{"duplicates removed", "mcp:access mcp:access documents:read", []string{"mcp:access", "documents:read"}},
+		{"duplicates preserve first-occurrence order", "admin mcp:access admin documents:read mcp:access", []string{"admin", "mcp:access", "documents:read"}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tt.want, ParseScopes(tt.in))
+		})
+	}
+}
+
+func TestNormalize(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"no duplicates unchanged", "mcp:access documents:read", "mcp:access documents:read"},
+		{"duplicates removed", "mcp:access mcp:access documents:read", "mcp:access documents:read"},
+		{"extra spaces collapsed", "  mcp:access   search:read  ", "mcp:access search:read"},
+		{"empty string", "", ""},
+		{"single scope", "admin", "admin"},
+		{"preserves first-occurrence order", "admin mcp:access admin documents:read mcp:access", "admin mcp:access documents:read"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, Normalize(tt.in))
 		})
 	}
 }
@@ -120,7 +146,7 @@ func TestIntersect(t *testing.T) {
 		{"both empty", "", "", ""},
 		{"identical strings", "mcp:access documents:read", "mcp:access documents:read", "mcp:access documents:read"},
 		{"order preserved from a", "admin mcp:access documents:read", "documents:read mcp:access admin", "admin mcp:access documents:read"},
-		{"duplicate scopes in a", "mcp:access mcp:access documents:read", "mcp:access", "mcp:access mcp:access"},
+		{"duplicate scopes in a", "mcp:access mcp:access documents:read", "mcp:access", "mcp:access"},
 		{"single scope overlap", "mcp:access", "mcp:access admin", "mcp:access"},
 	}
 

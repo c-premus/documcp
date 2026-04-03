@@ -43,7 +43,7 @@ func (h *Handler) DeviceAuthorization(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.service.GenerateDeviceCode(r.Context(), oauth.DeviceAuthorizationParams{
 		ClientID: req.ClientID,
-		Scope:    req.Scope,
+		Scope:    authscope.Normalize(req.Scope),
 	})
 	if err != nil {
 		h.logger.Error("generating device code", "error", err)
