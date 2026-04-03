@@ -130,7 +130,7 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 		assert.Error(t, repo.CreateUser(ctx, &model.User{Name: "x", Email: "x@x.com"}))
 		assert.Error(t, repo.UpdateUser(ctx, &model.User{ID: 1}))
 		assert.Error(t, repo.ToggleAdmin(ctx, 1))
-		assert.Error(t, repo.DeactivateClient(ctx, 1))
+		assert.Error(t, repo.DeleteClient(ctx, 1))
 		assert.Error(t, repo.RevokeAuthorizationCode(ctx, 1))
 		assert.Error(t, repo.RevokeAccessToken(ctx, 1))
 		assert.Error(t, repo.RevokeRefreshToken(ctx, 1))

@@ -209,9 +209,6 @@ func TestNewOAuthClient(t *testing.T) {
 		if c.TokenEndpointAuthMethod != "client_secret_basic" {
 			t.Errorf("TokenEndpointAuthMethod = %q, want %q", c.TokenEndpointAuthMethod, "client_secret_basic")
 		}
-		if !c.IsActive {
-			t.Error("IsActive = false, want true")
-		}
 		if !c.CreatedAt.Valid {
 			t.Error("CreatedAt should be valid")
 		}
@@ -231,7 +228,6 @@ func TestNewOAuthClient(t *testing.T) {
 			WithOAuthClientGrantTypes(`["client_credentials"]`),
 			WithOAuthClientScope("read write"),
 			WithOAuthClientUserID(5),
-			WithOAuthClientIsActive(false),
 		)
 		if c.ID != 10 {
 			t.Errorf("ID = %d, want 10", c.ID)
@@ -256,9 +252,6 @@ func TestNewOAuthClient(t *testing.T) {
 		}
 		if !c.UserID.Valid || c.UserID.Int64 != 5 {
 			t.Errorf("UserID = %v, want valid 5", c.UserID)
-		}
-		if c.IsActive {
-			t.Error("IsActive = true, want false")
 		}
 	})
 }

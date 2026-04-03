@@ -211,7 +211,6 @@ func (s *Service) RegisterClient(ctx context.Context, params RegisterClientParam
 		Scope:                   sql.NullString{String: params.Scope, Valid: params.Scope != ""},
 		SoftwareID:              sql.NullString{String: params.SoftwareID, Valid: params.SoftwareID != ""},
 		SoftwareVersion:         sql.NullString{String: params.SoftwareVersion, Valid: params.SoftwareVersion != ""},
-		IsActive:                true,
 	}
 
 	var plainSecret string

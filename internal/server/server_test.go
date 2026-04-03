@@ -1239,7 +1239,7 @@ func TestRegisterRoutes_AdminOAuthClientEndpoints(t *testing.T) {
 		{http.MethodGet, "/api/admin/oauth-clients"},
 		{http.MethodPost, "/api/admin/oauth-clients"},
 		{http.MethodGet, "/api/admin/oauth-clients/1"},
-		{http.MethodPost, "/api/admin/oauth-clients/1/revoke"},
+		{http.MethodDelete, "/api/admin/oauth-clients/1"},
 	}
 
 	for _, tt := range routes {

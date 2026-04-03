@@ -24,7 +24,7 @@ type mockOAuthClientRepo struct {
 	listClientsFn      func(ctx context.Context, query string, limit, offset int) ([]model.OAuthClient, int, error)
 	createClientFn     func(ctx context.Context, client *model.OAuthClient) error
 	findClientByIDFn   func(ctx context.Context, id int64) (*model.OAuthClient, error)
-	deactivateClientFn func(ctx context.Context, id int64) error
+	deleteClientFn func(ctx context.Context, id int64) error
 }
 
 func (m *mockOAuthClientRepo) ListClients(ctx context.Context, query string, limit, offset int) ([]model.OAuthClient, int, error) {
@@ -48,9 +48,9 @@ func (m *mockOAuthClientRepo) FindClientByID(ctx context.Context, id int64) (*mo
 	return nil, errors.New("not found")
 }
 
-func (m *mockOAuthClientRepo) DeactivateClient(ctx context.Context, id int64) error {
-	if m.deactivateClientFn != nil {
-		return m.deactivateClientFn(ctx, id)
+func (m *mockOAuthClientRepo) DeleteClient(ctx context.Context, id int64) error {
+	if m.deleteClientFn != nil {
+		return m.deleteClientFn(ctx, id)
 	}
 	return nil
 }
@@ -73,7 +73,6 @@ func TestOAuthClientHandler_List_Success(t *testing.T) {
 					GrantTypes:              `["authorization_code"]`,
 					ResponseTypes:           `["code"]`,
 					TokenEndpointAuthMethod: "client_secret_post",
-					IsActive:                true,
 				},
 			}, 1, nil
 		},
@@ -221,50 +220,50 @@ func TestOAuthClientHandler_Create_RepoError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Tests: Revoke
+// Tests: Delete
 // ---------------------------------------------------------------------------
 
-func TestOAuthClientHandler_Revoke_Success(t *testing.T) {
+func TestOAuthClientHandler_Delete_Success(t *testing.T) {
 	t.Parallel()
 
 	h := NewOAuthClientHandler(&mockOAuthClientRepo{}, discardLogger())
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "1")
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/oauth-clients/1/revoke", http.NoBody)
+	req := httptest.NewRequest(http.MethodDelete, "/api/admin/oauth-clients/1", http.NoBody)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rec := httptest.NewRecorder()
 
-	h.Revoke(rec, req)
+	h.Delete(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNoContent)
 	}
 }
 
-func TestOAuthClientHandler_Revoke_InvalidID(t *testing.T) {
+func TestOAuthClientHandler_Delete_InvalidID(t *testing.T) {
 	t.Parallel()
 
 	h := NewOAuthClientHandler(&mockOAuthClientRepo{}, discardLogger())
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "abc")
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/oauth-clients/abc/revoke", http.NoBody)
+	req := httptest.NewRequest(http.MethodDelete, "/api/admin/oauth-clients/abc", http.NoBody)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rec := httptest.NewRecorder()
 
-	h.Revoke(rec, req)
+	h.Delete(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }
 
-func TestOAuthClientHandler_Revoke_Error(t *testing.T) {
+func TestOAuthClientHandler_Delete_Error(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockOAuthClientRepo{
-		deactivateClientFn: func(_ context.Context, _ int64) error {
+		deleteClientFn: func(_ context.Context, _ int64) error {
 			return errors.New("db error")
 		},
 	}
@@ -273,11 +272,11 @@ func TestOAuthClientHandler_Revoke_Error(t *testing.T) {
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "1")
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/oauth-clients/1/revoke", http.NoBody)
+	req := httptest.NewRequest(http.MethodDelete, "/api/admin/oauth-clients/1", http.NoBody)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rec := httptest.NewRecorder()
 
-	h.Revoke(rec, req)
+	h.Delete(rec, req)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
@@ -306,7 +305,6 @@ func TestOAuthClientHandler_Show_Success(t *testing.T) {
 					GrantTypes:              `["authorization_code"]`,
 					ResponseTypes:           `["code"]`,
 					TokenEndpointAuthMethod: "client_secret_post",
-					IsActive:                true,
 				}, nil
 			}
 			return nil, errors.New("not found")
@@ -394,7 +392,6 @@ func TestToOAuthClientResponse(t *testing.T) {
 		GrantTypes:              `["authorization_code"]`,
 		ResponseTypes:           `["code"]`,
 		TokenEndpointAuthMethod: "client_secret_post",
-		IsActive:                true,
 	}
 
 	resp := toOAuthClientResponse(client)
@@ -404,9 +401,6 @@ func TestToOAuthClientResponse(t *testing.T) {
 	}
 	if len(resp.RedirectURIs) != 1 || resp.RedirectURIs[0] != "https://example.com" {
 		t.Errorf("RedirectURIs = %v, want [https://example.com]", resp.RedirectURIs)
-	}
-	if !resp.IsActive {
-		t.Error("expected IsActive to be true")
 	}
 }
 

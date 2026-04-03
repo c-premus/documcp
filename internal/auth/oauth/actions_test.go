@@ -267,7 +267,6 @@ func makePublicClient(id int64, clientID string) *model.OAuthClient {
 		ClientID:                clientID,
 		TokenEndpointAuthMethod: "none",
 		GrantTypes:              `["authorization_code"]`,
-		IsActive:                true,
 		CreatedAt:               sql.NullTime{Time: time.Now(), Valid: true},
 	}
 }
@@ -283,7 +282,6 @@ func makeConfidentialClient(t *testing.T, id int64, clientID, plainSecret string
 		ClientSecret:            sql.NullString{String: hashed, Valid: true},
 		TokenEndpointAuthMethod: "client_secret_post",
 		GrantTypes:              `["authorization_code"]`,
-		IsActive:                true,
 		CreatedAt:               sql.NullTime{Time: time.Now(), Valid: true},
 	}
 }
@@ -298,7 +296,6 @@ func makeDeviceClient() *model.OAuthClient {
 		ClientID:                deviceClientID,
 		TokenEndpointAuthMethod: "none",
 		GrantTypes:              `["authorization_code","urn:ietf:params:oauth:grant-type:device_code"]`,
-		IsActive:                true,
 		CreatedAt:               sql.NullTime{Time: time.Now(), Valid: true},
 	}
 }
@@ -416,7 +413,6 @@ func TestRegisterClient(t *testing.T) {
 
 		// Verify persisted model
 		require.NotNil(t, capturedClient)
-		assert.True(t, capturedClient.IsActive)
 		assert.False(t, capturedClient.ClientSecret.Valid, "public client stores no secret")
 	})
 
