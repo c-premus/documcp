@@ -223,12 +223,7 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	if hasCompleted {
 		completedNonce, _ := session.Values["oauth_completed_nonce"].(string)
 		if completedNonce != "" && subtle.ConstantTimeCompare([]byte(reqNonce), []byte(completedNonce)) == 1 {
-			// Override CSP for cross-origin redirect (see primary path below).
-			w.Header().Set("Content-Security-Policy",
-				"default-src 'none'; form-action *; frame-ancestors 'none'")
-			// 303 See Other: tells the browser to follow the redirect with GET,
-			// preventing further POST replays.
-			http.Redirect(w, r, completedURL, http.StatusSeeOther)
+			jsRedirect(w, completedURL)
 			return
 		}
 	}
@@ -342,16 +337,10 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	session.Values["oauth_completed_nonce"] = reqNonce
 	_ = session.Save(r, w)
 
-	// Override the global CSP: the redirect target is the client's
-	// redirect_uri (different origin). Safari checks form-action on the
-	// 303 response as part of the form submission chain.
-	w.Header().Set("Content-Security-Policy",
-		"default-src 'none'; form-action *; frame-ancestors 'none'")
-
-	// 303 See Other: tells the browser to follow the redirect with GET,
-	// preventing POST replay. 302 Found is ambiguous after POST — Safari
-	// may re-POST instead of switching to GET.
-	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+	// Use a JavaScript redirect instead of HTTP 303. Safari and embedded
+	// browsers (VS Code) do not reliably follow cross-origin 303 redirects
+	// in popup windows opened by Claude.ai's MCP integration.
+	jsRedirect(w, redirectURL)
 }
 
 // AuthorizeDeny handles POST /oauth/authorize/deny — user denies consent.
@@ -427,10 +416,7 @@ func (h *Handler) AuthorizeDeny(w http.ResponseWriter, r *http.Request) {
 			q.Set("state", state)
 		}
 		redirectURL := redirectURI + "?" + q.Encode()
-		// Override CSP for cross-origin redirect (see AuthorizeApprove).
-		w.Header().Set("Content-Security-Policy",
-			"default-src 'none'; form-action *; frame-ancestors 'none'")
-		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+		jsRedirect(w, redirectURL)
 		return
 	}
 
@@ -439,6 +425,32 @@ func (h *Handler) AuthorizeDeny(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = fmt.Fprint(w, denyHTML)
 }
+
+// jsRedirect renders an HTML page that performs a client-side redirect via
+// JavaScript. Safari and embedded browsers (VS Code) do not reliably follow
+// HTTP 303 redirects to a different origin in popup windows. A JS redirect
+// works universally. The URL is injected as a JSON string to prevent XSS —
+// the caller must pass a fully-constructed URL (not user input).
+func jsRedirect(w http.ResponseWriter, redirectURL string) {
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'none'; script-src 'unsafe-inline'; frame-ancestors 'none'")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	// JSON-encode the URL to safely embed it in a <script> tag.
+	urlJSON, _ := json.Marshal(redirectURL)
+	_, _ = fmt.Fprintf(w, jsRedirectHTML, string(urlJSON))
+}
+
+const jsRedirectHTML = `<!DOCTYPE html>
+<html>
+<head><title>Redirecting…</title></head>
+<body>
+<p>Redirecting…</p>
+<script>window.location.href=%s;</script>
+<noscript><p>JavaScript is required to complete this authorization flow.</p></noscript>
+</body>
+</html>`
 
 const denyHTML = `<!DOCTYPE html>
 <html>

@@ -527,11 +527,11 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 
 		h.AuthorizeApprove(rr, req)
 
-		require.Equal(t, http.StatusSeeOther, rr.Code)
-		location := rr.Header().Get("Location")
-		assert.Contains(t, location, "https://example.com/cb")
-		assert.Contains(t, location, "code=")
-		assert.Contains(t, location, "state=my_state_")
+		require.Equal(t, http.StatusOK, rr.Code)
+		body := rr.Body.String()
+		assert.Contains(t, body, "https://example.com/cb")
+		assert.Contains(t, body, "code=")
+		assert.Contains(t, body, "state=my_state_")
 	})
 
 	t.Run("happy path clears pending request from session", func(t *testing.T) {
@@ -572,7 +572,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 
 		h.AuthorizeApprove(rr, req)
 
-		require.Equal(t, http.StatusSeeOther, rr.Code)
+		require.Equal(t, http.StatusOK, rr.Code)
 		_, exists := store.session.Values["oauth_pending_request"]
 		assert.False(t, exists, "pending request should be cleared from session")
 	})
@@ -685,9 +685,9 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 
 		h.AuthorizeApprove(rr, req)
 
-		require.Equal(t, http.StatusSeeOther, rr.Code)
-		location := rr.Header().Get("Location")
-		assert.Contains(t, location, "code=")
+		require.Equal(t, http.StatusOK, rr.Code)
+		respBody := rr.Body.String()
+		assert.Contains(t, respBody, "code=")
 	})
 
 	t.Run("omits state from redirect when state is empty", func(t *testing.T) {
@@ -728,9 +728,9 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 
 		h.AuthorizeApprove(rr, req)
 
-		require.Equal(t, http.StatusSeeOther, rr.Code)
-		location := rr.Header().Get("Location")
-		assert.NotContains(t, location, "state=")
+		require.Equal(t, http.StatusOK, rr.Code)
+		body := rr.Body.String()
+		assert.NotContains(t, body, "state=")
 	})
 
 	t.Run("does not expand client scope on approval", func(t *testing.T) {
@@ -775,9 +775,9 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 
 		h.AuthorizeApprove(rr, req)
 
-		require.Equal(t, http.StatusSeeOther, rr.Code)
-		location := rr.Header().Get("Location")
-		assert.Contains(t, location, "code=")
+		require.Equal(t, http.StatusOK, rr.Code)
+		body := rr.Body.String()
+		assert.Contains(t, body, "code=")
 	})
 
 	t.Run("stores completed redirect in session for idempotent retry", func(t *testing.T) {
@@ -812,7 +812,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 
 		h.AuthorizeApprove(rr, req)
 
-		require.Equal(t, http.StatusSeeOther, rr.Code)
+		require.Equal(t, http.StatusOK, rr.Code)
 		completedURL, ok := store.session.Values["oauth_completed_redirect"].(string)
 		require.True(t, ok, "completed redirect URL should be stored in session")
 		assert.Contains(t, completedURL, "https://example.com/cb")
@@ -837,9 +837,9 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 
 		h.AuthorizeApprove(rr, req)
 
-		require.Equal(t, http.StatusSeeOther, rr.Code)
-		location := rr.Header().Get("Location")
-		assert.Equal(t, "https://example.com/cb?code=abc123&state=my_state_", location)
+		require.Equal(t, http.StatusOK, rr.Code)
+		body := rr.Body.String()
+		assert.Contains(t, body, "https://example.com/cb?code=abc123\\u0026state=my_state_")
 	})
 
 	t.Run("retried POST with wrong nonce does not re-redirect", func(t *testing.T) {
@@ -968,11 +968,11 @@ func TestHandler_AuthorizeDeny(t *testing.T) {
 
 		h.AuthorizeDeny(rr, req)
 
-		require.Equal(t, http.StatusSeeOther, rr.Code)
-		location := rr.Header().Get("Location")
-		assert.Contains(t, location, "https://example.com/cb")
-		assert.Contains(t, location, "error=access_denied")
-		assert.Contains(t, location, "state=my_state_")
+		require.Equal(t, http.StatusOK, rr.Code)
+		body := rr.Body.String()
+		assert.Contains(t, body, "https://example.com/cb")
+		assert.Contains(t, body, "error=access_denied")
+		assert.Contains(t, body, "state=my_state_")
 	})
 
 	t.Run("clears pending request from session", func(t *testing.T) {
@@ -994,7 +994,7 @@ func TestHandler_AuthorizeDeny(t *testing.T) {
 
 		h.AuthorizeDeny(rr, req)
 
-		require.Equal(t, http.StatusSeeOther, rr.Code)
+		require.Equal(t, http.StatusOK, rr.Code)
 		_, exists := store.session.Values["oauth_pending_request"]
 		assert.False(t, exists, "pending request should be cleared from session")
 	})
