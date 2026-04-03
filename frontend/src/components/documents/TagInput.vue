@@ -108,6 +108,11 @@ onBeforeUnmount(() => {
       type="text"
       :value="modelValue"
       :placeholder="placeholder"
+      role="combobox"
+      aria-autocomplete="list"
+      aria-controls="tag-suggestions"
+      :aria-expanded="showDropdown && suggestions.length > 0"
+      :aria-activedescendant="activeIndex >= 0 ? `tag-option-${activeIndex}` : undefined"
       class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
       @input="handleInput"
       @keydown="handleKeydown"
@@ -115,11 +120,16 @@ onBeforeUnmount(() => {
     />
     <ul
       v-if="showDropdown && suggestions.length > 0"
+      id="tag-suggestions"
+      role="listbox"
       class="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-border-input bg-bg-surface shadow-lg"
     >
       <li
         v-for="(tag, index) in suggestions"
+        :id="`tag-option-${index}`"
         :key="tag"
+        role="option"
+        :aria-selected="index === activeIndex"
         class="cursor-pointer px-3 py-2 text-sm text-text-primary"
         :class="
           index === activeIndex

@@ -468,8 +468,8 @@ func jsRedirect(w http.ResponseWriter, redirectURL string) {
 }
 
 const jsRedirectHTML = `<!DOCTYPE html>
-<html>
-<head><title>Redirecting…</title></head>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Redirecting…</title></head>
 <body>
 <p>Redirecting…</p>
 <script>window.location.href=%s;</script>
@@ -478,8 +478,8 @@ const jsRedirectHTML = `<!DOCTYPE html>
 </html>`
 
 const denyHTML = `<!DOCTYPE html>
-<html>
-<head><title>Authorization Denied</title>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorization Denied</title>
 <style>
 body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a;background:#ffffff}
 h1{font-size:1.5em}
@@ -497,8 +497,8 @@ h1{font-size:1.5em}
 const pendingStateMaxAge = 600 // 10 minutes
 
 const consentHTML = `<!DOCTYPE html>
-<html>
-<head><title>Authorize Application</title>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize Application</title>
 <style>
 body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a;background:#ffffff}
 h1{font-size:1.5em}
@@ -508,11 +508,13 @@ form{margin-top:24px}
 button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:pointer;margin-right:8px}
 .approve{background:#2563eb;color:white}
 .deny{background:#e2e8f0;color:#334155}
+button:focus-visible{outline:2px solid #4f46e5;outline-offset:2px}
 @media(prefers-color-scheme:dark){
 body{color:#e2e8f0;background:#030712}
 .client-name{color:#60a5fa}
 .scope{background:#111827;color:#e2e8f0}
 .deny{background:#334155;color:#e2e8f0}
+button:focus-visible{outline-color:#818cf8}
 }
 </style>
 </head>
