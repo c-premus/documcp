@@ -44,16 +44,24 @@ func Valid(s string) bool {
 	return All[s]
 }
 
-// ParseScopes splits a space-delimited scope string into a slice of non-empty
-// scope tokens.
+// ParseScopes splits a space-delimited scope string into a deduplicated slice
+// of non-empty scope tokens, preserving first-occurrence order.
 func ParseScopes(s string) []string {
+	seen := make(map[string]bool)
 	var out []string
 	for tok := range strings.SplitSeq(s, " ") {
-		if tok != "" {
+		if tok != "" && !seen[tok] {
+			seen[tok] = true
 			out = append(out, tok)
 		}
 	}
 	return out
+}
+
+// Normalize deduplicates and re-joins a scope string, preserving first-occurrence
+// order. Use at input boundaries to ensure stored scope strings are clean.
+func Normalize(s string) string {
+	return strings.Join(ParseScopes(s), " ")
 }
 
 // IsSubset returns true if every scope in requested is also present in allowed.

@@ -24,7 +24,7 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	clientID := r.URL.Query().Get("client_id")
 	redirectURI := r.URL.Query().Get("redirect_uri")
 	state := r.URL.Query().Get("state")
-	scope := r.URL.Query().Get("scope")
+	scope := authscope.Normalize(r.URL.Query().Get("scope"))
 	codeChallenge := r.URL.Query().Get("code_challenge")
 	codeChallengeMethod := r.URL.Query().Get("code_challenge_method")
 

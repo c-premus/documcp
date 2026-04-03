@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/c-premus/documcp/internal/auth/oauth"
+	authscope "github.com/c-premus/documcp/internal/auth/scope"
 )
 
 // Token handles POST /oauth/token — the token endpoint.
@@ -47,6 +48,8 @@ func (h *Handler) Token(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	req.Scope = authscope.Normalize(req.Scope)
 
 	// Validate required fields
 	if req.GrantType == "" {
