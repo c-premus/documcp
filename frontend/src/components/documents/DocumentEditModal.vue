@@ -93,6 +93,7 @@ async function handleSubmit(): Promise<void> {
                   id="edit-title"
                   v-model="title"
                   type="text"
+                  :aria-describedby="error ? 'edit-doc-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
@@ -105,6 +106,7 @@ async function handleSubmit(): Promise<void> {
                   id="edit-description"
                   v-model="description"
                   rows="3"
+                  :aria-describedby="error ? 'edit-doc-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>

@@ -165,6 +165,7 @@ function handleClose(): void {
                   v-model="clientName"
                   type="text"
                   required
+                  :aria-describedby="error ? 'oauth-client-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
@@ -238,6 +239,7 @@ function handleClose(): void {
                 <select
                   id="auth-method"
                   v-model="authMethod"
+                  :aria-describedby="error ? 'oauth-client-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 >
                   <option
@@ -260,6 +262,7 @@ function handleClose(): void {
                   v-model="scope"
                   type="text"
                   placeholder="read write"
+                  :aria-describedby="error ? 'oauth-client-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
                 <p class="mt-1 text-xs text-text-muted">

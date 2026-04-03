@@ -72,7 +72,7 @@ async function copyToClipboard(value: string, fieldName: string): Promise<void> 
                 />
                 <button
                   type="button"
-                  class="shrink-0 rounded-md p-2 text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-bg-hover"
+                  class="shrink-0 rounded-md p-2 text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                   aria-label="Copy client ID"
                   @click="copyToClipboard(clientId, 'Client ID')"
                 >
@@ -95,7 +95,7 @@ async function copyToClipboard(value: string, fieldName: string): Promise<void> 
                 />
                 <button
                   type="button"
-                  class="shrink-0 rounded-md p-2 text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-bg-hover"
+                  class="shrink-0 rounded-md p-2 text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                   :aria-label="showSecret ? 'Hide client secret' : 'Show client secret'"
                   @click="showSecret = !showSecret"
                 >
@@ -104,7 +104,7 @@ async function copyToClipboard(value: string, fieldName: string): Promise<void> 
                 </button>
                 <button
                   type="button"
-                  class="shrink-0 rounded-md p-2 text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-bg-hover"
+                  class="shrink-0 rounded-md p-2 text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                   aria-label="Copy client secret"
                   @click="copyToClipboard(clientSecret, 'Client Secret')"
                 >
