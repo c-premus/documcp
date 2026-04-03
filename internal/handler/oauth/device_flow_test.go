@@ -96,7 +96,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["authorization_code"]`, // no device_code
 				}, nil
 			},
@@ -124,7 +123,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["urn:ietf:params:oauth:grant-type:device_code"]`,
 				}, nil
 			},
@@ -154,7 +152,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["urn:ietf:params:oauth:grant-type:device_code"]`,
 				}, nil
 			},
@@ -192,7 +189,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["urn:ietf:params:oauth:grant-type:device_code"]`,
 				}, nil
 			},
@@ -224,7 +220,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["urn:ietf:params:oauth:grant-type:device_code"]`,
 				}, nil
 			},
@@ -257,7 +252,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["urn:ietf:params:oauth:grant-type:device_code"]`,
 				}, nil
 			},
@@ -289,7 +283,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["urn:ietf:params:oauth:grant-type:device_code"]`,
 				}, nil
 			},
@@ -323,7 +316,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["urn:ietf:params:oauth:grant-type:device_code"]`,
 				}, nil
 			},
@@ -748,7 +740,6 @@ func TestHandler_DeviceVerificationSubmit(t *testing.T) {
 					ID:         10,
 					ClientID:   "test-client",
 					ClientName: "MyApp",
-					IsActive:   true,
 				}, nil
 			},
 		}
@@ -785,7 +776,6 @@ func TestHandler_DeviceVerificationSubmit(t *testing.T) {
 					ID:         10,
 					ClientID:   "test-client",
 					ClientName: "MyApp",
-					IsActive:   true,
 				}, nil
 			},
 			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
@@ -824,7 +814,6 @@ func TestHandler_DeviceVerificationSubmit(t *testing.T) {
 					ID:         10,
 					ClientID:   "test-client",
 					ClientName: "MyApp",
-					IsActive:   true,
 				}, nil
 			},
 		}

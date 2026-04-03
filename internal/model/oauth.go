@@ -22,7 +22,6 @@ type OAuthClient struct {
 	TokenEndpointAuthMethod string         `db:"token_endpoint_auth_method" json:"token_endpoint_auth_method"`
 	Scope                   sql.NullString `db:"scope" json:"scope"`
 	UserID                  sql.NullInt64  `db:"user_id" json:"user_id"`
-	IsActive                bool           `db:"is_active"     json:"is_active"`
 	LastUsedAt              sql.NullTime   `db:"last_used_at"  json:"last_used_at"`
 	CreatedAt               sql.NullTime   `db:"created_at"    json:"created_at"`
 	UpdatedAt               sql.NullTime   `db:"updated_at" json:"updated_at"`

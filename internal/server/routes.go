@@ -397,7 +397,7 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 					r.Get("/", deps.OAuthClientHandler.List)
 					r.Post("/", deps.OAuthClientHandler.Create)
 					r.Get("/{id}", deps.OAuthClientHandler.Show)
-					r.Post("/{id}/revoke", deps.OAuthClientHandler.Revoke)
+					r.Delete("/{id}", deps.OAuthClientHandler.Delete)
 				})
 			}
 

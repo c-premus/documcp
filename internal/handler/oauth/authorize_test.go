@@ -167,7 +167,6 @@ func TestHandler_Authorize(t *testing.T) {
 					ClientName:              "Test App",
 					RedirectURIs:            `["https://example.com/callback"]`,
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 				}, nil
 			},
 		}
@@ -196,7 +195,6 @@ func TestHandler_Authorize(t *testing.T) {
 					ClientName:              "Public App",
 					RedirectURIs:            `["https://example.com/cb"]`,
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 				}, nil
 			},
 		}
@@ -225,7 +223,6 @@ func TestHandler_Authorize(t *testing.T) {
 					ClientName:              "Public App",
 					RedirectURIs:            `["https://example.com/cb"]`,
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 				}, nil
 			},
 		}
@@ -252,7 +249,6 @@ func TestHandler_Authorize(t *testing.T) {
 					ClientName:              "My MCP App",
 					RedirectURIs:            `["https://example.com/cb"]`,
 					TokenEndpointAuthMethod: "client_secret_post",
-					IsActive:                true,
 				}, nil
 			},
 			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
@@ -285,7 +281,6 @@ func TestHandler_Authorize(t *testing.T) {
 					ClientName:              "Public App",
 					RedirectURIs:            `["https://example.com/cb"]`,
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 				}, nil
 			},
 			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
@@ -315,7 +310,6 @@ func TestHandler_Authorize(t *testing.T) {
 					ClientName:              "Test App",
 					RedirectURIs:            `["https://example.com/cb"]`,
 					TokenEndpointAuthMethod: "client_secret_post",
-					IsActive:                true,
 				}, nil
 			},
 			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
@@ -357,7 +351,6 @@ func TestHandler_Authorize(t *testing.T) {
 					RedirectURIs:            `["https://example.com/cb"]`,
 					TokenEndpointAuthMethod: "none",
 					Scope:                   sql.NullString{String: "documents:read mcp:access search:read services:read templates:read zim:read", Valid: true},
-					IsActive:                true,
 				}, nil
 			},
 			FindClientByIDFunc: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
@@ -407,7 +400,6 @@ func TestHandler_Authorize(t *testing.T) {
 					RedirectURIs:            `["https://example.com/cb"]`,
 					TokenEndpointAuthMethod: "none",
 					Scope:                   sql.NullString{String: "documents:read mcp:access search:read services:read templates:read zim:read", Valid: true},
-					IsActive:                true,
 				}, nil
 			},
 			FindClientByIDFunc: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
@@ -595,7 +587,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
@@ -640,7 +631,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
@@ -713,7 +703,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, _ *model.OAuthAuthorizationCode) error {
@@ -753,7 +742,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
@@ -796,7 +784,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
@@ -839,7 +826,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
@@ -880,7 +866,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ID: 1, ClientID: "cid", ClientName: "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
@@ -960,7 +945,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ID: 1, ClientID: "cid", ClientName: "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
 			},
 			FindUserByIDFunc: func(_ context.Context, _ int64) (*model.User, error) {
