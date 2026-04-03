@@ -223,6 +223,9 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	if hasCompleted {
 		completedNonce, _ := session.Values["oauth_completed_nonce"].(string)
 		if completedNonce != "" && subtle.ConstantTimeCompare([]byte(reqNonce), []byte(completedNonce)) == 1 {
+			// Override CSP for cross-origin redirect (see primary path below).
+			w.Header().Set("Content-Security-Policy",
+				"default-src 'none'; form-action *; frame-ancestors 'none'")
 			// 303 See Other: tells the browser to follow the redirect with GET,
 			// preventing further POST replays.
 			http.Redirect(w, r, completedURL, http.StatusSeeOther)
@@ -339,6 +342,12 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	session.Values["oauth_completed_nonce"] = reqNonce
 	_ = session.Save(r, w)
 
+	// Override the global CSP: the redirect target is the client's
+	// redirect_uri (different origin). Safari checks form-action on the
+	// 303 response as part of the form submission chain.
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'none'; form-action *; frame-ancestors 'none'")
+
 	// 303 See Other: tells the browser to follow the redirect with GET,
 	// preventing POST replay. 302 Found is ambiguous after POST — Safari
 	// may re-POST instead of switching to GET.
@@ -418,6 +427,9 @@ func (h *Handler) AuthorizeDeny(w http.ResponseWriter, r *http.Request) {
 			q.Set("state", state)
 		}
 		redirectURL := redirectURI + "?" + q.Encode()
+		// Override CSP for cross-origin redirect (see AuthorizeApprove).
+		w.Header().Set("Content-Security-Policy",
+			"default-src 'none'; form-action *; frame-ancestors 'none'")
 		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 		return
 	}
