@@ -296,10 +296,14 @@ func (h *Handler) searchKiwixArchives(ctx context.Context, query string, perArch
 		generalArchives = generalArchives[:h.federatedMaxArchives]
 	}
 
-	// Merge general + DevDocs into a single fan-out list. DevDocs archives
-	// are not capped — they are small and use suggest (title matching), so
-	// the per-archive cost is negligible. The fan-out timeout naturally
-	// limits slow or broken archives.
+	// Cap DevDocs archives at the same limit as general archives. With
+	// hundreds of DevDocs archives, uncapped fan-out overwhelms Kiwix Serve
+	// with concurrent requests that all timeout.
+	if len(devdocsArchives) > h.federatedMaxArchives {
+		devdocsArchives = devdocsArchives[:h.federatedMaxArchives]
+	}
+
+	// Merge general + DevDocs into a single fan-out list.
 	archives := make([]model.ZimArchive, 0, len(generalArchives)+len(devdocsArchives))
 	archives = append(archives, generalArchives...)
 	archives = append(archives, devdocsArchives...)
@@ -322,10 +326,16 @@ func (h *Handler) searchKiwixArchives(ctx context.Context, query string, perArch
 	resultsCh := make(chan archiveResult, len(archives))
 	var wg sync.WaitGroup
 
+	// Limit concurrent Kiwix requests to avoid overwhelming the server.
+	sem := make(chan struct{}, 20)
+
 	for i := range archives {
 		wg.Add(1)
 		go func(name string) {
 			defer wg.Done()
+
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
 			searchType := "suggest"
 			if ftMap[name] {
@@ -434,15 +444,16 @@ func (h *Handler) selectArchives(ctx context.Context, query string) (general, de
 		}
 	}
 
-	// Use FTS to find general archives relevant to the query (by title,
-	// description, tags). This narrows the fan-out to only topically relevant
-	// archives instead of blindly picking the largest ones.
+	// Use FTS to find archives relevant to the query (by title, description,
+	// tags). Request enough results to cover both general and DevDocs buckets.
+	// This narrows the fan-out to only topically relevant archives instead of
+	// blindly picking the largest ones.
 	var selectedNames map[string]bool
 	if h.searcher != nil {
 		resp, searchErr := h.searcher.Search(ctx, search.SearchParams{
 			Query:    query,
 			IndexUID: search.IndexZimArchives,
-			Limit:    int64(h.federatedMaxArchives),
+			Limit:    int64(h.federatedMaxArchives * 3), // extra headroom for category split
 		})
 		if searchErr != nil {
 			h.logger.Warn("search archive selection failed, falling back to DB", "error", searchErr)
@@ -456,7 +467,9 @@ func (h *Handler) selectArchives(ctx context.Context, query string) (general, de
 		}
 	}
 
-	// Filter general archives to FTS-selected ones when available.
+	// Filter both general and DevDocs archives to FTS-selected ones when
+	// available. This prevents hundreds of irrelevant DevDocs archives from
+	// being fanned out.
 	if len(selectedNames) > 0 {
 		filtered := generalArchives[:0]
 		for i := range generalArchives {
@@ -466,6 +479,16 @@ func (h *Handler) selectArchives(ctx context.Context, query string) (general, de
 		}
 		if len(filtered) > 0 {
 			generalArchives = filtered
+		}
+
+		filteredDD := devdocsArchives[:0]
+		for i := range devdocsArchives {
+			if selectedNames[devdocsArchives[i].Name] {
+				filteredDD = append(filteredDD, devdocsArchives[i])
+			}
+		}
+		if len(filteredDD) > 0 {
+			devdocsArchives = filteredDD
 		}
 		// If no DB archives match (e.g. stale index), fall through to full list.
 	}
