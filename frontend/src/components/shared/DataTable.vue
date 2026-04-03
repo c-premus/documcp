@@ -42,10 +42,11 @@ const table = useVueTable({
     class="overflow-hidden shadow ring-1 ring-black/5 dark:ring-white/10 rounded-lg"
     aria-live="polite"
   >
-    <div v-if="loading" class="flex items-center justify-center py-12">
+    <div v-if="loading" class="flex items-center justify-center py-12" role="status">
       <div
         class="h-8 w-8 animate-spin rounded-full border-4 border-border-input border-t-indigo-600 dark:border-t-indigo-400"
       />
+      <span class="sr-only">Loading…</span>
     </div>
     <table v-else class="min-w-full divide-y divide-border-default">
       <thead class="bg-bg-surface-alt">
@@ -53,6 +54,14 @@ const table = useVueTable({
           <th
             v-for="header in table.getHeaderGroups()[0]?.headers"
             :key="header.id"
+            scope="col"
+            :aria-sort="
+              header.column.getIsSorted() === 'asc'
+                ? 'ascending'
+                : header.column.getIsSorted() === 'desc'
+                  ? 'descending'
+                  : 'none'
+            "
             :class="[
               'px-3 py-3.5 text-left text-sm font-semibold text-text-primary cursor-pointer select-none',
               header.column.columnDef.meta?.className,
@@ -64,11 +73,13 @@ const table = useVueTable({
               <span
                 v-if="header.column.getIsSorted() === 'asc'"
                 class="text-indigo-600 dark:text-indigo-400"
+                aria-hidden="true"
                 >↑</span
               >
               <span
                 v-else-if="header.column.getIsSorted() === 'desc'"
                 class="text-indigo-600 dark:text-indigo-400"
+                aria-hidden="true"
                 >↓</span
               >
             </div>
@@ -79,9 +90,12 @@ const table = useVueTable({
         <tr
           v-for="row in table.getRowModel().rows"
           :key="row.id"
-          class="hover:bg-bg-hover"
+          class="hover:bg-bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
           :class="{ 'cursor-pointer': clickable }"
+          :tabindex="clickable ? 0 : undefined"
+          :role="clickable ? 'link' : undefined"
           @click="$emit('row-click', row.original)"
+          @keydown.enter="clickable ? $emit('row-click', row.original) : undefined"
         >
           <td
             v-for="cell in row.getVisibleCells()"

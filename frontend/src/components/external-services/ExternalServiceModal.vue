@@ -181,7 +181,12 @@ async function handleSubmit(): Promise<void> {
               </div>
             </div>
 
-            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">
+            <p
+              v-if="error"
+              id="service-form-error"
+              role="alert"
+              class="mt-3 text-sm text-red-600 dark:text-red-400"
+            >
               {{ error }}
             </p>
 

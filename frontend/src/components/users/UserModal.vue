@@ -182,7 +182,12 @@ async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
               </div>
             </div>
 
-            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">
+            <p
+              v-if="error"
+              id="user-form-error"
+              role="alert"
+              class="mt-3 text-sm text-red-600 dark:text-red-400"
+            >
               {{ error }}
             </p>
 

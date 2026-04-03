@@ -270,24 +270,29 @@ func (h *Handler) DeviceApprove(w http.ResponseWriter, r *http.Request) {
 }
 
 const deviceVerificationHTML = `<!DOCTYPE html>
-<html>
-<head><title>Device Authorization</title>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Device Authorization</title>
 <style>
 body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a;background:#ffffff}
 h1{font-size:1.5em}
-input[type=text]{font-size:1.5em;padding:10px;width:200px;text-align:center;letter-spacing:4px;text-transform:uppercase;border:1px solid #cbd5e1;border-radius:6px;background:#ffffff;color:#0f172a}
+label{display:block;margin-bottom:8px}
+input[type=text]{font-size:1.5em;padding:10px;width:200px;text-align:center;letter-spacing:4px;text-transform:uppercase;border:2px solid #94a3b8;border-radius:6px;background:#ffffff;color:#0f172a}
+input[type=text]:focus-visible{outline:2px solid #4f46e5;outline-offset:2px;border-color:#4f46e5}
 button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:pointer;background:#2563eb;color:white}
+button:focus-visible{outline:2px solid #4f46e5;outline-offset:2px}
 @media(prefers-color-scheme:dark){
 body{color:#e2e8f0;background:#030712}
-input[type=text]{background:#111827;color:#e2e8f0;border-color:#475569}
+input[type=text]{background:#111827;color:#e2e8f0;border-color:#6b7280}
+input[type=text]:focus-visible{outline-color:#818cf8;border-color:#818cf8}
+button:focus-visible{outline-color:#818cf8}
 }
 </style>
 </head>
 <body>
 <h1>Device Authorization</h1>
-<p>Enter the code shown on your device:</p>
 <form method="POST" action="/oauth/device">
-<input type="text" name="user_code" value="%s" maxlength="9" placeholder="XXXX-XXXX" required>
+<label for="user_code">Enter the code shown on your device:</label>
+<input id="user_code" type="text" name="user_code" value="%s" maxlength="9" placeholder="XXXX-XXXX" autocomplete="off" required>
 <br><br>
 <button type="submit">Continue</button>
 </form>
@@ -295,8 +300,8 @@ input[type=text]{background:#111827;color:#e2e8f0;border-color:#475569}
 </html>`
 
 const deviceConsentHTML = `<!DOCTYPE html>
-<html>
-<head><title>Authorize Device</title>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize Device</title>
 <style>
 body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a;background:#ffffff}
 h1{font-size:1.5em}
@@ -305,11 +310,13 @@ h1{font-size:1.5em}
 button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:pointer;margin-right:8px}
 .approve{background:#2563eb;color:white}
 .deny{background:#e2e8f0;color:#334155}
+button:focus-visible{outline:2px solid #4f46e5;outline-offset:2px}
 @media(prefers-color-scheme:dark){
 body{color:#e2e8f0;background:#030712}
 .client-name{color:#60a5fa}
 .scope{background:#111827;color:#e2e8f0}
 .deny{background:#334155;color:#e2e8f0}
+button:focus-visible{outline-color:#818cf8}
 }
 </style>
 </head>
@@ -326,8 +333,8 @@ body{color:#e2e8f0;background:#030712}
 </html>`
 
 const deviceSuccessHTML = `<!DOCTYPE html>
-<html>
-<head><title>Authorization Successful</title>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorization Successful</title>
 <style>
 body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;text-align:center;color:#0f172a;background:#ffffff}
 h1{color:#16a34a}
@@ -341,8 +348,8 @@ h1{color:#16a34a}
 </html>`
 
 const deviceDeniedHTML = `<!DOCTYPE html>
-<html>
-<head><title>Authorization Denied</title>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorization Denied</title>
 <style>
 body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;text-align:center;color:#0f172a;background:#ffffff}
 h1{color:#dc2626}
@@ -356,8 +363,8 @@ h1{color:#dc2626}
 </html>`
 
 const deviceErrorHTML = `<!DOCTYPE html>
-<html>
-<head><title>Error</title>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Error</title>
 <style>
 body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;text-align:center;color:#0f172a;background:#ffffff}
 h1{color:#dc2626}
@@ -366,6 +373,6 @@ h1{color:#dc2626}
 </head>
 <body>
 <h1>Error</h1>
-<p>%s</p>
+<p role="alert">%s</p>
 </body>
 </html>`

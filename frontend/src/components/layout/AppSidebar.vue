@@ -140,7 +140,7 @@ watch(
               <!-- Documents -->
               <div class="my-4 mx-3 border-t border-border-default" />
               <p
-                class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled"
+                class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted"
               >
                 Documents
               </p>
@@ -165,7 +165,7 @@ watch(
               <!-- Content Sources -->
               <div class="my-4 mx-3 border-t border-border-default" />
               <p
-                class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled"
+                class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted"
               >
                 Content Sources
               </p>
@@ -191,7 +191,7 @@ watch(
               <template v-if="auth.isAdmin">
                 <div class="my-4 mx-3 border-t border-border-default" />
                 <p
-                  class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled"
+                  class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted"
                 >
                   Administration
                 </p>
@@ -259,7 +259,7 @@ watch(
 
       <!-- Documents -->
       <div class="my-4 mx-3 border-t border-border-default" />
-      <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">
+      <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted">
         Documents
       </p>
       <ul class="space-y-1 px-3">
@@ -282,7 +282,7 @@ watch(
 
       <!-- Content Sources -->
       <div class="my-4 mx-3 border-t border-border-default" />
-      <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">
+      <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted">
         Content Sources
       </p>
       <ul class="space-y-1 px-3">
@@ -306,7 +306,7 @@ watch(
       <!-- Administration -->
       <template v-if="auth.isAdmin">
         <div class="my-4 mx-3 border-t border-border-default" />
-        <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-disabled">
+        <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted">
           Administration
         </p>
         <ul class="space-y-1 px-3">

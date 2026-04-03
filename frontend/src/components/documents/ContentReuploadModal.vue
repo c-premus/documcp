@@ -178,7 +178,12 @@ async function handleReplace(): Promise<void> {
             />
           </div>
 
-          <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">
+          <p
+            v-if="error"
+            id="reupload-form-error"
+            role="alert"
+            class="mt-3 text-sm text-red-600 dark:text-red-400"
+          >
             {{ error }}
           </p>
 
