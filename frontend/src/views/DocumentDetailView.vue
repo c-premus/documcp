@@ -3,11 +3,18 @@ import { ref, watch, onMounted } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { format } from 'date-fns'
-import { ArrowDownTrayIcon, TrashIcon } from '@heroicons/vue/24/outline'
+import {
+  ArrowDownTrayIcon,
+  ArrowPathIcon,
+  PencilSquareIcon,
+  TrashIcon,
+} from '@heroicons/vue/24/outline'
 import { useDocumentsStore } from '@/stores/documents'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
 import ContentViewer from '@/components/documents/ContentViewer.vue'
+import DocumentEditModal from '@/components/documents/DocumentEditModal.vue'
+import ContentReuploadModal from '@/components/documents/ContentReuploadModal.vue'
 
 const props = defineProps<{
   readonly uuid: string
@@ -17,6 +24,8 @@ const router = useRouter()
 const store = useDocumentsStore()
 
 const showDeleteDialog = ref(false)
+const showEditModal = ref(false)
+const showReuploadModal = ref(false)
 const deleting = ref(false)
 
 function formatFileSize(bytes: number): string {
@@ -60,6 +69,16 @@ async function handleDelete(): Promise<void> {
     deleting.value = false
     showDeleteDialog.value = false
   }
+}
+
+function handleEdited(): void {
+  showEditModal.value = false
+  loadDocument(props.uuid)
+}
+
+function handleReplaced(): void {
+  showReuploadModal.value = false
+  loadDocument(props.uuid)
 }
 
 onMounted(() => {
@@ -115,6 +134,7 @@ watch(
       <div class="flex items-center gap-3">
         <h1 class="text-2xl font-bold text-text-primary">{{ store.currentDocument.title }}</h1>
         <StatusBadge :status="store.currentDocument.status" />
+        <StatusBadge :status="store.currentDocument.is_public ? 'public' : 'private'" />
       </div>
 
       <!-- Two-column layout -->
@@ -151,6 +171,14 @@ watch(
               </dd>
             </div>
 
+            <!-- Visibility -->
+            <div>
+              <dt class="text-sm font-medium text-text-muted">Visibility</dt>
+              <dd class="mt-1">
+                <StatusBadge :status="store.currentDocument.is_public ? 'public' : 'private'" />
+              </dd>
+            </div>
+
             <!-- File Size -->
             <div>
               <dt class="text-sm font-medium text-text-muted">File Size</dt>
@@ -175,6 +203,18 @@ watch(
                 :title="store.currentDocument.content_hash"
               >
                 {{ truncateHash(store.currentDocument.content_hash) }}
+              </dd>
+            </div>
+
+            <!-- Processed At -->
+            <div>
+              <dt class="text-sm font-medium text-text-muted">Processed</dt>
+              <dd class="mt-1 text-sm text-text-primary">
+                {{
+                  store.currentDocument.processed_at
+                    ? formatDate(store.currentDocument.processed_at)
+                    : 'Not yet processed'
+                }}
               </dd>
             </div>
 
@@ -207,6 +247,20 @@ watch(
                 {{ formatDate(store.currentDocument.updated_at) }}
               </dd>
             </div>
+
+            <!-- Error message -->
+            <div
+              v-if="
+                store.currentDocument.status === 'failed' && store.currentDocument.error_message
+              "
+            >
+              <dt class="text-sm font-medium text-red-600 dark:text-red-400">Error</dt>
+              <dd
+                class="mt-1 rounded-md bg-red-50 dark:bg-red-900/20 p-2 text-sm text-red-800 dark:text-red-300"
+              >
+                {{ store.currentDocument.error_message }}
+              </dd>
+            </div>
           </dl>
 
           <!-- Actions -->
@@ -219,6 +273,23 @@ watch(
               <ArrowDownTrayIcon class="h-4 w-4" aria-hidden="true" />
               Download
             </a>
+            <button
+              type="button"
+              class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-bg-active px-3 py-2 text-sm font-semibold text-text-primary shadow-sm hover:bg-bg-hover"
+              @click="showEditModal = true"
+            >
+              <PencilSquareIcon class="h-4 w-4" aria-hidden="true" />
+              Edit
+            </button>
+            <button
+              v-if="store.currentDocument?.has_file"
+              type="button"
+              class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm font-semibold text-amber-700 dark:text-amber-300 shadow-sm hover:bg-amber-100 dark:hover:bg-amber-900/30"
+              @click="showReuploadModal = true"
+            >
+              <ArrowPathIcon class="h-4 w-4" aria-hidden="true" />
+              Replace File
+            </button>
             <button
               type="button"
               class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm font-semibold text-red-700 dark:text-red-300 shadow-sm hover:bg-red-100 dark:hover:bg-red-900/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
@@ -244,6 +315,22 @@ watch(
         </div>
       </div>
     </template>
+
+    <!-- Edit Modal -->
+    <DocumentEditModal
+      :open="showEditModal"
+      :document="store.currentDocument ?? null"
+      @close="showEditModal = false"
+      @saved="handleEdited"
+    />
+
+    <!-- Content Reupload Modal -->
+    <ContentReuploadModal
+      :open="showReuploadModal"
+      :document="store.currentDocument ?? null"
+      @close="showReuploadModal = false"
+      @replaced="handleReplaced"
+    />
 
     <!-- Delete confirmation dialog -->
     <ConfirmDialog

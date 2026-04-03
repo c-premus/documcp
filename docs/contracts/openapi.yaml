@@ -67,6 +67,8 @@ tags:
     description: Manage Git-based project templates
   - name: OAuth
     description: OAuth 2.1 authorization server endpoints
+  - name: Admin
+    description: Administrative operations requiring elevated privileges
   - name: Observability
     description: Internal metrics and deep health checks
 
@@ -472,6 +474,105 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimitExceeded"
 
+  /api/documents/tags:
+    get:
+      operationId: listDocumentTags
+      tags: [Documents]
+      summary: List distinct tags
+      description: |
+        Returns distinct document tags matching an optional prefix. Used for autocomplete.
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `documents:read`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          description: Tag prefix filter
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum tags to return (default 20, max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: List of tags
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: string
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/documents/trash:
+    get:
+      operationId: listDeletedDocuments
+      tags: [Documents]
+      summary: List deleted documents
+      description: |
+        Returns documents that have been soft-deleted (moved to trash).
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `documents:read`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number (default 1)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          description: Items per page (default 15, max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 15
+      responses:
+        "200":
+          description: Paginated list of deleted documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Document"
+                  meta:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      per_page:
+                        type: integer
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
   /api/documents/{document}:
     parameters:
       - name: document
@@ -599,6 +700,70 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimitExceeded"
 
+  /api/documents/{document}/content:
+    parameters:
+      - name: document
+        in: path
+        required: true
+        description: Document UUID
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+    post:
+      operationId: replaceDocumentContent
+      tags: [Documents]
+      summary: Replace document content
+      description: |
+        Replaces the file content of an existing document. The document is re-processed
+        for text extraction. Metadata (title, description, tags, visibility) is preserved.
+        Requires authentication. Rate limit: `api-write` (30/min).
+
+        **Required scope:** `documents:write`
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: "Replacement file (PDF, DOCX, XLSX, HTML, Markdown). Max 50 MB."
+      responses:
+        "200":
+          description: Content replaced
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Document"
+                      message:
+                        type: string
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorEnvelope"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
   /api/documents/{document}/download:
     parameters:
       - name: document
@@ -632,6 +797,91 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/documents/{document}/purge:
+    parameters:
+      - name: document
+        in: path
+        required: true
+        description: Document UUID
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+    delete:
+      operationId: purgeDocument
+      tags: [Documents]
+      summary: Permanently delete document
+      description: |
+        Permanently removes a soft-deleted document and its file from disk.
+        This action cannot be undone. Requires authentication.
+        Rate limit: `api-write` (30/min).
+
+        **Required scope:** `documents:write`
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Document permanently deleted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/documents/{document}/restore:
+    parameters:
+      - name: document
+        in: path
+        required: true
+        description: Document UUID
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+    post:
+      operationId: restoreDocument
+      tags: [Documents]
+      summary: Restore document from trash
+      description: |
+        Restores a soft-deleted document, making it active again.
+        Requires authentication. Rate limit: `api-write` (30/min).
+
+        **Required scope:** `documents:write`
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Document restored
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Document"
+                      message:
+                        type: string
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
         "404":
           $ref: "#/components/responses/NotFound"
         "429":
@@ -693,6 +943,53 @@ paths:
                     const: false
                   message:
                     type: string
+
+  # ---------------------------------------------------------------------------
+  # Admin
+  # ---------------------------------------------------------------------------
+  /api/admin/documents/purge:
+    delete:
+      operationId: bulkPurgeDocuments
+      tags: [Admin]
+      summary: Bulk purge deleted documents
+      description: |
+        Permanently removes all soft-deleted documents older than the specified threshold.
+        Requires authentication and admin role. Rate limit: `admin` (10/min).
+
+        **Required scope:** `admin`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: older_than_days
+          in: query
+          description: Minimum age in days for purge (default 30)
+          schema:
+            type: integer
+            minimum: 0
+            default: 30
+      responses:
+        "200":
+          description: Documents purged
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          purged_count:
+                            type: integer
+                      message:
+                        type: string
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
 
   # ---------------------------------------------------------------------------
   # ZIM Archives
@@ -2262,6 +2559,9 @@ components:
         file_size:
           type: integer
           description: File size in bytes
+        has_file:
+          type: boolean
+          description: Whether the original file exists on disk
         mime_type:
           type: string
         word_count:
@@ -2271,6 +2571,11 @@ components:
         status:
           type: string
           description: Processing status
+        error_message:
+          type:
+            - string
+            - 'null'
+          description: Error details when status is failed
         content_hash:
           type: [string, "null"]
         tags:
@@ -2285,6 +2590,12 @@ components:
         updated_at:
           type: [string, "null"]
           format: date-time
+        processed_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: When content extraction completed
 
     User:
       type: object

@@ -4,6 +4,7 @@ import { Dialog, DialogPanel, DialogTitle, Switch } from '@headlessui/vue'
 import { CloudArrowUpIcon, DocumentIcon } from '@heroicons/vue/24/outline'
 import { useDocumentsStore } from '@/stores/documents'
 import { toast } from 'vue-sonner'
+import TagInput from '@/components/documents/TagInput.vue'
 
 const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.html,.md,.txt'
 const MAX_SIZE_BYTES = 50 * 1024 * 1024
@@ -284,13 +285,7 @@ function retry(): void {
                 <label for="upload-tags" class="block text-sm font-medium text-text-secondary"
                   >Tags</label
                 >
-                <input
-                  id="upload-tags"
-                  v-model="tags"
-                  type="text"
-                  placeholder="comma-separated tags"
-                  class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
-                />
+                <TagInput v-model="tags" placeholder="comma-separated tags" />
               </div>
 
               <div class="flex items-center justify-between">

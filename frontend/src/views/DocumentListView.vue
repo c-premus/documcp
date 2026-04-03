@@ -3,7 +3,7 @@ import { ref, watch, computed, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { formatDistanceToNow } from 'date-fns'
-import { EyeIcon, TrashIcon } from '@heroicons/vue/24/outline'
+import { EyeIcon, TrashIcon, PencilSquareIcon } from '@heroicons/vue/24/outline'
 import type { ColumnDef } from '@tanstack/vue-table'
 
 import { useDocumentsStore } from '../stores/documents'
@@ -15,6 +15,7 @@ import SearchInput from '../components/shared/SearchInput.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
 import UploadModal from '../components/documents/UploadModal.vue'
+import DocumentEditModal from '../components/documents/DocumentEditModal.vue'
 
 const FILE_TYPE_OPTIONS = ['All', 'PDF', 'DOCX', 'XLSX', 'HTML', 'Markdown', 'Text'] as const
 const STATUS_OPTIONS = ['All', 'Uploaded', 'Extracted', 'Indexed', 'Failed'] as const
@@ -28,6 +29,8 @@ const statusFilter = ref('All')
 const page = ref(1)
 const perPage = ref(10)
 const showUpload = ref(false)
+const editTarget = ref<Document | null>(null)
+const showEditModal = ref(false)
 const deleteTarget = ref<Document | null>(null)
 const showDeleteDialog = computed(() => deleteTarget.value !== null)
 
@@ -72,6 +75,16 @@ const columns: ColumnDef<Document, unknown>[] = [
     },
   },
   {
+    accessorKey: 'is_public',
+    header: 'Visibility',
+    enableSorting: false,
+    meta: { className: 'w-28 hidden md:table-cell' },
+    cell: ({ getValue }) => {
+      const isPublic = getValue<boolean>()
+      return h(StatusBadge, { status: isPublic ? 'public' : 'private' })
+    },
+  },
+  {
     accessorKey: 'file_size',
     header: 'Size',
     enableSorting: true,
@@ -98,6 +111,21 @@ const columns: ColumnDef<Document, unknown>[] = [
     meta: { className: 'w-20' },
     cell: ({ row }) => {
       return h('div', { class: 'flex items-center gap-2' }, [
+        h(
+          'button',
+          {
+            type: 'button',
+            class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
+            title: 'Edit document',
+            'aria-label': 'Edit document',
+            onClick: (event: MouseEvent) => {
+              event.stopPropagation()
+              editTarget.value = row.original
+              showEditModal.value = true
+            },
+          },
+          [h(PencilSquareIcon, { class: 'h-5 w-5' })],
+        ),
         h(
           'button',
           {
@@ -176,6 +204,17 @@ async function handleDeleteConfirm(): Promise<void> {
 
 function handleDeleteCancel(): void {
   deleteTarget.value = null
+}
+
+function handleEditClose(): void {
+  showEditModal.value = false
+  editTarget.value = null
+}
+
+function handleEdited(): void {
+  showEditModal.value = false
+  editTarget.value = null
+  fetchData()
 }
 
 function handleUploaded(): void {
@@ -280,5 +319,12 @@ function handleUploaded(): void {
 
     <!-- Upload Modal -->
     <UploadModal :open="showUpload" @close="showUpload = false" @uploaded="handleUploaded" />
+
+    <DocumentEditModal
+      :open="showEditModal"
+      :document="editTarget"
+      @close="handleEditClose"
+      @saved="handleEdited"
+    />
   </div>
 </template>
