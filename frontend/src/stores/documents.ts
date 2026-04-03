@@ -19,6 +19,14 @@ export interface Document {
   readonly updated_at: string
   readonly processed_at: string
   readonly content?: string
+  readonly error_message?: string
+}
+
+export interface UpdateDocumentPayload {
+  readonly title?: string
+  readonly description?: string
+  readonly is_public?: boolean
+  readonly tags?: string[]
 }
 
 export interface AnalyzeResult {
@@ -256,6 +264,68 @@ export const useDocumentsStore = defineStore('documents', () => {
     }
   }
 
+  async function updateDocument(uuid: string, payload: UpdateDocumentPayload): Promise<Document> {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await apiFetch<{ data: Document }>(`/api/documents/${uuid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const index = documents.value.findIndex((d) => d.uuid === uuid)
+      if (index !== -1) {
+        documents.value[index] = response.data
+      }
+      if (currentDocument.value?.uuid === uuid) {
+        currentDocument.value = response.data
+      }
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to update document'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function replaceContent(uuid: string, file: File): Promise<Document> {
+    loading.value = true
+    error.value = null
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await apiFetch<{ data: Document }>(`/api/documents/${uuid}/content`, {
+        method: 'POST',
+        body: formData,
+      })
+      const index = documents.value.findIndex((d) => d.uuid === uuid)
+      if (index !== -1) {
+        documents.value[index] = response.data
+      }
+      if (currentDocument.value?.uuid === uuid) {
+        currentDocument.value = response.data
+      }
+      return response.data
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to replace document content'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchTags(query: string): Promise<string[]> {
+    try {
+      const response = await apiFetch<{ data: string[] }>(
+        `/api/documents/tags?q=${encodeURIComponent(query)}&limit=20`,
+      )
+      return response.data
+    } catch {
+      return []
+    }
+  }
+
   async function refreshCurrent(): Promise<Document | null> {
     if (currentDocument.value === null) {
       return null
@@ -280,5 +350,8 @@ export const useDocumentsStore = defineStore('documents', () => {
     bulkPurge,
     fetchDeletedDocuments,
     refreshCurrent,
+    updateDocument,
+    replaceContent,
+    fetchTags,
   }
 })

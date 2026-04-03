@@ -120,6 +120,10 @@ func (m *mockPipeline) FindByUUID(ctx context.Context, uuid string) (*model.Docu
 	return nil, nil
 }
 
+func (m *mockPipeline) ReplaceContent(_ context.Context, _ string, _ service.ReplaceContentParams) (*model.Document, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (m *mockPipeline) Upload(ctx context.Context, params service.UploadDocumentParams) (*model.Document, error) {
 	if m.uploadFn != nil {
 		return m.uploadFn(ctx, params)
@@ -226,6 +230,10 @@ func (m *mockHandlerRepo) ListDeleted(ctx context.Context, limit, offset int, us
 		return m.listDeletedFn(ctx, limit, offset, userID)
 	}
 	return nil, 0, nil
+}
+
+func (m *mockHandlerRepo) ListDistinctTags(_ context.Context, _ string, _ int) ([]string, error) {
+	return []string{}, nil
 }
 
 // ---------------------------------------------------------------------------

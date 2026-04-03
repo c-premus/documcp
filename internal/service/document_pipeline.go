@@ -55,6 +55,14 @@ type UploadDocumentParams struct {
 	UserID      *int64
 }
 
+// ReplaceContentParams holds input for replacing a document's file content.
+type ReplaceContentParams struct {
+	FileName string
+	FileSize int64
+	Reader   io.Reader
+	UserID   *int64
+}
+
 // DocumentPipeline orchestrates file upload, content extraction, and search
 // indexing. It extends DocumentService with pipeline capabilities.
 type DocumentPipeline struct {
@@ -180,6 +188,94 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 	return created, nil
 }
 
+// ReplaceContent replaces a document's file content without changing metadata
+// (title, description, tags, visibility). The old file is removed from disk,
+// a new file is written, and a background extraction job is dispatched.
+func (p *DocumentPipeline) ReplaceContent(ctx context.Context, docUUID string, params ReplaceContentParams) (*model.Document, error) {
+	doc, err := p.FindByUUID(ctx, docUUID)
+	if err != nil {
+		return nil, fmt.Errorf("finding document for content replacement: %w", err)
+	}
+
+	ext := strings.ToLower(filepath.Ext(params.FileName))
+	mimeType, ok := AllowedMIMETypes[ext]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", ErrUnsupportedFileType, ext)
+	}
+
+	if params.FileSize > maxUploadSize {
+		return nil, fmt.Errorf("%w: %d bytes exceeds limit of %d", ErrFileTooLarge, params.FileSize, maxUploadSize)
+	}
+
+	fileType := strings.TrimPrefix(ext, ".")
+	if fileType == "htm" {
+		fileType = "html"
+	}
+	if fileType == "txt" {
+		fileType = "markdown"
+	}
+
+	// Remove old file from disk (best-effort).
+	if doc.FilePath != "" {
+		oldPath, pathErr := security.SafeStoragePath(p.storagePath, doc.FilePath)
+		if pathErr != nil {
+			p.logger.Warn("unsafe old file path during content replacement",
+				"file_path", doc.FilePath, "error", pathErr)
+		} else if removeErr := os.Remove(oldPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			p.logger.Warn("removing old file during content replacement",
+				"path", oldPath, "error", removeErr)
+		}
+	}
+
+	// Write new file to disk.
+	relPath := filepath.Join(fileType, doc.UUID+ext)
+	fullPath := filepath.Join(p.storagePath, relPath)
+
+	if err = os.MkdirAll(filepath.Dir(fullPath), 0o750); err != nil {
+		return nil, fmt.Errorf("creating storage directory: %w", err)
+	}
+
+	f, err := os.Create(fullPath)
+	if err != nil {
+		return nil, fmt.Errorf("creating file %s: %w", fullPath, err)
+	}
+
+	written, err := io.Copy(f, params.Reader)
+	if closeErr := f.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		_ = os.Remove(fullPath)
+		return nil, fmt.Errorf("writing replacement file: %w", err)
+	}
+
+	// Reset document fields for re-processing.
+	doc.FilePath = relPath
+	doc.FileSize = written
+	doc.FileType = fileType
+	doc.MIMEType = mimeType
+	doc.Status = "uploaded"
+	doc.Content = sql.NullString{}
+	doc.ContentHash = sql.NullString{}
+	doc.WordCount = sql.NullInt64{}
+	doc.ProcessedAt = sql.NullTime{}
+	doc.ErrorMessage = sql.NullString{}
+
+	if err = p.repo.Update(ctx, doc); err != nil {
+		return nil, fmt.Errorf("updating document after content replacement: %w", err)
+	}
+
+	if dispatchErr := p.dispatchExtraction(ctx, doc.ID, doc.UUID); dispatchErr != nil {
+		return nil, fmt.Errorf("replacing document content: %w", dispatchErr)
+	}
+
+	updated, err := p.repo.FindByID(ctx, doc.ID)
+	if err != nil {
+		return nil, fmt.Errorf("re-fetching document after content replacement: %w", err)
+	}
+	return updated, nil
+}
+
 // ProcessDocument extracts content from a document and updates its DB record.
 // This is called by the background worker.
 func (p *DocumentPipeline) ProcessDocument(ctx context.Context, docID int64) error {
@@ -253,4 +349,3 @@ func (p *DocumentPipeline) markFailed(ctx context.Context, doc *model.Document, 
 	p.logger.Error("document processing failed", "id", doc.ID, "uuid", doc.UUID, "error", errMsg)
 	return fmt.Errorf("document %d: %s", doc.ID, errMsg)
 }
-

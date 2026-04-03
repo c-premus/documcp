@@ -394,6 +394,36 @@ func (r *DocumentRepository) ListDeleted(ctx context.Context, limit, offset int,
 	return docs, total, nil
 }
 
+// ListDistinctTags returns distinct tags matching a prefix, excluding soft-deleted documents.
+func (r *DocumentRepository) ListDistinctTags(ctx context.Context, prefix string, limit int) ([]string, error) {
+	query := `SELECT DISTINCT dt.tag FROM document_tags dt
+		JOIN documents d ON d.id = dt.document_id
+		WHERE d.deleted_at IS NULL AND dt.tag ILIKE $1
+		ORDER BY dt.tag LIMIT $2`
+
+	rows, err := r.db.Query(ctx, query, prefix+"%", limit)
+	if err != nil {
+		return nil, fmt.Errorf("listing distinct tags: %w", err)
+	}
+	defer rows.Close()
+
+	var tags []string
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return nil, fmt.Errorf("scanning tag: %w", err)
+		}
+		tags = append(tags, tag)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating tags: %w", err)
+	}
+	if tags == nil {
+		tags = []string{}
+	}
+	return tags, nil
+}
+
 // SuggestTitles returns title suggestions matching the given prefix (case-insensitive).
 func (r *DocumentRepository) SuggestTitles(ctx context.Context, prefix string, limit int) ([]TitleSuggestion, error) {
 	suggestions, err := database.Select[TitleSuggestion](ctx, r.db,
