@@ -26,6 +26,7 @@ type OAuthRepo interface {
 	FindClientByClientID(ctx context.Context, clientID string) (*model.OAuthClient, error)
 	FindClientByID(ctx context.Context, id int64) (*model.OAuthClient, error)
 	TouchClientLastUsed(ctx context.Context, clientID int64) error
+	UpdateClientScope(ctx context.Context, clientID int64, scope string) error
 	// Authorization Codes
 	CreateAuthorizationCode(ctx context.Context, code *model.OAuthAuthorizationCode) error
 	FindAuthorizationCodeByCode(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
@@ -97,6 +98,38 @@ func (s *Service) FindClientByInternalID(ctx context.Context, id int64) (*model.
 // TouchClientLastUsed records that a client's token was used.
 func (s *Service) TouchClientLastUsed(ctx context.Context, clientID int64) error {
 	return s.repo.TouchClientLastUsed(ctx, clientID)
+}
+
+// ExpandClientScope widens the client's registered scope to include
+// additionalScopes. The result is the sorted union of the existing scope and
+// the additional scopes. This allows dynamically-registered clients to receive
+// broader tokens when an authenticated user approves the authorization.
+// Returns the new effective client scope.
+func (s *Service) ExpandClientScope(ctx context.Context, clientID int64, additionalScopes string) (string, error) {
+	client, err := s.repo.FindClientByID(ctx, clientID)
+	if err != nil {
+		return "", fmt.Errorf("finding client for scope expansion: %w", err)
+	}
+	if client == nil {
+		return "", errors.New("client not found for scope expansion")
+	}
+	currentScope := ""
+	if client.Scope.Valid {
+		currentScope = client.Scope.String
+	}
+	newScope := authscope.Union(currentScope, additionalScopes)
+	if newScope == currentScope {
+		return currentScope, nil
+	}
+	s.logger.Info("expanding client scope",
+		"client_id", client.ClientID,
+		"old_scope", currentScope,
+		"new_scope", newScope,
+	)
+	if err := s.repo.UpdateClientScope(ctx, client.ID, newScope); err != nil {
+		return "", fmt.Errorf("updating client scope: %w", err)
+	}
+	return newScope, nil
 }
 
 // FindDeviceCodeByUserCode looks up a pending device code by user code.
@@ -568,14 +601,10 @@ func (s *Service) GenerateDeviceCode(ctx context.Context, params DeviceAuthoriza
 		if invalid := authscope.ValidateAll(params.Scope); len(invalid) > 0 {
 			return nil, fmt.Errorf("invalid scopes: %s", strings.Join(invalid, ", "))
 		}
-		// Verify requested scope is a subset of client's allowed scope
-		clientScope := ""
-		if client.Scope.Valid {
-			clientScope = client.Scope.String
-		}
-		if clientScope != "" && !authscope.IsSubset(params.Scope, clientScope) {
-			return nil, errors.New("requested scope exceeds client's allowed scope")
-		}
+		// NOTE: We do not check IsSubset against the client's registered scope
+		// here. The client scope may be expanded when a user with broader
+		// entitlements approves the device code (see AuthorizeDeviceCode).
+		// Scope narrowing happens at approval time, not at device code creation.
 	}
 
 	// Generate device code token
@@ -654,7 +683,14 @@ func (s *Service) AuthorizeDeviceCode(ctx context.Context, userCode string, user
 		if err != nil {
 			return fmt.Errorf("looking up approving user: %w", err)
 		}
-		scope = authscope.Intersect(scope, authscope.UserScopes(user.IsAdmin))
+		// Expand client scope with user entitlements before narrowing.
+		userEntitlements := authscope.UserScopes(user.IsAdmin)
+		if entitled := authscope.Intersect(scope, userEntitlements); entitled != "" {
+			if _, expandErr := s.ExpandClientScope(ctx, dc.ClientID, entitled); expandErr != nil {
+				s.logger.Error("expanding client scope for device flow", "error", expandErr)
+			}
+		}
+		scope = authscope.Intersect(scope, userEntitlements)
 		if scope == "" {
 			return errors.New("none of the requested scopes are available to your account")
 		}
