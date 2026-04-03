@@ -53,8 +53,9 @@ type Deps struct {
 	DashboardHandler *apihandler.DashboardHandler // nil if not configured
 
 	// Vue SPA
-	AuthHandler *apihandler.AuthHandler // nil if not configured
-	SPAHandler  http.Handler            // nil if not configured
+	AuthHandler    *apihandler.AuthHandler // nil if not configured
+	SPAHandler     http.Handler            // nil if not configured
+	FaviconHandler http.Handler            // nil if not configured
 
 	// Observability
 	Metrics     *observability.Metrics // nil disables Prometheus metrics
@@ -420,6 +421,10 @@ func (s *Server) registerSPARoutes(deps Deps) {
 	r.Get("/admin/login", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/auth/login", http.StatusMovedPermanently)
 	})
+
+	if deps.FaviconHandler != nil {
+		r.Get("/favicon.ico", deps.FaviconHandler.ServeHTTP)
+	}
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/", http.StatusFound)
