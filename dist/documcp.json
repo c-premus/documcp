@@ -1995,7 +1995,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"documcp\" && rootServiceName = \"documcp\" }",
+          "query": "{ resource.service.name = \"documcp\" && rootServiceName = \"documcp\" && name != \"ping\" && name != \"pool.acquire\" }",
           "limit": 100,
           "tableType": "traces"
         }

@@ -35,12 +35,11 @@ type Foundation struct {
 	RedisClient *redis.Client
 	Metrics     *observability.Metrics
 
-	// RateLimitRedisClient is a dedicated, bare client for httprate-redis.
-	// Separate from RedisClient to isolate high-frequency TxPipeline ops
-	// (MULTI/INCR/EXPIRE/EXEC) from the main pool. MaxRetries -1 prevents
-	// retry-induced partial responses; no redisotel hook to avoid tracing
-	// overhead on every rate-limit check.
-	RateLimitRedisClient *redis.Client
+	// BareRedisClient is an uninstrumented Redis client (no redisotel).
+	// Used for rate limiting (httprate-redis TxPipeline) and readiness
+	// health checks — both are high-frequency, low-value to trace.
+	// MaxRetries -1 prevents retry-induced partial responses.
+	BareRedisClient *redis.Client
 
 	// Repositories
 	DocumentRepo        *repository.DocumentRepository
@@ -141,7 +140,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	// retry-induced partial responses. DisableIdentity skips CLIENT SETINFO.
 	// No redisotel hook — counter increments are high-frequency, low-value to trace.
 	// NOTE: Redis ACL must include +@transaction for MULTI/EXEC to succeed.
-	rateLimitRedisClient := redis.NewClient(&redis.Options{
+	bareRedisClient := redis.NewClient(&redis.Options{
 		Addr:            cfg.Redis.Addr,
 		Username:        cfg.Redis.Username,
 		Password:        cfg.Redis.Password,
@@ -155,7 +154,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		WriteTimeout:    500 * time.Millisecond,
 		ContextTimeoutEnabled: true,
 	})
-	if err = rateLimitRedisClient.Ping(context.Background()).Err(); err != nil {
+	if err = bareRedisClient.Ping(context.Background()).Err(); err != nil {
 		_ = redisClient.Close()
 		pgxPool.Close()
 		return nil, fmt.Errorf("connecting to redis (rate limit): %w", err)
@@ -171,12 +170,12 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		"rate_limit_pool_size", 3,
 	)
 
-	// After this point pgxPool, redisClient, and rateLimitRedisClient are live.
+	// After this point pgxPool, redisClient, and bareRedisClient are live.
 	// Use a deferred cleanup to close all on any initialization error.
 	var initOK bool
 	defer func() {
 		if !initOK {
-			_ = rateLimitRedisClient.Close()
+			_ = bareRedisClient.Close()
 			_ = redisClient.Close()
 			pgxPool.Close()
 		}
@@ -271,7 +270,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		Logger:              logger,
 		PgxPool:             pgxPool,
 		RedisClient:          redisClient,
-		RateLimitRedisClient: rateLimitRedisClient,
+		BareRedisClient: bareRedisClient,
 		Metrics:              metrics,
 		DocumentRepo:        documentRepo,
 		ExternalServiceRepo: externalServiceRepo,
@@ -302,8 +301,8 @@ func (f *Foundation) Close() {
 			f.Logger.Error("flushing tracer spans", "error", err)
 		}
 	}
-	if f.RateLimitRedisClient != nil {
-		if err := f.RateLimitRedisClient.Close(); err != nil {
+	if f.BareRedisClient != nil {
+		if err := f.BareRedisClient.Close(); err != nil {
 			f.Logger.Error("closing rate limit redis client", "error", err)
 		}
 	}
