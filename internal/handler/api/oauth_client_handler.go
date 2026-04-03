@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"github.com/google/uuid"
@@ -169,6 +170,10 @@ func (h *OAuthClientHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.repo.DeleteClient(r.Context(), id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			errorResponse(w, http.StatusNotFound, "oauth client not found")
+			return
+		}
 		h.logger.Error("deleting oauth client", "id", id, "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to delete oauth client")
 		return

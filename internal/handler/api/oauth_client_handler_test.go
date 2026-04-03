@@ -283,6 +283,30 @@ func TestOAuthClientHandler_Delete_Error(t *testing.T) {
 	}
 }
 
+func TestOAuthClientHandler_Delete_NotFound(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockOAuthClientRepo{
+		deleteClientFn: func(_ context.Context, _ int64) error {
+			return sql.ErrNoRows
+		},
+	}
+
+	h := NewOAuthClientHandler(repo, discardLogger())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "999")
+	req := httptest.NewRequest(http.MethodDelete, "/api/admin/oauth-clients/999", http.NoBody)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rec := httptest.NewRecorder()
+
+	h.Delete(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Tests: toOAuthClientResponse
 // ---------------------------------------------------------------------------

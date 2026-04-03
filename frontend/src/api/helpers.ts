@@ -23,6 +23,7 @@ export async function apiFetch<T>(url: string, options?: RequestInit): Promise<T
     const msg = (body?.message || res.statusText).slice(0, 200)
     throw new ApiError(res.status, msg)
   }
+  if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
 }
 
