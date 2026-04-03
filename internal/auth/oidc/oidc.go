@@ -18,6 +18,7 @@ import (
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gorilla/sessions"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/oauth2"
 
 	"github.com/c-premus/documcp/internal/config"
@@ -37,6 +38,7 @@ type Handler struct {
 	provider     *gooidc.Provider // nil in manual-endpoint mode
 	oauth2Config oauth2.Config
 	verifier     *gooidc.IDTokenVerifier
+	httpClient   *http.Client // instrumented with otelhttp for tracing
 	store        sessions.Store
 	repo         UserRepo
 	logger       *slog.Logger
@@ -65,6 +67,14 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 	if len(scopes) == 0 {
 		scopes = []string{gooidc.ScopeOpenID, "profile", "email"}
 	}
+
+	// Instrumented HTTP client for all outbound OIDC calls (discovery, JWKS, token exchange).
+	httpClient := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}
+	// go-oidc and golang.org/x/oauth2 both read the HTTP client from context.
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, httpClient)
 
 	var (
 		provider *gooidc.Provider
@@ -110,6 +120,7 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 		provider:     provider,
 		oauth2Config: oauth2Config,
 		verifier:     verifier,
+		httpClient:   httpClient,
 		store:        cfg.SessionStore,
 		repo:         cfg.Repo,
 		logger:       cfg.Logger,
@@ -179,8 +190,9 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	delete(session.Values, "oidc_state")
 	delete(session.Values, "oidc_nonce")
 
-	// Exchange code for token
-	oauth2Token, err := h.oauth2Config.Exchange(r.Context(), r.URL.Query().Get("code"))
+	// Exchange code for token (use instrumented HTTP client for tracing).
+	exchangeCtx := context.WithValue(r.Context(), oauth2.HTTPClient, h.httpClient)
+	oauth2Token, err := h.oauth2Config.Exchange(exchangeCtx, r.URL.Query().Get("code"))
 	if err != nil {
 		h.logger.Error("exchanging OIDC code", "error", err)
 		http.Error(w, "Authentication failed", http.StatusUnauthorized)
