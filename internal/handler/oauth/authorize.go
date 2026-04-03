@@ -483,7 +483,7 @@ const denyHTML = `<!DOCTYPE html>
 <style>
 body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a;background:#ffffff}
 h1{font-size:1.5em}
-@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#0f172a}}
+@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#030712}}
 </style>
 </head>
 <body>
@@ -509,9 +509,9 @@ button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:poin
 .approve{background:#2563eb;color:white}
 .deny{background:#e2e8f0;color:#334155}
 @media(prefers-color-scheme:dark){
-body{color:#e2e8f0;background:#0f172a}
+body{color:#e2e8f0;background:#030712}
 .client-name{color:#60a5fa}
-.scope{background:#1e293b;color:#e2e8f0}
+.scope{background:#111827;color:#e2e8f0}
 .deny{background:#334155;color:#e2e8f0}
 }
 </style>
