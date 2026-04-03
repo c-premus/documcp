@@ -109,6 +109,7 @@ type mockPipeline struct {
 	uploadFn           func(ctx context.Context, params service.UploadDocumentParams) (*model.Document, error)
 	updateFn           func(ctx context.Context, docUUID string, params service.UpdateDocumentParams) (*model.Document, error)
 	deleteFn           func(ctx context.Context, docUUID string) error
+	replaceContentFn   func(ctx context.Context, docUUID string, params service.ReplaceContentParams) (*model.Document, error)
 	storagePathVal     string
 	extractorRegistryV *extractor.Registry
 }
@@ -118,6 +119,13 @@ func (m *mockPipeline) FindByUUID(ctx context.Context, uuid string) (*model.Docu
 		return m.findByUUIDFn(ctx, uuid)
 	}
 	return nil, nil
+}
+
+func (m *mockPipeline) ReplaceContent(ctx context.Context, docUUID string, params service.ReplaceContentParams) (*model.Document, error) {
+	if m.replaceContentFn != nil {
+		return m.replaceContentFn(ctx, docUUID, params)
+	}
+	return nil, errors.New("not implemented")
 }
 
 func (m *mockPipeline) Upload(ctx context.Context, params service.UploadDocumentParams) (*model.Document, error) {
@@ -163,6 +171,7 @@ type mockHandlerRepo struct {
 	purgeSingleFn                func(ctx context.Context, id int64) (string, error)
 	purgeSoftDeletedFn           func(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
 	listDeletedFn                func(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
+	listDistinctTagsFn           func(ctx context.Context, prefix string, limit int) ([]string, error)
 }
 
 func (m *mockHandlerRepo) List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
@@ -226,6 +235,13 @@ func (m *mockHandlerRepo) ListDeleted(ctx context.Context, limit, offset int, us
 		return m.listDeletedFn(ctx, limit, offset, userID)
 	}
 	return nil, 0, nil
+}
+
+func (m *mockHandlerRepo) ListDistinctTags(ctx context.Context, prefix string, limit int) ([]string, error) {
+	if m.listDistinctTagsFn != nil {
+		return m.listDistinctTagsFn(ctx, prefix, limit)
+	}
+	return []string{}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -2882,4 +2898,372 @@ func TestExtractHeadingTags(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// ReplaceContent handler tests
+// ---------------------------------------------------------------------------
+
+func TestDocumentHandler_ReplaceContent(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns 400 when no multipart form", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(&mockPipeline{}, &mockHandlerRepo{})
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/content",
+			strings.NewReader("not multipart"))
+		req.Header.Set("Content-Type", "text/plain")
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.ReplaceContent(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "invalid multipart form", body["message"])
+	})
+
+	t.Run("returns 400 when file field is missing", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(&mockPipeline{}, &mockHandlerRepo{})
+
+		var buf bytes.Buffer
+		writer := multipart.NewWriter(&buf)
+		_ = writer.WriteField("title", "Test")
+		_ = writer.Close()
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/content", &buf)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.ReplaceContent(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "file is required", body["message"])
+	})
+
+	t.Run("returns 404 when document not found", func(t *testing.T) {
+		t.Parallel()
+
+		p := &mockPipeline{
+			replaceContentFn: func(_ context.Context, _ string, _ service.ReplaceContentParams) (*model.Document, error) {
+				return nil, service.ErrNotFound
+			},
+		}
+		h := newTestHandler(p, &mockHandlerRepo{})
+
+		var buf bytes.Buffer
+		writer := multipart.NewWriter(&buf)
+		part, _ := writer.CreateFormFile("file", "test.md")
+		_, _ = part.Write([]byte("new content"))
+		_ = writer.Close()
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/missing-uuid/content", &buf)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req = chiContext(req, map[string]string{"uuid": "missing-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.ReplaceContent(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "document not found", body["message"])
+	})
+
+	t.Run("returns 400 for unsupported file type", func(t *testing.T) {
+		t.Parallel()
+
+		p := &mockPipeline{
+			replaceContentFn: func(_ context.Context, _ string, _ service.ReplaceContentParams) (*model.Document, error) {
+				return nil, service.ErrUnsupportedFileType
+			},
+		}
+		h := newTestHandler(p, &mockHandlerRepo{})
+
+		var buf bytes.Buffer
+		writer := multipart.NewWriter(&buf)
+		part, _ := writer.CreateFormFile("file", "test.exe")
+		_, _ = part.Write([]byte("binary"))
+		_ = writer.Close()
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/content", &buf)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.ReplaceContent(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("returns 400 when file too large", func(t *testing.T) {
+		t.Parallel()
+
+		p := &mockPipeline{
+			replaceContentFn: func(_ context.Context, _ string, _ service.ReplaceContentParams) (*model.Document, error) {
+				return nil, service.ErrFileTooLarge
+			},
+		}
+		h := newTestHandler(p, &mockHandlerRepo{})
+
+		var buf bytes.Buffer
+		writer := multipart.NewWriter(&buf)
+		part, _ := writer.CreateFormFile("file", "huge.pdf")
+		_, _ = part.Write([]byte("data"))
+		_ = writer.Close()
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/content", &buf)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.ReplaceContent(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("returns 500 when pipeline fails", func(t *testing.T) {
+		t.Parallel()
+
+		p := &mockPipeline{
+			replaceContentFn: func(_ context.Context, _ string, _ service.ReplaceContentParams) (*model.Document, error) {
+				return nil, errors.New("unexpected failure")
+			},
+		}
+		h := newTestHandler(p, &mockHandlerRepo{})
+
+		var buf bytes.Buffer
+		writer := multipart.NewWriter(&buf)
+		part, _ := writer.CreateFormFile("file", "test.md")
+		_, _ = part.Write([]byte("content"))
+		_ = writer.Close()
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/content", &buf)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.ReplaceContent(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "failed to replace document content", body["message"])
+	})
+
+	t.Run("success returns 200 with document", func(t *testing.T) {
+		t.Parallel()
+
+		doc := newTestDocument("replace-uuid")
+		p := &mockPipeline{
+			replaceContentFn: func(_ context.Context, docUUID string, params service.ReplaceContentParams) (*model.Document, error) {
+				assert.Equal(t, "replace-uuid", docUUID)
+				assert.Equal(t, "updated.md", params.FileName)
+				return doc, nil
+			},
+		}
+		repo := &mockHandlerRepo{
+			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
+				return []model.DocumentTag{{Tag: "go"}, {Tag: "docs"}}, nil
+			},
+		}
+		h := newTestHandler(p, repo)
+
+		var buf bytes.Buffer
+		writer := multipart.NewWriter(&buf)
+		part, _ := writer.CreateFormFile("file", "updated.md")
+		_, _ = part.Write([]byte("# Updated content"))
+		_ = writer.Close()
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/replace-uuid/content", &buf)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req = chiContext(req, map[string]string{"uuid": "replace-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.ReplaceContent(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "Document content replaced and queued for processing.", body["message"])
+
+		data, ok := body["data"].(map[string]any)
+		require.True(t, ok, "expected data to be a map")
+		assert.Equal(t, "replace-uuid", data["uuid"])
+		assert.Equal(t, "Test Document", data["title"])
+
+		tags, ok := data["tags"].([]any)
+		require.True(t, ok, "expected tags to be an array")
+		assert.Equal(t, 2, len(tags))
+		assert.Equal(t, "go", tags[0])
+		assert.Equal(t, "docs", tags[1])
+	})
+}
+
+// ---------------------------------------------------------------------------
+// ListTags handler tests
+// ---------------------------------------------------------------------------
+
+func TestDocumentHandler_ListTags(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns tags with default limit", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedLimit int
+		repo := &mockHandlerRepo{
+			listDistinctTagsFn: func(_ context.Context, _ string, limit int) ([]string, error) {
+				capturedLimit = limit
+				return []string{"go", "rust", "python"}, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/tags", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.ListTags(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, 20, capturedLimit)
+		body := decodeJSONBody(t, rr.Body)
+		data, ok := body["data"].([]any)
+		require.True(t, ok)
+		assert.Equal(t, 3, len(data))
+	})
+
+	t.Run("respects custom limit param", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedLimit int
+		repo := &mockHandlerRepo{
+			listDistinctTagsFn: func(_ context.Context, _ string, limit int) ([]string, error) {
+				capturedLimit = limit
+				return []string{"go"}, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/tags?limit=5", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.ListTags(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, 5, capturedLimit)
+	})
+
+	t.Run("ignores limit above 100", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedLimit int
+		repo := &mockHandlerRepo{
+			listDistinctTagsFn: func(_ context.Context, _ string, limit int) ([]string, error) {
+				capturedLimit = limit
+				return []string{}, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/tags?limit=200", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.ListTags(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, 20, capturedLimit)
+	})
+
+	t.Run("ignores invalid limit", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedLimit int
+		repo := &mockHandlerRepo{
+			listDistinctTagsFn: func(_ context.Context, _ string, limit int) ([]string, error) {
+				capturedLimit = limit
+				return []string{}, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/tags?limit=abc", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.ListTags(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, 20, capturedLimit)
+	})
+
+	t.Run("returns empty array when no tags", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockHandlerRepo{
+			listDistinctTagsFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+				return []string{}, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/tags", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.ListTags(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		data, ok := body["data"].([]any)
+		require.True(t, ok)
+		assert.Equal(t, 0, len(data))
+	})
+
+	t.Run("returns 500 when repo fails", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockHandlerRepo{
+			listDistinctTagsFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+				return nil, errors.New("database error")
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/tags", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.ListTags(rr, req)
+
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "failed to list tags", body["message"])
+	})
+
+	t.Run("passes prefix query param", func(t *testing.T) {
+		t.Parallel()
+
+		var capturedPrefix string
+		repo := &mockHandlerRepo{
+			listDistinctTagsFn: func(_ context.Context, prefix string, _ int) ([]string, error) {
+				capturedPrefix = prefix
+				return []string{"golang", "goroutines"}, nil
+			},
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/tags?q=go", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.ListTags(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "go", capturedPrefix)
+		body := decodeJSONBody(t, rr.Body)
+		data, ok := body["data"].([]any)
+		require.True(t, ok)
+		assert.Equal(t, 2, len(data))
+		assert.Equal(t, "golang", data[0])
+		assert.Equal(t, "goroutines", data[1])
+	})
 }

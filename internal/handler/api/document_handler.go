@@ -36,6 +36,7 @@ func safeStoragePath(storagePath, filePath string) (string, error) {
 type documentPipeline interface {
 	FindByUUID(ctx context.Context, uuid string) (*model.Document, error)
 	Upload(ctx context.Context, params service.UploadDocumentParams) (*model.Document, error)
+	ReplaceContent(ctx context.Context, docUUID string, params service.ReplaceContentParams) (*model.Document, error)
 	Update(ctx context.Context, docUUID string, params service.UpdateDocumentParams) (*model.Document, error)
 	Delete(ctx context.Context, docUUID string) error
 	StoragePath() string
@@ -53,6 +54,7 @@ type documentRepo interface {
 	PurgeSingle(ctx context.Context, id int64) (string, error)
 	PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
 	ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
+	ListDistinctTags(ctx context.Context, prefix string, limit int) ([]string, error)
 }
 
 const maxUploadBodySize = 50*1024*1024 + 1024 // 50 MiB + metadata overhead
@@ -238,6 +240,56 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusCreated, map[string]any{
 		"data":    toDocumentResponse(doc, tags2),
 		"message": "Document uploaded and queued for processing.",
+	})
+}
+
+// ReplaceContent handles POST /api/documents/{uuid}/content — replace document file content.
+func (h *DocumentHandler) ReplaceContent(w http.ResponseWriter, r *http.Request) {
+	docUUID := chi.URLParam(r, "uuid")
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBodySize)
+
+	if err := r.ParseMultipartForm(10 * 1024 * 1024); err != nil {
+		errorResponse(w, http.StatusBadRequest, "invalid multipart form")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		errorResponse(w, http.StatusBadRequest, "file is required")
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	params := service.ReplaceContentParams{
+		FileName: header.Filename,
+		FileSize: header.Size,
+		Reader:   file,
+	}
+
+	if user, ok := authmiddleware.UserFromContext(r.Context()); ok {
+		params.UserID = &user.ID
+	}
+
+	doc, err := h.pipeline.ReplaceContent(r.Context(), docUUID, params)
+	if err != nil {
+		h.logger.Error("replacing document content", "uuid", docUUID, "error", err)
+		if errors.Is(err, service.ErrNotFound) {
+			errorResponse(w, http.StatusNotFound, "document not found")
+			return
+		}
+		if errors.Is(err, service.ErrUnsupportedFileType) || errors.Is(err, service.ErrFileTooLarge) {
+			errorResponse(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		errorResponse(w, http.StatusInternalServerError, "failed to replace document content")
+		return
+	}
+
+	tags, _ := h.repo.TagsForDocument(r.Context(), doc.ID)
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"data":    toDocumentResponse(doc, tags),
+		"message": "Document content replaced and queued for processing.",
 	})
 }
 
@@ -801,6 +853,27 @@ func (h *DocumentHandler) ListDeleted(w http.ResponseWriter, r *http.Request) {
 			"total": total,
 		},
 	})
+}
+
+// ListTags handles GET /api/documents/tags — autocomplete tags.
+func (h *DocumentHandler) ListTags(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	limitStr := r.URL.Query().Get("limit")
+	limit := 20
+	if limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+
+	tags, err := h.repo.ListDistinctTags(r.Context(), q, limit)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "failed to list tags", "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to list tags")
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{"data": tags})
 }
 
 // canAccessDocument returns true if the user may view the document.

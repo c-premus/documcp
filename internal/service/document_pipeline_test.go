@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -891,6 +894,386 @@ func TestDocumentPipeline_DispatchExtraction_Error(t *testing.T) {
 	err := pipeline.dispatchExtraction(context.Background(), 42, "doc-uuid")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "dispatching extraction job")
+}
+
+// ---------------------------------------------------------------------------
+// TestDocumentPipeline_ReplaceContent
+// ---------------------------------------------------------------------------
+
+func TestDocumentPipeline_ReplaceContent(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success replaces file and resets fields", func(t *testing.T) {
+		t.Parallel()
+
+		storagePath := t.TempDir()
+		docUUID := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+		// Create an old file on disk to simulate existing content (html, different from new .md).
+		oldRelPath := "html/" + docUUID + ".html"
+		oldFullPath := filepath.Join(storagePath, oldRelPath)
+		if err := os.MkdirAll(filepath.Dir(oldFullPath), 0o750); err != nil {
+			t.Fatalf("creating old dir: %v", err)
+		}
+		if err := os.WriteFile(oldFullPath, []byte("old content"), 0o600); err != nil {
+			t.Fatalf("writing old file: %v", err)
+		}
+
+		existingDoc := &model.Document{
+			ID:           42,
+			UUID:         docUUID,
+			Title:        "Existing Doc",
+			FilePath:     oldRelPath,
+			FileSize:     11,
+			FileType:     "html",
+			MIMEType:     "text/html",
+			Status:       "processed",
+			Content:      sql.NullString{String: "old text", Valid: true},
+			ContentHash:  sql.NullString{String: "abc123", Valid: true},
+			WordCount:    sql.NullInt64{Int64: 2, Valid: true},
+			ProcessedAt:  sql.NullTime{Valid: true},
+			ErrorMessage: sql.NullString{String: "some error", Valid: true},
+		}
+
+		var updatedDoc *model.Document
+		repo := &mockDocumentRepo{
+			findByUUIDFn: func(_ context.Context, uuid string) (*model.Document, error) {
+				if uuid != docUUID {
+					t.Errorf("FindByUUID called with %q, want %q", uuid, docUUID)
+				}
+				// Return a copy so mutations don't alias.
+				doc := *existingDoc
+				return &doc, nil
+			},
+			updateFn: func(_ context.Context, doc *model.Document) error {
+				updatedDoc = doc
+				return nil
+			},
+			findByIDFn: func(_ context.Context, id int64) (*model.Document, error) {
+				if id != 42 {
+					t.Errorf("FindByID called with %d, want 42", id)
+				}
+				return updatedDoc, nil
+			},
+		}
+
+		svc := NewDocumentService(repo, discardLogger())
+		pipeline := NewDocumentPipeline(svc, nil, nil, storagePath)
+
+		newContent := "new replacement content"
+		params := ReplaceContentParams{
+			FileName: "replacement.md",
+			FileSize: int64(len(newContent)),
+			Reader:   strings.NewReader(newContent),
+		}
+
+		doc, err := pipeline.ReplaceContent(context.Background(), docUUID, params)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Old file should be removed.
+		if _, statErr := os.Stat(oldFullPath); !os.IsNotExist(statErr) {
+			t.Error("expected old file to be removed from disk")
+		}
+
+		// New file should exist.
+		newRelPath := "md/" + docUUID + ".md"
+		newFullPath := filepath.Join(storagePath, newRelPath)
+		data, readErr := os.ReadFile(newFullPath) //nolint:gosec // test file path from t.TempDir, not user input
+		if readErr != nil {
+			t.Fatalf("expected new file at %s: %v", newFullPath, readErr)
+		}
+		if string(data) != newContent {
+			t.Errorf("new file content = %q, want %q", string(data), newContent)
+		}
+
+		// Verify reset fields.
+		if doc.Status != "uploaded" {
+			t.Errorf("Status = %q, want %q", doc.Status, "uploaded")
+		}
+		if doc.FilePath != newRelPath {
+			t.Errorf("FilePath = %q, want %q", doc.FilePath, newRelPath)
+		}
+		if doc.FileType != "md" {
+			t.Errorf("FileType = %q, want %q", doc.FileType, "md")
+		}
+		if doc.MIMEType != "text/markdown" {
+			t.Errorf("MIMEType = %q, want %q", doc.MIMEType, "text/markdown")
+		}
+		if doc.FileSize != int64(len(newContent)) {
+			t.Errorf("FileSize = %d, want %d", doc.FileSize, len(newContent))
+		}
+		if doc.Content.Valid {
+			t.Error("expected Content to be cleared")
+		}
+		if doc.ContentHash.Valid {
+			t.Error("expected ContentHash to be cleared")
+		}
+		if doc.WordCount.Valid {
+			t.Error("expected WordCount to be cleared")
+		}
+		if doc.ProcessedAt.Valid {
+			t.Error("expected ProcessedAt to be cleared")
+		}
+		if doc.ErrorMessage.Valid {
+			t.Error("expected ErrorMessage to be cleared")
+		}
+	})
+
+	t.Run("document not found returns ErrNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockDocumentRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return nil, sql.ErrNoRows
+			},
+		}
+		svc := NewDocumentService(repo, discardLogger())
+		pipeline := NewDocumentPipeline(svc, nil, nil, t.TempDir())
+
+		params := ReplaceContentParams{
+			FileName: "doc.md",
+			FileSize: 10,
+			Reader:   strings.NewReader("data"),
+		}
+
+		_, err := pipeline.ReplaceContent(context.Background(), "missing-uuid", params)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("expected ErrNotFound, got: %v", err)
+		}
+	})
+
+	t.Run("unsupported file type rejected", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockDocumentRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return &model.Document{ID: 1, UUID: "some-uuid"}, nil
+			},
+		}
+		svc := NewDocumentService(repo, discardLogger())
+		pipeline := NewDocumentPipeline(svc, nil, nil, t.TempDir())
+
+		params := ReplaceContentParams{
+			FileName: "virus.exe",
+			FileSize: 10,
+			Reader:   strings.NewReader("data"),
+		}
+
+		_, err := pipeline.ReplaceContent(context.Background(), "some-uuid", params)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !errors.Is(err, ErrUnsupportedFileType) {
+			t.Errorf("expected ErrUnsupportedFileType, got: %v", err)
+		}
+	})
+
+	t.Run("file exceeds max size rejected", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockDocumentRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return &model.Document{ID: 1, UUID: "some-uuid"}, nil
+			},
+		}
+		svc := NewDocumentService(repo, discardLogger())
+		pipeline := NewDocumentPipeline(svc, nil, nil, t.TempDir())
+
+		params := ReplaceContentParams{
+			FileName: "big.pdf",
+			FileSize: maxUploadSize + 1,
+			Reader:   strings.NewReader(""),
+		}
+
+		_, err := pipeline.ReplaceContent(context.Background(), "some-uuid", params)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !errors.Is(err, ErrFileTooLarge) {
+			t.Errorf("expected ErrFileTooLarge, got: %v", err)
+		}
+	})
+
+	t.Run("file type normalization htm to html", func(t *testing.T) {
+		t.Parallel()
+
+		storagePath := t.TempDir()
+		docUUID := "htm-test-uuid-0000-000000000000"
+
+		var updatedDoc *model.Document
+		repo := &mockDocumentRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return &model.Document{ID: 1, UUID: docUUID}, nil
+			},
+			updateFn: func(_ context.Context, doc *model.Document) error {
+				updatedDoc = doc
+				return nil
+			},
+			findByIDFn: func(_ context.Context, _ int64) (*model.Document, error) {
+				return updatedDoc, nil
+			},
+		}
+		svc := NewDocumentService(repo, discardLogger())
+		pipeline := NewDocumentPipeline(svc, nil, nil, storagePath)
+
+		params := ReplaceContentParams{
+			FileName: "page.htm",
+			FileSize: 5,
+			Reader:   strings.NewReader("<h1>"),
+		}
+
+		doc, err := pipeline.ReplaceContent(context.Background(), docUUID, params)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if doc.FileType != "html" {
+			t.Errorf("FileType = %q, want %q", doc.FileType, "html")
+		}
+		if doc.MIMEType != "text/html" {
+			t.Errorf("MIMEType = %q, want %q", doc.MIMEType, "text/html")
+		}
+	})
+
+	t.Run("file type normalization txt to markdown", func(t *testing.T) {
+		t.Parallel()
+
+		storagePath := t.TempDir()
+		docUUID := "txt-test-uuid-0000-000000000000"
+
+		var updatedDoc *model.Document
+		repo := &mockDocumentRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return &model.Document{ID: 1, UUID: docUUID}, nil
+			},
+			updateFn: func(_ context.Context, doc *model.Document) error {
+				updatedDoc = doc
+				return nil
+			},
+			findByIDFn: func(_ context.Context, _ int64) (*model.Document, error) {
+				return updatedDoc, nil
+			},
+		}
+		svc := NewDocumentService(repo, discardLogger())
+		pipeline := NewDocumentPipeline(svc, nil, nil, storagePath)
+
+		params := ReplaceContentParams{
+			FileName: "notes.txt",
+			FileSize: 6,
+			Reader:   strings.NewReader("hello"),
+		}
+
+		doc, err := pipeline.ReplaceContent(context.Background(), docUUID, params)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if doc.FileType != "markdown" {
+			t.Errorf("FileType = %q, want %q", doc.FileType, "markdown")
+		}
+		if doc.MIMEType != "text/plain" {
+			t.Errorf("MIMEType = %q, want %q", doc.MIMEType, "text/plain")
+		}
+	})
+
+	t.Run("update error propagates", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockDocumentRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return &model.Document{ID: 1, UUID: "some-uuid"}, nil
+			},
+			updateFn: func(_ context.Context, _ *model.Document) error {
+				return errors.New("db update failed")
+			},
+		}
+		svc := NewDocumentService(repo, discardLogger())
+		pipeline := NewDocumentPipeline(svc, nil, nil, t.TempDir())
+
+		params := ReplaceContentParams{
+			FileName: "doc.md",
+			FileSize: 4,
+			Reader:   strings.NewReader("data"),
+		}
+
+		_, err := pipeline.ReplaceContent(context.Background(), "some-uuid", params)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "updating document after content replacement") {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("re-fetch error propagates", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockDocumentRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return &model.Document{ID: 1, UUID: "some-uuid"}, nil
+			},
+			updateFn: func(_ context.Context, _ *model.Document) error {
+				return nil
+			},
+			findByIDFn: func(_ context.Context, _ int64) (*model.Document, error) {
+				return nil, errors.New("db read failed")
+			},
+		}
+		svc := NewDocumentService(repo, discardLogger())
+		pipeline := NewDocumentPipeline(svc, nil, nil, t.TempDir())
+
+		params := ReplaceContentParams{
+			FileName: "doc.md",
+			FileSize: 4,
+			Reader:   strings.NewReader("data"),
+		}
+
+		_, err := pipeline.ReplaceContent(context.Background(), "some-uuid", params)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "re-fetching document after content replacement") {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("io read error cleans up file", func(t *testing.T) {
+		t.Parallel()
+
+		storagePath := t.TempDir()
+		docUUID := "fail-read-uuid-00-000000000000"
+
+		repo := &mockDocumentRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return &model.Document{ID: 1, UUID: docUUID}, nil
+			},
+		}
+		svc := NewDocumentService(repo, discardLogger())
+		pipeline := NewDocumentPipeline(svc, nil, nil, storagePath)
+
+		params := ReplaceContentParams{
+			FileName: "doc.md",
+			FileSize: 100,
+			Reader:   &failingReader{err: errors.New("read failure")},
+		}
+
+		_, err := pipeline.ReplaceContent(context.Background(), docUUID, params)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "writing replacement file") {
+			t.Errorf("unexpected error message: %v", err)
+		}
+
+		// Verify the partially-written file was cleaned up.
+		partialPath := filepath.Join(storagePath, "md", docUUID+".md")
+		if _, statErr := os.Stat(partialPath); !os.IsNotExist(statErr) {
+			t.Error("expected partial file to be cleaned up")
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------

@@ -66,8 +66,8 @@ type Deps struct {
 	// Infrastructure
 	RateLimitRedisClient *redis.Client    // dedicated client for httprate-redis (no retries, no otel)
 	RedisClient          *redis.Client    // main client for readiness checks
-	DB               handler.DBPinger // for readiness checks (nil disables /health/ready)
-	InternalAPIToken string           // protects /metrics and /health/ready (empty = unrestricted)
+	DB                   handler.DBPinger // for readiness checks (nil disables /health/ready)
+	InternalAPIToken     string           // protects /metrics and /health/ready (empty = unrestricted)
 
 	// Server tuning (populated from config)
 	MaxBodySize    int64         // max request body size in bytes (excludes multipart)
@@ -256,6 +256,7 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 					r.Use(rateLimitByIP(60, time.Minute, deps.RateLimitRedisClient))
 					r.Use(authmiddleware.RequireScope(authscope.DocumentsRead, s.logger))
 					r.Get("/", deps.DocumentHandler.List)
+					r.Get("/tags", deps.DocumentHandler.ListTags)
 					r.Get("/trash", deps.DocumentHandler.ListDeleted)
 					r.Get("/{uuid}", deps.DocumentHandler.Show)
 					r.Get("/{uuid}/download", deps.DocumentHandler.Download)
@@ -269,6 +270,7 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 					r.Post("/analyze", deps.DocumentHandler.Analyze)
 					r.Put("/{uuid}", deps.DocumentHandler.Update)
 					r.Delete("/{uuid}", deps.DocumentHandler.Delete)
+					r.Post("/{uuid}/content", deps.DocumentHandler.ReplaceContent)
 					r.Post("/{uuid}/restore", deps.DocumentHandler.Restore)
 					r.Delete("/{uuid}/purge", deps.DocumentHandler.Purge)
 				})
