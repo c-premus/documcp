@@ -2904,6 +2904,9 @@ components:
         status:
           type: string
           enum: [healthy]
+        version:
+          type: string
+          description: Application version from build metadata
         timestamp:
           type: string
           format: date-time

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { TransitionRoot, TransitionChild, Dialog, DialogPanel } from '@headlessui/vue'
 import {
@@ -30,6 +30,19 @@ const auth = useAuthStore()
 const sse = useSSEStore()
 const sidebar = useSidebar()
 const logoSrc = `${import.meta.env.BASE_URL}logo-concept-1-transparent.svg`
+const appVersion = ref('')
+
+onMounted(async () => {
+  try {
+    const res = await fetch('/health')
+    if (res.ok) {
+      const data = await res.json()
+      if (data.version) appVersion.value = data.version
+    }
+  } catch {
+    // Version display is non-critical
+  }
+})
 
 const mainNavItems: readonly NavItem[] = [
   { name: 'Dashboard', to: '/dashboard', icon: HomeIcon },
@@ -215,16 +228,19 @@ watch(
               </template>
             </div>
 
-            <!-- SSE status footer -->
+            <!-- Status footer -->
             <div
-              class="border-t border-border-default px-4 py-3 flex items-center gap-2 text-xs text-text-muted"
+              class="border-t border-border-default px-4 py-3 flex items-center justify-between text-xs text-text-muted"
             >
-              <span
-                class="inline-block h-2 w-2 rounded-full shrink-0"
-                :class="sse.connected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"
-                aria-hidden="true"
-              />
-              {{ sse.connected ? 'Live' : 'Offline' }}
+              <div class="flex items-center gap-2">
+                <span
+                  class="inline-block h-2 w-2 rounded-full shrink-0"
+                  :class="sse.connected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"
+                  aria-hidden="true"
+                />
+                {{ sse.connected ? 'Live' : 'Offline' }}
+              </div>
+              <span v-if="appVersion">v{{ appVersion }}</span>
             </div>
           </DialogPanel>
         </TransitionChild>
@@ -327,6 +343,21 @@ watch(
           </li>
         </ul>
       </template>
+    </div>
+
+    <!-- Status footer -->
+    <div
+      class="border-t border-border-default px-4 py-3 flex items-center justify-between text-xs text-text-muted"
+    >
+      <div class="flex items-center gap-2">
+        <span
+          class="inline-block h-2 w-2 rounded-full shrink-0"
+          :class="sse.connected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"
+          aria-hidden="true"
+        />
+        {{ sse.connected ? 'Live' : 'Offline' }}
+      </div>
+      <span v-if="appVersion">v{{ appVersion }}</span>
     </div>
   </nav>
 </template>
