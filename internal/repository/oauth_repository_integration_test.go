@@ -147,17 +147,15 @@ func TestOAuthRepository_Clients(t *testing.T) {
 		assert.Equal(t, "client-abc", found.ClientID)
 	})
 
-	t.Run("DeactivateClient", func(t *testing.T) {
-		require.NoError(t, repo.DeactivateClient(ctx, client.ID))
+	t.Run("DeleteClient", func(t *testing.T) {
+		require.NoError(t, repo.DeleteClient(ctx, client.ID))
 
-		// FindClientByClientID only returns active clients.
+		// Client is permanently gone from both lookup methods.
 		_, err := repo.FindClientByClientID(ctx, "client-abc")
 		require.Error(t, err)
 
-		// FindClientByID still returns the client (it does not filter by is_active).
-		found, err := repo.FindClientByID(ctx, client.ID)
-		require.NoError(t, err)
-		assert.False(t, found.IsActive)
+		_, err = repo.FindClientByID(ctx, client.ID)
+		require.Error(t, err)
 	})
 
 	t.Run("ListClients_WithQuery", func(t *testing.T) {
@@ -177,9 +175,11 @@ func TestOAuthRepository_Clients(t *testing.T) {
 	})
 
 	t.Run("CountClients", func(t *testing.T) {
+		// Only 1 client remains: client-abc was hard-deleted, client-xyz was
+		// created in ListClients_WithQuery.
 		count, err := repo.CountClients(ctx)
 		require.NoError(t, err)
-		assert.Equal(t, 2, count)
+		assert.Equal(t, 1, count)
 	})
 }
 

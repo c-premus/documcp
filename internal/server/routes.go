@@ -53,9 +53,9 @@ type Deps struct {
 	DashboardHandler *apihandler.DashboardHandler // nil if not configured
 
 	// Vue SPA
-	AuthHandler    *apihandler.AuthHandler // nil if not configured
-	SPAHandler     http.Handler            // nil if not configured
-	FaviconHandler http.Handler            // nil if not configured
+	AuthHandler      *apihandler.AuthHandler // nil if not configured
+	SPAHandler       http.Handler            // nil if not configured
+	RootAssetHandler http.Handler            // nil if not configured
 
 	// Observability
 	Metrics     *observability.Metrics // nil disables Prometheus metrics
@@ -397,7 +397,7 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 					r.Get("/", deps.OAuthClientHandler.List)
 					r.Post("/", deps.OAuthClientHandler.Create)
 					r.Get("/{id}", deps.OAuthClientHandler.Show)
-					r.Post("/{id}/revoke", deps.OAuthClientHandler.Revoke)
+					r.Delete("/{id}", deps.OAuthClientHandler.Delete)
 				})
 			}
 
@@ -422,8 +422,14 @@ func (s *Server) registerSPARoutes(deps Deps) {
 		http.Redirect(w, r, "/auth/login", http.StatusMovedPermanently)
 	})
 
-	if deps.FaviconHandler != nil {
-		r.Get("/favicon.ico", deps.FaviconHandler.ServeHTTP)
+	if deps.RootAssetHandler != nil {
+		r.Get("/favicon.ico", deps.RootAssetHandler.ServeHTTP)
+		r.Get("/favicon.svg", deps.RootAssetHandler.ServeHTTP)
+		r.Get("/favicon-96x96.png", deps.RootAssetHandler.ServeHTTP)
+		r.Get("/apple-touch-icon.png", deps.RootAssetHandler.ServeHTTP)
+		r.Get("/site.webmanifest", deps.RootAssetHandler.ServeHTTP)
+		r.Get("/web-app-manifest-192x192.png", deps.RootAssetHandler.ServeHTTP)
+		r.Get("/web-app-manifest-512x512.png", deps.RootAssetHandler.ServeHTTP)
 	}
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {

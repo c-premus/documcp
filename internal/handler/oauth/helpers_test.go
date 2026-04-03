@@ -25,6 +25,7 @@ type mockOAuthRepo struct {
 	FindClientByClientIDFunc              func(ctx context.Context, clientID string) (*model.OAuthClient, error)
 	FindClientByIDFunc                    func(ctx context.Context, id int64) (*model.OAuthClient, error)
 	TouchClientLastUsedFunc               func(ctx context.Context, clientID int64) error
+	UpdateClientScopeFunc                 func(ctx context.Context, clientID int64, scope string) error
 	CreateAuthorizationCodeFunc           func(ctx context.Context, code *model.OAuthAuthorizationCode) error
 	FindAuthorizationCodeByCodeFunc       func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
 	RevokeAuthorizationCodeFunc           func(ctx context.Context, id int64) error
@@ -40,9 +41,9 @@ type mockOAuthRepo struct {
 	FindDeviceCodeByDeviceCodeFunc        func(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error)
 	FindDeviceCodeByUserCodeFunc          func(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
 	UpdateDeviceCodeStatusFunc            func(ctx context.Context, id int64, status string, userID *int64) error
+	UpdateDeviceCodeStatusAndScopeFunc    func(ctx context.Context, id int64, status string, userID *int64, scope string) error
 	UpdateDeviceCodeLastPolledFunc        func(ctx context.Context, id int64, interval int) error
 	FindUserByIDFunc                      func(ctx context.Context, id int64) (*model.User, error)
-	UpdateClientScopeFunc                 func(ctx context.Context, clientID int64, scope string) error
 }
 
 func (m *mockOAuthRepo) CreateClient(ctx context.Context, client *model.OAuthClient) error {
@@ -69,6 +70,13 @@ func (m *mockOAuthRepo) FindClientByID(ctx context.Context, id int64) (*model.OA
 func (m *mockOAuthRepo) TouchClientLastUsed(ctx context.Context, clientID int64) error {
 	if m.TouchClientLastUsedFunc != nil {
 		return m.TouchClientLastUsedFunc(ctx, clientID)
+	}
+	return nil
+}
+
+func (m *mockOAuthRepo) UpdateClientScope(ctx context.Context, clientID int64, scope string) error {
+	if m.UpdateClientScopeFunc != nil {
+		return m.UpdateClientScopeFunc(ctx, clientID, scope)
 	}
 	return nil
 }
@@ -182,6 +190,13 @@ func (m *mockOAuthRepo) UpdateDeviceCodeStatus(ctx context.Context, id int64, st
 	return nil
 }
 
+func (m *mockOAuthRepo) UpdateDeviceCodeStatusAndScope(ctx context.Context, id int64, status string, userID *int64, scope string) error {
+	if m.UpdateDeviceCodeStatusAndScopeFunc != nil {
+		return m.UpdateDeviceCodeStatusAndScopeFunc(ctx, id, status, userID, scope)
+	}
+	return nil
+}
+
 func (m *mockOAuthRepo) UpdateDeviceCodeLastPolled(ctx context.Context, id int64, interval int) error {
 	if m.UpdateDeviceCodeLastPolledFunc != nil {
 		return m.UpdateDeviceCodeLastPolledFunc(ctx, id, interval)
@@ -194,13 +209,6 @@ func (m *mockOAuthRepo) FindUserByID(ctx context.Context, id int64) (*model.User
 		return m.FindUserByIDFunc(ctx, id)
 	}
 	return nil, nil
-}
-
-func (m *mockOAuthRepo) UpdateClientScope(ctx context.Context, clientID int64, scope string) error {
-	if m.UpdateClientScopeFunc != nil {
-		return m.UpdateClientScopeFunc(ctx, clientID, scope)
-	}
-	return nil
 }
 
 // ---------------------------------------------------------------------------

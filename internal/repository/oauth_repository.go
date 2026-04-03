@@ -35,17 +35,16 @@ func (r *OAuthRepository) CreateClient(ctx context.Context, client *model.OAuthC
 			client_id, client_secret, client_secret_expires_at, client_name,
 			software_id, software_version, redirect_uris, grant_types,
 			response_types, token_endpoint_auth_method, scope, user_id,
-			is_active, created_at, updated_at
+			created_at, updated_at
 		) VALUES (
 			$1, $2, $3, $4,
 			$5, $6, $7, $8,
 			$9, $10, $11, $12,
-			$13, NOW(), NOW()
+			NOW(), NOW()
 		) RETURNING id, created_at, updated_at`,
 		client.ClientID, client.ClientSecret, client.ClientSecretExpiresAt, client.ClientName,
 		client.SoftwareID, client.SoftwareVersion, client.RedirectURIs, client.GrantTypes,
 		client.ResponseTypes, client.TokenEndpointAuthMethod, client.Scope, client.UserID,
-		client.IsActive,
 	).Scan(&client.ID, &client.CreatedAt, &client.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("creating oauth client %q: %w", client.ClientName, err)
@@ -53,10 +52,10 @@ func (r *OAuthRepository) CreateClient(ctx context.Context, client *model.OAuthC
 	return nil
 }
 
-// FindClientByClientID returns an active OAuth client by its public client_id.
+// FindClientByClientID returns an OAuth client by its public client_id.
 func (r *OAuthRepository) FindClientByClientID(ctx context.Context, clientID string) (*model.OAuthClient, error) {
 	client, err := database.Get[model.OAuthClient](ctx, r.db,
-		`SELECT * FROM oauth_clients WHERE client_id = $1 AND is_active = true`, clientID)
+		`SELECT * FROM oauth_clients WHERE client_id = $1`, clientID)
 	if err != nil {
 		return nil, fmt.Errorf("finding oauth client by client_id %s: %w", clientID, err)
 	}
@@ -327,6 +326,17 @@ func (r *OAuthRepository) UpdateDeviceCodeStatus(ctx context.Context, id int64, 
 	return nil
 }
 
+// UpdateDeviceCodeStatusAndScope atomically updates status, user_id, and scope of a device code.
+func (r *OAuthRepository) UpdateDeviceCodeStatusAndScope(ctx context.Context, id int64, status string, userID *int64, scope string) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE oauth_device_codes SET status = $1, user_id = $2, scope = $3, updated_at = NOW() WHERE id = $4`,
+		status, userID, sql.NullString{String: scope, Valid: scope != ""}, id)
+	if err != nil {
+		return fmt.Errorf("updating device code %d status+scope: %w", id, err)
+	}
+	return nil
+}
+
 // UpdateDeviceCodeLastPolled updates the last_polled_at timestamp and polling interval.
 func (r *OAuthRepository) UpdateDeviceCodeLastPolled(ctx context.Context, id int64, interval int) error {
 	tag, err := r.db.Exec(ctx,
@@ -501,12 +511,16 @@ func (r *OAuthRepository) ListClients(ctx context.Context, query string, limit, 
 	return clients, total, nil
 }
 
-// DeactivateClient marks an OAuth client as inactive.
-func (r *OAuthRepository) DeactivateClient(ctx context.Context, clientID int64) error {
-	_, err := r.db.Exec(ctx,
-		`UPDATE oauth_clients SET is_active = false, updated_at = NOW() WHERE id = $1`, clientID)
+// DeleteClient permanently removes an OAuth client and all associated tokens,
+// authorization codes, and device codes via database CASCADE.
+func (r *OAuthRepository) DeleteClient(ctx context.Context, clientID int64) error {
+	tag, err := r.db.Exec(ctx,
+		`DELETE FROM oauth_clients WHERE id = $1`, clientID)
 	if err != nil {
-		return fmt.Errorf("deactivating oauth client %d: %w", clientID, err)
+		return fmt.Errorf("deleting oauth client %d: %w", clientID, err)
+	}
+	if tag.RowsAffected() == 0 {
+		return sql.ErrNoRows
 	}
 	return nil
 }

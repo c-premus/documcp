@@ -24,7 +24,7 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	clientID := r.URL.Query().Get("client_id")
 	redirectURI := r.URL.Query().Get("redirect_uri")
 	state := r.URL.Query().Get("state")
-	scope := r.URL.Query().Get("scope")
+	scope := authscope.Normalize(r.URL.Query().Get("scope"))
 	codeChallenge := r.URL.Query().Get("code_challenge")
 	codeChallengeMethod := r.URL.Query().Get("code_challenge_method")
 
@@ -111,6 +111,31 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	if effectiveScope == "" && scope != "" {
 		oauthError(w, http.StatusBadRequest, "invalid_scope", "None of the requested scopes are available to your account.")
 		return
+	}
+
+	// Expand the client's registered scope to include scopes the user is
+	// entitled to grant. This allows auto-registered (read-only) clients to
+	// gain write/admin scopes when an admin approves consent.
+	if effectiveScope != "" {
+		expandedScope, expandErr := h.service.ExpandClientScope(r.Context(), client.ID, effectiveScope)
+		if expandErr != nil {
+			h.logger.Error("expanding client scope", "error", expandErr)
+			// Non-fatal: proceed with existing client scope.
+		} else {
+			client.Scope = sql.NullString{String: expandedScope, Valid: expandedScope != ""}
+		}
+	}
+
+	// Further narrow to the client's registered scope. A client should not
+	// receive scopes beyond what it registered for, even if the user could
+	// grant them. This prevents over-scoping when clients (e.g. Claude.ai)
+	// request all scopes_supported in the authorize URL.
+	if effectiveScope != "" && client.Scope.Valid && client.Scope.String != "" {
+		effectiveScope = authscope.Intersect(effectiveScope, client.Scope.String)
+		if effectiveScope == "" {
+			oauthError(w, http.StatusBadRequest, "invalid_scope", "None of the requested scopes are available for this client.")
+			return
+		}
 	}
 
 	// Generate consent nonce
@@ -443,8 +468,8 @@ func jsRedirect(w http.ResponseWriter, redirectURL string) {
 }
 
 const jsRedirectHTML = `<!DOCTYPE html>
-<html>
-<head><title>Redirecting…</title></head>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Redirecting…</title></head>
 <body>
 <p>Redirecting…</p>
 <script>window.location.href=%s;</script>
@@ -453,11 +478,12 @@ const jsRedirectHTML = `<!DOCTYPE html>
 </html>`
 
 const denyHTML = `<!DOCTYPE html>
-<html>
-<head><title>Authorization Denied</title>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorization Denied</title>
 <style>
-body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px}
+body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a;background:#ffffff}
 h1{font-size:1.5em}
+@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#030712}}
 </style>
 </head>
 <body>
@@ -471,10 +497,10 @@ h1{font-size:1.5em}
 const pendingStateMaxAge = 600 // 10 minutes
 
 const consentHTML = `<!DOCTYPE html>
-<html>
-<head><title>Authorize Application</title>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize Application</title>
 <style>
-body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px}
+body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a;background:#ffffff}
 h1{font-size:1.5em}
 .client-name{font-weight:bold;color:#2563eb}
 .scope{background:#f1f5f9;padding:4px 8px;border-radius:4px;font-family:monospace}
@@ -482,6 +508,14 @@ form{margin-top:24px}
 button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:pointer;margin-right:8px}
 .approve{background:#2563eb;color:white}
 .deny{background:#e2e8f0;color:#334155}
+button:focus-visible{outline:2px solid #4f46e5;outline-offset:2px}
+@media(prefers-color-scheme:dark){
+body{color:#e2e8f0;background:#030712}
+.client-name{color:#60a5fa}
+.scope{background:#111827;color:#e2e8f0}
+.deny{background:#334155;color:#e2e8f0}
+button:focus-visible{outline-color:#818cf8}
+}
 </style>
 </head>
 <body>

@@ -192,7 +192,6 @@ func NewOAuthClient(opts ...OAuthClientOption) *model.OAuthClient {
 		GrantTypes:              `["authorization_code"]`,
 		ResponseTypes:           `["code"]`,
 		TokenEndpointAuthMethod: "client_secret_basic",
-		IsActive:                true,
 		CreatedAt:               now,
 		UpdatedAt:               now,
 	}
@@ -240,11 +239,6 @@ func WithOAuthClientScope(scope string) OAuthClientOption {
 // WithOAuthClientUserID sets the OAuth client user ID on the builder.
 func WithOAuthClientUserID(uid int64) OAuthClientOption {
 	return func(c *model.OAuthClient) { c.UserID = nullInt64(uid) }
-}
-
-// WithOAuthClientIsActive sets the OAuth client active flag on the builder.
-func WithOAuthClientIsActive(active bool) OAuthClientOption {
-	return func(c *model.OAuthClient) { c.IsActive = active }
 }
 
 //nolint:godot // ---------------------------------------------------------------------------

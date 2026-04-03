@@ -149,7 +149,7 @@ func TestLoad_Defaults(t *testing.T) {
 		// DocuMCP
 		{"DocuMCP.Endpoint", cfg.DocuMCP.Endpoint, "/documcp"},
 		{"DocuMCP.ServerName", cfg.DocuMCP.ServerName, "DocuMCP"},
-		{"DocuMCP.ServerVersion", cfg.DocuMCP.ServerVersion, "0.1.0"},
+		{"DocuMCP.ServerVersion", cfg.DocuMCP.ServerVersion, "dev"},
 	}
 
 	for _, tt := range tests {

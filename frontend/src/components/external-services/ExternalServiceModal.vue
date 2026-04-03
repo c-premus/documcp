@@ -136,6 +136,7 @@ async function handleSubmit(): Promise<void> {
                   v-model="name"
                   type="text"
                   required
+                  :aria-describedby="error ? 'service-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
@@ -147,6 +148,7 @@ async function handleSubmit(): Promise<void> {
                 <select
                   id="service-type"
                   v-model="serviceType"
+                  :aria-describedby="error ? 'service-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 >
                   <option value="kiwix">Kiwix</option>
@@ -163,6 +165,7 @@ async function handleSubmit(): Promise<void> {
                   type="url"
                   required
                   placeholder="https://example.com"
+                  :aria-describedby="error ? 'service-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
@@ -176,12 +179,18 @@ async function handleSubmit(): Promise<void> {
                   v-model.number="priority"
                   type="number"
                   min="0"
+                  :aria-describedby="error ? 'service-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
             </div>
 
-            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">
+            <p
+              v-if="error"
+              id="service-form-error"
+              role="alert"
+              class="mt-3 text-sm text-red-600 dark:text-red-400"
+            >
               {{ error }}
             </p>
 

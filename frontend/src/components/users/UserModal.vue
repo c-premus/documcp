@@ -150,6 +150,7 @@ async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
                   v-model="name"
                   type="text"
                   required
+                  :aria-describedby="error ? 'user-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
@@ -163,6 +164,7 @@ async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
                   v-model="email"
                   type="email"
                   required
+                  :aria-describedby="error ? 'user-form-error' : undefined"
                   class="mt-1 block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
                 />
               </div>
@@ -182,7 +184,12 @@ async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
               </div>
             </div>
 
-            <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">
+            <p
+              v-if="error"
+              id="user-form-error"
+              role="alert"
+              class="mt-3 text-sm text-red-600 dark:text-red-400"
+            >
               {{ error }}
             </p>
 

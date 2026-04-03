@@ -167,7 +167,6 @@ func TestHandler_Authorize(t *testing.T) {
 					ClientName:              "Test App",
 					RedirectURIs:            `["https://example.com/callback"]`,
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 				}, nil
 			},
 		}
@@ -196,7 +195,6 @@ func TestHandler_Authorize(t *testing.T) {
 					ClientName:              "Public App",
 					RedirectURIs:            `["https://example.com/cb"]`,
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 				}, nil
 			},
 		}
@@ -225,7 +223,6 @@ func TestHandler_Authorize(t *testing.T) {
 					ClientName:              "Public App",
 					RedirectURIs:            `["https://example.com/cb"]`,
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 				}, nil
 			},
 		}
@@ -252,7 +249,6 @@ func TestHandler_Authorize(t *testing.T) {
 					ClientName:              "My MCP App",
 					RedirectURIs:            `["https://example.com/cb"]`,
 					TokenEndpointAuthMethod: "client_secret_post",
-					IsActive:                true,
 				}, nil
 			},
 			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
@@ -285,7 +281,6 @@ func TestHandler_Authorize(t *testing.T) {
 					ClientName:              "Public App",
 					RedirectURIs:            `["https://example.com/cb"]`,
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 				}, nil
 			},
 			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
@@ -315,7 +310,6 @@ func TestHandler_Authorize(t *testing.T) {
 					ClientName:              "Test App",
 					RedirectURIs:            `["https://example.com/cb"]`,
 					TokenEndpointAuthMethod: "client_secret_post",
-					IsActive:                true,
 				}, nil
 			},
 			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
@@ -343,6 +337,100 @@ func TestHandler_Authorize(t *testing.T) {
 		assert.Equal(t, "mcp:read", pending["scope"])
 		assert.NotEmpty(t, pending["nonce"])
 		assert.NotNil(t, pending["timestamp"])
+	})
+
+	t.Run("admin user expands read-only client scope on authorize", func(t *testing.T) {
+		t.Parallel()
+		var expandedScope string
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:                      1,
+					ClientID:                "cid",
+					ClientName:              "Auto-Registered App",
+					RedirectURIs:            `["https://example.com/cb"]`,
+					TokenEndpointAuthMethod: "none",
+					Scope:                   sql.NullString{String: "documents:read mcp:access search:read services:read templates:read zim:read", Valid: true},
+				}, nil
+			},
+			FindClientByIDFunc: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:       1,
+					ClientID: "cid",
+					Scope:    sql.NullString{String: "documents:read mcp:access search:read services:read templates:read zim:read", Valid: true},
+				}, nil
+			},
+			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
+				return &model.User{ID: id, IsAdmin: true}, nil
+			},
+			UpdateClientScopeFunc: func(_ context.Context, _ int64, scope string) error {
+				expandedScope = scope
+				return nil
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+
+		req := httptest.NewRequest(http.MethodGet,
+			"/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&scope=admin+mcp:access+documents:read+documents:write&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256",
+			http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Authorize(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		// Verify client scope was expanded to include admin and write scopes.
+		assert.NotEmpty(t, expandedScope, "UpdateClientScope should have been called")
+		assert.Contains(t, expandedScope, "admin")
+		assert.Contains(t, expandedScope, "documents:write")
+		// Verify consent screen shows the requested admin scopes.
+		body := rr.Body.String()
+		assert.Contains(t, body, "admin")
+	})
+
+	t.Run("non-admin user does not expand client scope beyond defaults", func(t *testing.T) {
+		t.Parallel()
+		var expandCalled bool
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:                      1,
+					ClientID:                "cid",
+					ClientName:              "Auto-Registered App",
+					RedirectURIs:            `["https://example.com/cb"]`,
+					TokenEndpointAuthMethod: "none",
+					Scope:                   sql.NullString{String: "documents:read mcp:access search:read services:read templates:read zim:read", Valid: true},
+				}, nil
+			},
+			FindClientByIDFunc: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:       1,
+					ClientID: "cid",
+					Scope:    sql.NullString{String: "documents:read mcp:access search:read services:read templates:read zim:read", Valid: true},
+				}, nil
+			},
+			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
+				return &model.User{ID: id, IsAdmin: false}, nil
+			},
+			UpdateClientScopeFunc: func(_ context.Context, _ int64, _ string) error {
+				expandCalled = true
+				return nil
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+
+		req := httptest.NewRequest(http.MethodGet,
+			"/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&scope=mcp:access+documents:read&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256",
+			http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Authorize(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		// Non-admin requesting only default scopes — client already has them,
+		// so ExpandClientScope is a no-op (Union returns same set).
+		assert.False(t, expandCalled, "UpdateClientScope should not be called when scope is unchanged")
 	})
 }
 
@@ -499,7 +587,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
@@ -544,7 +631,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
@@ -617,7 +703,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, _ *model.OAuthAuthorizationCode) error {
@@ -657,7 +742,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
@@ -700,7 +784,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
@@ -733,7 +816,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 		assert.NotContains(t, body, "state=")
 	})
 
-	t.Run("does not expand client scope on approval", func(t *testing.T) {
+	t.Run("approve uses session scope without re-expansion", func(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
@@ -743,12 +826,7 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ClientName:              "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
-			},
-			UpdateClientScopeFunc: func(_ context.Context, _ int64, _ string) error {
-				t.Fatal("ExpandClientScope should not be called")
-				return nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
 				code.ID = 99
@@ -788,7 +866,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ID: 1, ClientID: "cid", ClientName: "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
 			},
 			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
@@ -868,7 +945,6 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 					ID: 1, ClientID: "cid", ClientName: "Test App",
 					TokenEndpointAuthMethod: "none",
 					RedirectURIs:            `["https://example.com/cb"]`,
-					IsActive:                true,
 				}, nil
 			},
 			FindUserByIDFunc: func(_ context.Context, _ int64) (*model.User, error) {

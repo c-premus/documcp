@@ -13,7 +13,6 @@ function mockClient(overrides: Partial<OAuthClient> = {}): OAuthClient {
     response_types: ['code'],
     token_endpoint_auth_method: 'client_secret_basic',
     scope: 'read write',
-    is_active: true,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     ...overrides,
@@ -165,40 +164,56 @@ describe('oauthClients store', () => {
     })
   })
 
-  describe('revokeClient', () => {
-    it('POSTs to revoke endpoint and marks client inactive locally', async () => {
-      stubFetch({ message: 'Client revoked' })
+  describe('deleteClient', () => {
+    it('sends DELETE and removes client from local state', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 204,
+          statusText: 'No Content',
+          json: () => Promise.resolve({}),
+        }),
+      )
 
       const store = useOAuthClientsStore()
       store.$patch({
-        clients: [mockClient({ id: 1, is_active: true }), mockClient({ id: 2 })],
+        clients: [mockClient({ id: 1 }), mockClient({ id: 2 })],
       })
 
-      const result = await store.revokeClient(1)
+      await store.deleteClient(1)
 
-      expect(fetch).toHaveBeenCalledWith('/api/admin/oauth-clients/1/revoke', {
-        method: 'POST',
+      expect(fetch).toHaveBeenCalledWith('/api/admin/oauth-clients/1', {
+        method: 'DELETE',
       })
-      expect(result).toEqual({ message: 'Client revoked' })
-      expect(store.clients[0]!.is_active).toBe(false)
+      expect(store.clients).toHaveLength(1)
+      expect(store.clients[0]!.id).toBe(2)
     })
 
     it('does not modify array when id not found', async () => {
-      stubFetch({ message: 'Client revoked' })
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 204,
+          statusText: 'No Content',
+          json: () => Promise.resolve({}),
+        }),
+      )
 
       const store = useOAuthClientsStore()
-      store.$patch({ clients: [mockClient({ id: 1, is_active: true })] })
+      store.$patch({ clients: [mockClient({ id: 1 })] })
 
-      await store.revokeClient(99)
+      await store.deleteClient(99)
 
-      expect(store.clients[0]!.is_active).toBe(true)
+      expect(store.clients).toHaveLength(1)
     })
 
     it('sets error on failure', async () => {
       stubFetch({ message: 'Not found' }, false)
 
       const store = useOAuthClientsStore()
-      await expect(store.revokeClient(999)).rejects.toThrow('Not found')
+      await expect(store.deleteClient(999)).rejects.toThrow('Not found')
 
       expect(store.error).toBe('Not found')
     })

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"github.com/google/uuid"
@@ -19,7 +20,7 @@ type oauthClientRepo interface {
 	ListClients(ctx context.Context, query string, limit, offset int) ([]model.OAuthClient, int, error)
 	CreateClient(ctx context.Context, client *model.OAuthClient) error
 	FindClientByID(ctx context.Context, id int64) (*model.OAuthClient, error)
-	DeactivateClient(ctx context.Context, id int64) error
+	DeleteClient(ctx context.Context, id int64) error
 }
 
 // OAuthClientHandler handles REST API endpoints for OAuth client administration.
@@ -49,7 +50,6 @@ type oauthClientResponse struct {
 	ResponseTypes           []string `json:"response_types"`
 	TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
 	Scope                   string   `json:"scope,omitempty"`
-	IsActive                bool     `json:"is_active"`
 	LastUsedAt              *string  `json:"last_used_at,omitempty"`
 	CreatedAt               string   `json:"created_at,omitempty"`
 	UpdatedAt               string   `json:"updated_at,omitempty"`
@@ -140,7 +140,6 @@ func (h *OAuthClientHandler) Create(w http.ResponseWriter, r *http.Request) {
 		GrantTypes:              string(grantTypesJSON),
 		ResponseTypes:           string(responseTypesJSON),
 		TokenEndpointAuthMethod: authMethod,
-		IsActive:                true,
 	}
 	if body.Scope != "" {
 		client.Scope = sql.NullString{String: body.Scope, Valid: true}
@@ -163,22 +162,24 @@ func (h *OAuthClientHandler) Create(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Revoke handles POST /api/admin/oauth-clients/{id}/revoke -- deactivate a client.
-func (h *OAuthClientHandler) Revoke(w http.ResponseWriter, r *http.Request) {
+// Delete handles DELETE /api/admin/oauth-clients/{id} -- permanently remove a client.
+func (h *OAuthClientHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseIDParam(w, r, "id", "client id")
 	if !ok {
 		return
 	}
 
-	if err := h.repo.DeactivateClient(r.Context(), id); err != nil {
-		h.logger.Error("revoking oauth client", "id", id, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to revoke oauth client")
+	if err := h.repo.DeleteClient(r.Context(), id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			errorResponse(w, http.StatusNotFound, "oauth client not found")
+			return
+		}
+		h.logger.Error("deleting oauth client", "id", id, "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to delete oauth client")
 		return
 	}
 
-	jsonResponse(w, http.StatusOK, map[string]any{
-		"message": "OAuth client revoked successfully.",
-	})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Show handles GET /api/admin/oauth-clients/{id} -- get a single OAuth client.
@@ -223,7 +224,6 @@ func toOAuthClientResponse(c *model.OAuthClient) oauthClientResponse {
 		GrantTypes:              grantTypes,
 		ResponseTypes:           responseTypes,
 		TokenEndpointAuthMethod: c.TokenEndpointAuthMethod,
-		IsActive:                c.IsActive,
 		Scope:                   nullStringValue(c.Scope),
 		LastUsedAt:              nullTimePtr(c.LastUsedAt),
 		CreatedAt:               nullTimeToString(c.CreatedAt),

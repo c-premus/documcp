@@ -711,33 +711,45 @@ func TestRegisterRoutes_SPAHandlerSubpath(t *testing.T) {
 	}
 }
 
-func TestRegisterRoutes_FaviconHandler(t *testing.T) {
+func TestRegisterRoutes_RootAssetHandler(t *testing.T) {
 	t.Parallel()
 
-	faviconCalled := false
-	faviconHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		faviconCalled = true
+	var calledPaths []string
+	assetHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calledPaths = append(calledPaths, r.URL.Path)
 		w.Header().Set("Content-Type", "image/x-icon")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("icon"))
 	})
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:        "test",
-		FaviconHandler: faviconHandler,
+		Version:          "test",
+		RootAssetHandler: assetHandler,
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/favicon.ico", http.NoBody)
-	rec := httptest.NewRecorder()
-
-	srv.Router().ServeHTTP(rec, req)
-
-	if !faviconCalled {
-		t.Error("FaviconHandler was not called for /favicon.ico")
+	paths := []string{
+		"/favicon.ico",
+		"/favicon.svg",
+		"/favicon-96x96.png",
+		"/apple-touch-icon.png",
+		"/site.webmanifest",
+		"/web-app-manifest-192x192.png",
+		"/web-app-manifest-512x512.png",
 	}
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("/favicon.ico status = %d, want %d", rec.Code, http.StatusOK)
+	for _, path := range paths {
+		req := httptest.NewRequest(http.MethodGet, path, http.NoBody)
+		rec := httptest.NewRecorder()
+
+		srv.Router().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s status = %d, want %d", path, rec.Code, http.StatusOK)
+		}
+	}
+
+	if len(calledPaths) != len(paths) {
+		t.Errorf("RootAssetHandler called %d times, want %d", len(calledPaths), len(paths))
 	}
 }
 
@@ -1227,7 +1239,7 @@ func TestRegisterRoutes_AdminOAuthClientEndpoints(t *testing.T) {
 		{http.MethodGet, "/api/admin/oauth-clients"},
 		{http.MethodPost, "/api/admin/oauth-clients"},
 		{http.MethodGet, "/api/admin/oauth-clients/1"},
-		{http.MethodPost, "/api/admin/oauth-clients/1/revoke"},
+		{http.MethodDelete, "/api/admin/oauth-clients/1"},
 	}
 
 	for _, tt := range routes {

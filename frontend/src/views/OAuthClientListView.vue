@@ -2,7 +2,7 @@
 import { ref, watch, computed, h } from 'vue'
 import { toast } from 'vue-sonner'
 import { formatDistanceToNow } from 'date-fns'
-import { NoSymbolIcon } from '@heroicons/vue/24/outline'
+import { TrashIcon } from '@heroicons/vue/24/outline'
 import type { ColumnDef } from '@tanstack/vue-table'
 
 import { apiFetch } from '@/api/helpers'
@@ -11,7 +11,6 @@ import Pagination from '../components/shared/Pagination.vue'
 import SearchInput from '../components/shared/SearchInput.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
-import StatusBadge from '../components/shared/StatusBadge.vue'
 import OAuthClientCreateModal from '../components/oauth/OAuthClientCreateModal.vue'
 import SecretDisplayModal from '../components/oauth/SecretDisplayModal.vue'
 
@@ -24,10 +23,6 @@ interface ListResponse {
     readonly limit: number
     readonly offset: number
   }
-}
-
-interface RevokeResponse {
-  readonly message: string
 }
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -50,8 +45,8 @@ const page = ref(1)
 const perPage = ref(20)
 
 const showCreateModal = ref(false)
-const revokeTarget = ref<OAuthClient | null>(null)
-const showRevokeDialog = computed(() => revokeTarget.value !== null)
+const deleteTarget = ref<OAuthClient | null>(null)
+const showDeleteDialog = computed(() => deleteTarget.value !== null)
 
 const showSecretModal = ref(false)
 const createdClientId = ref('')
@@ -111,26 +106,26 @@ function handleSecretModalClose(): void {
   createdClientSecret.value = ''
 }
 
-async function handleRevokeConfirm(): Promise<void> {
-  if (revokeTarget.value === null) {
+async function handleDeleteConfirm(): Promise<void> {
+  if (deleteTarget.value === null) {
     return
   }
-  const clientName = revokeTarget.value.client_name
-  const clientDbId = revokeTarget.value.id
+  const clientName = deleteTarget.value.client_name
+  const clientDbId = deleteTarget.value.id
   try {
-    await apiFetch<RevokeResponse>(`/api/admin/oauth-clients/${clientDbId}/revoke`, {
-      method: 'POST',
+    await apiFetch(`/api/admin/oauth-clients/${clientDbId}`, {
+      method: 'DELETE',
     })
-    toast.success(`Client "${clientName}" revoked`)
-    revokeTarget.value = null
+    toast.success(`Client "${clientName}" deleted`)
+    deleteTarget.value = null
     fetchClients()
   } catch {
-    toast.error(`Failed to revoke "${clientName}"`)
+    toast.error(`Failed to delete "${clientName}"`)
   }
 }
 
-function handleRevokeCancel(): void {
-  revokeTarget.value = null
+function handleDeleteCancel(): void {
+  deleteTarget.value = null
 }
 
 const columns: ColumnDef<OAuthClient, unknown>[] = [
@@ -177,18 +172,6 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     },
   },
   {
-    accessorKey: 'is_active',
-    header: 'Status',
-    enableSorting: false,
-    meta: { className: 'w-28' },
-    cell: ({ getValue }) => {
-      const active = getValue<boolean>()
-      return h(StatusBadge, {
-        status: active ? 'active' : 'revoked',
-      })
-    },
-  },
-  {
     accessorKey: 'token_endpoint_auth_method',
     header: 'Auth Method',
     enableSorting: false,
@@ -226,22 +209,19 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     meta: { className: 'w-20' },
     cell: ({ row }) => {
       const client = row.original
-      if (!client.is_active) {
-        return h('span', { class: 'text-xs text-text-disabled' }, 'Revoked')
-      }
       return h(
         'button',
         {
           type: 'button',
           class: 'cursor-pointer text-text-muted hover:text-red-600 dark:hover:text-red-400',
-          title: `Revoke client ${client.client_name}`,
-          'aria-label': `Revoke client ${client.client_name}`,
+          title: `Delete client ${client.client_name}`,
+          'aria-label': `Delete client ${client.client_name}`,
           onClick: (event: MouseEvent) => {
             event.stopPropagation()
-            revokeTarget.value = client
+            deleteTarget.value = client
           },
         },
-        [h(NoSymbolIcon, { class: 'h-5 w-5' })],
+        [h(TrashIcon, { class: 'h-5 w-5' })],
       )
     },
   },
@@ -299,15 +279,15 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
       />
     </template>
 
-    <!-- Revoke Confirmation Dialog -->
+    <!-- Delete Confirmation Dialog -->
     <ConfirmDialog
-      :open="showRevokeDialog"
-      title="Revoke OAuth Client"
-      :message="`Are you sure you want to revoke &quot;${revokeTarget?.client_name ?? ''}&quot;? This client will no longer be able to authenticate.`"
-      confirm-label="Revoke"
+      :open="showDeleteDialog"
+      title="Delete OAuth Client"
+      :message="`Are you sure you want to delete &quot;${deleteTarget?.client_name ?? ''}&quot;? This will permanently remove the client and revoke all its tokens.`"
+      confirm-label="Delete"
       variant="danger"
-      @confirm="handleRevokeConfirm"
-      @cancel="handleRevokeCancel"
+      @confirm="handleDeleteConfirm"
+      @cancel="handleDeleteCancel"
     />
 
     <!-- Create Client Modal -->

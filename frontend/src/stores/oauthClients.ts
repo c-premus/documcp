@@ -11,7 +11,6 @@ export interface OAuthClient {
   readonly response_types: string[]
   readonly token_endpoint_auth_method: string
   readonly scope: string
-  readonly is_active: boolean
   readonly last_used_at: string | null
   readonly created_at: string
   readonly updated_at: string
@@ -49,10 +48,6 @@ interface ListResponse {
 
 interface CreateResponse {
   readonly data: CreatedClient
-  readonly message: string
-}
-
-interface RevokeResponse {
   readonly message: string
 }
 
@@ -101,20 +96,16 @@ export const useOAuthClientsStore = defineStore('oauthClients', () => {
     }
   }
 
-  async function revokeClient(id: number): Promise<RevokeResponse> {
+  async function deleteClient(id: number): Promise<void> {
     loading.value = true
     error.value = null
     try {
-      const response = await apiFetch<RevokeResponse>(`/api/admin/oauth-clients/${id}/revoke`, {
-        method: 'POST',
+      await apiFetch(`/api/admin/oauth-clients/${id}`, {
+        method: 'DELETE',
       })
-      const index = clients.value.findIndex((c) => c.id === id)
-      if (index !== -1) {
-        clients.value[index] = { ...clients.value[index], is_active: false } as OAuthClient
-      }
-      return response
+      clients.value = clients.value.filter((c) => c.id !== id)
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to revoke OAuth client'
+      error.value = e instanceof Error ? e.message : 'Failed to delete OAuth client'
       throw e
     } finally {
       loading.value = false
@@ -128,6 +119,6 @@ export const useOAuthClientsStore = defineStore('oauthClients', () => {
     error,
     fetchClients,
     createClient,
-    revokeClient,
+    deleteClient,
   }
 })

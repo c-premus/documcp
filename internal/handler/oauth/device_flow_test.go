@@ -96,7 +96,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["authorization_code"]`, // no device_code
 				}, nil
 			},
@@ -124,7 +123,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["urn:ietf:params:oauth:grant-type:device_code"]`,
 				}, nil
 			},
@@ -154,7 +152,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["urn:ietf:params:oauth:grant-type:device_code"]`,
 				}, nil
 			},
@@ -192,7 +189,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["urn:ietf:params:oauth:grant-type:device_code"]`,
 				}, nil
 			},
@@ -224,7 +220,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["urn:ietf:params:oauth:grant-type:device_code"]`,
 				}, nil
 			},
@@ -257,7 +252,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["urn:ietf:params:oauth:grant-type:device_code"]`,
 				}, nil
 			},
@@ -289,7 +283,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["urn:ietf:params:oauth:grant-type:device_code"]`,
 				}, nil
 			},
@@ -323,7 +316,6 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 					ID:                      1,
 					ClientID:                "cid",
 					TokenEndpointAuthMethod: "none",
-					IsActive:                true,
 					GrantTypes:              `["urn:ietf:params:oauth:grant-type:device_code"]`,
 				}, nil
 			},
@@ -455,20 +447,24 @@ func TestHandler_DeviceApprove(t *testing.T) {
 
 	t.Run("shows success page when approved", func(t *testing.T) {
 		t.Parallel()
-		var authorizedUserCode string
-		var approvedFlag bool
+		var authorizedCalled bool
+		var capturedScope string
 		repo := &mockOAuthRepo{
 			FindDeviceCodeByUserCodeFunc: func(_ context.Context, userCode string) (*model.OAuthDeviceCode, error) {
 				return &model.OAuthDeviceCode{
 					ID:        1,
 					UserCode:  userCode,
+					Scope:     sql.NullString{String: "mcp:access documents:read", Valid: true},
 					Status:    "pending",
 					ExpiresAt: time.Now().Add(15 * time.Minute),
 				}, nil
 			},
-			UpdateDeviceCodeStatusFunc: func(_ context.Context, _ int64, status string, _ *int64) error {
-				authorizedUserCode = "called"
-				approvedFlag = status == "authorized"
+			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
+				return &model.User{ID: id, IsAdmin: false}, nil
+			},
+			UpdateDeviceCodeStatusAndScopeFunc: func(_ context.Context, _ int64, status string, _ *int64, scope string) error {
+				authorizedCalled = status == "authorized"
+				capturedScope = scope
 				return nil
 			},
 		}
@@ -488,8 +484,8 @@ func TestHandler_DeviceApprove(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rr.Code)
 		assert.Contains(t, rr.Body.String(), "Authorization Successful")
-		assert.Equal(t, "called", authorizedUserCode)
-		assert.True(t, approvedFlag)
+		assert.True(t, authorizedCalled)
+		assert.Contains(t, capturedScope, "mcp:access")
 	})
 
 	t.Run("returns error when session pending value is wrong type", func(t *testing.T) {
@@ -744,7 +740,6 @@ func TestHandler_DeviceVerificationSubmit(t *testing.T) {
 					ID:         10,
 					ClientID:   "test-client",
 					ClientName: "MyApp",
-					IsActive:   true,
 				}, nil
 			},
 		}
@@ -781,8 +776,10 @@ func TestHandler_DeviceVerificationSubmit(t *testing.T) {
 					ID:         10,
 					ClientID:   "test-client",
 					ClientName: "MyApp",
-					IsActive:   true,
 				}, nil
+			},
+			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
+				return &model.User{ID: id, IsAdmin: false}, nil
 			},
 		}
 		h, store := newHandlerWithRepo(repo)
@@ -817,7 +814,6 @@ func TestHandler_DeviceVerificationSubmit(t *testing.T) {
 					ID:         10,
 					ClientID:   "test-client",
 					ClientName: "MyApp",
-					IsActive:   true,
 				}, nil
 			},
 		}
