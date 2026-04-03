@@ -278,8 +278,8 @@ h1{font-size:1.5em}
 input[type=text]{font-size:1.5em;padding:10px;width:200px;text-align:center;letter-spacing:4px;text-transform:uppercase;border:1px solid #cbd5e1;border-radius:6px;background:#ffffff;color:#0f172a}
 button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:pointer;background:#2563eb;color:white}
 @media(prefers-color-scheme:dark){
-body{color:#e2e8f0;background:#0f172a}
-input[type=text]{background:#1e293b;color:#e2e8f0;border-color:#475569}
+body{color:#e2e8f0;background:#030712}
+input[type=text]{background:#111827;color:#e2e8f0;border-color:#475569}
 }
 </style>
 </head>
@@ -306,9 +306,9 @@ button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:poin
 .approve{background:#2563eb;color:white}
 .deny{background:#e2e8f0;color:#334155}
 @media(prefers-color-scheme:dark){
-body{color:#e2e8f0;background:#0f172a}
+body{color:#e2e8f0;background:#030712}
 .client-name{color:#60a5fa}
-.scope{background:#1e293b;color:#e2e8f0}
+.scope{background:#111827;color:#e2e8f0}
 .deny{background:#334155;color:#e2e8f0}
 }
 </style>
@@ -331,7 +331,7 @@ const deviceSuccessHTML = `<!DOCTYPE html>
 <style>
 body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;text-align:center;color:#0f172a;background:#ffffff}
 h1{color:#16a34a}
-@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#0f172a}h1{color:#4ade80}}
+@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#030712}h1{color:#4ade80}}
 </style>
 </head>
 <body>
@@ -346,7 +346,7 @@ const deviceDeniedHTML = `<!DOCTYPE html>
 <style>
 body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;text-align:center;color:#0f172a;background:#ffffff}
 h1{color:#dc2626}
-@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#0f172a}h1{color:#f87171}}
+@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#030712}h1{color:#f87171}}
 </style>
 </head>
 <body>
@@ -361,7 +361,7 @@ const deviceErrorHTML = `<!DOCTYPE html>
 <style>
 body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;text-align:center;color:#0f172a;background:#ffffff}
 h1{color:#dc2626}
-@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#0f172a}h1{color:#f87171}}
+@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#030712}h1{color:#f87171}}
 </style>
 </head>
 <body>
