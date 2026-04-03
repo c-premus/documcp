@@ -16,7 +16,7 @@ DocuMCP gives AI agents structured access to your documentation via MCP tools an
 - **OAuth 2.1 Authorization Server** -- PKCE, device authorization ([RFC 8628](https://datatracker.ietf.org/doc/html/rfc8628)), dynamic client registration ([RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591)), and [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) Protected Resource Metadata for automatic discovery.
 - **Document Pipeline** -- Upload PDF, DOCX, XLSX, HTML, or Markdown. Text is extracted, indexed via PostgreSQL full-text search, and searchable within seconds.
 - **External Integrations** -- Kiwix ZIM archives (federated article search) and Git template repositories.
-- **Background Jobs** -- [River](https://riverqueue.com/) Postgres-native job queue with 11 worker types, 3 priority queues, and 6 periodic schedules.
+- **Background Jobs** -- [River](https://riverqueue.com/) Postgres-native job queue with 7 worker types, 3 priority queues, and 6 periodic schedules.
 - **Admin UI** -- Vue 3 + TypeScript SPA for managing documents, users, OAuth clients, external services, and queue status.
 - **Observability** -- OpenTelemetry tracing with automatic instrumentation for database queries (otelpgx), Redis commands (redisotel), and outbound HTTP (otelhttp). Prometheus metrics (19 collectors covering HTTP, database pool, Redis pool, search, and queue). Structured logging with `slog` (trace/span ID injection). Optional Sentry/GlitchTip error tracking. See [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) for architecture and configuration.
 - **OIDC Authentication** -- User login via any OpenID Connect provider.
@@ -101,7 +101,7 @@ go test -tags integration ./...      # Integration tests (needs Docker)
 ```bash
 gofmt -w .                           # Format
 goimports -w .                       # Fix imports
-golangci-lint run                    # Lint (v2.11.3)
+golangci-lint run                    # Lint (v2.11.4)
 ```
 
 ### Frontend
@@ -120,11 +120,13 @@ npm run lint               # vue-tsc + ESLint
 ```
 cmd/documcp/             Entry point (serve, worker, migrate, version, health)
 internal/
-  action/                Single-responsibility business actions
+  app/                   App lifecycle (Foundation + ServerApp + WorkerApp)
   auth/oauth/            OAuth 2.1 server (PKCE, device flow, dynamic registration)
   auth/oidc/             OIDC client for user authentication
   client/kiwix/          ZIM archive reader (Kiwix)
   client/git/            Git template repository sync
+  config/                Configuration loading (env, YAML)
+  cron/                  Cron schedule definitions
   crypto/                AES-256-GCM encryption for secrets at rest
   database/              PostgreSQL connection and migrations (goose)
   dto/                   Data transfer objects
@@ -137,9 +139,11 @@ internal/
   queue/                 River job queue (workers, events, periodic jobs)
   repository/            Data access layer (pgx, handwritten SQL)
   search/                Full-text search (tsvector/tsquery + pg_trgm)
+  security/              Path traversal and SSRF guards
   server/                HTTP server setup and routing (chi v5)
   service/               Business logic orchestration
   stringutil/            Shared string utilities
+  testutil/              Test helpers and fixtures
 frontend/                Vue 3 + TypeScript SPA source (admin panel)
 web/frontend/            Embedded SPA (//go:embed dist/)
 migrations/              SQL migration files (goose)
