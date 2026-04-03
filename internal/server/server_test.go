@@ -711,6 +711,36 @@ func TestRegisterRoutes_SPAHandlerSubpath(t *testing.T) {
 	}
 }
 
+func TestRegisterRoutes_FaviconHandler(t *testing.T) {
+	t.Parallel()
+
+	faviconCalled := false
+	faviconHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		faviconCalled = true
+		w.Header().Set("Content-Type", "image/x-icon")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("icon"))
+	})
+
+	srv := newTestServerWithDeps(t, server.Deps{
+		Version:        "test",
+		FaviconHandler: faviconHandler,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/favicon.ico", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(rec, req)
+
+	if !faviconCalled {
+		t.Error("FaviconHandler was not called for /favicon.ico")
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("/favicon.ico status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // RegisterRoutes: DefaultConfig ReadHeaderTimeout
 // ---------------------------------------------------------------------------
