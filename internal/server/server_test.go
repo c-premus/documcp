@@ -3,7 +3,6 @@ package server_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -32,13 +31,13 @@ var (
 	testMetricsOnce sync.Once
 )
 
-// stubPinger implements handler.DBPinger for testing.
-type stubPinger struct {
-	err error
+// stubPoolHealth implements handler.PoolHealthy for testing.
+type stubPoolHealth struct {
+	healthy bool
 }
 
-func (s *stubPinger) Ping(_ context.Context) error {
-	return s.err
+func (s *stubPoolHealth) IsHealthy() bool {
+	return s.healthy
 }
 
 func sharedMetrics() *observability.Metrics {
@@ -819,9 +818,9 @@ func TestRegisterRoutes_MaxBodySizeEnforced(t *testing.T) {
 func TestRegisterRoutes_ReadinessEndpointWithDB(t *testing.T) {
 	t.Parallel()
 
-	// Use a stub pinger that always fails. The readiness handler will
-	// report unhealthy, but the route should still be registered.
-	db := &stubPinger{err: errors.New("not connected")}
+	// Use a stub that reports unhealthy. The readiness handler will
+	// report not_ready, but the route should still be registered.
+	db := &stubPoolHealth{healthy: false}
 
 	srv := newTestServerWithDeps(t, server.Deps{
 		Version: "test",

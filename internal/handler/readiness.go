@@ -13,9 +13,11 @@ type ReadinessResponse struct {
 	Services map[string]string `json:"services"`
 }
 
-// DBPinger checks database connectivity.
-type DBPinger interface {
-	Ping(ctx context.Context) error
+// PoolHealthy reports whether the connection pool has live connections.
+// This avoids calling pgxPool.Ping() which generates otelpgx traces
+// (ping + pool.acquire spans) on every health check.
+type PoolHealthy interface {
+	IsHealthy() bool
 }
 
 // RedisPinger checks Redis connectivity.
@@ -26,23 +28,24 @@ type RedisPinger interface {
 // ReadinessHandler checks that critical dependencies are reachable.
 type ReadinessHandler struct {
 	version string
-	db      DBPinger
+	db      PoolHealthy
 	redis   RedisPinger
 }
 
-// NewReadinessHandler creates a ReadinessHandler with the given dependency pingers.
-func NewReadinessHandler(version string, db DBPinger, redisPinger RedisPinger) *ReadinessHandler {
+// NewReadinessHandler creates a ReadinessHandler with the given dependency checkers.
+func NewReadinessHandler(version string, db PoolHealthy, redisPinger RedisPinger) *ReadinessHandler {
 	return &ReadinessHandler{version: version, db: db, redis: redisPinger}
 }
 
-// ServeHTTP pings Postgres and returns 200 if all services are healthy, 503 otherwise.
+// ServeHTTP checks Postgres pool health and Redis connectivity,
+// returning 200 if all services are healthy, 503 otherwise.
 func (h *ReadinessHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	services := make(map[string]string)
 	allHealthy := true
 
-	// Check Postgres
+	// Check Postgres via pool stats — avoids otelpgx ping/pool.acquire spans.
 	if h.db != nil {
-		if err := h.db.Ping(r.Context()); err != nil {
+		if !h.db.IsHealthy() {
 			services["postgres"] = "unhealthy"
 			allHealthy = false
 		} else {
@@ -50,7 +53,7 @@ func (h *ReadinessHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check Redis
+	// Check Redis via uninstrumented client — avoids redisotel spans.
 	if h.redis != nil {
 		if err := h.redis.Ping(r.Context()); err != nil {
 			services["redis"] = "unhealthy"

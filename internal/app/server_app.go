@@ -194,7 +194,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	}, logger)
 
 	srv.RegisterRoutes(server.Deps{
-		RateLimitRedisClient:   f.RateLimitRedisClient,
+		BareRedisClient:   f.BareRedisClient,
 		RedisClient:            f.RedisClient,
 		Version:                cfg.DocuMCP.ServerVersion,
 		MCPHandler:             mcpH,
@@ -218,7 +218,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		Metrics:                f.Metrics,
 		OTELEnabled:            cfg.OTEL.Enabled,
 		IsSecure:               cfg.App.Env == "production",
-		DB:                     f.PgxPool,
+		DB:                     &server.PgxPoolHealth{Pool: f.PgxPool},
 		InternalAPIToken:       cfg.App.InternalAPIToken,
 		MaxBodySize:            cfg.Server.MaxBodySize,
 		RequestTimeout:         cfg.Server.RequestTimeout,

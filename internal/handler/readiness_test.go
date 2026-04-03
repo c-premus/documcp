@@ -1,9 +1,7 @@
 package handler_test
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,13 +9,13 @@ import (
 	"github.com/c-premus/documcp/internal/handler"
 )
 
-// mockPinger implements handler.DBPinger for testing.
-type mockPinger struct {
-	err error
+// mockPoolHealth implements handler.PoolHealthy for testing.
+type mockPoolHealth struct {
+	healthy bool
 }
 
-func (m *mockPinger) Ping(_ context.Context) error {
-	return m.err
+func (m *mockPoolHealth) IsHealthy() bool {
+	return m.healthy
 }
 
 func TestReadinessHandler_NilDB(t *testing.T) {
@@ -53,7 +51,7 @@ func TestReadinessHandler_NilDB(t *testing.T) {
 func TestReadinessHandler_DBHealthy(t *testing.T) {
 	t.Parallel()
 
-	h := handler.NewReadinessHandler("2.0.0", &mockPinger{}, nil)
+	h := handler.NewReadinessHandler("2.0.0", &mockPoolHealth{healthy: true}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -80,7 +78,7 @@ func TestReadinessHandler_DBHealthy(t *testing.T) {
 func TestReadinessHandler_DBUnhealthy(t *testing.T) {
 	t.Parallel()
 
-	h := handler.NewReadinessHandler("3.0.0", &mockPinger{err: errors.New("connection refused")}, nil)
+	h := handler.NewReadinessHandler("3.0.0", &mockPoolHealth{healthy: false}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
 	rec := httptest.NewRecorder()
