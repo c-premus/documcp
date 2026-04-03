@@ -131,6 +131,7 @@ type Handler struct {
 type Config struct {
 	ServerName    string
 	ServerVersion string
+	AppURL        string // Base URL for icon references (e.g. "https://docs.example.com")
 	Logger        *slog.Logger
 
 	// Always required
@@ -159,11 +160,28 @@ type Config struct {
 
 // New creates and configures the MCP handler with all tools and prompts.
 func New(cfg Config) *Handler {
+	impl := &mcp.Implementation{
+		Name:    cfg.ServerName,
+		Title:   cfg.ServerName,
+		Version: cfg.ServerVersion,
+	}
+	if cfg.AppURL != "" {
+		impl.Icons = []mcp.Icon{
+			{
+				Source:   cfg.AppURL + "/favicon.svg",
+				MIMEType: "image/svg+xml",
+				Sizes:    []string{"any"},
+			},
+			{
+				Source:   cfg.AppURL + "/favicon-96x96.png",
+				MIMEType: "image/png",
+				Sizes:    []string{"96x96"},
+			},
+		}
+	}
+
 	mcpServer := mcp.NewServer(
-		&mcp.Implementation{
-			Name:    cfg.ServerName,
-			Version: cfg.ServerVersion,
-		},
+		impl,
 		&mcp.ServerOptions{
 			Instructions: serverInstructions,
 		},
