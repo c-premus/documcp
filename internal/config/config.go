@@ -318,7 +318,7 @@ func setDefaults(v *viper.Viper) {
 	// DocuMCP
 	v.SetDefault("documcp_endpoint", "/documcp")
 	v.SetDefault("documcp_name", "DocuMCP")
-	v.SetDefault("documcp_version", "0.1.0")
+	v.SetDefault("documcp_version", "dev")
 
 	// Sentry / GlitchTip
 	v.SetDefault("sentry_dsn", "")

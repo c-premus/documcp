@@ -1,1 +1,0 @@
-import{H as e,at as t,d as n,v as r,x as i}from"./runtime-core.esm-bundler-y1Sx3e_r.js";import{t as a}from"./ViewLayoutSection.vue-CSR5e5bV.js";var o=i({__name:`CollectionScripts`,setup(i){return(i,o)=>(e(),n(a,null,{title:t(()=>[...o[0]||=[r(`Scripts`,-1)]]),_:1}))}});export{o as default};
