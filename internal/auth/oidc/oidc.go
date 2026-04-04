@@ -98,11 +98,28 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 			ClientID: cfg.OIDCCfg.ClientID,
 		})
 	} else {
-		// Auto-discovery from well-known endpoint.
-		var err error
-		provider, err = gooidc.NewProvider(ctx, cfg.OIDCCfg.ProviderURL)
-		if err != nil {
-			return nil, fmt.Errorf("discovering OIDC provider: %w", err)
+		// Auto-discovery from well-known endpoint with retry.
+		// Transient network failures (e.g. identity provider restarting) should
+		// not permanently disable OIDC login until the next container restart.
+		var lastErr error
+		for attempt := range discoveryMaxRetries {
+			provider, lastErr = gooidc.NewProvider(ctx, cfg.OIDCCfg.ProviderURL)
+			if lastErr == nil {
+				break
+			}
+			if attempt < discoveryMaxRetries-1 {
+				backoff := discoveryBaseDelay << attempt // 1s, 2s, 4s
+				cfg.Logger.Warn("OIDC provider discovery failed, retrying",
+					"error", lastErr, "attempt", attempt+1, "backoff", backoff)
+				select {
+				case <-time.After(backoff):
+				case <-ctx.Done():
+					return nil, fmt.Errorf("discovering OIDC provider: %w", ctx.Err())
+				}
+			}
+		}
+		if lastErr != nil {
+			return nil, fmt.Errorf("discovering OIDC provider after %d attempts: %w", discoveryMaxRetries, lastErr)
 		}
 		endpoint = provider.Endpoint()
 		verifier = provider.Verifier(&gooidc.Config{ClientID: cfg.OIDCCfg.ClientID})
@@ -130,6 +147,14 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 }
 
 const sessionName = "documcp_session"
+
+// discoveryMaxRetries and discoveryBaseDelay control OIDC provider discovery
+// retry behavior. With exponential backoff (1s, 2s, 4s) the total wait is ~7s
+// before giving up. Variables (not constants) so tests can override them.
+var (
+	discoveryMaxRetries = 4
+	discoveryBaseDelay  = 1 * time.Second
+)
 
 // Login handles GET /auth/login — redirects to the OIDC provider.
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
