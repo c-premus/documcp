@@ -263,7 +263,7 @@ func newTestDocument(uuid string) *model.Document {
 		FileSize: 1024,
 		MIMEType: "text/markdown",
 		IsPublic: true,
-		Status:   "processed",
+		Status:   model.DocumentStatusIndexed,
 		Description: sql.NullString{
 			String: "A test document",
 			Valid:  true,
@@ -678,7 +678,7 @@ func TestToDocumentResponse(t *testing.T) {
 			MIMEType:    "application/pdf",
 			WordCount:   sql.NullInt64{Int64: 500, Valid: true},
 			IsPublic:    true,
-			Status:      "indexed",
+			Status:      model.DocumentStatusIndexed,
 			ContentHash: sql.NullString{String: "hash123", Valid: true},
 			CreatedAt:   sql.NullTime{Time: now, Valid: true},
 			UpdatedAt:   sql.NullTime{Time: now, Valid: true},
@@ -751,7 +751,7 @@ func TestToDocumentResponse(t *testing.T) {
 			UUID:     "uuid-1",
 			Title:    "Title",
 			FileType: "md",
-			Status:   "uploaded",
+			Status:   model.DocumentStatusUploaded,
 		}
 		resp := toDocumentResponse(doc, nil)
 
@@ -1768,7 +1768,7 @@ func TestDocumentHandler_List(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rr.Code)
 		assert.Equal(t, "pdf", capturedParams.FileType)
-		assert.Equal(t, "indexed", capturedParams.Status)
+		assert.Equal(t, model.DocumentStatusIndexed, capturedParams.Status)
 		assert.Equal(t, "test", capturedParams.Query)
 		assert.Equal(t, "title", capturedParams.OrderBy)
 		assert.Equal(t, "asc", capturedParams.OrderDir)

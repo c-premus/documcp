@@ -24,7 +24,7 @@ func TestGitTemplateRepository_Create(t *testing.T) {
 		Slug:          "go-microservice",
 		RepositoryURL: "https://github.com/example/go-microservice",
 		Branch:        "main",
-		Status:        "pending",
+		Status:        model.GitTemplateStatusPending,
 		IsPublic:      true,
 		IsEnabled:     true,
 	}
@@ -46,7 +46,7 @@ func TestGitTemplateRepository_Create(t *testing.T) {
 			Slug:          "user-template",
 			RepositoryURL: "https://github.com/example/user-template",
 			Branch:        "main",
-			Status:        "pending",
+			Status:        model.GitTemplateStatusPending,
 			IsPublic:      true,
 			IsEnabled:     true,
 			UserID:        sql.NullInt64{Int64: user.ID, Valid: true},
@@ -69,7 +69,7 @@ func TestGitTemplateRepository_Create(t *testing.T) {
 			Slug:          "optional-fields-template",
 			RepositoryURL: "https://github.com/example/optional",
 			Branch:        "develop",
-			Status:        "pending",
+			Status:        model.GitTemplateStatusPending,
 			IsPublic:      false,
 			IsEnabled:     true,
 			Description:   sql.NullString{String: "A template with optional fields", Valid: true},
@@ -103,7 +103,7 @@ func TestGitTemplateRepository_FindByUUID(t *testing.T) {
 		Slug:          "find-by-uuid-template",
 		RepositoryURL: "https://github.com/example/find-uuid",
 		Branch:        "main",
-		Status:        "synced",
+		Status:        model.GitTemplateStatusSynced,
 		IsPublic:      true,
 		IsEnabled:     true,
 	}
@@ -117,7 +117,7 @@ func TestGitTemplateRepository_FindByUUID(t *testing.T) {
 	assert.Equal(t, "find-by-uuid-template", found.Slug)
 	assert.Equal(t, "https://github.com/example/find-uuid", found.RepositoryURL)
 	assert.Equal(t, "main", found.Branch)
-	assert.Equal(t, "synced", found.Status)
+	assert.Equal(t, model.GitTemplateStatusSynced, found.Status)
 	assert.True(t, found.IsPublic)
 	assert.True(t, found.IsEnabled)
 	assert.True(t, found.CreatedAt.Valid)
@@ -142,7 +142,7 @@ func TestGitTemplateRepository_FindByUUID(t *testing.T) {
 			Slug:          "disabled-template",
 			RepositoryURL: "https://github.com/example/disabled",
 			Branch:        "main",
-			Status:        "pending",
+			Status:        model.GitTemplateStatusPending,
 			IsPublic:      true,
 			IsEnabled:     false,
 		}
@@ -164,7 +164,7 @@ func TestGitTemplateRepository_FindBySlug(t *testing.T) {
 		Slug:          "find-by-slug-template",
 		RepositoryURL: "https://github.com/example/find-slug",
 		Branch:        "main",
-		Status:        "synced",
+		Status:        model.GitTemplateStatusSynced,
 		IsPublic:      true,
 		IsEnabled:     true,
 	}
@@ -194,7 +194,7 @@ func TestGitTemplateRepository_List(t *testing.T) {
 			Slug:          "backend-one",
 			RepositoryURL: "https://github.com/example/be1",
 			Branch:        "main",
-			Status:        "synced",
+			Status:        model.GitTemplateStatusSynced,
 			IsPublic:      true,
 			IsEnabled:     true,
 			Category:      sql.NullString{String: "backend", Valid: true},
@@ -205,7 +205,7 @@ func TestGitTemplateRepository_List(t *testing.T) {
 			Slug:          "backend-two",
 			RepositoryURL: "https://github.com/example/be2",
 			Branch:        "main",
-			Status:        "synced",
+			Status:        model.GitTemplateStatusSynced,
 			IsPublic:      true,
 			IsEnabled:     true,
 			Category:      sql.NullString{String: "backend", Valid: true},
@@ -216,7 +216,7 @@ func TestGitTemplateRepository_List(t *testing.T) {
 			Slug:          "frontend-one",
 			RepositoryURL: "https://github.com/example/fe1",
 			Branch:        "main",
-			Status:        "synced",
+			Status:        model.GitTemplateStatusSynced,
 			IsPublic:      true,
 			IsEnabled:     true,
 			Category:      sql.NullString{String: "frontend", Valid: true},
@@ -233,7 +233,7 @@ func TestGitTemplateRepository_List(t *testing.T) {
 		Slug:          "disabled-template",
 		RepositoryURL: "https://github.com/example/disabled",
 		Branch:        "main",
-		Status:        "pending",
+		Status:        model.GitTemplateStatusPending,
 		IsPublic:      true,
 		IsEnabled:     false,
 		Category:      sql.NullString{String: "backend", Valid: true},
@@ -247,7 +247,7 @@ func TestGitTemplateRepository_List(t *testing.T) {
 		Slug:          "deleted-template",
 		RepositoryURL: "https://github.com/example/deleted",
 		Branch:        "main",
-		Status:        "synced",
+		Status:        model.GitTemplateStatusSynced,
 		IsPublic:      true,
 		IsEnabled:     true,
 		Category:      sql.NullString{String: "backend", Valid: true},
@@ -290,7 +290,7 @@ func TestGitTemplateRepository_ListAll(t *testing.T) {
 			Slug:          "backend-service",
 			RepositoryURL: "https://github.com/example/be-svc",
 			Branch:        "main",
-			Status:        "synced",
+			Status:        model.GitTemplateStatusSynced,
 			IsPublic:      true,
 			IsEnabled:     true,
 			Description:   sql.NullString{String: "A backend microservice template", Valid: true},
@@ -301,7 +301,7 @@ func TestGitTemplateRepository_ListAll(t *testing.T) {
 			Slug:          "frontend-app",
 			RepositoryURL: "https://github.com/example/fe-app",
 			Branch:        "main",
-			Status:        "synced",
+			Status:        model.GitTemplateStatusSynced,
 			IsPublic:      true,
 			IsEnabled:     true,
 		},
@@ -311,7 +311,7 @@ func TestGitTemplateRepository_ListAll(t *testing.T) {
 			Slug:          "cli-tool",
 			RepositoryURL: "https://github.com/example/cli",
 			Branch:        "main",
-			Status:        "synced",
+			Status:        model.GitTemplateStatusSynced,
 			IsPublic:      true,
 			IsEnabled:     true,
 		},
@@ -327,7 +327,7 @@ func TestGitTemplateRepository_ListAll(t *testing.T) {
 		Slug:          "disabled-backend",
 		RepositoryURL: "https://github.com/example/disabled-be",
 		Branch:        "main",
-		Status:        "pending",
+		Status:        model.GitTemplateStatusPending,
 		IsPublic:      true,
 		IsEnabled:     false,
 		Description:   sql.NullString{String: "A disabled backend template", Valid: true},
@@ -341,7 +341,7 @@ func TestGitTemplateRepository_ListAll(t *testing.T) {
 		Slug:          "deleted-listall",
 		RepositoryURL: "https://github.com/example/deleted-listall",
 		Branch:        "main",
-		Status:        "synced",
+		Status:        model.GitTemplateStatusSynced,
 		IsPublic:      true,
 		IsEnabled:     true,
 	}
@@ -374,7 +374,7 @@ func TestGitTemplateRepository_Count(t *testing.T) {
 			Slug:          "count-template-" + string(rune('a'+i)),
 			RepositoryURL: "https://github.com/example/count-" + string(rune('a'+i)),
 			Branch:        "main",
-			Status:        "synced",
+			Status:        model.GitTemplateStatusSynced,
 			IsPublic:      true,
 			IsEnabled:     true,
 		}
@@ -402,7 +402,7 @@ func TestGitTemplateRepository_Update(t *testing.T) {
 		Slug:          "original-slug",
 		RepositoryURL: "https://github.com/example/update",
 		Branch:        "main",
-		Status:        "pending",
+		Status:        model.GitTemplateStatusPending,
 		IsPublic:      true,
 		IsEnabled:     true,
 	}
@@ -448,7 +448,7 @@ func TestGitTemplateRepository_SoftDelete(t *testing.T) {
 		Slug:          "to-be-deleted",
 		RepositoryURL: "https://github.com/example/softdelete",
 		Branch:        "main",
-		Status:        "synced",
+		Status:        model.GitTemplateStatusSynced,
 		IsPublic:      true,
 		IsEnabled:     true,
 	}
@@ -479,19 +479,19 @@ func TestGitTemplateRepository_UpdateSyncStatus(t *testing.T) {
 		Slug:          "sync-template",
 		RepositoryURL: "https://github.com/example/sync",
 		Branch:        "main",
-		Status:        "pending",
+		Status:        model.GitTemplateStatusPending,
 		IsPublic:      true,
 		IsEnabled:     true,
 	}
 	require.NoError(t, repo.Create(ctx, tmpl))
 
-	err := repo.UpdateSyncStatus(ctx, tmpl.ID, "synced", "abc123sha", 10, 5000, "")
+	err := repo.UpdateSyncStatus(ctx, tmpl.ID, model.GitTemplateStatusSynced, "abc123sha", 10, 5000, "")
 	require.NoError(t, err)
 
 	// Verify fields via direct query since FindByUUID is sufficient here (enabled + not deleted).
 	found, err := repo.FindByUUID(ctx, testUUID("git-tmpl-sync"))
 	require.NoError(t, err)
-	assert.Equal(t, "synced", found.Status)
+	assert.Equal(t, model.GitTemplateStatusSynced, found.Status)
 	assert.True(t, found.LastCommitSHA.Valid)
 	assert.Equal(t, "abc123sha", found.LastCommitSHA.String)
 	assert.Equal(t, 10, found.FileCount)
@@ -526,7 +526,7 @@ func TestGitTemplateRepository_ReplaceFiles(t *testing.T) {
 		Slug:          "replace-files-template",
 		RepositoryURL: "https://github.com/example/replacefiles",
 		Branch:        "main",
-		Status:        "synced",
+		Status:        model.GitTemplateStatusSynced,
 		IsPublic:      true,
 		IsEnabled:     true,
 	}
@@ -599,7 +599,7 @@ func TestGitTemplateRepository_FilesForTemplate(t *testing.T) {
 		Slug:          "files-template",
 		RepositoryURL: "https://github.com/example/files",
 		Branch:        "main",
-		Status:        "synced",
+		Status:        model.GitTemplateStatusSynced,
 		IsPublic:      true,
 		IsEnabled:     true,
 	}
@@ -673,7 +673,7 @@ func TestGitTemplateRepository_FindFileByPath(t *testing.T) {
 		Slug:          "find-file-template",
 		RepositoryURL: "https://github.com/example/findfile",
 		Branch:        "main",
-		Status:        "synced",
+		Status:        model.GitTemplateStatusSynced,
 		IsPublic:      true,
 		IsEnabled:     true,
 	}
@@ -727,7 +727,7 @@ func TestGitTemplateRepository_Search(t *testing.T) {
 			Slug:          "react-dashboard",
 			RepositoryURL: "https://github.com/example/react-dash",
 			Branch:        "main",
-			Status:        "synced",
+			Status:        model.GitTemplateStatusSynced,
 			IsPublic:      true,
 			IsEnabled:     true,
 			Category:      sql.NullString{String: "frontend", Valid: true},
@@ -738,7 +738,7 @@ func TestGitTemplateRepository_Search(t *testing.T) {
 			Slug:          "go-api-server",
 			RepositoryURL: "https://github.com/example/go-api",
 			Branch:        "main",
-			Status:        "synced",
+			Status:        model.GitTemplateStatusSynced,
 			IsPublic:      true,
 			IsEnabled:     true,
 			Description:   sql.NullString{String: "A REST API with react admin panel", Valid: true},
@@ -750,7 +750,7 @@ func TestGitTemplateRepository_Search(t *testing.T) {
 			Slug:          "python-cli",
 			RepositoryURL: "https://github.com/example/python-cli",
 			Branch:        "main",
-			Status:        "synced",
+			Status:        model.GitTemplateStatusSynced,
 			IsPublic:      true,
 			IsEnabled:     true,
 			ReadmeContent: sql.NullString{String: "Uses react-inspired component architecture", Valid: true},
@@ -768,7 +768,7 @@ func TestGitTemplateRepository_Search(t *testing.T) {
 		Slug:          "react-disabled",
 		RepositoryURL: "https://github.com/example/react-disabled",
 		Branch:        "main",
-		Status:        "pending",
+		Status:        model.GitTemplateStatusPending,
 		IsPublic:      true,
 		IsEnabled:     false,
 		Category:      sql.NullString{String: "frontend", Valid: true},
@@ -782,7 +782,7 @@ func TestGitTemplateRepository_Search(t *testing.T) {
 		Slug:          "react-deleted",
 		RepositoryURL: "https://github.com/example/react-deleted",
 		Branch:        "main",
-		Status:        "synced",
+		Status:        model.GitTemplateStatusSynced,
 		IsPublic:      true,
 		IsEnabled:     true,
 		Category:      sql.NullString{String: "frontend", Valid: true},

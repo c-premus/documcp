@@ -161,7 +161,7 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 		FileSize: written,
 		MIMEType: mimeType,
 		IsPublic: params.IsPublic,
-		Status:   "uploaded",
+		Status:   model.DocumentStatusUploaded,
 		Description: sql.NullString{
 			String: params.Description,
 			Valid:  params.Description != "",
@@ -260,7 +260,7 @@ func (p *DocumentPipeline) ReplaceContent(ctx context.Context, docUUID string, p
 	doc.FileSize = written
 	doc.FileType = fileType
 	doc.MIMEType = mimeType
-	doc.Status = "uploaded"
+	doc.Status = model.DocumentStatusUploaded
 	doc.Content = sql.NullString{}
 	doc.ContentHash = sql.NullString{}
 	doc.WordCount = sql.NullInt64{}
@@ -314,7 +314,7 @@ func (p *DocumentPipeline) ProcessDocument(ctx context.Context, docID int64) err
 	doc.ContentHash = sql.NullString{String: contentHash, Valid: true}
 	doc.WordCount = sql.NullInt64{Int64: int64(result.WordCount), Valid: true}
 	doc.ProcessedAt = sql.NullTime{Time: now, Valid: true}
-	doc.Status = "indexed"
+	doc.Status = model.DocumentStatusIndexed
 	doc.ErrorMessage = sql.NullString{}
 
 	if err := p.repo.Update(ctx, doc); err != nil {
@@ -347,7 +347,7 @@ func (p *DocumentPipeline) dispatchExtraction(ctx context.Context, docID int64, 
 
 // markFailed updates a document's status to "failed" with an error message.
 func (p *DocumentPipeline) markFailed(ctx context.Context, doc *model.Document, errMsg string) error {
-	doc.Status = "failed"
+	doc.Status = model.DocumentStatusFailed
 	doc.ErrorMessage = sql.NullString{String: errMsg, Valid: true}
 	if err := p.repo.Update(ctx, doc); err != nil {
 		return fmt.Errorf("marking document %d as failed: %w", doc.ID, err)

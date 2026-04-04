@@ -89,7 +89,7 @@ func (s *Service) GenerateDeviceCode(ctx context.Context, params DeviceAuthoriza
 		VerificationURI:         verificationURI,
 		VerificationURIComplete: sql.NullString{String: verificationURIComplete, Valid: true},
 		Interval:                interval,
-		Status:                  "pending",
+		Status:                  model.DeviceCodeStatusPending,
 		ExpiresAt:               time.Now().Add(s.config.DeviceCodeLifetime),
 	}
 
@@ -122,12 +122,12 @@ func (s *Service) AuthorizeDeviceCode(ctx context.Context, userCode string, user
 		return errors.New("device code has expired")
 	}
 
-	if dc.Status != "pending" {
+	if dc.Status != model.DeviceCodeStatusPending {
 		return errors.New("device code is not in valid state for authorization")
 	}
 
 	if !approved {
-		return s.repo.UpdateDeviceCodeStatus(ctx, dc.ID, "denied", &userID)
+		return s.repo.UpdateDeviceCodeStatus(ctx, dc.ID, model.DeviceCodeStatusDenied, &userID)
 	}
 
 	// Narrow scope to the approving user's entitlements.
@@ -153,7 +153,7 @@ func (s *Service) AuthorizeDeviceCode(ctx context.Context, userCode string, user
 		}
 	}
 
-	return s.repo.UpdateDeviceCodeStatusAndScope(ctx, dc.ID, "authorized", &userID, scope)
+	return s.repo.UpdateDeviceCodeStatusAndScope(ctx, dc.ID, model.DeviceCodeStatusAuthorized, &userID, scope)
 }
 
 // DeviceCodeError represents an error in the device code exchange flow.
@@ -224,15 +224,15 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceC
 	_ = s.repo.UpdateDeviceCodeLastPolled(ctx, dc.ID, dc.Interval)
 
 	switch dc.Status {
-	case "pending":
+	case model.DeviceCodeStatusPending:
 		return nil, &DeviceCodeError{Code: "authorization_pending", Description: "The authorization request is still pending"}
-	case "denied":
+	case model.DeviceCodeStatusDenied:
 		return nil, &DeviceCodeError{Code: "access_denied", Description: "The user denied the authorization request"}
-	case "exchanged":
+	case model.DeviceCodeStatusExchanged:
 		return nil, &DeviceCodeError{Code: "invalid_grant", Description: "Device code has already been used"}
-	case "authorized":
+	case model.DeviceCodeStatusAuthorized:
 		// Mark as exchanged
-		if err := s.repo.UpdateDeviceCodeStatus(ctx, dc.ID, "exchanged", nil); err != nil {
+		if err := s.repo.UpdateDeviceCodeStatus(ctx, dc.ID, model.DeviceCodeStatusExchanged, nil); err != nil {
 			return nil, fmt.Errorf("updating device code status: %w", err)
 		}
 

@@ -51,7 +51,7 @@ func TestToGitTemplateResponse(t *testing.T) {
 			RepositoryURL:  "https://github.com/user/repo",
 			Branch:         "main",
 			IsPublic:       true,
-			Status:         "synced",
+			Status:         model.GitTemplateStatusSynced,
 			FileCount:      10,
 			TotalSizeBytes: 2048,
 		}
@@ -96,7 +96,7 @@ func TestToGitTemplateResponse(t *testing.T) {
 			Slug:          "test",
 			RepositoryURL: "https://example.com",
 			Branch:        "main",
-			Status:        "synced",
+			Status:        model.GitTemplateStatusSynced,
 			Description:   sql.NullString{String: "A description", Valid: true},
 			Category:      sql.NullString{String: "devops", Valid: true},
 			ErrorMessage:  sql.NullString{String: "sync failed", Valid: true},
@@ -128,7 +128,7 @@ func TestToGitTemplateResponse(t *testing.T) {
 			Slug:          "minimal",
 			RepositoryURL: "https://example.com",
 			Branch:        "main",
-			Status:        "pending",
+			Status:        model.GitTemplateStatusPending,
 		}
 
 		resp := toGitTemplateResponse(gt)
@@ -166,7 +166,7 @@ func TestToGitTemplateResponse(t *testing.T) {
 			Slug:          "timed",
 			RepositoryURL: "https://example.com",
 			Branch:        "main",
-			Status:        "synced",
+			Status:        model.GitTemplateStatusSynced,
 			LastSyncedAt:  sql.NullTime{Time: now, Valid: true},
 			CreatedAt:     sql.NullTime{Time: now, Valid: true},
 			UpdatedAt:     sql.NullTime{Time: now, Valid: true},
@@ -195,7 +195,7 @@ func TestToGitTemplateResponse(t *testing.T) {
 			Slug:          "tagged",
 			RepositoryURL: "https://example.com",
 			Branch:        "main",
-			Status:        "synced",
+			Status:        model.GitTemplateStatusSynced,
 			Tags:          sql.NullString{String: `["go","docker","k8s"]`, Valid: true},
 		}
 
@@ -218,7 +218,7 @@ func TestToGitTemplateResponse(t *testing.T) {
 			Slug:          "no-tags",
 			RepositoryURL: "https://example.com",
 			Branch:        "main",
-			Status:        "synced",
+			Status:        model.GitTemplateStatusSynced,
 		}
 
 		resp := toGitTemplateResponse(gt)
@@ -240,7 +240,7 @@ func TestToGitTemplateResponse(t *testing.T) {
 			Slug:          "bad-tags",
 			RepositoryURL: "https://example.com",
 			Branch:        "main",
-			Status:        "synced",
+			Status:        model.GitTemplateStatusSynced,
 			Tags:          sql.NullString{String: "not json", Valid: true},
 		}
 
@@ -263,7 +263,7 @@ func TestToGitTemplateResponse(t *testing.T) {
 			Slug:          "empty",
 			RepositoryURL: "https://example.com",
 			Branch:        "main",
-			Status:        "pending",
+			Status:        model.GitTemplateStatusPending,
 			FileCount:     0,
 		}
 
@@ -1114,8 +1114,8 @@ func TestGitTemplateHandler_List(t *testing.T) {
 					t.Errorf("offset = %d, want 0", offset)
 				}
 				return []model.GitTemplate{
-					{UUID: "t1", Name: "Template One", Slug: "template-one", RepositoryURL: "https://github.com/a/b", Branch: "main", Status: "synced"},
-					{UUID: "t2", Name: "Template Two", Slug: "template-two", RepositoryURL: "https://github.com/c/d", Branch: "main", Status: "pending"},
+					{UUID: "t1", Name: "Template One", Slug: "template-one", RepositoryURL: "https://github.com/a/b", Branch: "main", Status: model.GitTemplateStatusSynced},
+					{UUID: "t2", Name: "Template Two", Slug: "template-two", RepositoryURL: "https://github.com/c/d", Branch: "main", Status: model.GitTemplateStatusPending},
 				}, nil
 			},
 		}
@@ -1309,7 +1309,7 @@ func TestGitTemplateHandler_Show(t *testing.T) {
 					Slug:          "my-template",
 					RepositoryURL: "https://github.com/user/repo",
 					Branch:        "main",
-					Status:        "synced",
+					Status:        model.GitTemplateStatusSynced,
 					FileCount:     5,
 				}, nil
 			},
@@ -1620,7 +1620,7 @@ func sampleTemplate() *model.GitTemplate {
 		Branch:         "main",
 		IsPublic:       true,
 		IsEnabled:      true,
-		Status:         "synced",
+		Status:         model.GitTemplateStatusSynced,
 		FileCount:      2,
 		TotalSizeBytes: 1024,
 		Description:    sql.NullString{String: "A test template", Valid: true},
@@ -1675,7 +1675,7 @@ func TestGitTemplateHandler_Search(t *testing.T) {
 					t.Errorf("limit = %d, want 10", limit)
 				}
 				return []model.GitTemplate{
-					{UUID: "t1", Name: "Docker Compose", Slug: "docker-compose", RepositoryURL: "https://github.com/a/b", Branch: "main", Status: "synced"},
+					{UUID: "t1", Name: "Docker Compose", Slug: "docker-compose", RepositoryURL: "https://github.com/a/b", Branch: "main", Status: model.GitTemplateStatusSynced},
 				}, nil
 			},
 		}
@@ -2706,8 +2706,8 @@ func TestGitTemplateHandler_Create(t *testing.T) {
 		if !createdTmpl.IsPublic {
 			t.Error("IsPublic = false, want true")
 		}
-		if createdTmpl.Status != "pending" {
-			t.Errorf("Status = %q, want 'pending'", createdTmpl.Status)
+		if createdTmpl.Status != model.GitTemplateStatusPending {
+			t.Errorf("Status = %q, want %q", createdTmpl.Status, model.GitTemplateStatusPending)
 		}
 		if createdTmpl.UUID == "" {
 			t.Error("UUID should not be empty")

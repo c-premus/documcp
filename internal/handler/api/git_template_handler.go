@@ -216,7 +216,7 @@ func (h *GitTemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Branch:        branch,
 		IsPublic:      body.IsPublic,
 		IsEnabled:     true,
-		Status:        "pending",
+		Status:        model.GitTemplateStatusPending,
 	}
 
 	if body.Description != "" {
@@ -713,7 +713,7 @@ func toGitTemplateResponse(gt *model.GitTemplate) gitTemplateResponse {
 		RepositoryURL:  gt.RepositoryURL,
 		Branch:         gt.Branch,
 		IsPublic:       gt.IsPublic,
-		Status:         gt.Status,
+		Status:         string(gt.Status),
 		Tags:           tags,
 		FileCount:      gt.FileCount,
 		TotalSizeBytes: gt.TotalSizeBytes,

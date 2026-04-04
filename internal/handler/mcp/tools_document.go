@@ -119,7 +119,7 @@ func (h *Handler) registerDocumentTools() {
 			"users see own + public, M2M tokens see public only).\n\n" +
 			"**Filters:**\n" +
 			"- `file_type`: markdown, pdf, docx, xlsx, html\n" +
-			"- `status`: pending, processed, failed\n\n" +
+			"- `status`: pending, indexed, failed\n\n" +
 			"Returns UUID, title, description, file type, file size, word count, tags, and timestamps. " +
 			"Sorted by creation date (newest first). Max 100 results per page.\n\n" +
 			"**Workflow:** Use `uuid` from results with `read_document` to fetch full content, " +
@@ -187,7 +187,7 @@ func (h *Handler) handleListDocuments(
 	offset := clampOffset(input.Offset)
 
 	params := repository.DocumentListParams{
-		Status:   input.Status,
+		Status:   model.DocumentStatus(input.Status),
 		Limit:    limit,
 		Offset:   offset,
 		OrderBy:  "created_at",
@@ -238,7 +238,7 @@ func (h *Handler) handleListDocuments(
 			FileSize:    doc.FileSize,
 			WordCount:   doc.WordCount.Int64,
 			IsPublic:    doc.IsPublic,
-			Status:      doc.Status,
+			Status:      string(doc.Status),
 			Tags:        tags,
 		}
 		if doc.CreatedAt.Valid {

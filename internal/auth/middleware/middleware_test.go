@@ -49,7 +49,7 @@ type mockOAuthRepo struct {
 	createDeviceCodeFn           func(ctx context.Context, dc *model.OAuthDeviceCode) error
 	findDeviceCodeByDeviceCodeFn func(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error)
 	findDeviceCodeByUserCodeFn   func(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
-	updateDeviceCodeStatusFn     func(ctx context.Context, id int64, status string, userID *int64) error
+	updateDeviceCodeStatusFn     func(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64) error
 	updateDeviceCodeLastPolledFn func(ctx context.Context, id int64, interval int) error
 	// Users
 	findUserByIDFn func(ctx context.Context, id int64) (*model.User, error)
@@ -192,14 +192,14 @@ func (m *mockOAuthRepo) FindDeviceCodeByUserCode(ctx context.Context, userCode s
 	return nil, sql.ErrNoRows
 }
 
-func (m *mockOAuthRepo) UpdateDeviceCodeStatus(ctx context.Context, id int64, status string, userID *int64) error {
+func (m *mockOAuthRepo) UpdateDeviceCodeStatus(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64) error {
 	if m.updateDeviceCodeStatusFn != nil {
 		return m.updateDeviceCodeStatusFn(ctx, id, status, userID)
 	}
 	return nil
 }
 
-func (m *mockOAuthRepo) UpdateDeviceCodeStatusAndScope(_ context.Context, _ int64, _ string, _ *int64, _ string) error {
+func (m *mockOAuthRepo) UpdateDeviceCodeStatusAndScope(_ context.Context, _ int64, _ model.DeviceCodeStatus, _ *int64, _ string) error {
 	return nil
 }
 

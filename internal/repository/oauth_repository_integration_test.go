@@ -395,7 +395,7 @@ func TestOAuthRepository_DeviceCodes(t *testing.T) {
 			Valid:  true,
 		},
 		Interval:  5,
-		Status:    "pending",
+		Status:    model.DeviceCodeStatusPending,
 		ExpiresAt: time.Now().Add(15 * time.Minute),
 	}
 	require.NoError(t, repo.CreateDeviceCode(ctx, dc))
@@ -406,7 +406,7 @@ func TestOAuthRepository_DeviceCodes(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, dc.ID, found.ID)
 		assert.Equal(t, "ABCD-EFGH", found.UserCode)
-		assert.Equal(t, "pending", found.Status)
+		assert.Equal(t, model.DeviceCodeStatusPending, found.Status)
 	})
 
 	t.Run("FindDeviceCodeByUserCode", func(t *testing.T) {
@@ -429,21 +429,21 @@ func TestOAuthRepository_DeviceCodes(t *testing.T) {
 		require.NoError(t, repo.CreateUser(ctx, user))
 
 		userID := user.ID
-		require.NoError(t, repo.UpdateDeviceCodeStatus(ctx, dc.ID, "approved", &userID))
+		require.NoError(t, repo.UpdateDeviceCodeStatus(ctx, dc.ID, model.DeviceCodeStatus("approved"), &userID))
 
 		found, err := repo.FindDeviceCodeByDeviceCode(ctx, "hashed-device-code-999")
 		require.NoError(t, err)
-		assert.Equal(t, "approved", found.Status)
+		assert.Equal(t, model.DeviceCodeStatus("approved"), found.Status)
 		assert.True(t, found.UserID.Valid)
 		assert.Equal(t, user.ID, found.UserID.Int64)
 	})
 
 	t.Run("UpdateDeviceCodeStatus_NilUserID", func(t *testing.T) {
-		require.NoError(t, repo.UpdateDeviceCodeStatus(ctx, dc.ID, "denied", nil))
+		require.NoError(t, repo.UpdateDeviceCodeStatus(ctx, dc.ID, model.DeviceCodeStatusDenied, nil))
 
 		found, err := repo.FindDeviceCodeByDeviceCode(ctx, "hashed-device-code-999")
 		require.NoError(t, err)
-		assert.Equal(t, "denied", found.Status)
+		assert.Equal(t, model.DeviceCodeStatusDenied, found.Status)
 	})
 
 	t.Run("UpdateDeviceCodeLastPolled", func(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/c-premus/documcp/internal/auth/oauth"
 	authscope "github.com/c-premus/documcp/internal/auth/scope"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // DeviceAuthorization handles POST /oauth/device/code — issue device_code + user_code.
@@ -132,7 +133,7 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if dc.Status != "pending" {
+	if dc.Status != model.DeviceCodeStatusPending {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = deviceErrorTmpl.Execute(w, "This code has already been used. Please request a new code from your device.")
 		return

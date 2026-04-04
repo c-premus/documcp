@@ -249,7 +249,7 @@ func (r *ExternalServiceRepository) decryptAPIKeys(services []model.ExternalServ
 // UpdateHealthStatus updates health-related fields for an external service.
 // On a healthy status, consecutive_failures resets to 0.
 // On an unhealthy status, consecutive_failures increments and error_count increments.
-func (r *ExternalServiceRepository) UpdateHealthStatus(ctx context.Context, id int64, status string, latencyMs int, lastError string) error {
+func (r *ExternalServiceRepository) UpdateHealthStatus(ctx context.Context, id int64, status model.ExternalServiceStatus, latencyMs int, lastError string) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE external_services SET
 			status = $1,

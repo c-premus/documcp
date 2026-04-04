@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/c-premus/documcp/internal/model"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -39,7 +40,7 @@ type SyncTemplate struct {
 
 // TemplateRepo defines repository methods needed for sync.
 type TemplateRepo interface {
-	UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error
+	UpdateSyncStatus(ctx context.Context, templateID int64, status model.GitTemplateStatus, commitSHA string, fileCount int, totalSize int64, errMsg string) error
 	ReplaceFiles(ctx context.Context, templateID int64, files []TemplateFile) error
 	UpdateSearchContent(ctx context.Context, templateID int64, readmeContent, filePaths string) error
 }
@@ -78,7 +79,7 @@ func Sync(ctx context.Context, params SyncParams) (retErr error) {
 	// 1. Validate repository URL.
 	if err := ValidateRepositoryURL(tmpl.RepositoryURL, true); err != nil {
 		syncErr := fmt.Sprintf("invalid repository URL: %v", err)
-		if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", "", 0, 0, syncErr); statusErr != nil {
+		if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, model.GitTemplateStatusFailed, "", 0, 0, syncErr); statusErr != nil {
 			logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
 		}
 		return fmt.Errorf("validating repository URL: %w", err)
@@ -92,7 +93,7 @@ func Sync(ctx context.Context, params SyncParams) (retErr error) {
 		// Existing clone — pull latest.
 		if err := params.Client.Pull(ctx, dest, tmpl.Token); err != nil {
 			syncErr := fmt.Sprintf("pull failed: %v", err)
-			if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", "", 0, 0, syncErr); statusErr != nil {
+			if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, model.GitTemplateStatusFailed, "", 0, 0, syncErr); statusErr != nil {
 				logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
 			}
 			return fmt.Errorf("pulling template repo: %w", err)
@@ -108,7 +109,7 @@ func Sync(ctx context.Context, params SyncParams) (retErr error) {
 		})
 		if err != nil {
 			syncErr := fmt.Sprintf("clone failed: %v", err)
-			if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", "", 0, 0, syncErr); statusErr != nil {
+			if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, model.GitTemplateStatusFailed, "", 0, 0, syncErr); statusErr != nil {
 				logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
 			}
 			return fmt.Errorf("cloning template repo: %w", err)
@@ -120,7 +121,7 @@ func Sync(ctx context.Context, params SyncParams) (retErr error) {
 	commitSHA, err := params.Client.LatestCommitSHA(ctx, repoDir)
 	if err != nil {
 		syncErr := fmt.Sprintf("rev-parse failed: %v", err)
-		if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", "", 0, 0, syncErr); statusErr != nil {
+		if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, model.GitTemplateStatusFailed, "", 0, 0, syncErr); statusErr != nil {
 			logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
 		}
 		return fmt.Errorf("getting latest commit SHA: %w", err)
@@ -139,7 +140,7 @@ func Sync(ctx context.Context, params SyncParams) (retErr error) {
 	files, err := params.Client.ExtractFiles(repoDir, DefaultMaxFileSize, DefaultMaxTotalSize)
 	if err != nil {
 		syncErr := fmt.Sprintf("file extraction failed: %v", err)
-		if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", commitSHA, 0, 0, syncErr); statusErr != nil {
+		if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, model.GitTemplateStatusFailed, commitSHA, 0, 0, syncErr); statusErr != nil {
 			logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
 		}
 		return fmt.Errorf("extracting template files: %w", err)
@@ -152,14 +153,14 @@ func Sync(ctx context.Context, params SyncParams) (retErr error) {
 	}
 
 	// 6. Update sync status in DB.
-	if err := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "synced", commitSHA, len(files), totalSize, ""); err != nil {
+	if err := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, model.GitTemplateStatusSynced, commitSHA, len(files), totalSize, ""); err != nil {
 		return fmt.Errorf("updating sync status: %w", err)
 	}
 
 	// 7. Replace files in DB.
 	if err := params.Repo.ReplaceFiles(ctx, tmpl.ID, files); err != nil {
 		syncErr := fmt.Sprintf("replacing files failed: %v", err)
-		if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, "failed", commitSHA, len(files), totalSize, syncErr); statusErr != nil {
+		if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, model.GitTemplateStatusFailed, commitSHA, len(files), totalSize, syncErr); statusErr != nil {
 			logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
 		}
 		return fmt.Errorf("replacing template files: %w", err)

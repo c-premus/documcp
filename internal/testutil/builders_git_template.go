@@ -21,7 +21,7 @@ func NewGitTemplate(opts ...GitTemplateOption) *model.GitTemplate {
 		Branch:        "main",
 		IsPublic:      true,
 		IsEnabled:     true,
-		Status:        "synced",
+		Status:        model.GitTemplateStatusSynced,
 		FileCount:     5,
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -83,6 +83,6 @@ func WithGitTemplateIsEnabled(enabled bool) GitTemplateOption {
 }
 
 // WithGitTemplateStatus sets the git template status on the builder.
-func WithGitTemplateStatus(status string) GitTemplateOption {
+func WithGitTemplateStatus(status model.GitTemplateStatus) GitTemplateOption {
 	return func(gt *model.GitTemplate) { gt.Status = status }
 }

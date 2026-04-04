@@ -40,8 +40,8 @@ type mockOAuthRepo struct {
 	CreateDeviceCodeFunc                  func(ctx context.Context, dc *model.OAuthDeviceCode) error
 	FindDeviceCodeByDeviceCodeFunc        func(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error)
 	FindDeviceCodeByUserCodeFunc          func(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
-	UpdateDeviceCodeStatusFunc            func(ctx context.Context, id int64, status string, userID *int64) error
-	UpdateDeviceCodeStatusAndScopeFunc    func(ctx context.Context, id int64, status string, userID *int64, scope string) error
+	UpdateDeviceCodeStatusFunc            func(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64) error
+	UpdateDeviceCodeStatusAndScopeFunc    func(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64, scope string) error
 	UpdateDeviceCodeLastPolledFunc        func(ctx context.Context, id int64, interval int) error
 	FindUserByIDFunc                      func(ctx context.Context, id int64) (*model.User, error)
 }
@@ -183,14 +183,14 @@ func (m *mockOAuthRepo) FindDeviceCodeByUserCode(ctx context.Context, userCode s
 	return nil, nil
 }
 
-func (m *mockOAuthRepo) UpdateDeviceCodeStatus(ctx context.Context, id int64, status string, userID *int64) error {
+func (m *mockOAuthRepo) UpdateDeviceCodeStatus(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64) error {
 	if m.UpdateDeviceCodeStatusFunc != nil {
 		return m.UpdateDeviceCodeStatusFunc(ctx, id, status, userID)
 	}
 	return nil
 }
 
-func (m *mockOAuthRepo) UpdateDeviceCodeStatusAndScope(ctx context.Context, id int64, status string, userID *int64, scope string) error {
+func (m *mockOAuthRepo) UpdateDeviceCodeStatusAndScope(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64, scope string) error {
 	if m.UpdateDeviceCodeStatusAndScopeFunc != nil {
 		return m.UpdateDeviceCodeStatusAndScopeFunc(ctx, id, status, userID, scope)
 	}
