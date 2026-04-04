@@ -199,6 +199,10 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `ENCRYPTION_KEY` | No | -- | 32-byte key for AES-256-GCM encryption of stored Git tokens |
 | `SERVER_HOST` | No | `0.0.0.0` | Listen address |
 | `SERVER_PORT` | No | `8080` | Listen port |
+| `TLS_ENABLED` | No | `false` | Terminate TLS directly (no reverse proxy needed) |
+| `TLS_PORT` | No | `8443` | HTTPS listen port (`SERVER_PORT` becomes HTTP→HTTPS redirect) |
+| `TLS_CERT_FILE` | No | -- | PEM certificate path (empty + TLS enabled = self-signed) |
+| `TLS_KEY_FILE` | No | -- | PEM private key path |
 | `STORAGE_DRIVER` | No | `local` | File storage driver |
 | `STORAGE_BASE_PATH` | No | -- | Base path for local file storage |
 | `OTEL_ENABLED` | No | `false` | Enable OpenTelemetry tracing |
@@ -207,11 +211,8 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `OTEL_INSECURE` | No | `false` | Use HTTP instead of HTTPS for OTLP exporter |
 | `OTEL_SAMPLE_RATE` | No | `1.0` | Trace sampling rate (0.0--1.0); ignores upstream sampling decisions |
 | `OTEL_ENVIRONMENT` | No | -- | `deployment.environment` resource attribute |
-| `OTEL_SERVICE_VERSION` | No | -- | `service.version` resource attribute |
 | `SENTRY_DSN` | No | -- | Sentry/GlitchTip DSN for error tracking (empty = disabled) |
-| `SENTRY_ENVIRONMENT` | No | `APP_ENV` | Sentry environment tag |
 | `SENTRY_SAMPLE_RATE` | No | `1.0` | Error sample rate (0.0--1.0) |
-| `VITE_SENTRY_DSN` | No | -- | Frontend Sentry DSN (empty = disabled) |
 | `INTERNAL_API_TOKEN` | No | -- | Token for internal API endpoints |
 | `APP_URL` | No | `http://localhost` | Public application URL |
 | `TRUSTED_PROXIES` | No | -- | CIDR ranges for trusted reverse proxies |
@@ -225,7 +226,7 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `DB_MAX_OPEN_CONNS` | No | `25` | Maximum database connections (increase to 40-50 for combined serve+worker mode) |
 | `DB_PGX_MIN_CONNS` | No | `5` | Minimum idle database connections |
 
-See `.env.example` for all ~60 configurable variables with defaults.
+See `.env.example` for the full list of configurable variables with defaults.
 
 ## Documentation
 

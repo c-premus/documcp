@@ -102,6 +102,10 @@ type ServerConfig struct {
 	MaxBodySize          int64         `mapstructure:"server_max_body_size"`
 	HSTSMaxAge           int           `mapstructure:"server_hsts_max_age"`
 	SSEHeartbeatInterval time.Duration `mapstructure:"server_sse_heartbeat_interval"`
+	TLSEnabled           bool          `mapstructure:"tls_enabled"`
+	TLSPort              int           `mapstructure:"tls_port"`
+	TLSCertFile          string        `mapstructure:"tls_cert_file"`
+	TLSKeyFile           string        `mapstructure:"tls_key_file"`
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
@@ -244,6 +248,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server_max_body_size", int64(1*1024*1024))
 	v.SetDefault("server_hsts_max_age", 63072000)
 	v.SetDefault("server_sse_heartbeat_interval", 15*time.Second)
+	v.SetDefault("tls_enabled", false)
+	v.SetDefault("tls_port", 8443)
+	v.SetDefault("tls_cert_file", "")
+	v.SetDefault("tls_key_file", "")
 
 	// Redis
 	v.SetDefault("redis_addr", "")
@@ -419,6 +427,10 @@ func Load() (*Config, error) {
 		MaxBodySize:          v.GetInt64("server_max_body_size"),
 		HSTSMaxAge:           v.GetInt("server_hsts_max_age"),
 		SSEHeartbeatInterval: v.GetDuration("server_sse_heartbeat_interval"),
+		TLSEnabled:           v.GetBool("tls_enabled"),
+		TLSPort:              v.GetInt("tls_port"),
+		TLSCertFile:          v.GetString("tls_cert_file"),
+		TLSKeyFile:           v.GetString("tls_key_file"),
 	}
 
 	cfg.Redis = RedisConfig{
@@ -593,6 +605,15 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	}
 	if c.Server.MaxBodySize <= 0 {
 		errs = append(errs, "SERVER_MAX_BODY_SIZE must be positive")
+	}
+	if (c.Server.TLSCertFile == "") != (c.Server.TLSKeyFile == "") {
+		errs = append(errs, "TLS_CERT_FILE and TLS_KEY_FILE must both be set or both be empty")
+	}
+	if c.Server.TLSEnabled && (c.Server.TLSPort < 1 || c.Server.TLSPort > 65535) {
+		errs = append(errs, "TLS_PORT must be between 1 and 65535")
+	}
+	if c.Server.TLSEnabled && c.Server.TLSPort == c.Server.Port {
+		errs = append(errs, "TLS_PORT and SERVER_PORT must be different when TLS is enabled")
 	}
 	if c.Database.MaxOpenConns > 0 && c.Database.MaxIdleConns > c.Database.MaxOpenConns {
 		errs = append(errs, "DB_MAX_IDLE_CONNS must not exceed DB_MAX_OPEN_CONNS")

@@ -191,6 +191,12 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		IdleTimeout:       cfg.Server.IdleTimeout,
 		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
 		TrustedProxies:    trustedProxies,
+		TLS: server.TLSConfig{
+			Enabled:  cfg.Server.TLSEnabled,
+			Port:     cfg.Server.TLSPort,
+			CertFile: cfg.Server.TLSCertFile,
+			KeyFile:  cfg.Server.TLSKeyFile,
+		},
 	}, logger)
 
 	srv.RegisterRoutes(server.Deps{
@@ -217,7 +223,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		QueueHandler:           queueH,
 		Metrics:                f.Metrics,
 		OTELEnabled:            cfg.OTEL.Enabled,
-		IsSecure:               cfg.App.Env == "production",
+		IsSecure:               cfg.App.Env == "production" || cfg.Server.TLSEnabled,
 		DB:                     &server.PgxPoolHealth{Pool: f.PgxPool},
 		InternalAPIToken:       cfg.App.InternalAPIToken,
 		MaxBodySize:            cfg.Server.MaxBodySize,
