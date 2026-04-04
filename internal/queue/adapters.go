@@ -6,6 +6,7 @@ import (
 
 	"github.com/c-premus/documcp/internal/client/git"
 	"github.com/c-premus/documcp/internal/client/kiwix"
+	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/repository"
 )
 
@@ -48,7 +49,7 @@ type gitRepoAdapter struct {
 }
 
 // UpdateSyncStatus updates the sync status of a Git template after a sync attempt.
-func (a *gitRepoAdapter) UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error {
+func (a *gitRepoAdapter) UpdateSyncStatus(ctx context.Context, templateID int64, status model.GitTemplateStatus, commitSHA string, fileCount int, totalSize int64, errMsg string) error {
 	return a.repo.UpdateSyncStatus(ctx, templateID, status, commitSHA, fileCount, totalSize, errMsg)
 }
 

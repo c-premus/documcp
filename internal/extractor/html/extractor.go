@@ -6,11 +6,11 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 
 	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
 	"github.com/microcosm-cc/bluemonday"
+	nethtml "golang.org/x/net/html"
 
 	"github.com/c-premus/documcp/internal/extractor"
 )
@@ -20,9 +20,6 @@ var supportedMIMETypes = map[string]bool{
 	"text/html":             true,
 	"application/xhtml+xml": true,
 }
-
-// titleRe matches the content of an HTML <title> tag.
-var titleRe = regexp.MustCompile(`(?i)<title[^>]*>(.*?)</title>`)
 
 // HTMLExtractor extracts text content from HTML files.
 //
@@ -59,11 +56,8 @@ func (e *HTMLExtractor) Extract(ctx context.Context, filePath string) (*extracto
 
 	// Extract title before sanitization since bluemonday strips <title>.
 	metadata := make(map[string]any)
-	if match := titleRe.FindStringSubmatch(htmlContent); len(match) > 1 {
-		title := strings.TrimSpace(match[1])
-		if title != "" {
-			metadata["title"] = title
-		}
+	if title := extractTitle(htmlContent); title != "" {
+		metadata["title"] = title
 	}
 
 	sanitized := e.policy.Sanitize(htmlContent)
@@ -81,4 +75,37 @@ func (e *HTMLExtractor) Extract(ctx context.Context, filePath string) (*extracto
 		Metadata:  metadata,
 		WordCount: wordCount,
 	}, nil
+}
+
+// extractTitle parses HTML and returns the text content of the first <title>
+// element. Returns empty string if no title is found or parsing fails.
+func extractTitle(htmlContent string) string {
+	doc, err := nethtml.Parse(strings.NewReader(htmlContent))
+	if err != nil {
+		return ""
+	}
+
+	var title string
+	var find func(*nethtml.Node) bool
+	find = func(n *nethtml.Node) bool {
+		if n.Type == nethtml.ElementNode && n.Data == "title" {
+			var buf strings.Builder
+			for c := n.FirstChild; c != nil; c = c.NextSibling {
+				if c.Type == nethtml.TextNode {
+					buf.WriteString(c.Data)
+				}
+			}
+			title = strings.TrimSpace(buf.String())
+			return true
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if find(c) {
+				return true
+			}
+		}
+		return false
+	}
+	find(doc)
+
+	return title
 }

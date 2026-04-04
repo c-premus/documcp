@@ -228,8 +228,8 @@ func TestDocumentService_Create(t *testing.T) {
 		}
 
 		// Status
-		if doc.Status != "processed" {
-			t.Errorf("Status = %q, want %q", doc.Status, "processed")
+		if doc.Status != model.DocumentStatusIndexed {
+			t.Errorf("Status = %q, want %q", doc.Status, model.DocumentStatusIndexed)
 		}
 
 		// MIME type

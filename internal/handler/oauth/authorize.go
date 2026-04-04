@@ -5,8 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"html"
+	"html/template"
 	"net/http"
 	"net/url"
 	"time"
@@ -171,17 +170,25 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		"default-src 'none'; style-src 'unsafe-inline'; form-action *; frame-ancestors 'none'")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, consentHTML,
-		html.EscapeString(client.ClientName),
-		html.EscapeString(effectiveScope),
-		html.EscapeString(clientID),
-		html.EscapeString(redirectURI),
-		html.EscapeString(state),
-		html.EscapeString(effectiveScope),
-		html.EscapeString(codeChallenge),
-		html.EscapeString(codeChallengeMethod),
-		html.EscapeString(nonce),
-	)
+	_ = consentTmpl.Execute(w, struct {
+		ClientName          string
+		Scope               string
+		ClientID            string
+		RedirectURI         string
+		State               string
+		CodeChallenge       string
+		CodeChallengeMethod string
+		Nonce               string
+	}{
+		ClientName:          client.ClientName,
+		Scope:               effectiveScope,
+		ClientID:            clientID,
+		RedirectURI:         redirectURI,
+		State:               state,
+		CodeChallenge:       codeChallenge,
+		CodeChallengeMethod: codeChallengeMethod,
+		Nonce:               nonce,
+	})
 }
 
 // AuthorizeApprove handles POST /oauth/authorize/approve — processes consent.
@@ -448,7 +455,7 @@ func (h *Handler) AuthorizeDeny(w http.ResponseWriter, r *http.Request) {
 	// No redirect_uri — render a simple denial page
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprint(w, denyHTML)
+	_, _ = w.Write([]byte(denyHTML))
 }
 
 // jsRedirect renders an HTML page that performs a client-side redirect via
@@ -463,75 +470,12 @@ func jsRedirect(w http.ResponseWriter, redirectURL string) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	// JSON-encode the URL to safely embed it in a <script> tag.
+	// template.JS marks the value as safe for JavaScript context —
+	// json.Marshal already produces a safely-quoted string literal.
 	urlJSON, _ := json.Marshal(redirectURL)
-	_, _ = fmt.Fprintf(w, jsRedirectHTML, string(urlJSON))
+	_ = jsRedirectTmpl.Execute(w, template.JS(urlJSON)) //nolint:gosec // G203: urlJSON is json.Marshal output, safe for JS context
 }
-
-const jsRedirectHTML = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Redirecting…</title></head>
-<body>
-<p>Redirecting…</p>
-<script>window.location.href=%s;</script>
-<noscript><p>JavaScript is required to complete this authorization flow.</p></noscript>
-</body>
-</html>`
-
-const denyHTML = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorization Denied</title>
-<style>
-body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a;background:#ffffff}
-h1{font-size:1.5em}
-@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#030712}}
-</style>
-</head>
-<body>
-<h1>Authorization Denied</h1>
-<p>Authorization denied. You may close this window.</p>
-</body>
-</html>`
 
 // pendingStateMaxAge is the maximum age (in seconds) for pending OAuth state
 // stored in the session (authorization code flow and device code flow).
 const pendingStateMaxAge = 600 // 10 minutes
-
-const consentHTML = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize Application</title>
-<style>
-body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a;background:#ffffff}
-h1{font-size:1.5em}
-.client-name{font-weight:bold;color:#2563eb}
-.scope{background:#f1f5f9;padding:4px 8px;border-radius:4px;font-family:monospace}
-form{margin-top:24px}
-button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:pointer;margin-right:8px}
-.approve{background:#2563eb;color:white}
-.deny{background:#e2e8f0;color:#334155}
-button:focus-visible{outline:2px solid #4f46e5;outline-offset:2px}
-@media(prefers-color-scheme:dark){
-body{color:#e2e8f0;background:#030712}
-.client-name{color:#60a5fa}
-.scope{background:#111827;color:#e2e8f0}
-.deny{background:#334155;color:#e2e8f0}
-button:focus-visible{outline-color:#818cf8}
-}
-</style>
-</head>
-<body>
-<h1>Authorize Application</h1>
-<p><span class="client-name">%s</span> is requesting access to your account.</p>
-<p>Scope: <span class="scope">%s</span></p>
-<form method="POST" action="/oauth/authorize/approve">
-<input type="hidden" name="client_id" value="%s">
-<input type="hidden" name="redirect_uri" value="%s">
-<input type="hidden" name="state" value="%s">
-<input type="hidden" name="scope" value="%s">
-<input type="hidden" name="code_challenge" value="%s">
-<input type="hidden" name="code_challenge_method" value="%s">
-<input type="hidden" name="nonce" value="%s">
-<button type="submit" class="approve">Authorize</button>
-<button type="submit" class="deny" formaction="/oauth/authorize/deny">Deny</button>
-</form>
-</body>
-</html>`

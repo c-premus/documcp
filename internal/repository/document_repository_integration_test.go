@@ -114,19 +114,19 @@ func TestDocumentRepository_Update(t *testing.T) {
 		name      string
 		uuid      string
 		newTitle  string
-		newStatus string
+		newStatus model.DocumentStatus
 	}{
 		{
 			name:      "update title and status",
 			uuid:      testUUID("update-title-status"),
 			newTitle:  "Updated Title",
-			newStatus: "processing",
+			newStatus: model.DocumentStatus("processing"),
 		},
 		{
 			name:      "update to error status",
 			uuid:      testUUID("update-error-status"),
 			newTitle:  "Error Doc",
-			newStatus: "error",
+			newStatus: model.DocumentStatus("error"),
 		},
 	}
 
@@ -136,7 +136,7 @@ func TestDocumentRepository_Update(t *testing.T) {
 				testutil.WithDocumentID(0),
 				testutil.WithDocumentUUID(tt.uuid),
 				testutil.WithDocumentTitle("Original Title"),
-				testutil.WithDocumentStatus("completed"),
+				testutil.WithDocumentStatus(model.DocumentStatusIndexed),
 			)
 			if err := repo.Create(ctx, doc); err != nil {
 				t.Fatalf("Create() error: %v", err)
@@ -813,7 +813,7 @@ func TestDocumentRepository_List(t *testing.T) {
 		testutil.WithDocumentUUID(testUUID("list-doc-001")),
 		testutil.WithDocumentTitle("Alpha Report"),
 		testutil.WithDocumentFileType("pdf"),
-		testutil.WithDocumentStatus("completed"),
+		testutil.WithDocumentStatus(model.DocumentStatusIndexed),
 		testutil.WithDocumentIsPublic(true),
 	)
 	doc2 := testutil.NewDocument(
@@ -821,7 +821,7 @@ func TestDocumentRepository_List(t *testing.T) {
 		testutil.WithDocumentUUID(testUUID("list-doc-002")),
 		testutil.WithDocumentTitle("Beta Report"),
 		testutil.WithDocumentFileType("pdf"),
-		testutil.WithDocumentStatus("processing"),
+		testutil.WithDocumentStatus(model.DocumentStatus("processing")),
 		testutil.WithDocumentIsPublic(false),
 	)
 	doc3 := testutil.NewDocument(
@@ -829,7 +829,7 @@ func TestDocumentRepository_List(t *testing.T) {
 		testutil.WithDocumentUUID(testUUID("list-doc-003")),
 		testutil.WithDocumentTitle("Gamma Notes"),
 		testutil.WithDocumentFileType("markdown"),
-		testutil.WithDocumentStatus("completed"),
+		testutil.WithDocumentStatus(model.DocumentStatusIndexed),
 		testutil.WithDocumentIsPublic(true),
 	)
 	doc4 := testutil.NewDocument(
@@ -837,7 +837,7 @@ func TestDocumentRepository_List(t *testing.T) {
 		testutil.WithDocumentUUID(testUUID("list-doc-004")),
 		testutil.WithDocumentTitle("Deleted Doc"),
 		testutil.WithDocumentFileType("pdf"),
-		testutil.WithDocumentStatus("completed"),
+		testutil.WithDocumentStatus(model.DocumentStatusIndexed),
 	)
 
 	for _, doc := range []*model.Document{doc1, doc2, doc3, doc4} {
@@ -875,7 +875,7 @@ func TestDocumentRepository_List(t *testing.T) {
 	})
 
 	t.Run("filter by status", func(t *testing.T) {
-		result, err := repo.List(ctx, DocumentListParams{Status: "completed"})
+		result, err := repo.List(ctx, DocumentListParams{Status: model.DocumentStatusIndexed})
 		if err != nil {
 			t.Fatalf("List() error: %v", err)
 		}
@@ -932,7 +932,7 @@ func TestDocumentRepository_List(t *testing.T) {
 	t.Run("combined filters", func(t *testing.T) {
 		result, err := repo.List(ctx, DocumentListParams{
 			FileType: "pdf",
-			Status:   "completed",
+			Status:   model.DocumentStatusIndexed,
 		})
 		if err != nil {
 			t.Fatalf("List() error: %v", err)
@@ -1037,25 +1037,25 @@ func TestDocumentRepository_FindByStatus(t *testing.T) {
 		testutil.WithDocumentID(0),
 		testutil.WithDocumentUUID(testUUID("status-pending-001")),
 		testutil.WithDocumentTitle("Pending One"),
-		testutil.WithDocumentStatus("pending"),
+		testutil.WithDocumentStatus(model.DocumentStatusPending),
 	)
 	pending2 := testutil.NewDocument(
 		testutil.WithDocumentID(0),
 		testutil.WithDocumentUUID(testUUID("status-pending-002")),
 		testutil.WithDocumentTitle("Pending Two"),
-		testutil.WithDocumentStatus("pending"),
+		testutil.WithDocumentStatus(model.DocumentStatusPending),
 	)
 	completed1 := testutil.NewDocument(
 		testutil.WithDocumentID(0),
 		testutil.WithDocumentUUID(testUUID("status-completed-001")),
 		testutil.WithDocumentTitle("Completed One"),
-		testutil.WithDocumentStatus("completed"),
+		testutil.WithDocumentStatus(model.DocumentStatusIndexed),
 	)
 	pendingDeleted := testutil.NewDocument(
 		testutil.WithDocumentID(0),
 		testutil.WithDocumentUUID(testUUID("status-pending-deleted")),
 		testutil.WithDocumentTitle("Pending Deleted"),
-		testutil.WithDocumentStatus("pending"),
+		testutil.WithDocumentStatus(model.DocumentStatusPending),
 	)
 
 	for _, doc := range []*model.Document{pending1, pending2, completed1, pendingDeleted} {
@@ -1069,7 +1069,7 @@ func TestDocumentRepository_FindByStatus(t *testing.T) {
 	}
 
 	t.Run("finds pending", func(t *testing.T) {
-		docs, err := repo.FindByStatus(ctx, "pending", 10)
+		docs, err := repo.FindByStatus(ctx, model.DocumentStatusPending, 10)
 		if err != nil {
 			t.Fatalf("FindByStatus() error: %v", err)
 		}
@@ -1079,7 +1079,7 @@ func TestDocumentRepository_FindByStatus(t *testing.T) {
 	})
 
 	t.Run("finds completed", func(t *testing.T) {
-		docs, err := repo.FindByStatus(ctx, "completed", 10)
+		docs, err := repo.FindByStatus(ctx, model.DocumentStatusIndexed, 10)
 		if err != nil {
 			t.Fatalf("FindByStatus() error: %v", err)
 		}
@@ -1089,7 +1089,7 @@ func TestDocumentRepository_FindByStatus(t *testing.T) {
 	})
 
 	t.Run("respects limit", func(t *testing.T) {
-		docs, err := repo.FindByStatus(ctx, "pending", 1)
+		docs, err := repo.FindByStatus(ctx, model.DocumentStatusPending, 1)
 		if err != nil {
 			t.Fatalf("FindByStatus() error: %v", err)
 		}
@@ -1099,7 +1099,7 @@ func TestDocumentRepository_FindByStatus(t *testing.T) {
 	})
 
 	t.Run("no matches", func(t *testing.T) {
-		docs, err := repo.FindByStatus(ctx, "error", 10)
+		docs, err := repo.FindByStatus(ctx, model.DocumentStatus("error"), 10)
 		if err != nil {
 			t.Fatalf("FindByStatus() error: %v", err)
 		}

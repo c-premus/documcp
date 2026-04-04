@@ -309,7 +309,7 @@ func (r *OAuthRepository) FindDeviceCodeByUserCode(ctx context.Context, userCode
 }
 
 // UpdateDeviceCodeStatus updates the status and optionally the user_id of a device code.
-func (r *OAuthRepository) UpdateDeviceCodeStatus(ctx context.Context, id int64, status string, userID *int64) error {
+func (r *OAuthRepository) UpdateDeviceCodeStatus(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64) error {
 	var err error
 	if userID != nil {
 		_, err = r.db.Exec(ctx,
@@ -327,7 +327,7 @@ func (r *OAuthRepository) UpdateDeviceCodeStatus(ctx context.Context, id int64, 
 }
 
 // UpdateDeviceCodeStatusAndScope atomically updates status, user_id, and scope of a device code.
-func (r *OAuthRepository) UpdateDeviceCodeStatusAndScope(ctx context.Context, id int64, status string, userID *int64, scope string) error {
+func (r *OAuthRepository) UpdateDeviceCodeStatusAndScope(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64, scope string) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE oauth_device_codes SET status = $1, user_id = $2, scope = $3, updated_at = NOW() WHERE id = $4`,
 		status, userID, sql.NullString{String: scope, Valid: scope != ""}, id)

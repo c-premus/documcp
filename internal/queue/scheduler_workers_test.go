@@ -43,7 +43,7 @@ func makeJob[T river.JobArgs](args T) *river.Job[T] {
 
 type mockExternalServiceHealthChecker struct {
 	findAllEnabledFn func(ctx context.Context) ([]model.ExternalService, error)
-	updateHealthFn   func(ctx context.Context, id int64, status string, latencyMs int, lastError string) error
+	updateHealthFn   func(ctx context.Context, id int64, status model.ExternalServiceStatus, latencyMs int, lastError string) error
 }
 
 func (m *mockExternalServiceHealthChecker) FindAllEnabled(ctx context.Context) ([]model.ExternalService, error) {
@@ -53,7 +53,7 @@ func (m *mockExternalServiceHealthChecker) FindAllEnabled(ctx context.Context) (
 	return nil, nil
 }
 
-func (m *mockExternalServiceHealthChecker) UpdateHealthStatus(ctx context.Context, id int64, status string, latencyMs int, lastError string) error {
+func (m *mockExternalServiceHealthChecker) UpdateHealthStatus(ctx context.Context, id int64, status model.ExternalServiceStatus, latencyMs int, lastError string) error {
 	if m.updateHealthFn != nil {
 		return m.updateHealthFn(ctx, id, status, latencyMs, lastError)
 	}
@@ -84,7 +84,7 @@ func (m *mockExternalServiceFinder) FindEnabledByType(ctx context.Context, servi
 
 type mockGitTemplateRepo struct {
 	listFn               func(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error)
-	updateSyncStatusFn   func(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error
+	updateSyncStatusFn   func(ctx context.Context, templateID int64, status model.GitTemplateStatus, commitSHA string, fileCount int, totalSize int64, errMsg string) error
 	replaceFilesFn       func(ctx context.Context, templateID int64, files []repository.GitTemplateFileInsert) error
 	updateSearchFn       func(ctx context.Context, templateID int64, readmeContent, filePaths string) error
 }
@@ -96,7 +96,7 @@ func (m *mockGitTemplateRepo) List(ctx context.Context, category string, limit, 
 	return nil, nil
 }
 
-func (m *mockGitTemplateRepo) UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error {
+func (m *mockGitTemplateRepo) UpdateSyncStatus(ctx context.Context, templateID int64, status model.GitTemplateStatus, commitSHA string, fileCount int, totalSize int64, errMsg string) error {
 	if m.updateSyncStatusFn != nil {
 		return m.updateSyncStatusFn(ctx, templateID, status, commitSHA, fileCount, totalSize, errMsg)
 	}
@@ -450,7 +450,7 @@ func TestCleanupOrphanedFilesWorker_Work(t *testing.T) {
 
 		err := worker.Work(context.Background(), makeJob(CleanupOrphanedFilesArgs{}))
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "walking storage directory")
+		assert.Contains(t, err.Error(), "opening storage root")
 	})
 
 	t.Run("active files preserved orphans deleted", func(t *testing.T) {
@@ -677,14 +677,14 @@ func TestHealthCheckServicesWorker_Work(t *testing.T) {
 	t.Run("service with invalid URL is marked unhealthy", func(t *testing.T) {
 		t.Parallel()
 
-		var updatedStatus string
+		var updatedStatus model.ExternalServiceStatus
 		checker := &mockExternalServiceHealthChecker{
 			findAllEnabledFn: func(_ context.Context) ([]model.ExternalService, error) {
 				return []model.ExternalService{
 					{ID: 1, BaseURL: "://invalid-url"},
 				}, nil
 			},
-			updateHealthFn: func(_ context.Context, _ int64, status string, _ int, _ string) error {
+			updateHealthFn: func(_ context.Context, _ int64, status model.ExternalServiceStatus, _ int, _ string) error {
 				updatedStatus = status
 				return nil
 			},
@@ -699,7 +699,7 @@ func TestHealthCheckServicesWorker_Work(t *testing.T) {
 
 		err := worker.Work(context.Background(), makeJob(HealthCheckServicesArgs{}))
 		require.NoError(t, err)
-		assert.Equal(t, "unhealthy", updatedStatus)
+		assert.Equal(t, model.ExternalServiceStatusUnhealthy, updatedStatus)
 	})
 
 	t.Run("loopback service blocked by SSRF marked unhealthy", func(t *testing.T) {
@@ -710,14 +710,14 @@ func TestHealthCheckServicesWorker_Work(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		var updatedStatus string
+		var updatedStatus model.ExternalServiceStatus
 		checker := &mockExternalServiceHealthChecker{
 			findAllEnabledFn: func(_ context.Context) ([]model.ExternalService, error) {
 				return []model.ExternalService{
 					{ID: 1, BaseURL: srv.URL},
 				}, nil
 			},
-			updateHealthFn: func(_ context.Context, _ int64, status string, _ int, _ string) error {
+			updateHealthFn: func(_ context.Context, _ int64, status model.ExternalServiceStatus, _ int, _ string) error {
 				updatedStatus = status
 				return nil
 			},
@@ -732,7 +732,7 @@ func TestHealthCheckServicesWorker_Work(t *testing.T) {
 
 		err := worker.Work(context.Background(), makeJob(HealthCheckServicesArgs{}))
 		require.NoError(t, err)
-		assert.Equal(t, "unhealthy", updatedStatus)
+		assert.Equal(t, model.ExternalServiceStatusUnhealthy, updatedStatus)
 	})
 
 	t.Run("unreachable service marked unhealthy", func(t *testing.T) {
@@ -744,14 +744,14 @@ func TestHealthCheckServicesWorker_Work(t *testing.T) {
 		// Close immediately so connections fail.
 		srv.Close()
 
-		var updatedStatus string
+		var updatedStatus model.ExternalServiceStatus
 		checker := &mockExternalServiceHealthChecker{
 			findAllEnabledFn: func(_ context.Context) ([]model.ExternalService, error) {
 				return []model.ExternalService{
 					{ID: 1, BaseURL: srv.URL},
 				}, nil
 			},
-			updateHealthFn: func(_ context.Context, _ int64, status string, _ int, _ string) error {
+			updateHealthFn: func(_ context.Context, _ int64, status model.ExternalServiceStatus, _ int, _ string) error {
 				updatedStatus = status
 				return nil
 			},
@@ -766,7 +766,7 @@ func TestHealthCheckServicesWorker_Work(t *testing.T) {
 
 		err := worker.Work(context.Background(), makeJob(HealthCheckServicesArgs{}))
 		require.NoError(t, err)
-		assert.Equal(t, "unhealthy", updatedStatus)
+		assert.Equal(t, model.ExternalServiceStatusUnhealthy, updatedStatus)
 	})
 
 	t.Run("multiple services all marked unhealthy via SSRF filter", func(t *testing.T) {
@@ -782,7 +782,7 @@ func TestHealthCheckServicesWorker_Work(t *testing.T) {
 		}))
 		defer srv2.Close()
 
-		statuses := make(map[int64]string)
+		statuses := make(map[int64]model.ExternalServiceStatus)
 		checker := &mockExternalServiceHealthChecker{
 			findAllEnabledFn: func(_ context.Context) ([]model.ExternalService, error) {
 				return []model.ExternalService{
@@ -790,7 +790,7 @@ func TestHealthCheckServicesWorker_Work(t *testing.T) {
 					{ID: 2, BaseURL: srv2.URL},
 				}, nil
 			},
-			updateHealthFn: func(_ context.Context, id int64, status string, _ int, _ string) error {
+			updateHealthFn: func(_ context.Context, id int64, status model.ExternalServiceStatus, _ int, _ string) error {
 				statuses[id] = status
 				return nil
 			},
@@ -806,8 +806,8 @@ func TestHealthCheckServicesWorker_Work(t *testing.T) {
 		err := worker.Work(context.Background(), makeJob(HealthCheckServicesArgs{}))
 		require.NoError(t, err)
 		// Both are on loopback, so both are blocked by SSRF protection.
-		assert.Equal(t, "unhealthy", statuses[1])
-		assert.Equal(t, "unhealthy", statuses[2])
+		assert.Equal(t, model.ExternalServiceStatusUnhealthy, statuses[1])
+		assert.Equal(t, model.ExternalServiceStatusUnhealthy, statuses[2])
 	})
 }
 

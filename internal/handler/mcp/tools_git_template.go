@@ -1,20 +1,16 @@
 package mcphandler
 
 import (
-	"archive/tar"
-	"archive/zip"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/c-premus/documcp/internal/archive"
 	authscope "github.com/c-premus/documcp/internal/auth/scope"
 	gitclient "github.com/c-premus/documcp/internal/client/git"
 	"github.com/c-premus/documcp/internal/dto"
@@ -130,46 +126,9 @@ type downloadTemplateResponse struct {
 	Message             string   `json:"message,omitempty"`
 }
 
-// archiveEntry holds a single file's path and content for archive creation.
-type archiveEntry struct {
-	path    string
-	content string
-}
 
 // --- Variable substitution ---
 
-// substituteVariables replaces {{key}} placeholders in content using the
-// provided variable map. It returns the substituted content and a list of
-// any unresolved variable names.
-func substituteVariables(content string, variables map[string]string) (result string, missingVars []string) {
-	result = content
-
-	matches := gitclient.VariablePattern.FindAllStringSubmatch(content, -1)
-	seen := make(map[string]bool)
-	for _, match := range matches {
-		key := match[1]
-		if val, ok := variables[key]; ok {
-			result = strings.ReplaceAll(result, "{{"+key+"}}", val)
-		} else if !seen[key] {
-			missingVars = append(missingVars, key)
-			seen[key] = true
-		}
-	}
-	return result, missingVars
-}
-
-// parseVariablesJSON decodes a JSON string into a map of variable substitutions.
-// Returns an empty map if the input is empty.
-func parseVariablesJSON(raw string) (map[string]string, error) {
-	if raw == "" {
-		return map[string]string{}, nil
-	}
-	var vars map[string]string
-	if err := json.Unmarshal([]byte(raw), &vars); err != nil {
-		return nil, fmt.Errorf("decoding variables JSON: %w", err)
-	}
-	return vars, nil
-}
 
 // --- Tool registration ---
 
@@ -303,13 +262,7 @@ func (h *Handler) handleListGitTemplates(
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, listGitTemplatesResponse{}, errors.New("mcp:read scope required")
 	}
-	limit := input.Limit
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 100 {
-		limit = 100
-	}
+	limit := clampPagination(input.Limit, 50, 100)
 
 	templates, err := h.gitTemplateRepo.List(ctx, input.Category, limit, 0)
 	if err != nil {
@@ -324,7 +277,7 @@ func (h *Handler) handleListGitTemplates(
 			Name:      gt.Name,
 			FileCount: gt.FileCount,
 			TotalSize: gt.TotalSizeBytes,
-			Status:    gt.Status,
+			Status:    string(gt.Status),
 		}
 		if gt.Description.Valid {
 			item.Description = gt.Description.String
@@ -369,13 +322,7 @@ func (h *Handler) handleSearchGitTemplates(
 		return nil, searchGitTemplatesResponse{}, errors.New("mcp:read scope required")
 	}
 
-	limit := int64(input.Limit)
-	if limit <= 0 {
-		limit = 10
-	}
-	if limit > 50 {
-		limit = 50
-	}
+	limit := int64(clampPagination(input.Limit, 10, 50))
 
 	if h.searcher == nil {
 		return nil, searchGitTemplatesResponse{Message: "Search service not configured"}, nil
@@ -530,7 +477,7 @@ func (h *Handler) handleGetTemplateFile(
 		}, nil
 	}
 
-	variables, err := parseVariablesJSON(input.Variables)
+	variables, err := gitclient.ParseVariablesJSON(input.Variables)
 	if err != nil {
 		return nil, getTemplateFileResponse{}, fmt.Errorf("parsing variables: %w", err)
 	}
@@ -538,7 +485,7 @@ func (h *Handler) handleGetTemplateFile(
 	content := file.Content.String
 	var unresolved []string
 	if len(variables) > 0 {
-		content, unresolved = substituteVariables(content, variables)
+		content, unresolved = gitclient.SubstituteVariables(content, variables)
 	}
 
 	info := &templateFileInfo{
@@ -589,7 +536,7 @@ func (h *Handler) handleGetDeploymentGuide(
 		return nil, getDeploymentGuideResponse{}, fmt.Errorf("listing template files: %w", err)
 	}
 
-	variables, err := parseVariablesJSON(input.Variables)
+	variables, err := gitclient.ParseVariablesJSON(input.Variables)
 	if err != nil {
 		return nil, getDeploymentGuideResponse{}, fmt.Errorf("parsing variables: %w", err)
 	}
@@ -604,7 +551,7 @@ func (h *Handler) handleGetDeploymentGuide(
 		content := files[i].Content.String
 		if len(variables) > 0 {
 			var unresolved []string
-			content, unresolved = substituteVariables(content, variables)
+			content, unresolved = gitclient.SubstituteVariables(content, variables)
 			for _, u := range unresolved {
 				allUnresolved[u] = true
 			}
@@ -660,7 +607,7 @@ func (h *Handler) handleDownloadTemplate(
 		return nil, downloadTemplateResponse{}, fmt.Errorf("listing template files: %w", err)
 	}
 
-	variables, err := parseVariablesJSON(input.Variables)
+	variables, err := gitclient.ParseVariablesJSON(input.Variables)
 	if err != nil {
 		return nil, downloadTemplateResponse{}, fmt.Errorf("parsing variables: %w", err)
 	}
@@ -673,17 +620,17 @@ func (h *Handler) handleDownloadTemplate(
 	allUnresolved := make(map[string]bool)
 
 	// Prepare file contents with optional variable substitution.
-	entries := make([]archiveEntry, 0, len(files))
+	entries := make([]archive.Entry, 0, len(files))
 	for i := range files {
 		content := files[i].Content.String
 		if len(variables) > 0 {
 			var unresolved []string
-			content, unresolved = substituteVariables(content, variables)
+			content, unresolved = gitclient.SubstituteVariables(content, variables)
 			for _, u := range unresolved {
 				allUnresolved[u] = true
 			}
 		}
-		entries = append(entries, archiveEntry{path: files[i].Path, content: content})
+		entries = append(entries, archive.Entry{Path: files[i].Path, Content: content})
 	}
 
 	var buf bytes.Buffer
@@ -691,13 +638,13 @@ func (h *Handler) handleDownloadTemplate(
 
 	switch format {
 	case "tar.gz":
-		if err := buildTarGz(&buf, entries); err != nil {
+		if err := archive.BuildTarGz(&buf, entries); err != nil {
 			return nil, downloadTemplateResponse{}, fmt.Errorf("creating tar.gz archive: %w", err)
 		}
 		filename = tmpl.Slug + ".tar.gz"
 	default:
 		format = "zip"
-		if err := buildZip(&buf, entries); err != nil {
+		if err := archive.BuildZip(&buf, entries); err != nil {
 			return nil, downloadTemplateResponse{}, fmt.Errorf("creating zip archive: %w", err)
 		}
 		filename = tmpl.Slug + ".zip"
@@ -725,48 +672,3 @@ func (h *Handler) handleDownloadTemplate(
 
 // --- Archive helpers ---
 
-// buildZip writes a zip archive containing the given entries to w.
-func buildZip(w *bytes.Buffer, entries []archiveEntry) error {
-	zw := zip.NewWriter(w)
-	for _, e := range entries {
-		fw, err := zw.Create(e.path)
-		if err != nil {
-			return fmt.Errorf("creating zip entry %q: %w", e.path, err)
-		}
-		if _, err := fw.Write([]byte(e.content)); err != nil {
-			return fmt.Errorf("writing zip entry %q: %w", e.path, err)
-		}
-	}
-	if err := zw.Close(); err != nil {
-		return fmt.Errorf("closing zip writer: %w", err)
-	}
-	return nil
-}
-
-// buildTarGz writes a gzip-compressed tar archive containing the given entries to w.
-func buildTarGz(w *bytes.Buffer, entries []archiveEntry) error {
-	gw := gzip.NewWriter(w)
-	tw := tar.NewWriter(gw)
-
-	for _, e := range entries {
-		hdr := &tar.Header{
-			Name: e.path,
-			Mode: 0o600,
-			Size: int64(len(e.content)),
-		}
-		if err := tw.WriteHeader(hdr); err != nil {
-			return fmt.Errorf("writing tar header for %q: %w", e.path, err)
-		}
-		if _, err := tw.Write([]byte(e.content)); err != nil {
-			return fmt.Errorf("writing tar entry %q: %w", e.path, err)
-		}
-	}
-
-	if err := tw.Close(); err != nil {
-		return fmt.Errorf("closing tar writer: %w", err)
-	}
-	if err := gw.Close(); err != nil {
-		return fmt.Errorf("closing gzip writer: %w", err)
-	}
-	return nil
-}

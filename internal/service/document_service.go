@@ -91,7 +91,7 @@ func (s *DocumentService) Create(ctx context.Context, params CreateDocumentParam
 		WordCount:   sql.NullInt64{Int64: wordCount, Valid: true},
 		ProcessedAt: sql.NullTime{Time: now, Valid: true},
 		IsPublic:    params.IsPublic,
-		Status:      "processed",
+		Status:      model.DocumentStatusIndexed,
 		Description: sql.NullString{String: params.Description, Valid: params.Description != ""},
 	}
 

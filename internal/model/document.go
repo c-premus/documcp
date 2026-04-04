@@ -6,6 +6,17 @@ import (
 	"fmt"
 )
 
+// DocumentStatus represents the processing state of a document.
+type DocumentStatus string
+
+// Possible DocumentStatus values.
+const (
+	DocumentStatusPending  DocumentStatus = "pending"
+	DocumentStatusUploaded DocumentStatus = "uploaded"
+	DocumentStatusIndexed  DocumentStatus = "indexed"
+	DocumentStatusFailed   DocumentStatus = "failed"
+)
+
 // Document represents a row in the "documents" table.
 type Document struct {
 	ID                   int64          `db:"id" json:"id"`
@@ -24,7 +35,7 @@ type Document struct {
 	WordCount            sql.NullInt64  `db:"word_count" json:"word_count"`
 	UserID               sql.NullInt64  `db:"user_id" json:"user_id"`
 	IsPublic             bool           `db:"is_public" json:"is_public"`
-	Status               string         `db:"status" json:"status"`
+	Status               DocumentStatus `db:"status" json:"status"`
 	SearchVector         any            `db:"search_vector" json:"-"`
 	ErrorMessage         sql.NullString `db:"error_message" json:"error_message"`
 	CreatedAt sql.NullTime `db:"created_at" json:"created_at"`

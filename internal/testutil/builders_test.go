@@ -2,6 +2,8 @@ package testutil
 
 import (
 	"testing"
+
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // ---------------------------------------------------------------------------
@@ -41,8 +43,8 @@ func TestNewDocument(t *testing.T) {
 		if d.IsPublic {
 			t.Error("IsPublic = true, want false")
 		}
-		if d.Status != "completed" {
-			t.Errorf("Status = %q, want %q", d.Status, "completed")
+		if d.Status != model.DocumentStatusIndexed {
+			t.Errorf("Status = %q, want %q", d.Status, model.DocumentStatusIndexed)
 		}
 		if !d.CreatedAt.Valid {
 			t.Error("CreatedAt should be valid")
@@ -66,7 +68,7 @@ func TestNewDocument(t *testing.T) {
 			WithDocumentContent("Hello world"),
 			WithDocumentUserID(7),
 			WithDocumentIsPublic(true),
-			WithDocumentStatus("pending"),
+			WithDocumentStatus(model.DocumentStatusPending),
 		)
 		if d.ID != 42 {
 			t.Errorf("ID = %d, want 42", d.ID)
@@ -101,8 +103,8 @@ func TestNewDocument(t *testing.T) {
 		if !d.IsPublic {
 			t.Error("IsPublic = false, want true")
 		}
-		if d.Status != "pending" {
-			t.Errorf("Status = %q, want %q", d.Status, "pending")
+		if d.Status != model.DocumentStatusPending {
+			t.Errorf("Status = %q, want %q", d.Status, model.DocumentStatusPending)
 		}
 	})
 }
@@ -290,8 +292,8 @@ func TestNewExternalService(t *testing.T) {
 		if es.Priority != 100 {
 			t.Errorf("Priority = %d, want 100", es.Priority)
 		}
-		if es.Status != "active" {
-			t.Errorf("Status = %q, want %q", es.Status, "active")
+		if es.Status != model.ExternalServiceStatusUnknown {
+			t.Errorf("Status = %q, want %q", es.Status, model.ExternalServiceStatusUnknown)
 		}
 		if !es.IsEnabled {
 			t.Error("IsEnabled = false, want true")
@@ -313,7 +315,7 @@ func TestNewExternalService(t *testing.T) {
 			WithExternalServiceSlug("wikipedia"),
 			WithExternalServiceType("wiki"),
 			WithExternalServiceBaseURL("https://wikipedia.org"),
-			WithExternalServiceStatus("degraded"),
+			WithExternalServiceStatus(model.ExternalServiceStatusUnhealthy),
 			WithExternalServiceIsEnabled(false),
 			WithExternalServicePriority(200),
 		)
@@ -335,8 +337,8 @@ func TestNewExternalService(t *testing.T) {
 		if es.BaseURL != "https://wikipedia.org" {
 			t.Errorf("BaseURL = %q, want %q", es.BaseURL, "https://wikipedia.org")
 		}
-		if es.Status != "degraded" {
-			t.Errorf("Status = %q, want %q", es.Status, "degraded")
+		if es.Status != model.ExternalServiceStatusUnhealthy {
+			t.Errorf("Status = %q, want %q", es.Status, model.ExternalServiceStatusUnhealthy)
 		}
 		if es.IsEnabled {
 			t.Error("IsEnabled = true, want false")
@@ -481,8 +483,8 @@ func TestNewGitTemplate(t *testing.T) {
 		if !gt.IsEnabled {
 			t.Error("IsEnabled = false, want true")
 		}
-		if gt.Status != "synced" {
-			t.Errorf("Status = %q, want %q", gt.Status, "synced")
+		if gt.Status != model.GitTemplateStatusSynced {
+			t.Errorf("Status = %q, want %q", gt.Status, model.GitTemplateStatusSynced)
 		}
 		if gt.FileCount != 5 {
 			t.Errorf("FileCount = %d, want 5", gt.FileCount)
@@ -508,7 +510,7 @@ func TestNewGitTemplate(t *testing.T) {
 			WithGitTemplateUserID(8),
 			WithGitTemplateIsPublic(false),
 			WithGitTemplateIsEnabled(false),
-			WithGitTemplateStatus("error"),
+			WithGitTemplateStatus(model.GitTemplateStatus("error")),
 		)
 		if gt.ID != 33 {
 			t.Errorf("ID = %d, want 33", gt.ID)
@@ -610,8 +612,8 @@ func TestBuildersReturnIndependentInstances(t *testing.T) {
 		t.Errorf("expected independent instances, both have Title = %q", d1.Title)
 	}
 	// Mutating one should not affect the other.
-	d1.Status = "deleted"
-	if d2.Status == "deleted" {
+	d1.Status = model.DocumentStatus("deleted")
+	if d2.Status == model.DocumentStatus("deleted") {
 		t.Error("mutating d1 affected d2")
 	}
 }

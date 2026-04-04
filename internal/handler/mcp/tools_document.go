@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -120,7 +119,7 @@ func (h *Handler) registerDocumentTools() {
 			"users see own + public, M2M tokens see public only).\n\n" +
 			"**Filters:**\n" +
 			"- `file_type`: markdown, pdf, docx, xlsx, html\n" +
-			"- `status`: pending, processed, failed\n\n" +
+			"- `status`: pending, indexed, failed\n\n" +
 			"Returns UUID, title, description, file type, file size, word count, tags, and timestamps. " +
 			"Sorted by creation date (newest first). Max 100 results per page.\n\n" +
 			"**Workflow:** Use `uuid` from results with `read_document` to fetch full content, " +
@@ -184,17 +183,11 @@ func (h *Handler) handleListDocuments(
 		return nil, listDocumentsResponse{}, errors.New("mcp:read scope required for listing documents")
 	}
 
-	limit := input.Limit
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 100 {
-		limit = 100
-	}
-	offset := max(input.Offset, 0)
+	limit := clampPagination(input.Limit, 50, 100)
+	offset := clampOffset(input.Offset)
 
 	params := repository.DocumentListParams{
-		Status:   input.Status,
+		Status:   model.DocumentStatus(input.Status),
 		Limit:    limit,
 		Offset:   offset,
 		OrderBy:  "created_at",
@@ -245,7 +238,7 @@ func (h *Handler) handleListDocuments(
 			FileSize:    doc.FileSize,
 			WordCount:   doc.WordCount.Int64,
 			IsPublic:    doc.IsPublic,
-			Status:      doc.Status,
+			Status:      string(doc.Status),
 			Tags:        tags,
 		}
 		if doc.CreatedAt.Valid {
@@ -285,13 +278,7 @@ func (h *Handler) handleSearchDocuments(
 		}, nil
 	}
 
-	limit := int64(input.Limit)
-	if limit <= 0 {
-		limit = 10
-	}
-	if limit > 100 {
-		limit = 100
-	}
+	limit := int64(clampPagination(input.Limit, 10, 100))
 
 	// Build structured search params.
 	params := search.SearchParams{
@@ -533,53 +520,3 @@ func buildDocumentMeta(doc *model.Document, tags []model.DocumentTag) *documentM
 	}
 }
 
-// tagNames extracts tag name strings from a slice of DocumentTag models.
-func tagNames(tags []model.DocumentTag) []string {
-	names := make([]string, len(tags))
-	for i, t := range tags {
-		names[i] = t.Tag
-	}
-	return names
-}
-
-// truncateContent applies summary_only or max_paragraphs truncation to content.
-// It returns the (possibly truncated) content and whether truncation occurred.
-func truncateContent(content string, summaryOnly bool, maxParagraphs int) (string, bool) {
-	if content == "" {
-		return content, false
-	}
-
-	if summaryOnly {
-		// Return content before the first heading (# or ##).
-		lines := strings.Split(content, "\n")
-		var result []string
-		for _, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "#") && len(result) > 0 {
-				break
-			}
-			result = append(result, line)
-		}
-		truncated := strings.Join(result, "\n")
-		return strings.TrimSpace(truncated), len(truncated) < len(content)
-	}
-
-	if maxParagraphs > 0 {
-		paragraphs := strings.Split(content, "\n\n")
-		if maxParagraphs < len(paragraphs) {
-			truncated := strings.Join(paragraphs[:maxParagraphs], "\n\n")
-			return truncated, true
-		}
-	}
-
-	return content, false
-}
-
-// formatNullTime formats a sql.NullTime as RFC3339.
-// Returns an empty string when the time is not valid (NULL).
-func formatNullTime(t sql.NullTime) string {
-	if !t.Valid {
-		return ""
-	}
-	return t.Time.Format(time.RFC3339)
-}

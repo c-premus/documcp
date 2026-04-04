@@ -25,7 +25,7 @@ func createTestExternalService(ctx context.Context, t *testing.T) *model.Externa
 		Type:      "kiwix",
 		BaseURL:   "https://kiwix.example.com",
 		Priority:  1,
-		Status:    "healthy",
+		Status:    model.ExternalServiceStatusHealthy,
 		IsEnabled: true,
 	}
 	require.NoError(t, svcRepo.Create(ctx, svc))

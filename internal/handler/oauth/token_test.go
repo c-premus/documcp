@@ -350,7 +350,7 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 				return &model.OAuthDeviceCode{
 					ID:        1,
 					ClientID:  1,
-					Status:    "pending",
+					Status:    model.DeviceCodeStatusPending,
 					ExpiresAt: time.Now().Add(15 * time.Minute),
 				}, nil
 			},
@@ -408,7 +408,7 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 				return &model.OAuthDeviceCode{
 					ID:        1,
 					ClientID:  1,
-					Status:    "pending",
+					Status:    model.DeviceCodeStatusPending,
 					ExpiresAt: time.Now().Add(-1 * time.Minute), // expired
 				}, nil
 			},
@@ -442,7 +442,7 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 				return &model.OAuthDeviceCode{
 					ID:        1,
 					ClientID:  1,
-					Status:    "denied",
+					Status:    model.DeviceCodeStatusDenied,
 					ExpiresAt: time.Now().Add(15 * time.Minute),
 				}, nil
 			},
@@ -477,12 +477,12 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 					ID:        1,
 					ClientID:  1,
 					UserID:    sql.NullInt64{Int64: 42, Valid: true},
-					Status:    "authorized",
+					Status:    model.DeviceCodeStatusAuthorized,
 					Scope:     sql.NullString{String: "mcp:access", Valid: true},
 					ExpiresAt: time.Now().Add(15 * time.Minute),
 				}, nil
 			},
-			UpdateDeviceCodeStatusFunc: func(_ context.Context, _ int64, _ string, _ *int64) error {
+			UpdateDeviceCodeStatusFunc: func(_ context.Context, _ int64, _ model.DeviceCodeStatus, _ *int64) error {
 				return nil
 			},
 			CreateAccessTokenFunc: func(_ context.Context, token *model.OAuthAccessToken) error {
@@ -530,11 +530,11 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 					ID:        1,
 					ClientID:  1,
 					UserID:    sql.NullInt64{Int64: 42, Valid: true},
-					Status:    "authorized",
+					Status:    model.DeviceCodeStatusAuthorized,
 					ExpiresAt: time.Now().Add(15 * time.Minute),
 				}, nil
 			},
-			UpdateDeviceCodeStatusFunc: func(_ context.Context, _ int64, _ string, _ *int64) error {
+			UpdateDeviceCodeStatusFunc: func(_ context.Context, _ int64, _ model.DeviceCodeStatus, _ *int64) error {
 				return errors.New("disk full")
 			},
 		}

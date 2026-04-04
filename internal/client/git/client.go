@@ -192,17 +192,25 @@ func (c *Client) ExtractFiles(repoDir string, maxFileSize, maxTotalSize int64) (
 		maxTotalSize = c.maxTotalSize
 	}
 
+	// Open a root-scoped handle to prevent symlink traversal outside the
+	// cloned repository (eliminates gosec G122 / G304 TOCTOU risk).
+	root, err := os.OpenRoot(repoDir)
+	if err != nil {
+		return nil, fmt.Errorf("opening repository root: %w", err)
+	}
+	defer func() { _ = root.Close() }()
+
 	var files []TemplateFile
 	var totalSize int64
 
-	err := filepath.WalkDir(repoDir, func(path string, d fs.DirEntry, err error) error {
+	err = fs.WalkDir(root.FS(), ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
 		// Skip the .git directory entirely.
 		if d.IsDir() && d.Name() == ".git" {
-			return filepath.SkipDir
+			return fs.SkipDir
 		}
 
 		if d.IsDir() {
@@ -236,10 +244,10 @@ func (c *Client) ExtractFiles(repoDir string, maxFileSize, maxTotalSize int64) (
 				"total", totalSize,
 				"max", maxTotalSize,
 			)
-			return filepath.SkipAll
+			return fs.SkipAll
 		}
 
-		data, err := os.ReadFile(path)
+		data, err := root.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("reading file %s: %w", path, err)
 		}
@@ -250,11 +258,8 @@ func (c *Client) ExtractFiles(repoDir string, maxFileSize, maxTotalSize int64) (
 			return nil
 		}
 
-		relPath, err := filepath.Rel(repoDir, path)
-		if err != nil {
-			return fmt.Errorf("computing relative path for %s: %w", path, err)
-		}
-		relPath = filepath.ToSlash(relPath)
+		// path is already relative to root (fs.WalkDir uses "." as start).
+		relPath := filepath.ToSlash(path)
 
 		hash := sha256.Sum256(data)
 		content := string(data)

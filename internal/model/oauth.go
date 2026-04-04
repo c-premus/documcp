@@ -94,6 +94,17 @@ type OAuthRefreshToken struct {
 	UpdatedAt     sql.NullTime `db:"updated_at" json:"updated_at"`
 }
 
+// DeviceCodeStatus represents the authorization state of an OAuth device code.
+type DeviceCodeStatus string
+
+// Possible DeviceCodeStatus values.
+const (
+	DeviceCodeStatusPending    DeviceCodeStatus = "pending"
+	DeviceCodeStatusAuthorized DeviceCodeStatus = "authorized"
+	DeviceCodeStatusDenied     DeviceCodeStatus = "denied"
+	DeviceCodeStatusExchanged  DeviceCodeStatus = "exchanged"
+)
+
 // OAuthDeviceCode represents a row in the "oauth_device_codes" table.
 type OAuthDeviceCode struct {
 	ID                      int64          `db:"id" json:"id"`
@@ -106,7 +117,7 @@ type OAuthDeviceCode struct {
 	VerificationURIComplete sql.NullString `db:"verification_uri_complete" json:"verification_uri_complete"`
 	Interval                int            `db:"interval" json:"interval"`
 	LastPolledAt            sql.NullTime   `db:"last_polled_at" json:"last_polled_at"`
-	Status                  string         `db:"status" json:"status"`
+	Status                  DeviceCodeStatus `db:"status" json:"status"`
 	ExpiresAt               time.Time      `db:"expires_at" json:"expires_at"`
 	CreatedAt               sql.NullTime   `db:"created_at" json:"created_at"`
 	UpdatedAt               sql.NullTime   `db:"updated_at" json:"updated_at"`

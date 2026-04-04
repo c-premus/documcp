@@ -80,6 +80,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		f.ExtractorRegistry,
 		riverClient,
 		f.StoragePath,
+		f.Config.Storage.MaxUploadSize,
 	)
 
 	// Wire pipeline into document workers (resolves circular dependency).

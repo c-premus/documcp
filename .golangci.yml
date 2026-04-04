@@ -194,15 +194,10 @@ linters:
         text: "G304"
 
       # gosec G304: Extractors read document files from the server-controlled storage
-      # directory. The git client reads template files from local working directories
-      # it created via git clone. The document handler reads uploaded files from a
-      # controlled temp path. File reading is the core purpose of these components;
-      # the paths are not derived from unvalidated user input at the point of reading.
+      # directory. The document handler reads uploaded files from a controlled temp
+      # path. File reading is the core purpose of these components; the paths are
+      # not derived from unvalidated user input at the point of reading.
       - path: internal/extractor/
-        linters:
-          - gosec
-        text: "G304"
-      - path: internal/client/git/client\.go
         linters:
           - gosec
         text: "G304"
@@ -210,18 +205,6 @@ linters:
         linters:
           - gosec
         text: "G304"
-
-      # gocyclo: app.New (CC 32) and routes.RegisterRoutes (CC 37) are dependency-
-      # injection wiring functions. Their cyclomatic complexity is proportional to
-      # the number of components wired and routes registered, not to conditional
-      # logic complexity. Extracting sub-functions would not reduce true CC because
-      # each component/route still adds a branch at the call site.
-      - path: internal/app/app\.go
-        linters:
-          - gocyclo
-      - path: internal/server/routes\.go
-        linters:
-          - gocyclo
 
       # govet shadow: Integration test setup functions use if-err shadowing in
       # defer closures (container teardown) and in sequential error checks. This
@@ -291,30 +274,6 @@ linters:
           - gosec
         text: "G118"
 
-      # gosec G706: Log injection via taint analysis. The values logged here are
-      # integer IDs (int64) extracted from validated JWT tokens or database records,
-      # not user-supplied strings. Integer values cannot carry log-injection payloads.
-      # The rule fires because gosec's taint analysis conservatively traces the
-      # token struct from the HTTP request headers to the log call.
-      - path: internal/auth/middleware/middleware\.go
-        linters:
-          - gosec
-        text: "G706"
-
-      # gosec G705: XSS via taint analysis. All user-controlled values in HTML
-      # responses are escaped with html.EscapeString() before interpolation into
-      # the consent/device HTML templates. The taint analysis flags the Fprintf
-      # call because the template string itself originates in the same function,
-      # but the format arguments are all escaped.
-      - path: internal/handler/oauth/authorize\.go
-        linters:
-          - gosec
-        text: "G705"
-      - path: internal/handler/oauth/device_flow\.go
-        linters:
-          - gosec
-        text: "G705"
-
       # gosec G705: The document download endpoint writes doc.Content.String
       # (stored document content from the database) with a Content-Type and
       # Content-Disposition header set from DB metadata. This endpoint is
@@ -326,30 +285,12 @@ linters:
           - gosec
         text: "G705"
 
-      # gosec G703: Path traversal via taint analysis. All file-system operations
-      # (Download, Purge, BulkPurge) validate the path against the storage root
-      # via safeStoragePath() before os.Open/os.Remove. The Analyze endpoint uses
-      # tmpFile.Name() from os.CreateTemp, not user input. gosec flags these
-      # because its taint analysis does not model the guard.
+      # gosec G703: Download opens a file path validated by safeStoragePath()
+      # three lines above. gosec's taint analysis does not model the guard.
       - path: internal/handler/api/document_handler\.go
         linters:
           - gosec
         text: "G703"
-
-      # gosec G122: filepath.Walk/WalkDir callback uses the path parameter
-      # provided by the Walk implementation itself. The git client walks a
-      # repository directory it cloned to a controlled temp path; the scheduler
-      # worker walks a local filesystem path from database configuration.
-      # Migrating to os.Root (Go 1.23+) would require a significant API rewrite
-      # for a theoretical TOCTOU attack on paths the application itself created.
-      - path: internal/client/git/client\.go
-        linters:
-          - gosec
-        text: "G122"
-      - path: internal/queue/scheduler_workers\.go
-        linters:
-          - gosec
-        text: "G122"
 
 issues:
   max-issues-per-linter: 0  # Report every issue; no per-linter cap

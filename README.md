@@ -205,6 +205,10 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `TLS_KEY_FILE` | No | -- | PEM private key path |
 | `STORAGE_DRIVER` | No | `local` | File storage driver |
 | `STORAGE_BASE_PATH` | No | -- | Base path for local file storage |
+| `STORAGE_MAX_UPLOAD_SIZE` | No | `52428800` | Max upload file size in bytes (50 MiB) |
+| `STORAGE_MAX_EXTRACTED_TEXT` | No | `52428800` | Max decompressed text per file in bytes (50 MiB) |
+| `STORAGE_MAX_ZIP_FILES` | No | `100` | Max files in a DOCX ZIP archive |
+| `STORAGE_MAX_SHEETS` | No | `100` | Max sheets in an XLSX file |
 | `OTEL_ENABLED` | No | `false` | Enable OpenTelemetry tracing |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | No | -- | OTLP HTTP exporter endpoint (e.g., `tempo:4318`) |
 | `OTEL_SERVICE_NAME` | No | `documcp` | Service name in traces |

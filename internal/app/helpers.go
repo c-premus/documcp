@@ -47,12 +47,12 @@ func deriveKey(secret []byte, salt, info string) ([]byte, error) {
 // docStatusAdapter adapts DocumentRepository.FindByStatus to queue.DocumentStatusFinder.
 type docStatusAdapter struct {
 	repo interface {
-		FindByStatus(ctx context.Context, status string, limit int) ([]model.Document, error)
+		FindByStatus(ctx context.Context, status model.DocumentStatus, limit int) ([]model.Document, error)
 	}
 }
 
 // FindByStatus returns jobs whose associated documents have the given processing status.
-func (a *docStatusAdapter) FindByStatus(ctx context.Context, status string) ([]queue.StuckDocument, error) {
+func (a *docStatusAdapter) FindByStatus(ctx context.Context, status model.DocumentStatus) ([]queue.StuckDocument, error) {
 	docs, err := a.repo.FindByStatus(ctx, status, 1000)
 	if err != nil {
 		return nil, err

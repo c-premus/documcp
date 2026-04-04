@@ -2,14 +2,13 @@ package oauthhandler
 
 import (
 	"encoding/json"
-	"fmt"
-	"html"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/c-premus/documcp/internal/auth/oauth"
 	authscope "github.com/c-premus/documcp/internal/auth/scope"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // DeviceAuthorization handles POST /oauth/device/code — issue device_code + user_code.
@@ -78,7 +77,7 @@ func (h *Handler) DeviceVerification(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, deviceVerificationHTML, html.EscapeString(userCode))
+	_ = deviceVerificationTmpl.Execute(w, userCode)
 }
 
 // DeviceVerificationSubmit handles POST /oauth/device — user submits user_code.
@@ -105,7 +104,7 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 	failedAttempts, _ := session.Values["device_failed_attempts"].(int)
 	if failedAttempts >= 5 {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprintf(w, deviceErrorHTML, "Too many failed attempts. Please log out and try again.")
+		_ = deviceErrorTmpl.Execute(w, "Too many failed attempts. Please log out and try again.")
 		return
 	}
 
@@ -114,7 +113,7 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 		session.Values["device_failed_attempts"] = failedAttempts + 1
 		_ = session.Save(r, w)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprintf(w, deviceErrorHTML, "Invalid or expired user code. Please check the code and try again.")
+		_ = deviceErrorTmpl.Execute(w, "Invalid or expired user code. Please check the code and try again.")
 		return
 	}
 
@@ -124,19 +123,19 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 		session.Values["device_failed_attempts"] = failedAttempts + 1
 		_ = session.Save(r, w)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprintf(w, deviceErrorHTML, "Invalid or expired user code. Please check the code and try again.")
+		_ = deviceErrorTmpl.Execute(w, "Invalid or expired user code. Please check the code and try again.")
 		return
 	}
 
 	if time.Now().After(dc.ExpiresAt) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprintf(w, deviceErrorHTML, "This code has expired. Please request a new code from your device.")
+		_ = deviceErrorTmpl.Execute(w, "This code has expired. Please request a new code from your device.")
 		return
 	}
 
-	if dc.Status != "pending" {
+	if dc.Status != model.DeviceCodeStatusPending {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprintf(w, deviceErrorHTML, "This code has already been used. Please request a new code from your device.")
+		_ = deviceErrorTmpl.Execute(w, "This code has already been used. Please request a new code from your device.")
 		return
 	}
 
@@ -152,7 +151,7 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		h.logger.Error("finding client for device code", "error", err)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprintf(w, deviceErrorHTML, "An error occurred while processing your authorization.")
+		_ = deviceErrorTmpl.Execute(w, "An error occurred while processing your authorization.")
 		return
 	}
 
@@ -166,7 +165,7 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 		if err != nil {
 			h.logger.Error("looking up user for device consent", "error", err)
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = fmt.Fprintf(w, deviceErrorHTML, "An error occurred while processing your authorization.")
+			_ = deviceErrorTmpl.Execute(w, "An error occurred while processing your authorization.")
 			return
 		}
 		// Expand the client's registered scope with the user's entitlements so
@@ -181,7 +180,7 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 		scope = authscope.Intersect(scope, userEntitlements)
 		if scope == "" {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = fmt.Fprintf(w, deviceErrorHTML, "None of the requested scopes are available to your account.")
+			_ = deviceErrorTmpl.Execute(w, "None of the requested scopes are available to your account.")
 			return
 		}
 	}
@@ -189,7 +188,15 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 	// Show consent screen
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, deviceConsentHTML, html.EscapeString(client.ClientName), html.EscapeString(scope), html.EscapeString(userCode))
+	_ = deviceConsentTmpl.Execute(w, struct {
+		ClientName string
+		Scope      string
+		UserCode   string
+	}{
+		ClientName: client.ClientName,
+		Scope:      scope,
+		UserCode:   userCode,
+	})
 }
 
 // DeviceApprove handles POST /oauth/device/approve — user approves/denies.
@@ -221,14 +228,14 @@ func (h *Handler) DeviceApprove(w http.ResponseWriter, r *http.Request) {
 	pendingRaw, exists := session.Values["device_code_pending"]
 	if !exists || pendingRaw == nil {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprintf(w, deviceErrorHTML, "No pending device authorization. Please restart the authorization flow.")
+		_ = deviceErrorTmpl.Execute(w, "No pending device authorization. Please restart the authorization flow.")
 		return
 	}
 
 	pending, ok := pendingRaw.(map[string]any)
 	if !ok {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprintf(w, deviceErrorHTML, "No pending device authorization. Please restart the authorization flow.")
+		_ = deviceErrorTmpl.Execute(w, "No pending device authorization. Please restart the authorization flow.")
 		return
 	}
 
@@ -236,7 +243,7 @@ func (h *Handler) DeviceApprove(w http.ResponseWriter, r *http.Request) {
 	pendingUserCode, _ := pending["user_code"].(string)
 	if oauth.NormalizeUserCode(userCode) != oauth.NormalizeUserCode(pendingUserCode) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprintf(w, deviceErrorHTML, "User code mismatch. Please restart the authorization flow.")
+		_ = deviceErrorTmpl.Execute(w, "User code mismatch. Please restart the authorization flow.")
 		return
 	}
 
@@ -244,7 +251,7 @@ func (h *Handler) DeviceApprove(w http.ResponseWriter, r *http.Request) {
 	pendingTimestamp, _ := pending["timestamp"].(int64)
 	if time.Now().Unix()-pendingTimestamp > pendingStateMaxAge {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprintf(w, deviceErrorHTML, "Authorization request expired. Please restart the authorization flow.")
+		_ = deviceErrorTmpl.Execute(w, "Authorization request expired. Please restart the authorization flow.")
 		return
 	}
 
@@ -257,122 +264,15 @@ func (h *Handler) DeviceApprove(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.AuthorizeDeviceCode(r.Context(), userCode, userID, approved); err != nil {
 		h.logger.Error("authorizing device code", "error", err)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprintf(w, deviceErrorHTML, "An error occurred while processing your authorization.")
+		_ = deviceErrorTmpl.Execute(w, "An error occurred while processing your authorization.")
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if approved {
-		_, _ = fmt.Fprint(w, deviceSuccessHTML)
+		_, _ = w.Write([]byte(deviceSuccessHTML))
 	} else {
-		_, _ = fmt.Fprint(w, deviceDeniedHTML)
+		_, _ = w.Write([]byte(deviceDeniedHTML))
 	}
 }
 
-const deviceVerificationHTML = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Device Authorization</title>
-<style>
-body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a;background:#ffffff}
-h1{font-size:1.5em}
-label{display:block;margin-bottom:8px}
-input[type=text]{font-size:1.5em;padding:10px;width:200px;text-align:center;letter-spacing:4px;text-transform:uppercase;border:2px solid #94a3b8;border-radius:6px;background:#ffffff;color:#0f172a}
-input[type=text]:focus-visible{outline:2px solid #4f46e5;outline-offset:2px;border-color:#4f46e5}
-button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:pointer;background:#2563eb;color:white}
-button:focus-visible{outline:2px solid #4f46e5;outline-offset:2px}
-@media(prefers-color-scheme:dark){
-body{color:#e2e8f0;background:#030712}
-input[type=text]{background:#111827;color:#e2e8f0;border-color:#6b7280}
-input[type=text]:focus-visible{outline-color:#818cf8;border-color:#818cf8}
-button:focus-visible{outline-color:#818cf8}
-}
-</style>
-</head>
-<body>
-<h1>Device Authorization</h1>
-<form method="POST" action="/oauth/device">
-<label for="user_code">Enter the code shown on your device:</label>
-<input id="user_code" type="text" name="user_code" value="%s" maxlength="9" placeholder="XXXX-XXXX" autocomplete="off" required>
-<br><br>
-<button type="submit">Continue</button>
-</form>
-</body>
-</html>`
-
-const deviceConsentHTML = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize Device</title>
-<style>
-body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;color:#0f172a;background:#ffffff}
-h1{font-size:1.5em}
-.client-name{font-weight:bold;color:#2563eb}
-.scope{background:#f1f5f9;padding:4px 8px;border-radius:4px;font-family:monospace}
-button{padding:10px 24px;font-size:1em;border:none;border-radius:6px;cursor:pointer;margin-right:8px}
-.approve{background:#2563eb;color:white}
-.deny{background:#e2e8f0;color:#334155}
-button:focus-visible{outline:2px solid #4f46e5;outline-offset:2px}
-@media(prefers-color-scheme:dark){
-body{color:#e2e8f0;background:#030712}
-.client-name{color:#60a5fa}
-.scope{background:#111827;color:#e2e8f0}
-.deny{background:#334155;color:#e2e8f0}
-button:focus-visible{outline-color:#818cf8}
-}
-</style>
-</head>
-<body>
-<h1>Authorize Device</h1>
-<p><span class="client-name">%s</span> is requesting access to your account.</p>
-<p>Scope: <span class="scope">%s</span></p>
-<form method="POST" action="/oauth/device/approve">
-<input type="hidden" name="user_code" value="%s">
-<button type="submit" name="approve" value="approve" class="approve">Authorize</button>
-<button type="submit" name="approve" value="deny" class="deny">Deny</button>
-</form>
-</body>
-</html>`
-
-const deviceSuccessHTML = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorization Successful</title>
-<style>
-body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;text-align:center;color:#0f172a;background:#ffffff}
-h1{color:#16a34a}
-@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#030712}h1{color:#4ade80}}
-</style>
-</head>
-<body>
-<h1>Authorization Successful!</h1>
-<p>You can close this window and return to your device.</p>
-</body>
-</html>`
-
-const deviceDeniedHTML = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorization Denied</title>
-<style>
-body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;text-align:center;color:#0f172a;background:#ffffff}
-h1{color:#dc2626}
-@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#030712}h1{color:#f87171}}
-</style>
-</head>
-<body>
-<h1>Authorization Denied</h1>
-<p>You can close this window.</p>
-</body>
-</html>`
-
-const deviceErrorHTML = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Error</title>
-<style>
-body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;text-align:center;color:#0f172a;background:#ffffff}
-h1{color:#dc2626}
-@media(prefers-color-scheme:dark){body{color:#e2e8f0;background:#030712}h1{color:#f87171}}
-</style>
-</head>
-<body>
-<h1>Error</h1>
-<p role="alert">%s</p>
-</body>
-</html>`

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // --- test helpers ---
@@ -337,12 +339,12 @@ func TestExtractFiles_IsEssentialFlagSet(t *testing.T) {
 // --- Sync mock types ---
 
 type mockTemplateRepo struct {
-	updateSyncStatusFn    func(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error
+	updateSyncStatusFn    func(ctx context.Context, templateID int64, status model.GitTemplateStatus, commitSHA string, fileCount int, totalSize int64, errMsg string) error
 	replaceFilesFn        func(ctx context.Context, templateID int64, files []TemplateFile) error
 	updateSearchContentFn func(ctx context.Context, templateID int64, readmeContent, filePaths string) error
 }
 
-func (m *mockTemplateRepo) UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error {
+func (m *mockTemplateRepo) UpdateSyncStatus(ctx context.Context, templateID int64, status model.GitTemplateStatus, commitSHA string, fileCount int, totalSize int64, errMsg string) error {
 	if m.updateSyncStatusFn != nil {
 		return m.updateSyncStatusFn(ctx, templateID, status, commitSHA, fileCount, totalSize, errMsg)
 	}
@@ -491,8 +493,8 @@ func TestSync_UpdateSyncStatusFailure(t *testing.T) {
 	preclone(t, c, src, slug)
 
 	repo := &mockTemplateRepo{
-		updateSyncStatusFn: func(_ context.Context, _ int64, status, _ string, _ int, _ int64, _ string) error {
-			if status == "synced" {
+		updateSyncStatusFn: func(_ context.Context, _ int64, status model.GitTemplateStatus, _ string, _ int, _ int64, _ string) error {
+			if status == model.GitTemplateStatusSynced {
 				return errors.New("db write failed")
 			}
 			return nil

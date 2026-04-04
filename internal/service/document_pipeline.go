@@ -29,8 +29,8 @@ type JobInserter interface {
 	Insert(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
 }
 
-// maxUploadSize is the maximum allowed file size (50 MB).
-const maxUploadSize = 50 * 1024 * 1024
+// defaultMaxUploadSize is the maximum allowed file size (50 MB).
+const defaultMaxUploadSize = 50 * 1024 * 1024
 
 // AllowedMIMETypes maps file extensions to their MIME types.
 var AllowedMIMETypes = map[string]string{
@@ -70,6 +70,7 @@ type DocumentPipeline struct {
 	extractorRegistry *extractor.Registry
 	inserter          JobInserter
 	storagePath       string
+	maxUploadSize     int64
 }
 
 // NewDocumentPipeline creates a DocumentPipeline.
@@ -78,12 +79,17 @@ func NewDocumentPipeline(
 	registry *extractor.Registry,
 	inserter JobInserter,
 	storagePath string,
+	maxUploadSize int64,
 ) *DocumentPipeline {
+	if maxUploadSize <= 0 {
+		maxUploadSize = defaultMaxUploadSize
+	}
 	return &DocumentPipeline{
 		DocumentService:   svc,
 		extractorRegistry: registry,
 		inserter:          inserter,
 		storagePath:       storagePath,
+		maxUploadSize:     maxUploadSize,
 	}
 }
 
@@ -105,8 +111,8 @@ func (p *DocumentPipeline) ExtractorRegistry() *extractor.Registry {
 // Upload stores a file, creates a DB record with status "uploaded", and
 // dispatches background jobs for extraction and indexing.
 func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentParams) (*model.Document, error) {
-	if params.FileSize > maxUploadSize {
-		return nil, fmt.Errorf("%w: %d bytes exceeds limit of %d", ErrFileTooLarge, params.FileSize, maxUploadSize)
+	if params.FileSize > p.maxUploadSize {
+		return nil, fmt.Errorf("%w: %d bytes exceeds limit of %d", ErrFileTooLarge, params.FileSize, p.maxUploadSize)
 	}
 
 	ext := strings.ToLower(filepath.Ext(params.FileName))
@@ -155,7 +161,7 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 		FileSize: written,
 		MIMEType: mimeType,
 		IsPublic: params.IsPublic,
-		Status:   "uploaded",
+		Status:   model.DocumentStatusUploaded,
 		Description: sql.NullString{
 			String: params.Description,
 			Valid:  params.Description != "",
@@ -203,8 +209,8 @@ func (p *DocumentPipeline) ReplaceContent(ctx context.Context, docUUID string, p
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedFileType, ext)
 	}
 
-	if params.FileSize > maxUploadSize {
-		return nil, fmt.Errorf("%w: %d bytes exceeds limit of %d", ErrFileTooLarge, params.FileSize, maxUploadSize)
+	if params.FileSize > p.maxUploadSize {
+		return nil, fmt.Errorf("%w: %d bytes exceeds limit of %d", ErrFileTooLarge, params.FileSize, p.maxUploadSize)
 	}
 
 	fileType := strings.TrimPrefix(ext, ".")
@@ -254,7 +260,7 @@ func (p *DocumentPipeline) ReplaceContent(ctx context.Context, docUUID string, p
 	doc.FileSize = written
 	doc.FileType = fileType
 	doc.MIMEType = mimeType
-	doc.Status = "uploaded"
+	doc.Status = model.DocumentStatusUploaded
 	doc.Content = sql.NullString{}
 	doc.ContentHash = sql.NullString{}
 	doc.WordCount = sql.NullInt64{}
@@ -308,7 +314,7 @@ func (p *DocumentPipeline) ProcessDocument(ctx context.Context, docID int64) err
 	doc.ContentHash = sql.NullString{String: contentHash, Valid: true}
 	doc.WordCount = sql.NullInt64{Int64: int64(result.WordCount), Valid: true}
 	doc.ProcessedAt = sql.NullTime{Time: now, Valid: true}
-	doc.Status = "indexed"
+	doc.Status = model.DocumentStatusIndexed
 	doc.ErrorMessage = sql.NullString{}
 
 	if err := p.repo.Update(ctx, doc); err != nil {
@@ -341,7 +347,7 @@ func (p *DocumentPipeline) dispatchExtraction(ctx context.Context, docID int64, 
 
 // markFailed updates a document's status to "failed" with an error message.
 func (p *DocumentPipeline) markFailed(ctx context.Context, doc *model.Document, errMsg string) error {
-	doc.Status = "failed"
+	doc.Status = model.DocumentStatusFailed
 	doc.ErrorMessage = sql.NullString{String: errMsg, Valid: true}
 	if err := p.repo.Update(ctx, doc); err != nil {
 		return fmt.Errorf("marking document %d as failed: %w", doc.ID, err)

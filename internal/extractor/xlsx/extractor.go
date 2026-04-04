@@ -15,11 +15,14 @@ import (
 const (
 	mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-	// maxUnzipSize is the maximum total unzip size for XLSX files (50 MiB).
-	maxUnzipSize = 50 * 1024 * 1024
+	// defaultMaxUnzipSize is the maximum total unzip size for XLSX files (50 MiB).
+	defaultMaxUnzipSize = 50 * 1024 * 1024
 
-	// maxUnzipXMLSize is the maximum unzip size for a single XML file (50 MiB).
-	maxUnzipXMLSize = 50 * 1024 * 1024
+	// defaultMaxUnzipXMLSize is the maximum unzip size for a single XML file (50 MiB).
+	defaultMaxUnzipXMLSize = 50 * 1024 * 1024
+
+	// defaultMaxSheets limits the number of sheets processed from an XLSX file.
+	defaultMaxSheets = 100
 )
 
 // Compile-time check that XLSXExtractor implements extractor.Extractor.
@@ -28,11 +31,33 @@ var _ extractor.Extractor = (*XLSXExtractor)(nil)
 // XLSXExtractor extracts text content from XLSX spreadsheets.
 //
 //nolint:revive // exported stutter is intentional; renaming would be a breaking change
-type XLSXExtractor struct{}
+type XLSXExtractor struct {
+	maxSheets        int
+	maxUnzipSize     int64
+	maxUnzipXMLSize  int64
+}
 
-// New creates a new XLSXExtractor.
+// New creates a new XLSXExtractor with default limits.
 func New() *XLSXExtractor {
-	return &XLSXExtractor{}
+	return &XLSXExtractor{
+		maxSheets:       defaultMaxSheets,
+		maxUnzipSize:    defaultMaxUnzipSize,
+		maxUnzipXMLSize: defaultMaxUnzipXMLSize,
+	}
+}
+
+// NewWithLimits creates an XLSXExtractor with configurable limits.
+// Zero values fall back to defaults.
+func NewWithLimits(maxSheets int, maxExtractedText int64) *XLSXExtractor {
+	e := New()
+	if maxSheets > 0 {
+		e.maxSheets = maxSheets
+	}
+	if maxExtractedText > 0 {
+		e.maxUnzipSize = maxExtractedText
+		e.maxUnzipXMLSize = maxExtractedText
+	}
+	return e
 }
 
 // Supports reports whether this extractor can handle the given MIME type.
@@ -44,8 +69,8 @@ func (e *XLSXExtractor) Supports(mime string) bool {
 // formatted as markdown tables.
 func (e *XLSXExtractor) Extract(ctx context.Context, filePath string) (result *extractor.ExtractedContent, retErr error) {
 	f, err := excelize.OpenFile(filePath, excelize.Options{
-		UnzipSizeLimit:    maxUnzipSize,
-		UnzipXMLSizeLimit: maxUnzipXMLSize,
+		UnzipSizeLimit:    e.maxUnzipSize,
+		UnzipXMLSizeLimit: e.maxUnzipXMLSize,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("opening xlsx file: %w", err)
@@ -57,6 +82,9 @@ func (e *XLSXExtractor) Extract(ctx context.Context, filePath string) (result *e
 	}()
 
 	sheets := f.GetSheetList()
+	if len(sheets) > e.maxSheets {
+		return nil, fmt.Errorf("xlsx file contains %d sheets, exceeding limit of %d", len(sheets), e.maxSheets)
+	}
 
 	var buf strings.Builder
 	sheetNames := make([]string, 0, len(sheets))

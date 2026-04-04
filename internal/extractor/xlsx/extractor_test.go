@@ -2,8 +2,12 @@ package xlsx_test
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/xuri/excelize/v2"
 
 	"github.com/c-premus/documcp/internal/extractor/xlsx"
 )
@@ -87,6 +91,35 @@ func TestXLSXExtractor_Extract_CanceledContext(t *testing.T) {
 	_, err := ext.Extract(ctx, sampleXLSX)
 	if err != nil && !strings.Contains(err.Error(), "context") {
 		t.Errorf("Extract() error = %v, expected context-related error or nil", err)
+	}
+}
+
+func TestXLSXExtractor_Extract_SheetLimitExceeded(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "many-sheets.xlsx")
+
+	f := excelize.NewFile()
+	defer func() { _ = f.Close() }()
+
+	for i := 1; i <= 101; i++ {
+		_, err := f.NewSheet(fmt.Sprintf("Sheet%d", i))
+		if err != nil {
+			t.Fatalf("creating sheet %d: %v", i, err)
+		}
+	}
+	if err := f.SaveAs(filePath); err != nil {
+		t.Fatalf("saving xlsx: %v", err)
+	}
+
+	ext := xlsx.New()
+	_, err := ext.Extract(context.Background(), filePath)
+	if err == nil {
+		t.Fatal("Extract() expected error for too many sheets, got nil")
+	}
+	if !strings.Contains(err.Error(), "exceeding limit") {
+		t.Errorf("Extract() error = %v, want error containing 'exceeding limit'", err)
 	}
 }
 

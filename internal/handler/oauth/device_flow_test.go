@@ -455,15 +455,15 @@ func TestHandler_DeviceApprove(t *testing.T) {
 					ID:        1,
 					UserCode:  userCode,
 					Scope:     sql.NullString{String: "mcp:access documents:read", Valid: true},
-					Status:    "pending",
+					Status:    model.DeviceCodeStatusPending,
 					ExpiresAt: time.Now().Add(15 * time.Minute),
 				}, nil
 			},
 			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
 				return &model.User{ID: id, IsAdmin: false}, nil
 			},
-			UpdateDeviceCodeStatusAndScopeFunc: func(_ context.Context, _ int64, status string, _ *int64, scope string) error {
-				authorizedCalled = status == "authorized"
+			UpdateDeviceCodeStatusAndScopeFunc: func(_ context.Context, _ int64, status model.DeviceCodeStatus, _ *int64, scope string) error {
+				authorizedCalled = status == model.DeviceCodeStatusAuthorized
 				capturedScope = scope
 				return nil
 			},
@@ -533,17 +533,17 @@ func TestHandler_DeviceApprove(t *testing.T) {
 
 	t.Run("shows denied page when user denies", func(t *testing.T) {
 		t.Parallel()
-		var deniedStatus string
+		var deniedStatus model.DeviceCodeStatus
 		repo := &mockOAuthRepo{
 			FindDeviceCodeByUserCodeFunc: func(_ context.Context, userCode string) (*model.OAuthDeviceCode, error) {
 				return &model.OAuthDeviceCode{
 					ID:        1,
 					UserCode:  userCode,
-					Status:    "pending",
+					Status:    model.DeviceCodeStatusPending,
 					ExpiresAt: time.Now().Add(15 * time.Minute),
 				}, nil
 			},
-			UpdateDeviceCodeStatusFunc: func(_ context.Context, _ int64, status string, _ *int64) error {
+			UpdateDeviceCodeStatusFunc: func(_ context.Context, _ int64, status model.DeviceCodeStatus, _ *int64) error {
 				deniedStatus = status
 				return nil
 			},
@@ -564,7 +564,7 @@ func TestHandler_DeviceApprove(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rr.Code)
 		assert.Contains(t, rr.Body.String(), "Authorization Denied")
-		assert.Equal(t, "denied", deniedStatus)
+		assert.Equal(t, model.DeviceCodeStatusDenied, deniedStatus)
 	})
 }
 
@@ -647,7 +647,7 @@ func TestHandler_DeviceVerificationSubmit(t *testing.T) {
 					ID:        1,
 					ClientID:  10,
 					UserCode:  userCode,
-					Status:    "pending",
+					Status:    model.DeviceCodeStatusPending,
 					ExpiresAt: time.Now().Add(-1 * time.Minute),
 				}, nil
 			},
@@ -674,7 +674,7 @@ func TestHandler_DeviceVerificationSubmit(t *testing.T) {
 					ID:        1,
 					ClientID:  10,
 					UserCode:  userCode,
-					Status:    "authorized",
+					Status:    model.DeviceCodeStatusAuthorized,
 					ExpiresAt: time.Now().Add(15 * time.Minute),
 				}, nil
 			},
@@ -701,7 +701,7 @@ func TestHandler_DeviceVerificationSubmit(t *testing.T) {
 					ID:        1,
 					ClientID:  10,
 					UserCode:  userCode,
-					Status:    "pending",
+					Status:    model.DeviceCodeStatusPending,
 					ExpiresAt: time.Now().Add(15 * time.Minute),
 				}, nil
 			},
@@ -731,7 +731,7 @@ func TestHandler_DeviceVerificationSubmit(t *testing.T) {
 					ID:        1,
 					ClientID:  10,
 					UserCode:  userCode,
-					Status:    "pending",
+					Status:    model.DeviceCodeStatusPending,
 					ExpiresAt: time.Now().Add(15 * time.Minute),
 				}, nil
 			},
@@ -766,7 +766,7 @@ func TestHandler_DeviceVerificationSubmit(t *testing.T) {
 					ID:        1,
 					ClientID:  10,
 					UserCode:  userCode,
-					Status:    "pending",
+					Status:    model.DeviceCodeStatusPending,
 					ExpiresAt: time.Now().Add(15 * time.Minute),
 					Scope:     sql.NullString{String: "mcp:access", Valid: true},
 				}, nil
@@ -804,7 +804,7 @@ func TestHandler_DeviceVerificationSubmit(t *testing.T) {
 					ID:        1,
 					ClientID:  10,
 					UserCode:  userCode,
-					Status:    "pending",
+					Status:    model.DeviceCodeStatusPending,
 					ExpiresAt: time.Now().Add(15 * time.Minute),
 					Scope:     sql.NullString{Valid: false},
 				}, nil

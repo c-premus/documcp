@@ -6,6 +6,16 @@ import (
 	"fmt"
 )
 
+// ExternalServiceStatus represents the health state of an external service.
+type ExternalServiceStatus string
+
+// Possible ExternalServiceStatus values.
+const (
+	ExternalServiceStatusUnknown   ExternalServiceStatus = "unknown"
+	ExternalServiceStatusHealthy   ExternalServiceStatus = "healthy"
+	ExternalServiceStatusUnhealthy ExternalServiceStatus = "unhealthy"
+)
+
 // ExternalService represents a row in the "external_services" table.
 type ExternalService struct {
 	ID                  int64          `db:"id" json:"id"`
@@ -17,7 +27,7 @@ type ExternalService struct {
 	APIKey              sql.NullString `db:"api_key" json:"-"`
 	Config              sql.NullString `db:"config" json:"config"`
 	Priority            int            `db:"priority" json:"priority"`
-	Status              string         `db:"status" json:"status"`
+	Status              ExternalServiceStatus `db:"status" json:"status"`
 	LastCheckAt         sql.NullTime   `db:"last_check_at" json:"last_check_at"`
 	LastLatencyMS       sql.NullInt64  `db:"last_latency_ms" json:"last_latency_ms"`
 	ErrorCount          int            `db:"error_count" json:"error_count"`
