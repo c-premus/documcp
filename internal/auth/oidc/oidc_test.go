@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	neturl "net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -244,6 +245,15 @@ func TestNew(t *testing.T) {
 	})
 
 	t.Run("returns error for invalid provider URL", func(t *testing.T) {
+		origRetries := discoveryMaxRetries
+		origDelay := discoveryBaseDelay
+		discoveryMaxRetries = 1
+		discoveryBaseDelay = 1 * time.Millisecond
+		defer func() {
+			discoveryMaxRetries = origRetries
+			discoveryBaseDelay = origDelay
+		}()
+
 		_, err := New(context.Background(), Config{
 			OIDCCfg: config.OIDCConfig{
 				ProviderURL: "http://invalid.localhost.test:1",
@@ -261,6 +271,122 @@ func TestNew(t *testing.T) {
 		defer server.Close()
 		if h == nil {
 			t.Fatal("expected non-nil handler")
+		}
+	})
+
+	t.Run("retries discovery on transient failure then succeeds", func(t *testing.T) {
+		attempts := 0
+		var serverURL string
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			attempts++
+			if attempts <= 2 {
+				// Simulate transient failure for first 2 attempts.
+				http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			// Third attempt succeeds with valid discovery document.
+			discovery := map[string]any{
+				"issuer":                                serverURL,
+				"authorization_endpoint":                serverURL + "/authorize",
+				"token_endpoint":                        serverURL + "/token",
+				"jwks_uri":                              serverURL + "/certs",
+				"id_token_signing_alg_values_supported": []string{"RS256"},
+				"subject_types_supported":               []string{"public"},
+				"response_types_supported":              []string{"code"},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(discovery)
+		}))
+		serverURL = mockServer.URL
+		defer mockServer.Close()
+
+		// Override constants for fast test — use package-level vars instead.
+		origRetries := discoveryMaxRetries
+		origDelay := discoveryBaseDelay
+		discoveryMaxRetries = 4
+		discoveryBaseDelay = 1 * time.Millisecond
+		defer func() {
+			discoveryMaxRetries = origRetries
+			discoveryBaseDelay = origDelay
+		}()
+
+		ctx := gooidc.InsecureIssuerURLContext(context.Background(), mockServer.URL)
+		h, err := New(ctx, Config{
+			OIDCCfg: config.OIDCConfig{
+				ProviderURL:  mockServer.URL,
+				ClientID:     "test-client-id",
+				ClientSecret: "test-secret",
+				RedirectURL:  "http://localhost/auth/callback",
+			},
+			SessionStore: sessions.NewCookieStore([]byte("test-secret-key-32-bytes-long!!")),
+			Repo:         &mockUserRepo{},
+			Logger:       slog.Default(),
+		})
+		if err != nil {
+			t.Fatalf("expected success after retry, got: %v", err)
+		}
+		if h == nil {
+			t.Fatal("expected non-nil handler after retry")
+		}
+		if attempts != 3 {
+			t.Errorf("expected 3 discovery attempts, got %d", attempts)
+		}
+	})
+
+	t.Run("returns error after all retries exhausted", func(t *testing.T) {
+		origRetries := discoveryMaxRetries
+		origDelay := discoveryBaseDelay
+		discoveryMaxRetries = 2
+		discoveryBaseDelay = 1 * time.Millisecond
+		defer func() {
+			discoveryMaxRetries = origRetries
+			discoveryBaseDelay = origDelay
+		}()
+
+		_, err := New(context.Background(), Config{
+			OIDCCfg: config.OIDCConfig{
+				ProviderURL: "http://invalid.localhost.test:1",
+				ClientID:    "test",
+			},
+			Logger: slog.Default(),
+		})
+		if err == nil {
+			t.Fatal("expected error after all retries exhausted")
+		}
+		if !strings.Contains(err.Error(), "after 2 attempts") {
+			t.Errorf("error should mention attempt count, got: %v", err)
+		}
+	})
+
+	t.Run("respects context cancellation during retry", func(t *testing.T) {
+		origRetries := discoveryMaxRetries
+		origDelay := discoveryBaseDelay
+		discoveryMaxRetries = 10
+		discoveryBaseDelay = 10 * time.Second // long delay — context should cancel first
+		defer func() {
+			discoveryMaxRetries = origRetries
+			discoveryBaseDelay = origDelay
+		}()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		// Cancel after a short delay so the first retry's backoff sleep is interrupted.
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			cancel()
+		}()
+
+		_, err := New(ctx, Config{
+			OIDCCfg: config.OIDCConfig{
+				ProviderURL: "http://invalid.localhost.test:1",
+				ClientID:    "test",
+			},
+			Logger: slog.Default(),
+		})
+		if err == nil {
+			t.Fatal("expected error on context cancellation")
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("expected context.Canceled, got: %v", err)
 		}
 	})
 }
