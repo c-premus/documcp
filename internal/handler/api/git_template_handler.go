@@ -1,10 +1,7 @@
 package api
 
 import (
-	"archive/tar"
-	"archive/zip"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"database/sql"
 	"encoding/base64"
@@ -14,14 +11,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"path/filepath"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
 
+	"github.com/c-premus/documcp/internal/archive"
 	gitclient "github.com/c-premus/documcp/internal/client/git"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/queue"
@@ -511,13 +507,13 @@ func (h *GitTemplateHandler) ReadFile(w http.ResponseWriter, r *http.Request) {
 	var unresolved []string
 
 	if variablesJSON != "" {
-		vars, parseErr := parseTemplateVariablesJSON(variablesJSON)
+		vars, parseErr := gitclient.ParseVariablesJSON(variablesJSON)
 		if parseErr != nil {
 			errorResponse(w, http.StatusBadRequest, "invalid variables JSON")
 			return
 		}
 		if len(vars) > 0 {
-			content, unresolved = substituteTemplateVariables(content, vars)
+			content, unresolved = gitclient.SubstituteVariables(content, vars)
 		}
 	}
 
@@ -561,7 +557,7 @@ func (h *GitTemplateHandler) DeploymentGuide(w http.ResponseWriter, r *http.Requ
 
 	// Parse optional variables from query parameter.
 	variablesJSON := r.URL.Query().Get("variables")
-	variables, _ := parseTemplateVariablesJSON(variablesJSON)
+	variables, _ := gitclient.ParseVariablesJSON(variablesJSON)
 
 	allUnresolved := make(map[string]bool)
 
@@ -578,7 +574,7 @@ func (h *GitTemplateHandler) DeploymentGuide(w http.ResponseWriter, r *http.Requ
 		content := files[i].Content.String
 		if len(variables) > 0 {
 			var unresolved []string
-			content, unresolved = substituteTemplateVariables(content, variables)
+			content, unresolved = gitclient.SubstituteVariables(content, variables)
 			for _, u := range unresolved {
 				allUnresolved[u] = true
 			}
@@ -650,17 +646,17 @@ func (h *GitTemplateHandler) Download(w http.ResponseWriter, r *http.Request) {
 
 	allUnresolved := make(map[string]bool)
 
-	entries := make([]templateArchiveEntry, 0, len(files))
+	entries := make([]archive.Entry, 0, len(files))
 	for i := range files {
 		content := files[i].Content.String
 		if len(body.Variables) > 0 {
 			var unresolved []string
-			content, unresolved = substituteTemplateVariables(content, body.Variables)
+			content, unresolved = gitclient.SubstituteVariables(content, body.Variables)
 			for _, u := range unresolved {
 				allUnresolved[u] = true
 			}
 		}
-		entries = append(entries, templateArchiveEntry{path: files[i].Path, content: content})
+		entries = append(entries, archive.Entry{Path: files[i].Path, Content: content})
 	}
 
 	var buf bytes.Buffer
@@ -668,14 +664,14 @@ func (h *GitTemplateHandler) Download(w http.ResponseWriter, r *http.Request) {
 
 	switch format {
 	case "tar.gz":
-		if err := buildTemplateArchiveTarGz(&buf, entries); err != nil {
+		if err := archive.BuildTarGz(&buf, entries); err != nil {
 			h.logger.Error("creating tar.gz archive", "error", err)
 			errorResponse(w, http.StatusInternalServerError, "failed to create archive")
 			return
 		}
 		filename = tmpl.Slug + ".tar.gz"
 	default:
-		if err := buildTemplateArchiveZip(&buf, entries); err != nil {
+		if err := archive.BuildZip(&buf, entries); err != nil {
 			h.logger.Error("creating zip archive", "error", err)
 			errorResponse(w, http.StatusInternalServerError, "failed to create archive")
 			return
@@ -732,100 +728,6 @@ func toGitTemplateResponse(gt *model.GitTemplate) gitTemplateResponse {
 	resp.UpdatedAt = nullTimeToString(gt.UpdatedAt)
 
 	return resp
-}
-
-// substituteTemplateVariables replaces {{key}} placeholders in content with values
-// from the provided map. Returns the substituted content and a list of unresolved
-// variable names.
-func substituteTemplateVariables(content string, variables map[string]string) (result string, missingVars []string) {
-	result = content
-
-	matches := gitclient.VariablePattern.FindAllStringSubmatch(content, -1)
-	seen := make(map[string]bool)
-	for _, match := range matches {
-		key := match[1]
-		if val, ok := variables[key]; ok {
-			result = strings.ReplaceAll(result, "{{"+key+"}}", val)
-		} else if !seen[key] {
-			missingVars = append(missingVars, key)
-			seen[key] = true
-		}
-	}
-	return result, missingVars
-}
-
-// parseTemplateVariablesJSON decodes a JSON string into a map of variable substitutions.
-// Returns an empty map if the input is empty.
-func parseTemplateVariablesJSON(raw string) (map[string]string, error) {
-	if raw == "" {
-		return map[string]string{}, nil
-	}
-	var vars map[string]string
-	if err := json.Unmarshal([]byte(raw), &vars); err != nil {
-		return nil, fmt.Errorf("decoding variables JSON: %w", err)
-	}
-	return vars, nil
-}
-
-
-// templateArchiveEntry holds a single file's path and content for archive creation.
-type templateArchiveEntry struct {
-	path    string
-	content string
-}
-
-// buildTemplateArchiveZip writes a zip archive containing the given entries to w.
-func buildTemplateArchiveZip(w *bytes.Buffer, entries []templateArchiveEntry) error {
-	zw := zip.NewWriter(w)
-	for _, e := range entries {
-		clean := filepath.ToSlash(filepath.Clean(e.path))
-		if clean == ".." || strings.HasPrefix(clean, "../") || filepath.IsAbs(e.path) {
-			continue // skip paths that would escape the archive root
-		}
-		fw, err := zw.Create(clean)
-		if err != nil {
-			return fmt.Errorf("creating zip entry %q: %w", e.path, err)
-		}
-		if _, err := fw.Write([]byte(e.content)); err != nil {
-			return fmt.Errorf("writing zip entry %q: %w", e.path, err)
-		}
-	}
-	if err := zw.Close(); err != nil {
-		return fmt.Errorf("closing zip writer: %w", err)
-	}
-	return nil
-}
-
-// buildTemplateArchiveTarGz writes a gzip-compressed tar archive to w.
-func buildTemplateArchiveTarGz(w *bytes.Buffer, entries []templateArchiveEntry) error {
-	gw := gzip.NewWriter(w)
-	tw := tar.NewWriter(gw)
-
-	for _, e := range entries {
-		clean := filepath.ToSlash(filepath.Clean(e.path))
-		if clean == ".." || strings.HasPrefix(clean, "../") || filepath.IsAbs(e.path) {
-			continue // skip paths that would escape the archive root
-		}
-		hdr := &tar.Header{
-			Name: clean,
-			Mode: 0o600,
-			Size: int64(len(e.content)),
-		}
-		if err := tw.WriteHeader(hdr); err != nil {
-			return fmt.Errorf("writing tar header for %q: %w", e.path, err)
-		}
-		if _, err := tw.Write([]byte(e.content)); err != nil {
-			return fmt.Errorf("writing tar entry %q: %w", e.path, err)
-		}
-	}
-
-	if err := tw.Close(); err != nil {
-		return fmt.Errorf("closing tar writer: %w", err)
-	}
-	if err := gw.Close(); err != nil {
-		return fmt.Errorf("closing gzip writer: %w", err)
-	}
-	return nil
 }
 
 // ValidateURL handles POST /api/admin/git-templates/validate-url -- SSRF validation.
