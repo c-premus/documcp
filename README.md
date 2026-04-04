@@ -211,11 +211,8 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `OTEL_INSECURE` | No | `false` | Use HTTP instead of HTTPS for OTLP exporter |
 | `OTEL_SAMPLE_RATE` | No | `1.0` | Trace sampling rate (0.0--1.0); ignores upstream sampling decisions |
 | `OTEL_ENVIRONMENT` | No | -- | `deployment.environment` resource attribute |
-| `OTEL_SERVICE_VERSION` | No | -- | `service.version` resource attribute |
 | `SENTRY_DSN` | No | -- | Sentry/GlitchTip DSN for error tracking (empty = disabled) |
-| `SENTRY_ENVIRONMENT` | No | `APP_ENV` | Sentry environment tag |
 | `SENTRY_SAMPLE_RATE` | No | `1.0` | Error sample rate (0.0--1.0) |
-| `VITE_SENTRY_DSN` | No | -- | Frontend Sentry DSN (empty = disabled) |
 | `INTERNAL_API_TOKEN` | No | -- | Token for internal API endpoints |
 | `APP_URL` | No | `http://localhost` | Public application URL |
 | `TRUSTED_PROXIES` | No | -- | CIDR ranges for trusted reverse proxies |
@@ -229,7 +226,7 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `DB_MAX_OPEN_CONNS` | No | `25` | Maximum database connections (increase to 40-50 for combined serve+worker mode) |
 | `DB_PGX_MIN_CONNS` | No | `5` | Minimum idle database connections |
 
-See `.env.example` for all ~60 configurable variables with defaults.
+See `.env.example` for the full list of configurable variables with defaults.
 
 ## Documentation
 
