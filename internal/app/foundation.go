@@ -221,9 +221,9 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 
 	// --- Content Extractors ---
 	extractorRegistry := extractor.NewRegistry(
-		pdfext.New(),
-		docxext.New(),
-		xlsxext.New(),
+		pdfext.NewWithLimits(cfg.Storage.MaxExtractedText),
+		docxext.NewWithLimits(cfg.Storage.MaxZIPFiles, cfg.Storage.MaxExtractedText),
+		xlsxext.NewWithLimits(cfg.Storage.MaxSheets, cfg.Storage.MaxExtractedText),
 		htmlext.New(),
 		markdownext.New(),
 	)

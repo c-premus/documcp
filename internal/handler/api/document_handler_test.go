@@ -283,7 +283,7 @@ func newTestDocument(uuid string) *model.Document {
 // The handler repo is a mockHandlerRepo with TagsForDocument wired through.
 func newDocumentHandlerForTest(mockRepo *mockDocumentRepo) *DocumentHandler {
 	docService := service.NewDocumentService(mockRepo, testLogger())
-	pipeline := service.NewDocumentPipeline(docService, nil, nil, "")
+	pipeline := service.NewDocumentPipeline(docService, nil, nil, "", 0)
 	return &DocumentHandler{
 		pipeline: pipeline,
 		repo: &mockHandlerRepo{
@@ -930,7 +930,7 @@ func (m *mockExtractor) Supports(mimeType string) bool {
 func newDocumentHandlerWithExtractor(mockRepo *mockDocumentRepo, ext extractor.Extractor) *DocumentHandler {
 	docService := service.NewDocumentService(mockRepo, testLogger())
 	registry := extractor.NewRegistry(ext)
-	pipeline := service.NewDocumentPipeline(docService, registry, nil, "")
+	pipeline := service.NewDocumentPipeline(docService, registry, nil, "", 0)
 	return &DocumentHandler{
 		pipeline: pipeline,
 		repo:     &mockHandlerRepo{},
