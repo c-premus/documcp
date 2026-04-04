@@ -199,6 +199,10 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `ENCRYPTION_KEY` | No | -- | 32-byte key for AES-256-GCM encryption of stored Git tokens |
 | `SERVER_HOST` | No | `0.0.0.0` | Listen address |
 | `SERVER_PORT` | No | `8080` | Listen port |
+| `TLS_ENABLED` | No | `false` | Terminate TLS directly (no reverse proxy needed) |
+| `TLS_PORT` | No | `8443` | HTTPS listen port (`SERVER_PORT` becomes HTTP→HTTPS redirect) |
+| `TLS_CERT_FILE` | No | -- | PEM certificate path (empty + TLS enabled = self-signed) |
+| `TLS_KEY_FILE` | No | -- | PEM private key path |
 | `STORAGE_DRIVER` | No | `local` | File storage driver |
 | `STORAGE_BASE_PATH` | No | -- | Base path for local file storage |
 | `OTEL_ENABLED` | No | `false` | Enable OpenTelemetry tracing |
