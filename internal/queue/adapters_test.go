@@ -161,7 +161,7 @@ func (s *stubZimRepo) DisableOrphaned(_ context.Context, _ int64, names []string
 // stubGitRepo captures calls to UpdateSyncStatus and ReplaceFiles.
 type stubGitRepo struct {
 	syncStatusTemplateID int64
-	syncStatus           string
+	syncStatus           model.GitTemplateStatus
 	replacedFiles        []repository.GitTemplateFileInsert
 }
 
@@ -169,7 +169,7 @@ func (s *stubGitRepo) List(_ context.Context, _ string, _, _ int) ([]model.GitTe
 	return nil, nil
 }
 
-func (s *stubGitRepo) UpdateSyncStatus(_ context.Context, templateID int64, status, _ string, _ int, _ int64, _ string) error {
+func (s *stubGitRepo) UpdateSyncStatus(_ context.Context, templateID int64, status model.GitTemplateStatus, _ string, _ int, _ int64, _ string) error {
 	s.syncStatusTemplateID = templateID
 	s.syncStatus = status
 	return nil
@@ -237,11 +237,11 @@ func TestGitRepoAdapter_UpdateSyncStatus(t *testing.T) {
 	stub := &stubGitRepo{}
 	adapter := &gitRepoAdapter{repo: stub}
 
-	err := adapter.UpdateSyncStatus(context.Background(), 42, "synced", "abc123", 10, 1024, "")
+	err := adapter.UpdateSyncStatus(context.Background(), 42, model.GitTemplateStatusSynced, "abc123", 10, 1024, "")
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(42), stub.syncStatusTemplateID)
-	assert.Equal(t, "synced", stub.syncStatus)
+	assert.Equal(t, model.GitTemplateStatusSynced, stub.syncStatus)
 }
 
 func TestGitRepoAdapter_ReplaceFiles(t *testing.T) {

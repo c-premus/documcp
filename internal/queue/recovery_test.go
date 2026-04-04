@@ -10,6 +10,8 @@ import (
 	"github.com/riverqueue/river/rivertype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // --- Mock implementations for recovery ---
@@ -35,11 +37,11 @@ func (m *mockJobInserter) Insert(_ context.Context, args river.JobArgs, opts *ri
 }
 
 type mockDocumentStatusFinder struct {
-	results map[string][]StuckDocument
+	results map[model.DocumentStatus][]StuckDocument
 	err     error
 }
 
-func (m *mockDocumentStatusFinder) FindByStatus(_ context.Context, status string) ([]StuckDocument, error) {
+func (m *mockDocumentStatusFinder) FindByStatus(_ context.Context, status model.DocumentStatus) ([]StuckDocument, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -57,12 +59,12 @@ func TestRecoverStuckDocuments_uploatedDispatchtesExtract(t *testing.T) {
 
 	inserter := &mockJobInserter{}
 	finder := &mockDocumentStatusFinder{
-		results: map[string][]StuckDocument{
-			"uploaded": {
+		results: map[model.DocumentStatus][]StuckDocument{
+			model.DocumentStatusUploaded: {
 				{ID: 10, UUID: "uuid-10"},
 				{ID: 20, UUID: "uuid-20"},
 			},
-			"extracted": {},
+			model.DocumentStatus("extracted"): {},
 		},
 	}
 
@@ -87,9 +89,9 @@ func TestRecoverStuckDocuments_extractedDispatchesExtract(t *testing.T) {
 
 	inserter := &mockJobInserter{}
 	finder := &mockDocumentStatusFinder{
-		results: map[string][]StuckDocument{
-			"uploaded": {},
-			"extracted": {
+		results: map[model.DocumentStatus][]StuckDocument{
+			model.DocumentStatusUploaded: {},
+			model.DocumentStatus("extracted"): {
 				{ID: 30, UUID: "uuid-30"},
 			},
 		},
@@ -110,9 +112,9 @@ func TestRecoverStuckDocuments_bothStatuses(t *testing.T) {
 
 	inserter := &mockJobInserter{}
 	finder := &mockDocumentStatusFinder{
-		results: map[string][]StuckDocument{
-			"uploaded":  {{ID: 1, UUID: "u1"}},
-			"extracted": {{ID: 2, UUID: "u2"}},
+		results: map[model.DocumentStatus][]StuckDocument{
+			model.DocumentStatusUploaded:  {{ID: 1, UUID: "u1"}},
+			model.DocumentStatus("extracted"): {{ID: 2, UUID: "u2"}},
 		},
 	}
 
@@ -133,8 +135,8 @@ func TestRecoverStuckDocuments_nilInserter(t *testing.T) {
 	t.Parallel()
 
 	finder := &mockDocumentStatusFinder{
-		results: map[string][]StuckDocument{
-			"uploaded": {{ID: 1, UUID: "u1"}},
+		results: map[model.DocumentStatus][]StuckDocument{
+			model.DocumentStatusUploaded: {{ID: 1, UUID: "u1"}},
 		},
 	}
 
@@ -186,9 +188,9 @@ func TestRecoverStuckDocuments_insertError(t *testing.T) {
 
 	inserter := &mockJobInserter{err: errors.New("insert failed")}
 	finder := &mockDocumentStatusFinder{
-		results: map[string][]StuckDocument{
-			"uploaded":  {{ID: 1, UUID: "u1"}},
-			"extracted": {{ID: 2, UUID: "u2"}},
+		results: map[model.DocumentStatus][]StuckDocument{
+			model.DocumentStatusUploaded:  {{ID: 1, UUID: "u1"}},
+			model.DocumentStatus("extracted"): {{ID: 2, UUID: "u2"}},
 		},
 	}
 
@@ -206,9 +208,9 @@ func TestRecoverStuckDocuments_noStuckDocuments(t *testing.T) {
 
 	inserter := &mockJobInserter{}
 	finder := &mockDocumentStatusFinder{
-		results: map[string][]StuckDocument{
-			"uploaded":  {},
-			"extracted": {},
+		results: map[model.DocumentStatus][]StuckDocument{
+			model.DocumentStatusUploaded:  {},
+			model.DocumentStatus("extracted"): {},
 		},
 	}
 
@@ -222,9 +224,9 @@ func TestRecoverStuckDocuments_nilOptsPassedToInsert(t *testing.T) {
 
 	inserter := &mockJobInserter{}
 	finder := &mockDocumentStatusFinder{
-		results: map[string][]StuckDocument{
-			"uploaded":  {{ID: 5, UUID: "u5"}},
-			"extracted": {{ID: 6, UUID: "u6"}},
+		results: map[model.DocumentStatus][]StuckDocument{
+			model.DocumentStatusUploaded:  {{ID: 5, UUID: "u5"}},
+			model.DocumentStatus("extracted"): {{ID: 6, UUID: "u6"}},
 		},
 	}
 

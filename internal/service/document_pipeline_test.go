@@ -107,8 +107,8 @@ func TestDocumentPipeline_Upload(t *testing.T) {
 		if doc.Title != "Pipeline Doc" {
 			t.Errorf("Title = %q, want %q", doc.Title, "Pipeline Doc")
 		}
-		if doc.Status != "uploaded" {
-			t.Errorf("Status = %q, want %q", doc.Status, "uploaded")
+		if doc.Status != model.DocumentStatusUploaded {
+			t.Errorf("Status = %q, want %q", doc.Status, model.DocumentStatusUploaded)
 		}
 		if doc.MIMEType != "text/markdown" {
 			t.Errorf("MIMEType = %q, want %q", doc.MIMEType, "text/markdown")
@@ -642,7 +642,7 @@ func TestDocumentPipeline_ProcessDocument_NoExtractor(t *testing.T) {
 				UUID:     "proc-test",
 				FilePath: "docs/test.pdf",
 				MIMEType: "application/pdf",
-				Status:   "uploaded",
+				Status:   model.DocumentStatusUploaded,
 			}, nil
 		},
 		updateFn: func(_ context.Context, doc *model.Document) error {
@@ -675,7 +675,7 @@ func TestDocumentPipeline_ProcessDocument_ExtractorError(t *testing.T) {
 				UUID:     "ext-err",
 				FilePath: "docs/test.md",
 				MIMEType: "text/markdown",
-				Status:   "uploaded",
+				Status:   model.DocumentStatusUploaded,
 			}, nil
 		},
 		updateFn: func(_ context.Context, doc *model.Document) error {
@@ -715,7 +715,7 @@ func TestDocumentPipeline_ProcessDocument_Success(t *testing.T) {
 				UUID:     "proc-ok",
 				FilePath: "docs/test.md",
 				MIMEType: "text/markdown",
-				Status:   "uploaded",
+				Status:   model.DocumentStatusUploaded,
 			}, nil
 		},
 		updateFn: func(_ context.Context, doc *model.Document) error {
@@ -746,8 +746,8 @@ func TestDocumentPipeline_ProcessDocument_Success(t *testing.T) {
 	if updatedDoc == nil {
 		t.Fatal("expected document to be updated")
 	}
-	if updatedDoc.Status != "indexed" {
-		t.Errorf("Status = %q, want %q", updatedDoc.Status, "indexed")
+	if updatedDoc.Status != model.DocumentStatusIndexed {
+		t.Errorf("Status = %q, want %q", updatedDoc.Status, model.DocumentStatusIndexed)
 	}
 	if !updatedDoc.Content.Valid || updatedDoc.Content.String != "extracted content here" {
 		t.Errorf("Content = %q, want %q", updatedDoc.Content.String, "extracted content here")
@@ -774,7 +774,7 @@ func TestDocumentPipeline_ProcessDocument_UpdateError(t *testing.T) {
 				UUID:     "upd-err",
 				FilePath: "docs/test.md",
 				MIMEType: "text/markdown",
-				Status:   "uploaded",
+				Status:   model.DocumentStatusUploaded,
 			}, nil
 		},
 		updateFn: func(_ context.Context, _ *model.Document) error {
@@ -813,7 +813,7 @@ func TestDocumentPipeline_ProcessDocument_MarkFailedUpdateError(t *testing.T) {
 				UUID:     "mark-fail",
 				FilePath: "docs/test.md",
 				MIMEType: "text/markdown",
-				Status:   "uploaded",
+				Status:   model.DocumentStatusUploaded,
 			}, nil
 		},
 		updateFn: func(_ context.Context, _ *model.Document) error {
@@ -927,7 +927,7 @@ func TestDocumentPipeline_ReplaceContent(t *testing.T) {
 			FileSize:     11,
 			FileType:     "html",
 			MIMEType:     "text/html",
-			Status:       "processed",
+			Status:       model.DocumentStatusIndexed,
 			Content:      sql.NullString{String: "old text", Valid: true},
 			ContentHash:  sql.NullString{String: "abc123", Valid: true},
 			WordCount:    sql.NullInt64{Int64: 2, Valid: true},
@@ -989,8 +989,8 @@ func TestDocumentPipeline_ReplaceContent(t *testing.T) {
 		}
 
 		// Verify reset fields.
-		if doc.Status != "uploaded" {
-			t.Errorf("Status = %q, want %q", doc.Status, "uploaded")
+		if doc.Status != model.DocumentStatusUploaded {
+			t.Errorf("Status = %q, want %q", doc.Status, model.DocumentStatusUploaded)
 		}
 		if doc.FilePath != newRelPath {
 			t.Errorf("FilePath = %q, want %q", doc.FilePath, newRelPath)

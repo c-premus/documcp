@@ -27,7 +27,7 @@ func TestExternalServiceRepository_CreateAndFind(t *testing.T) {
 		APIKey:       sql.NullString{String: "secret-key", Valid: true},
 		Config:       sql.NullString{String: `{"space":"DEV"}`, Valid: true},
 		Priority:     10,
-		Status:       "unknown",
+		Status:       model.ExternalServiceStatusUnknown,
 		IsEnabled:    true,
 		IsEnvManaged: false,
 	}
@@ -53,7 +53,7 @@ func TestExternalServiceRepository_CreateAndFind(t *testing.T) {
 		assert.True(t, found.Config.Valid)
 		assert.Equal(t, `{"space":"DEV"}`, found.Config.String)
 		assert.Equal(t, 10, found.Priority)
-		assert.Equal(t, "unknown", found.Status)
+		assert.Equal(t, model.ExternalServiceStatusUnknown, found.Status)
 		assert.True(t, found.IsEnabled)
 		assert.False(t, found.IsEnvManaged)
 		assert.Equal(t, 0, found.ErrorCount)
@@ -95,7 +95,7 @@ func TestExternalServiceRepository_FindEnabledByType(t *testing.T) {
 			Type:      "kiwix",
 			BaseURL:   "https://k1.example.com",
 			Priority:  1,
-			Status:    "healthy",
+			Status:    model.ExternalServiceStatusHealthy,
 			IsEnabled: true,
 		},
 		{
@@ -105,7 +105,7 @@ func TestExternalServiceRepository_FindEnabledByType(t *testing.T) {
 			Type:      "kiwix",
 			BaseURL:   "https://k2.example.com",
 			Priority:  20,
-			Status:    "healthy",
+			Status:    model.ExternalServiceStatusHealthy,
 			IsEnabled: true,
 		},
 		{
@@ -115,7 +115,7 @@ func TestExternalServiceRepository_FindEnabledByType(t *testing.T) {
 			Type:      "kiwix",
 			BaseURL:   "https://k3.example.com",
 			Priority:  5,
-			Status:    "healthy",
+			Status:    model.ExternalServiceStatusHealthy,
 			IsEnabled: false,
 		},
 		{
@@ -125,7 +125,7 @@ func TestExternalServiceRepository_FindEnabledByType(t *testing.T) {
 			Type:      "git",
 			BaseURL:   "https://git.example.com",
 			Priority:  1,
-			Status:    "healthy",
+			Status:    model.ExternalServiceStatusHealthy,
 			IsEnabled: true,
 		},
 	}
@@ -190,7 +190,7 @@ func TestExternalServiceRepository_List(t *testing.T) {
 			Type:      "kiwix",
 			BaseURL:   "https://k1.example.com",
 			Priority:  5,
-			Status:    "healthy",
+			Status:    model.ExternalServiceStatusHealthy,
 			IsEnabled: true,
 		},
 		{
@@ -200,7 +200,7 @@ func TestExternalServiceRepository_List(t *testing.T) {
 			Type:      "kiwix",
 			BaseURL:   "https://k2.example.com",
 			Priority:  10,
-			Status:    "unhealthy",
+			Status:    model.ExternalServiceStatusUnhealthy,
 			IsEnabled: true,
 		},
 		{
@@ -210,7 +210,7 @@ func TestExternalServiceRepository_List(t *testing.T) {
 			Type:      "git",
 			BaseURL:   "https://git.example.com",
 			Priority:  1,
-			Status:    "healthy",
+			Status:    model.ExternalServiceStatusHealthy,
 			IsEnabled: true,
 		},
 		{
@@ -220,7 +220,7 @@ func TestExternalServiceRepository_List(t *testing.T) {
 			Type:      "kiwix",
 			BaseURL:   "https://kiwix.example.com",
 			Priority:  3,
-			Status:    "unknown",
+			Status:    model.ExternalServiceStatusUnknown,
 			IsEnabled: false,
 		},
 	}
@@ -318,7 +318,7 @@ func TestExternalServiceRepository_Update(t *testing.T) {
 		Type:      "kiwix",
 		BaseURL:   "https://original.example.com",
 		Priority:  5,
-		Status:    "unknown",
+		Status:    model.ExternalServiceStatusUnknown,
 		IsEnabled: true,
 	}
 	require.NoError(t, repo.Create(ctx, svc))
@@ -358,7 +358,7 @@ func TestExternalServiceRepository_Delete(t *testing.T) {
 		Type:      "git",
 		BaseURL:   "https://delete.example.com",
 		Priority:  1,
-		Status:    "unknown",
+		Status:    model.ExternalServiceStatusUnknown,
 		IsEnabled: true,
 	}
 	require.NoError(t, repo.Create(ctx, svc))
@@ -388,7 +388,7 @@ func TestExternalServiceRepository_FindAllEnabled(t *testing.T) {
 		Type:      "kiwix",
 		BaseURL:   "https://kiwix.example.com",
 		Priority:  5,
-		Status:    "healthy",
+		Status:    model.ExternalServiceStatusHealthy,
 		IsEnabled: true,
 	}
 	enabledGit := &model.ExternalService{
@@ -398,7 +398,7 @@ func TestExternalServiceRepository_FindAllEnabled(t *testing.T) {
 		Type:      "git",
 		BaseURL:   "https://git.example.com",
 		Priority:  1,
-		Status:    "healthy",
+		Status:    model.ExternalServiceStatusHealthy,
 		IsEnabled: true,
 	}
 	disabled := &model.ExternalService{
@@ -408,7 +408,7 @@ func TestExternalServiceRepository_FindAllEnabled(t *testing.T) {
 		Type:      "kiwix",
 		BaseURL:   "https://kiwix.example.com",
 		Priority:  1,
-		Status:    "unknown",
+		Status:    model.ExternalServiceStatusUnknown,
 		IsEnabled: false,
 	}
 
@@ -446,7 +446,7 @@ func TestExternalServiceRepository_FindAllEnabled(t *testing.T) {
 			Type:      "git",
 			BaseURL:   "https://disabled.example.com",
 			Priority:  1,
-			Status:    "unknown",
+			Status:    model.ExternalServiceStatusUnknown,
 			IsEnabled: false,
 		}
 		require.NoError(t, repo.Create(ctx, onlyDisabled))
@@ -469,19 +469,19 @@ func TestExternalServiceRepository_UpdateHealthStatus(t *testing.T) {
 		Type:      "kiwix",
 		BaseURL:   "https://health.example.com",
 		Priority:  1,
-		Status:    "unknown",
+		Status:    model.ExternalServiceStatusUnknown,
 		IsEnabled: true,
 	}
 	require.NoError(t, repo.Create(ctx, svc))
 
 	t.Run("update to healthy", func(t *testing.T) {
-		err := repo.UpdateHealthStatus(ctx, svc.ID, "healthy", 42, "")
+		err := repo.UpdateHealthStatus(ctx, svc.ID, model.ExternalServiceStatusHealthy, 42, "")
 		require.NoError(t, err)
 
 		found, err := repo.FindByUUID(ctx, testUUID("health-001"))
 		require.NoError(t, err)
 
-		assert.Equal(t, "healthy", found.Status)
+		assert.Equal(t, model.ExternalServiceStatusHealthy, found.Status)
 		assert.True(t, found.LastCheckAt.Valid)
 		assert.True(t, found.LastLatencyMS.Valid)
 		assert.Equal(t, int64(42), found.LastLatencyMS.Int64)
@@ -490,13 +490,13 @@ func TestExternalServiceRepository_UpdateHealthStatus(t *testing.T) {
 	})
 
 	t.Run("update to unhealthy first time", func(t *testing.T) {
-		err := repo.UpdateHealthStatus(ctx, svc.ID, "unhealthy", 500, "connection timeout")
+		err := repo.UpdateHealthStatus(ctx, svc.ID, model.ExternalServiceStatusUnhealthy, 500, "connection timeout")
 		require.NoError(t, err)
 
 		found, err := repo.FindByUUID(ctx, testUUID("health-001"))
 		require.NoError(t, err)
 
-		assert.Equal(t, "unhealthy", found.Status)
+		assert.Equal(t, model.ExternalServiceStatusUnhealthy, found.Status)
 		assert.True(t, found.LastLatencyMS.Valid)
 		assert.Equal(t, int64(500), found.LastLatencyMS.Int64)
 		assert.Equal(t, 1, found.ErrorCount)
@@ -507,26 +507,26 @@ func TestExternalServiceRepository_UpdateHealthStatus(t *testing.T) {
 	})
 
 	t.Run("update to unhealthy second time", func(t *testing.T) {
-		err := repo.UpdateHealthStatus(ctx, svc.ID, "unhealthy", 600, "connection refused")
+		err := repo.UpdateHealthStatus(ctx, svc.ID, model.ExternalServiceStatusUnhealthy, 600, "connection refused")
 		require.NoError(t, err)
 
 		found, err := repo.FindByUUID(ctx, testUUID("health-001"))
 		require.NoError(t, err)
 
-		assert.Equal(t, "unhealthy", found.Status)
+		assert.Equal(t, model.ExternalServiceStatusUnhealthy, found.Status)
 		assert.Equal(t, 2, found.ErrorCount)
 		assert.Equal(t, 2, found.ConsecutiveFailures)
 		assert.Equal(t, "connection refused", found.LastError.String)
 	})
 
 	t.Run("recovery to healthy resets consecutive failures", func(t *testing.T) {
-		err := repo.UpdateHealthStatus(ctx, svc.ID, "healthy", 30, "")
+		err := repo.UpdateHealthStatus(ctx, svc.ID, model.ExternalServiceStatusHealthy, 30, "")
 		require.NoError(t, err)
 
 		found, err := repo.FindByUUID(ctx, testUUID("health-001"))
 		require.NoError(t, err)
 
-		assert.Equal(t, "healthy", found.Status)
+		assert.Equal(t, model.ExternalServiceStatusHealthy, found.Status)
 		assert.Equal(t, 0, found.ConsecutiveFailures)
 		// error_count should NOT reset on healthy — it is cumulative.
 		assert.Equal(t, 2, found.ErrorCount)
@@ -553,7 +553,7 @@ func TestExternalServiceRepository_Count(t *testing.T) {
 		Type:      "kiwix",
 		BaseURL:   "https://k1.example.com",
 		Priority:  1,
-		Status:    "unknown",
+		Status:    model.ExternalServiceStatusUnknown,
 		IsEnabled: true,
 	}
 	svc2 := &model.ExternalService{
@@ -563,7 +563,7 @@ func TestExternalServiceRepository_Count(t *testing.T) {
 		Type:      "git",
 		BaseURL:   "https://g1.example.com",
 		Priority:  2,
-		Status:    "unknown",
+		Status:    model.ExternalServiceStatusUnknown,
 		IsEnabled: true,
 	}
 	svc3 := &model.ExternalService{
@@ -573,7 +573,7 @@ func TestExternalServiceRepository_Count(t *testing.T) {
 		Type:      "kiwix",
 		BaseURL:   "https://k1.example.com",
 		Priority:  3,
-		Status:    "unknown",
+		Status:    model.ExternalServiceStatusUnknown,
 		IsEnabled: true,
 	}
 
@@ -606,7 +606,7 @@ func TestExternalServiceRepository_ReorderPriorities(t *testing.T) {
 		Type:      "kiwix",
 		BaseURL:   "https://r1.example.com",
 		Priority:  0,
-		Status:    "unknown",
+		Status:    model.ExternalServiceStatusUnknown,
 		IsEnabled: true,
 	}
 	svc2 := &model.ExternalService{
@@ -616,7 +616,7 @@ func TestExternalServiceRepository_ReorderPriorities(t *testing.T) {
 		Type:      "git",
 		BaseURL:   "https://r2.example.com",
 		Priority:  0,
-		Status:    "unknown",
+		Status:    model.ExternalServiceStatusUnknown,
 		IsEnabled: true,
 	}
 	svc3 := &model.ExternalService{
@@ -626,7 +626,7 @@ func TestExternalServiceRepository_ReorderPriorities(t *testing.T) {
 		Type:      "kiwix",
 		BaseURL:   "https://r3.example.com",
 		Priority:  0,
-		Status:    "unknown",
+		Status:    model.ExternalServiceStatusUnknown,
 		IsEnabled: true,
 	}
 

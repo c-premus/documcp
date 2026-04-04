@@ -49,8 +49,8 @@ type mockOAuthRepo struct {
 	CreateDeviceCodeFunc           func(ctx context.Context, dc *model.OAuthDeviceCode) error
 	FindDeviceCodeByDeviceCodeFunc func(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error)
 	FindDeviceCodeByUserCodeFunc   func(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
-	UpdateDeviceCodeStatusFunc         func(ctx context.Context, id int64, status string, userID *int64) error
-	UpdateDeviceCodeStatusAndScopeFunc func(ctx context.Context, id int64, status string, userID *int64, scope string) error
+	UpdateDeviceCodeStatusFunc         func(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64) error
+	UpdateDeviceCodeStatusAndScopeFunc func(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64, scope string) error
 	UpdateDeviceCodeLastPolledFunc     func(ctx context.Context, id int64, interval int) error
 	// Users
 	FindUserByIDFunc func(ctx context.Context, id int64) (*model.User, error)
@@ -196,14 +196,14 @@ func (m *mockOAuthRepo) FindDeviceCodeByUserCode(ctx context.Context, userCode s
 	return nil, sql.ErrNoRows
 }
 
-func (m *mockOAuthRepo) UpdateDeviceCodeStatus(ctx context.Context, id int64, status string, userID *int64) error {
+func (m *mockOAuthRepo) UpdateDeviceCodeStatus(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64) error {
 	if m.UpdateDeviceCodeStatusFunc != nil {
 		return m.UpdateDeviceCodeStatusFunc(ctx, id, status, userID)
 	}
 	return nil
 }
 
-func (m *mockOAuthRepo) UpdateDeviceCodeStatusAndScope(ctx context.Context, id int64, status string, userID *int64, scope string) error {
+func (m *mockOAuthRepo) UpdateDeviceCodeStatusAndScope(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64, scope string) error {
 	if m.UpdateDeviceCodeStatusAndScopeFunc != nil {
 		return m.UpdateDeviceCodeStatusAndScopeFunc(ctx, id, status, userID, scope)
 	}
@@ -1970,7 +1970,7 @@ func TestGenerateDeviceCode(t *testing.T) {
 
 		require.NotNil(t, capturedDC)
 		assert.Equal(t, testClientDBID, capturedDC.ClientID)
-		assert.Equal(t, "pending", capturedDC.Status)
+		assert.Equal(t, model.DeviceCodeStatusPending, capturedDC.Status)
 		assert.True(t, capturedDC.Scope.Valid)
 		assert.Equal(t, "mcp:access", capturedDC.Scope.String)
 	})
@@ -2173,7 +2173,7 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 	t.Run("approve narrows scope to user entitlements", func(t *testing.T) {
 		t.Parallel()
 
-		var capturedStatus string
+		var capturedStatus model.DeviceCodeStatus
 		var capturedUserID *int64
 		var capturedScope string
 		repo := &mockOAuthRepo{
@@ -2181,7 +2181,7 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 				return &model.OAuthDeviceCode{
 					ID:        600,
 					Scope:     sql.NullString{String: "mcp:access admin documents:read", Valid: true},
-					Status:    "pending",
+					Status:    model.DeviceCodeStatusPending,
 					ExpiresAt: time.Now().Add(5 * time.Minute),
 				}, nil
 			},
@@ -2189,7 +2189,7 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 				assert.Equal(t, int64(42), id)
 				return &model.User{ID: 42, IsAdmin: false}, nil
 			},
-			UpdateDeviceCodeStatusAndScopeFunc: func(_ context.Context, id int64, status string, userID *int64, scope string) error {
+			UpdateDeviceCodeStatusAndScopeFunc: func(_ context.Context, id int64, status model.DeviceCodeStatus, userID *int64, scope string) error {
 				assert.Equal(t, int64(600), id)
 				capturedStatus = status
 				capturedUserID = userID
@@ -2202,7 +2202,7 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 		err := svc.AuthorizeDeviceCode(context.Background(), "BCDF-GHJK", 42, true)
 
 		require.NoError(t, err)
-		assert.Equal(t, "authorized", capturedStatus)
+		assert.Equal(t, model.DeviceCodeStatusAuthorized, capturedStatus)
 		require.NotNil(t, capturedUserID)
 		assert.Equal(t, int64(42), *capturedUserID)
 		// Non-admin user cannot grant "admin" scope
@@ -2222,7 +2222,7 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 					ID:        600,
 					ClientID:  100,
 					Scope:     sql.NullString{String: "mcp:access admin", Valid: true},
-					Status:    "pending",
+					Status:    model.DeviceCodeStatusPending,
 					ExpiresAt: time.Now().Add(5 * time.Minute),
 				}, nil
 			},
@@ -2240,7 +2240,7 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 				expandedScope = scope
 				return nil
 			},
-			UpdateDeviceCodeStatusAndScopeFunc: func(_ context.Context, _ int64, _ string, _ *int64, scope string) error {
+			UpdateDeviceCodeStatusAndScopeFunc: func(_ context.Context, _ int64, _ model.DeviceCodeStatus, _ *int64, scope string) error {
 				capturedScope = scope
 				return nil
 			},
@@ -2265,7 +2265,7 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 				return &model.OAuthDeviceCode{
 					ID:        600,
 					Scope:     sql.NullString{String: "admin", Valid: true},
-					Status:    "pending",
+					Status:    model.DeviceCodeStatusPending,
 					ExpiresAt: time.Now().Add(5 * time.Minute),
 				}, nil
 			},
@@ -2284,16 +2284,16 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 	t.Run("deny sets denied status", func(t *testing.T) {
 		t.Parallel()
 
-		var capturedStatus string
+		var capturedStatus model.DeviceCodeStatus
 		repo := &mockOAuthRepo{
 			FindDeviceCodeByUserCodeFunc: func(_ context.Context, _ string) (*model.OAuthDeviceCode, error) {
 				return &model.OAuthDeviceCode{
 					ID:        601,
-					Status:    "pending",
+					Status:    model.DeviceCodeStatusPending,
 					ExpiresAt: time.Now().Add(5 * time.Minute),
 				}, nil
 			},
-			UpdateDeviceCodeStatusFunc: func(_ context.Context, _ int64, status string, _ *int64) error {
+			UpdateDeviceCodeStatusFunc: func(_ context.Context, _ int64, status model.DeviceCodeStatus, _ *int64) error {
 				capturedStatus = status
 				return nil
 			},
@@ -2303,7 +2303,7 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 		err := svc.AuthorizeDeviceCode(context.Background(), "BCDF-GHJK", 42, false)
 
 		require.NoError(t, err)
-		assert.Equal(t, "denied", capturedStatus)
+		assert.Equal(t, model.DeviceCodeStatusDenied, capturedStatus)
 	})
 
 	t.Run("expired device code returns error", func(t *testing.T) {
@@ -2313,7 +2313,7 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 			FindDeviceCodeByUserCodeFunc: func(_ context.Context, _ string) (*model.OAuthDeviceCode, error) {
 				return &model.OAuthDeviceCode{
 					ID:        602,
-					Status:    "pending",
+					Status:    model.DeviceCodeStatusPending,
 					ExpiresAt: time.Now().Add(-1 * time.Minute),
 				}, nil
 			},
@@ -2333,7 +2333,7 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 			FindDeviceCodeByUserCodeFunc: func(_ context.Context, _ string) (*model.OAuthDeviceCode, error) {
 				return &model.OAuthDeviceCode{
 					ID:        603,
-					Status:    "authorized",
+					Status:    model.DeviceCodeStatusAuthorized,
 					ExpiresAt: time.Now().Add(5 * time.Minute),
 				}, nil
 			},
@@ -2375,7 +2375,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 		testClientDBID = int64(100)
 	)
 
-	setupDeviceExchange := func(t *testing.T, status string) (deviceCodePlaintext string, deviceCodeHash string, client *model.OAuthClient, dc *model.OAuthDeviceCode) {
+	setupDeviceExchange := func(t *testing.T, status model.DeviceCodeStatus) (deviceCodePlaintext string, deviceCodeHash string, client *model.OAuthClient, dc *model.OAuthDeviceCode) {
 		t.Helper()
 		deviceCodePlaintext, deviceCodeHash = makeTokenPlaintext(t, 600)
 		client = makePublicClient(testClientDBID, testClientID)
@@ -2395,9 +2395,9 @@ func TestExchangeDeviceCode(t *testing.T) {
 	t.Run("authorized status issues tokens and marks exchanged", func(t *testing.T) {
 		t.Parallel()
 
-		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, "authorized")
+		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, model.DeviceCodeStatusAuthorized)
 
-		var statusUpdated string
+		var statusUpdated model.DeviceCodeStatus
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
 				return client, nil
@@ -2409,7 +2409,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 			UpdateDeviceCodeLastPolledFunc: func(_ context.Context, _ int64, _ int) error { return nil },
-			UpdateDeviceCodeStatusFunc: func(_ context.Context, _ int64, status string, _ *int64) error {
+			UpdateDeviceCodeStatusFunc: func(_ context.Context, _ int64, status model.DeviceCodeStatus, _ *int64) error {
 				statusUpdated = status
 				return nil
 			},
@@ -2429,13 +2429,13 @@ func TestExchangeDeviceCode(t *testing.T) {
 		assert.NotEmpty(t, result.RefreshToken)
 		assert.Equal(t, "Bearer", result.TokenType)
 		assert.Equal(t, "mcp:access", result.Scope)
-		assert.Equal(t, "exchanged", statusUpdated)
+		assert.Equal(t, model.DeviceCodeStatusExchanged, statusUpdated)
 	})
 
 	t.Run("pending status returns authorization_pending", func(t *testing.T) {
 		t.Parallel()
 
-		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, "pending")
+		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, model.DeviceCodeStatusPending)
 
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
@@ -2465,7 +2465,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 	t.Run("denied status returns access_denied", func(t *testing.T) {
 		t.Parallel()
 
-		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, "denied")
+		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, model.DeviceCodeStatusDenied)
 
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
@@ -2495,7 +2495,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 	t.Run("exchanged status returns invalid_grant", func(t *testing.T) {
 		t.Parallel()
 
-		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, "exchanged")
+		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, model.DeviceCodeStatusExchanged)
 
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
@@ -2526,7 +2526,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 	t.Run("expired device code returns expired_token", func(t *testing.T) {
 		t.Parallel()
 
-		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, "pending")
+		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, model.DeviceCodeStatusPending)
 		dc.ExpiresAt = time.Now().Add(-1 * time.Minute)
 
 		repo := &mockOAuthRepo{
@@ -2556,7 +2556,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 	t.Run("polling too fast returns slow_down and increases interval", func(t *testing.T) {
 		t.Parallel()
 
-		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, "pending")
+		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, model.DeviceCodeStatusPending)
 		dc.LastPolledAt = sql.NullTime{Time: time.Now(), Valid: true} // just polled
 		dc.Interval = 5
 
@@ -2593,7 +2593,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 	t.Run("invalid client returns invalid_client error", func(t *testing.T) {
 		t.Parallel()
 
-		dcPlaintext, _, _, _ := setupDeviceExchange(t, "pending")
+		dcPlaintext, _, _, _ := setupDeviceExchange(t, model.DeviceCodeStatusPending)
 
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
@@ -2639,7 +2639,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 	t.Run("device code belonging to different client returns invalid_grant", func(t *testing.T) {
 		t.Parallel()
 
-		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, "authorized")
+		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, model.DeviceCodeStatusAuthorized)
 		dc.ClientID = 999 // different client
 
 		repo := &mockOAuthRepo{
@@ -2669,7 +2669,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 	t.Run("unknown status returns invalid_grant", func(t *testing.T) {
 		t.Parallel()
 
-		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, "unknown_state")
+		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, model.DeviceCodeStatus("unknown_state"))
 
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {

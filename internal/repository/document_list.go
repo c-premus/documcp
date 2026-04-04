@@ -14,7 +14,7 @@ import (
 // DocumentListParams holds filters and pagination for listing documents.
 type DocumentListParams struct {
 	FileType      string
-	Status        string
+	Status        model.DocumentStatus
 	UserID        *int64
 	IsPublic      *bool
 	OwnerOrPublic *int64 // If set, filter: (user_id = $N OR is_public = true)
@@ -118,7 +118,7 @@ func (r *DocumentRepository) List(ctx context.Context, params DocumentListParams
 }
 
 // FindByStatus returns documents with the given status, limited to count.
-func (r *DocumentRepository) FindByStatus(ctx context.Context, status string, limit int) ([]model.Document, error) {
+func (r *DocumentRepository) FindByStatus(ctx context.Context, status model.DocumentStatus, limit int) ([]model.Document, error) {
 	docs, err := database.Select[model.Document](ctx, r.db,
 		`SELECT * FROM documents WHERE status = $1 AND deleted_at IS NULL ORDER BY created_at ASC LIMIT $2`,
 		status, limit)

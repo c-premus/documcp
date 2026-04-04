@@ -30,7 +30,7 @@ type mockExternalServiceRepo struct {
 	createFn            func(ctx context.Context, svc *model.ExternalService) error
 	updateFn            func(ctx context.Context, svc *model.ExternalService) error
 	deleteFn            func(ctx context.Context, id int64) error
-	updateHealthFn      func(ctx context.Context, id int64, status string, latencyMs int, lastError string) error
+	updateHealthFn      func(ctx context.Context, id int64, status model.ExternalServiceStatus, latencyMs int, lastError string) error
 	reorderFn           func(ctx context.Context, serviceIDs []int64) error
 }
 
@@ -76,7 +76,7 @@ func (m *mockExternalServiceRepo) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (m *mockExternalServiceRepo) UpdateHealthStatus(ctx context.Context, id int64, status string, latencyMs int, lastError string) error {
+func (m *mockExternalServiceRepo) UpdateHealthStatus(ctx context.Context, id int64, status model.ExternalServiceStatus, latencyMs int, lastError string) error {
 	if m.updateHealthFn != nil {
 		return m.updateHealthFn(ctx, id, status, latencyMs, lastError)
 	}
@@ -109,7 +109,7 @@ func newTestExternalService(uuid string) *model.ExternalService {
 		Type:      "kiwix",
 		BaseURL:   "https://example.com",
 		Priority:  10,
-		Status:    "healthy",
+		Status:    model.ExternalServiceStatusHealthy,
 		IsEnabled: true,
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -170,8 +170,8 @@ func TestExternalServiceHandler_List(t *testing.T) {
 		t.Parallel()
 
 		services := []model.ExternalService{
-			{UUID: "uuid-1", Name: "Service A", Slug: "service-a", Type: "kiwix", BaseURL: "https://a.com", Status: "healthy", IsEnabled: true},
-			{UUID: "uuid-2", Name: "Service B", Slug: "service-b", Type: "git", BaseURL: "https://b.com", Status: "unknown", IsEnabled: false},
+			{UUID: "uuid-1", Name: "Service A", Slug: "service-a", Type: "kiwix", BaseURL: "https://a.com", Status: model.ExternalServiceStatusHealthy, IsEnabled: true},
+			{UUID: "uuid-2", Name: "Service B", Slug: "service-b", Type: "git", BaseURL: "https://b.com", Status: model.ExternalServiceStatusUnknown, IsEnabled: false},
 		}
 		mock := &mockExternalServiceRepo{
 			listFn: func(_ context.Context, _, _ string, _, _ int) ([]model.ExternalService, int, error) {
@@ -1071,7 +1071,7 @@ func TestExternalServiceHandler_HealthCheck(t *testing.T) {
 				return &model.ExternalService{
 					UUID:   uuid,
 					Name:   "Test Service",
-					Status: "healthy",
+					Status: model.ExternalServiceStatusHealthy,
 				}, nil
 			},
 		}
@@ -1124,7 +1124,7 @@ func TestToExternalServiceResponse(t *testing.T) {
 			Type:                "kiwix",
 			BaseURL:             "https://kiwix.example.com",
 			Priority:            5,
-			Status:              "healthy",
+			Status:              model.ExternalServiceStatusHealthy,
 			IsEnabled:           true,
 			IsEnvManaged:        false,
 			ErrorCount:          3,
@@ -1203,7 +1203,7 @@ func TestToExternalServiceResponse(t *testing.T) {
 			Slug:      "null-fields",
 			Type:      "kiwix",
 			BaseURL:   "https://example.com",
-			Status:    "unknown",
+			Status:    model.ExternalServiceStatusUnknown,
 			IsEnabled: true,
 		}
 

@@ -35,7 +35,7 @@ type ExternalServiceFinder interface {
 // ExternalServiceHealthChecker checks health of external services.
 type ExternalServiceHealthChecker interface {
 	FindAllEnabled(ctx context.Context) ([]model.ExternalService, error)
-	UpdateHealthStatus(ctx context.Context, id int64, status string, latencyMs int, lastError string) error
+	UpdateHealthStatus(ctx context.Context, id int64, status model.ExternalServiceStatus, latencyMs int, lastError string) error
 }
 
 // OAuthTokenPurger purges expired OAuth tokens.
@@ -58,7 +58,7 @@ type ZimArchiveRepoDeps interface {
 // GitTemplateRepoDeps provides Git template repository methods needed by scheduler workers.
 type GitTemplateRepoDeps interface {
 	List(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error)
-	UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error
+	UpdateSyncStatus(ctx context.Context, templateID int64, status model.GitTemplateStatus, commitSHA string, fileCount int, totalSize int64, errMsg string) error
 	ReplaceFiles(ctx context.Context, templateID int64, files []repository.GitTemplateFileInsert) error
 	UpdateSearchContent(ctx context.Context, templateID int64, readmeContent, filePaths string) error
 }
@@ -139,7 +139,7 @@ func (w *SyncKiwixWorker) Work(ctx context.Context, job *river.Job[SyncKiwixArgs
 		if err != nil {
 			svcLogger.Error("fetching kiwix catalog", "error", err)
 			if w.Deps.HealthChecker != nil {
-				if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", 0, err.Error()); hErr != nil {
+				if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, model.ExternalServiceStatusUnhealthy, 0, err.Error()); hErr != nil {
 					svcLogger.Error("updating health status", "error", hErr)
 				}
 			}
@@ -154,7 +154,7 @@ func (w *SyncKiwixWorker) Work(ctx context.Context, job *river.Job[SyncKiwixArgs
 		}); err != nil {
 			svcLogger.Error("kiwix sync failed", "error", err)
 			if w.Deps.HealthChecker != nil {
-				if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", 0, err.Error()); hErr != nil {
+				if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, model.ExternalServiceStatusUnhealthy, 0, err.Error()); hErr != nil {
 					svcLogger.Error("updating health status", "error", hErr)
 				}
 			}
@@ -162,7 +162,7 @@ func (w *SyncKiwixWorker) Work(ctx context.Context, job *river.Job[SyncKiwixArgs
 		}
 
 		if w.Deps.HealthChecker != nil {
-			if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "healthy", 0, ""); hErr != nil {
+			if hErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, model.ExternalServiceStatusHealthy, 0, ""); hErr != nil {
 				svcLogger.Error("updating health status", "error", hErr)
 			}
 		}
@@ -454,7 +454,7 @@ func (w *HealthCheckServicesWorker) Work(ctx context.Context, job *river.Job[Hea
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, svc.BaseURL, http.NoBody)
 		if err != nil {
 			svcLogger.Error("creating health check request", "error", err)
-			if updateErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", 0, fmt.Sprintf("creating request: %v", err)); updateErr != nil {
+			if updateErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, model.ExternalServiceStatusUnhealthy, 0, fmt.Sprintf("creating request: %v", err)); updateErr != nil {
 				svcLogger.Error("updating health status", "error", updateErr)
 			}
 			unhealthyCount++
@@ -467,7 +467,7 @@ func (w *HealthCheckServicesWorker) Work(ctx context.Context, job *river.Job[Hea
 
 		if err != nil {
 			svcLogger.Warn("health check failed", "error", err, "latency_ms", latencyMs)
-			if updateErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", latencyMs, err.Error()); updateErr != nil {
+			if updateErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, model.ExternalServiceStatusUnhealthy, latencyMs, err.Error()); updateErr != nil {
 				svcLogger.Error("updating health status", "error", updateErr)
 			}
 			unhealthyCount++
@@ -476,14 +476,14 @@ func (w *HealthCheckServicesWorker) Work(ctx context.Context, job *river.Job[Hea
 		_ = resp.Body.Close()
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			if updateErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "healthy", latencyMs, ""); updateErr != nil {
+			if updateErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, model.ExternalServiceStatusHealthy, latencyMs, ""); updateErr != nil {
 				svcLogger.Error("updating health status", "error", updateErr)
 			}
 			healthyCount++
 		} else {
 			errMsg := fmt.Sprintf("unexpected status code: %d", resp.StatusCode)
 			svcLogger.Warn("health check returned non-2xx", "status_code", resp.StatusCode, "latency_ms", latencyMs)
-			if updateErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, "unhealthy", latencyMs, errMsg); updateErr != nil {
+			if updateErr := w.Deps.HealthChecker.UpdateHealthStatus(ctx, svc.ID, model.ExternalServiceStatusUnhealthy, latencyMs, errMsg); updateErr != nil {
 				svcLogger.Error("updating health status", "error", updateErr)
 			}
 			unhealthyCount++

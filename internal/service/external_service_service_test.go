@@ -21,7 +21,7 @@ type mockExternalServiceRepo struct {
 	createFn            func(ctx context.Context, svc *model.ExternalService) error
 	updateFn            func(ctx context.Context, svc *model.ExternalService) error
 	deleteFn            func(ctx context.Context, id int64) error
-	updateHealthFn      func(ctx context.Context, id int64, status string, latencyMs int, lastError string) error
+	updateHealthFn      func(ctx context.Context, id int64, status model.ExternalServiceStatus, latencyMs int, lastError string) error
 }
 
 func (m *mockExternalServiceRepo) FindByUUID(ctx context.Context, uuid string) (*model.ExternalService, error) {
@@ -66,7 +66,7 @@ func (m *mockExternalServiceRepo) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (m *mockExternalServiceRepo) UpdateHealthStatus(ctx context.Context, id int64, status string, latencyMs int, lastError string) error {
+func (m *mockExternalServiceRepo) UpdateHealthStatus(ctx context.Context, id int64, status model.ExternalServiceStatus, latencyMs int, lastError string) error {
 	if m.updateHealthFn != nil {
 		return m.updateHealthFn(ctx, id, status, latencyMs, lastError)
 	}
@@ -292,8 +292,8 @@ func TestExternalServiceService_Create(t *testing.T) {
 		if result.Priority != 5 {
 			t.Errorf("Priority = %d, want 5", result.Priority)
 		}
-		if result.Status != "unknown" {
-			t.Errorf("Status = %q, want %q", result.Status, "unknown")
+		if result.Status != model.ExternalServiceStatusUnknown {
+			t.Errorf("Status = %q, want %q", result.Status, model.ExternalServiceStatusUnknown)
 		}
 		if !result.IsEnabled {
 			t.Error("expected IsEnabled to be true by default")
@@ -1205,7 +1205,7 @@ func TestExternalServiceService_CheckHealth(t *testing.T) {
 	t.Run("healthy service", func(t *testing.T) {
 		t.Parallel()
 
-		var healthStatus string
+		var healthStatus model.ExternalServiceStatus
 		var healthLatency int
 		var healthError string
 
@@ -1227,10 +1227,10 @@ func TestExternalServiceService_CheckHealth(t *testing.T) {
 					ID:     40,
 					UUID:   "health-uuid",
 					Name:   "Healthy",
-					Status: "healthy",
+					Status: model.ExternalServiceStatusHealthy,
 				}, nil
 			},
-			updateHealthFn: func(_ context.Context, id int64, status string, latencyMs int, lastError string) error {
+			updateHealthFn: func(_ context.Context, id int64, status model.ExternalServiceStatus, latencyMs int, lastError string) error {
 				if id != 40 {
 					t.Errorf("UpdateHealthStatus id = %d, want 40", id)
 				}
@@ -1248,8 +1248,8 @@ func TestExternalServiceService_CheckHealth(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if healthStatus != "healthy" {
-			t.Errorf("status = %q, want %q", healthStatus, "healthy")
+		if healthStatus != model.ExternalServiceStatusHealthy {
+			t.Errorf("status = %q, want %q", healthStatus, model.ExternalServiceStatusHealthy)
 		}
 		if healthLatency < 0 {
 			t.Errorf("latency = %d, want >= 0", healthLatency)
@@ -1260,15 +1260,15 @@ func TestExternalServiceService_CheckHealth(t *testing.T) {
 		if result == nil {
 			t.Fatal("expected non-nil result")
 		}
-		if result.Status != "healthy" {
-			t.Errorf("result.Status = %q, want %q", result.Status, "healthy")
+		if result.Status != model.ExternalServiceStatusHealthy {
+			t.Errorf("result.Status = %q, want %q", result.Status, model.ExternalServiceStatusHealthy)
 		}
 	})
 
 	t.Run("unhealthy service", func(t *testing.T) {
 		t.Parallel()
 
-		var healthStatus string
+		var healthStatus model.ExternalServiceStatus
 		var healthError string
 
 		svcModel := &model.ExternalService{
@@ -1287,10 +1287,10 @@ func TestExternalServiceService_CheckHealth(t *testing.T) {
 				return &model.ExternalService{
 					ID:     41,
 					UUID:   "unhealthy-uuid",
-					Status: "unhealthy",
+					Status: model.ExternalServiceStatusUnhealthy,
 				}, nil
 			},
-			updateHealthFn: func(_ context.Context, _ int64, status string, _ int, lastError string) error {
+			updateHealthFn: func(_ context.Context, _ int64, status model.ExternalServiceStatus, _ int, lastError string) error {
 				healthStatus = status
 				healthError = lastError
 				return nil
@@ -1304,8 +1304,8 @@ func TestExternalServiceService_CheckHealth(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if healthStatus != "unhealthy" {
-			t.Errorf("status = %q, want %q", healthStatus, "unhealthy")
+		if healthStatus != model.ExternalServiceStatusUnhealthy {
+			t.Errorf("status = %q, want %q", healthStatus, model.ExternalServiceStatusUnhealthy)
 		}
 		if healthError != "connection refused" {
 			t.Errorf("lastError = %q, want %q", healthError, "connection refused")
@@ -1341,7 +1341,7 @@ func TestExternalServiceService_CheckHealth(t *testing.T) {
 			findByUUIDFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
 				return &model.ExternalService{ID: 42, UUID: "upd-health-err"}, nil
 			},
-			updateHealthFn: func(_ context.Context, _ int64, _ string, _ int, _ string) error {
+			updateHealthFn: func(_ context.Context, _ int64, _ model.ExternalServiceStatus, _ int, _ string) error {
 				return errors.New("write failed")
 			},
 		}
@@ -1368,7 +1368,7 @@ func TestExternalServiceService_CheckHealth(t *testing.T) {
 				}
 				return nil, errors.New("db gone")
 			},
-			updateHealthFn: func(_ context.Context, _ int64, _ string, _ int, _ string) error {
+			updateHealthFn: func(_ context.Context, _ int64, _ model.ExternalServiceStatus, _ int, _ string) error {
 				return nil
 			},
 		}

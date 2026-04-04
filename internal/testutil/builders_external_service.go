@@ -20,7 +20,7 @@ func NewExternalService(opts ...ExternalServiceOption) *model.ExternalService {
 		Type:      "kiwix",
 		BaseURL:   "https://example.com",
 		Priority:  100,
-		Status:    "active",
+		Status:    model.ExternalServiceStatusUnknown,
 		IsEnabled: true,
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -62,7 +62,7 @@ func WithExternalServiceBaseURL(url string) ExternalServiceOption {
 }
 
 // WithExternalServiceStatus sets the external service status on the builder.
-func WithExternalServiceStatus(status string) ExternalServiceOption {
+func WithExternalServiceStatus(status model.ExternalServiceStatus) ExternalServiceOption {
 	return func(es *model.ExternalService) { es.Status = status }
 }
 

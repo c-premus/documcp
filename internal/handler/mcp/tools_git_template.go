@@ -277,7 +277,7 @@ func (h *Handler) handleListGitTemplates(
 			Name:      gt.Name,
 			FileCount: gt.FileCount,
 			TotalSize: gt.TotalSizeBytes,
-			Status:    gt.Status,
+			Status:    string(gt.Status),
 		}
 		if gt.Description.Valid {
 			item.Description = gt.Description.String

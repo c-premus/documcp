@@ -22,7 +22,7 @@ func NewDocument(opts ...DocumentOption) *model.Document {
 		FileSize:  1024,
 		MIMEType:  "application/pdf",
 		IsPublic:  false,
-		Status:    "completed",
+		Status:    model.DocumentStatusIndexed,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -88,6 +88,6 @@ func WithDocumentIsPublic(public bool) DocumentOption {
 }
 
 // WithDocumentStatus sets the document status on the builder.
-func WithDocumentStatus(status string) DocumentOption {
+func WithDocumentStatus(status model.DocumentStatus) DocumentOption {
 	return func(d *model.Document) { d.Status = status }
 }

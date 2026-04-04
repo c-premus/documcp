@@ -266,7 +266,7 @@ func (r *GitTemplateRepository) SoftDelete(ctx context.Context, id int64) error 
 }
 
 // UpdateSyncStatus updates the sync-related fields for a git template.
-func (r *GitTemplateRepository) UpdateSyncStatus(ctx context.Context, templateID int64, status, commitSHA string, fileCount int, totalSize int64, errMsg string) error {
+func (r *GitTemplateRepository) UpdateSyncStatus(ctx context.Context, templateID int64, status model.GitTemplateStatus, commitSHA string, fileCount int, totalSize int64, errMsg string) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE git_templates SET
 			status = $1,

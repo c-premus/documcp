@@ -23,7 +23,7 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 	t.Run("DocumentRepository", func(t *testing.T) {
 		repo := NewDocumentRepository(testPool, logger)
 
-		doc := &model.Document{UUID: testUUID("err-doc-001"), Title: "Err", FileType: "pdf", FilePath: "/tmp/x", MIMEType: "application/pdf", Status: "pending"}
+		doc := &model.Document{UUID: testUUID("err-doc-001"), Title: "Err", FileType: "pdf", FilePath: "/tmp/x", MIMEType: "application/pdf", Status: model.DocumentStatusPending}
 		assert.Error(t, repo.Create(ctx, doc))
 		assert.Error(t, repo.Update(ctx, doc))
 		assert.Error(t, repo.SoftDelete(ctx, 1))
@@ -42,18 +42,18 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 
 		_, err = repo.List(ctx, DocumentListParams{})
 		assert.Error(t, err)
-		_, err = repo.FindByStatus(ctx, "pending", 10)
+		_, err = repo.FindByStatus(ctx, model.DocumentStatusPending, 10)
 		assert.Error(t, err)
 	})
 
 	t.Run("ExternalServiceRepository", func(t *testing.T) {
 		repo := NewExternalServiceRepository(testPool, logger, nil)
 
-		svc := &model.ExternalService{UUID: testUUID("err-svc-001"), Name: "Err", Slug: "err", Type: "kiwix", BaseURL: "https://x.com", Status: "unknown"}
+		svc := &model.ExternalService{UUID: testUUID("err-svc-001"), Name: "Err", Slug: "err", Type: "kiwix", BaseURL: "https://x.com", Status: model.ExternalServiceStatusUnknown}
 		assert.Error(t, repo.Create(ctx, svc))
 		assert.Error(t, repo.Update(ctx, svc))
 		assert.Error(t, repo.Delete(ctx, 1))
-		assert.Error(t, repo.UpdateHealthStatus(ctx, 1, "healthy", 0, ""))
+		assert.Error(t, repo.UpdateHealthStatus(ctx, 1, model.ExternalServiceStatusHealthy, 0, ""))
 
 		_, err := repo.FindByUUID(ctx, "x")
 		assert.Error(t, err)
@@ -98,11 +98,11 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 	t.Run("GitTemplateRepository", func(t *testing.T) {
 		repo := NewGitTemplateRepository(testPool, logger, nil)
 
-		tmpl := &model.GitTemplate{UUID: testUUID("err-tmpl-001"), Name: "Err", Slug: "err", RepositoryURL: "https://x.com", Branch: "main", Status: "pending"}
+		tmpl := &model.GitTemplate{UUID: testUUID("err-tmpl-001"), Name: "Err", Slug: "err", RepositoryURL: "https://x.com", Branch: "main", Status: model.GitTemplateStatusPending}
 		assert.Error(t, repo.Create(ctx, tmpl))
 		assert.Error(t, repo.Update(ctx, tmpl))
 		assert.Error(t, repo.SoftDelete(ctx, 1))
-		assert.Error(t, repo.UpdateSyncStatus(ctx, 1, "synced", "abc", 1, 100, ""))
+		assert.Error(t, repo.UpdateSyncStatus(ctx, 1, model.GitTemplateStatusSynced, "abc", 1, 100, ""))
 		assert.Error(t, repo.ReplaceFiles(ctx, 1, []GitTemplateFileInsert{{Path: "a", Filename: "a"}}))
 
 		_, err := repo.FindByUUID(ctx, "x")
@@ -138,8 +138,8 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 		assert.Error(t, repo.CreateAccessToken(ctx, &model.OAuthAccessToken{Token: "x", ClientID: 1}))
 		assert.Error(t, repo.CreateRefreshToken(ctx, &model.OAuthRefreshToken{Token: "x", AccessTokenID: 1}))
 		assert.Error(t, repo.CreateAuthorizationCode(ctx, &model.OAuthAuthorizationCode{Code: "x", ClientID: 1, RedirectURI: "http://x"}))
-		assert.Error(t, repo.CreateDeviceCode(ctx, &model.OAuthDeviceCode{DeviceCode: "x", UserCode: "X", ClientID: 1, VerificationURI: "http://x", Status: "pending"}))
-		assert.Error(t, repo.UpdateDeviceCodeStatus(ctx, 1, "denied", nil))
+		assert.Error(t, repo.CreateDeviceCode(ctx, &model.OAuthDeviceCode{DeviceCode: "x", UserCode: "X", ClientID: 1, VerificationURI: "http://x", Status: model.DeviceCodeStatusPending}))
+		assert.Error(t, repo.UpdateDeviceCodeStatus(ctx, 1, model.DeviceCodeStatusDenied, nil))
 		assert.Error(t, repo.UpdateDeviceCodeLastPolled(ctx, 1, 5))
 
 		_, err := repo.FindClientByClientID(ctx, "x")

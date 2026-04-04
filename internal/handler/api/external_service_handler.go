@@ -368,7 +368,7 @@ func toExternalServiceResponse(es *model.ExternalService) externalServiceRespons
 		Type:                es.Type,
 		BaseURL:             es.BaseURL,
 		Priority:            es.Priority,
-		Status:              es.Status,
+		Status:              string(es.Status),
 		IsEnabled:           es.IsEnabled,
 		IsEnvManaged:        es.IsEnvManaged,
 		ErrorCount:          es.ErrorCount,

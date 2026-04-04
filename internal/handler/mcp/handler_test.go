@@ -1247,7 +1247,7 @@ func TestHandleListGitTemplates(t *testing.T) {
 						Tags:           sql.NullString{String: `["ai","claude"]`, Valid: true},
 						FileCount:      5,
 						TotalSizeBytes: 1024,
-						Status:         "synced",
+						Status:         model.GitTemplateStatusSynced,
 					},
 				}, nil
 			},

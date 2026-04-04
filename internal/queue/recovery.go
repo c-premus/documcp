@@ -7,6 +7,8 @@ import (
 
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
+
+	"github.com/c-premus/documcp/internal/model"
 )
 
 // JobInserter inserts jobs into the queue.
@@ -23,7 +25,7 @@ type StuckDocument struct {
 
 // DocumentStatusFinder finds documents by processing status.
 type DocumentStatusFinder interface {
-	FindByStatus(ctx context.Context, status string) ([]StuckDocument, error)
+	FindByStatus(ctx context.Context, status model.DocumentStatus) ([]StuckDocument, error)
 }
 
 // RecoverStuckDocuments re-dispatches jobs for documents stuck in "uploaded"
@@ -37,7 +39,7 @@ func RecoverStuckDocuments(ctx context.Context, inserter JobInserter, finder Doc
 	defer cancel()
 
 	// Re-dispatch extraction for documents stuck in "uploaded" state.
-	uploaded, err := finder.FindByStatus(ctx, "uploaded")
+	uploaded, err := finder.FindByStatus(ctx, model.DocumentStatusUploaded)
 	if err != nil {
 		logger.Error("finding stuck uploaded documents", "error", err)
 	} else {
@@ -57,7 +59,7 @@ func RecoverStuckDocuments(ctx context.Context, inserter JobInserter, finder Doc
 
 	// Re-dispatch extraction for documents stuck in "extracted" state
 	// (with PostgreSQL FTS, extraction now directly sets status to "indexed").
-	extracted, err := finder.FindByStatus(ctx, "extracted")
+	extracted, err := finder.FindByStatus(ctx, model.DocumentStatus("extracted")) // legacy status for recovery of old data
 	if err != nil {
 		logger.Error("finding stuck extracted documents", "error", err)
 	} else {

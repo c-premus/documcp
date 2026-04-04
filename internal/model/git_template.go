@@ -6,6 +6,16 @@ import (
 	"fmt"
 )
 
+// GitTemplateStatus represents the sync state of a git template.
+type GitTemplateStatus string
+
+// Possible GitTemplateStatus values.
+const (
+	GitTemplateStatusPending GitTemplateStatus = "pending"
+	GitTemplateStatusSynced  GitTemplateStatus = "synced"
+	GitTemplateStatusFailed  GitTemplateStatus = "failed"
+)
+
 // GitTemplate represents a row in the "git_templates" table.
 type GitTemplate struct {
 	ID             int64          `db:"id" json:"id"`
@@ -23,7 +33,7 @@ type GitTemplate struct {
 	UserID         sql.NullInt64  `db:"user_id" json:"user_id"`
 	IsPublic       bool           `db:"is_public" json:"is_public"`
 	IsEnabled      bool           `db:"is_enabled" json:"is_enabled"`
-	Status         string         `db:"status" json:"status"`
+	Status         GitTemplateStatus `db:"status" json:"status"`
 	ErrorMessage   sql.NullString `db:"error_message" json:"error_message"`
 	LastSyncedAt   sql.NullTime   `db:"last_synced_at" json:"last_synced_at"`
 	LastCommitSHA  sql.NullString `db:"last_commit_sha" json:"last_commit_sha"`

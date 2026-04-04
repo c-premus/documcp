@@ -23,7 +23,7 @@ type ExternalServiceRepo interface {
 	Create(ctx context.Context, svc *model.ExternalService) error
 	Update(ctx context.Context, svc *model.ExternalService) error
 	Delete(ctx context.Context, id int64) error
-	UpdateHealthStatus(ctx context.Context, id int64, status string, latencyMs int, lastError string) error
+	UpdateHealthStatus(ctx context.Context, id int64, status model.ExternalServiceStatus, latencyMs int, lastError string) error
 }
 
 // HealthChecker performs health checks on an external service.
@@ -119,7 +119,7 @@ func (s *ExternalServiceService) Create(ctx context.Context, params CreateExtern
 		Type:      params.Type,
 		BaseURL:   params.BaseURL,
 		Priority:  params.Priority,
-		Status:    "unknown",
+		Status:    model.ExternalServiceStatusUnknown,
 		IsEnabled: true,
 	}
 
@@ -245,9 +245,10 @@ func (s *ExternalServiceService) CheckHealth(ctx context.Context, svcUUID string
 	healthErr := checker.Health(ctx)
 	latencyMs := int(time.Since(start).Milliseconds())
 
-	var status, lastError string
+	var status model.ExternalServiceStatus
+	var lastError string
 	if healthErr != nil {
-		status = "unhealthy"
+		status = model.ExternalServiceStatusUnhealthy
 		lastError = healthErr.Error()
 		s.logger.Warn("health check failed",
 			"uuid", svcUUID,
@@ -255,7 +256,7 @@ func (s *ExternalServiceService) CheckHealth(ctx context.Context, svcUUID string
 			"error", lastError,
 		)
 	} else {
-		status = "healthy"
+		status = model.ExternalServiceStatusHealthy
 		s.logger.Info("health check passed",
 			"uuid", svcUUID,
 			"latency_ms", latencyMs,

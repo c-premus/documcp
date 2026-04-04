@@ -102,7 +102,7 @@ func (h *DocumentHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	params := repository.DocumentListParams{
 		FileType: r.URL.Query().Get("file_type"),
-		Status:   r.URL.Query().Get("status"),
+		Status:   model.DocumentStatus(r.URL.Query().Get("status")),
 		Query:    r.URL.Query().Get("q"),
 		Limit:    limit,
 		Offset:   offset,
@@ -366,7 +366,7 @@ func toDocumentResponse(doc *model.Document, tags []model.DocumentTag, includeCo
 		WordCount:   nullInt64Value(doc.WordCount),
 		IsPublic:    doc.IsPublic,
 		HasFile:     doc.FilePath != "",
-		Status:      doc.Status,
+		Status:      string(doc.Status),
 		ContentHash: nullStringValue(doc.ContentHash),
 		Tags:        tagNames,
 		CreatedAt:   nullTimeToString(doc.CreatedAt),
