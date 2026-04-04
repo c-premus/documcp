@@ -892,6 +892,11 @@ func TestExtractTitle(t *testing.T) {
 			html: `<html><head><title>  Trimmed  </title></head></html>`,
 			want: "Trimmed",
 		},
+		{
+			name: "title inside comment ignored",
+			html: `<html><head><!-- <title>Wrong</title> --><title>Right</title></head></html>`,
+			want: "Right",
+		},
 	}
 
 	for _, tt := range tests {
@@ -943,6 +948,39 @@ func TestHTMLToPlainText(t *testing.T) {
 			name: "empty string returns empty",
 			html: "",
 			want: "",
+		},
+		{
+			name: "attribute containing greater-than sign",
+			html: `<p><img alt="a > b">visible text</p>`,
+			want: "visible text",
+			deny: "alt",
+		},
+		{
+			name: "HTML comment with tags inside",
+			html: `<p>visible</p><!-- <p>hidden</p> --><p>also visible</p>`,
+			want: "also visible",
+			deny: "hidden",
+		},
+		{
+			name: "nested list items",
+			html: `<ul><li>first</li><li>second</li><li>third</li></ul>`,
+			want: "first",
+		},
+		{
+			name: "heading hierarchy",
+			html: `<h1>Title</h1><h2>Subtitle</h2><p>Body text</p>`,
+			want: "Body text",
+		},
+		{
+			name: "script with angle brackets in code",
+			html: `<p>before</p><script>if (a<b) { x(); }</script><p>after</p>`,
+			want: "after",
+			deny: "x()",
+		},
+		{
+			name: "table content preserved",
+			html: `<table><tr><td>cell one</td><td>cell two</td></tr></table>`,
+			want: "cell one",
 		},
 	}
 

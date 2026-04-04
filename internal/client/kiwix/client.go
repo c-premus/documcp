@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	nethtml "golang.org/x/net/html"
+
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/c-premus/documcp/internal/security"
@@ -569,62 +571,98 @@ func titleFromPath(path string) string {
 	return strings.Join(words, " ")
 }
 
-// Regex patterns for HTML to plain text conversion.
+// Regex patterns for whitespace normalization (post-processing).
 var (
-	scriptRe     = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
-	styleRe      = regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
-	htmlTagRe    = regexp.MustCompile(`<[^>]+>`)
 	whitespaceRe  = regexp.MustCompile(`[ \t]+`)
 	blankLineWSRe = regexp.MustCompile(`(?m)^[ \t]+$`)
 	blankLinesRe  = regexp.MustCompile(`\n{3,}`)
-	titleRe      = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 )
 
-// extractTitle pulls the text content from an HTML <title> tag.
-func extractTitle(htmlContent string) string {
-	match := titleRe.FindStringSubmatch(htmlContent)
-	if len(match) < 2 {
-		return ""
-	}
-	return strings.TrimSpace(html.UnescapeString(match[1]))
+// blockElements lists HTML elements that produce line breaks in plain text.
+var blockElements = map[string]bool{
+	"p": true, "div": true, "br": true,
+	"h1": true, "h2": true, "h3": true, "h4": true, "h5": true, "h6": true,
+	"li": true, "tr": true, "blockquote": true, "pre": true, "hr": true,
+	"section": true, "article": true, "header": true, "footer": true,
+	"aside": true, "nav": true, "details": true, "summary": true,
+	"figure": true, "figcaption": true,
+	"dd": true, "dt": true, "dl": true, "ol": true, "ul": true,
+	"table": true, "thead": true, "tbody": true, "tfoot": true,
+	"fieldset": true,
 }
 
-// htmlToPlainText converts HTML content to plain text by stripping tags,
-// removing script/style elements, and decoding HTML entities.
+// skipElements lists HTML elements whose entire subtree should be ignored.
+var skipElements = map[string]bool{
+	"script": true, "style": true, "head": true,
+}
+
+// extractTitle pulls the text content from the first HTML <title> element.
+func extractTitle(htmlContent string) string {
+	doc, err := nethtml.Parse(strings.NewReader(htmlContent))
+	if err != nil {
+		return ""
+	}
+	var title string
+	var find func(*nethtml.Node) bool
+	find = func(n *nethtml.Node) bool {
+		if n.Type == nethtml.ElementNode && n.Data == "title" {
+			var buf strings.Builder
+			for c := n.FirstChild; c != nil; c = c.NextSibling {
+				if c.Type == nethtml.TextNode {
+					buf.WriteString(c.Data)
+				}
+			}
+			title = strings.TrimSpace(buf.String())
+			return true
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if find(c) {
+				return true
+			}
+		}
+		return false
+	}
+	find(doc)
+	return title
+}
+
+// htmlToPlainText converts HTML content to plain text using the x/net/html
+// tokenizer. It skips script/style/head subtrees, emits text nodes, and
+// inserts line breaks after block-level elements.
 func htmlToPlainText(content string) string {
-	// Remove script and style blocks.
-	text := scriptRe.ReplaceAllString(content, "")
-	text = styleRe.ReplaceAllString(text, "")
+	doc, err := nethtml.Parse(strings.NewReader(content))
+	if err != nil {
+		return content
+	}
 
-	// Replace block-level tags with newlines for readability.
-	blockReplacer := strings.NewReplacer(
-		"<br>", "\n",
-		"<br/>", "\n",
-		"<br />", "\n",
-		"</p>", "\n\n",
-		"</div>", "\n",
-		"</li>", "\n",
-		"</tr>", "\n",
-		"</h1>", "\n\n",
-		"</h2>", "\n\n",
-		"</h3>", "\n\n",
-		"</h4>", "\n\n",
-		"</h5>", "\n\n",
-		"</h6>", "\n\n",
-	)
-	text = blockReplacer.Replace(text)
+	var buf strings.Builder
+	var walk func(*nethtml.Node)
+	walk = func(n *nethtml.Node) {
+		if n.Type == nethtml.ElementNode && skipElements[n.Data] {
+			return
+		}
 
-	// Strip remaining HTML tags.
-	text = htmlTagRe.ReplaceAllString(text, "")
+		if n.Type == nethtml.ElementNode && n.Data == "br" {
+			buf.WriteByte('\n')
+		}
 
-	// Decode HTML entities.
-	text = html.UnescapeString(text)
+		if n.Type == nethtml.TextNode {
+			buf.WriteString(n.Data)
+		}
+
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+
+		if n.Type == nethtml.ElementNode && n.Data != "br" && blockElements[n.Data] {
+			buf.WriteString("\n\n")
+		}
+	}
+	walk(doc)
 
 	// Normalize whitespace.
-	text = whitespaceRe.ReplaceAllString(text, " ")
+	text := whitespaceRe.ReplaceAllString(buf.String(), " ")
 	text = blankLineWSRe.ReplaceAllString(text, "")
 	text = blankLinesRe.ReplaceAllString(text, "\n\n")
-	text = strings.TrimSpace(text)
-
-	return text
+	return strings.TrimSpace(text)
 }
