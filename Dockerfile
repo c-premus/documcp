@@ -54,7 +54,7 @@ COPY --from=builder /bin/documcp /documcp
 # Copy database migrations for goose.
 COPY --from=builder /src/migrations/ /migrations/
 
-EXPOSE 8080
+EXPOSE 8080 8443
 
 ENTRYPOINT ["/documcp"]
 CMD ["serve", "--with-worker"]

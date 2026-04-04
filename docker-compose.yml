@@ -9,6 +9,8 @@ services:
         BUILD_TIME: ${BUILD_TIME:-unknown}
     ports:
       - "8080:8080"
+      # Uncomment when TLS_ENABLED=true:
+      # - "8443:8443"
     depends_on:
       postgres:
         condition: service_healthy
@@ -23,6 +25,14 @@ services:
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8080
       TRUSTED_PROXIES: "172.16.0.0/12"
+      # TLS: set TLS_ENABLED=true to terminate HTTPS directly (skip reverse proxy).
+      # SERVER_PORT (8080) becomes HTTP→HTTPS redirect; TLS_PORT (8443) serves HTTPS.
+      # Omit cert/key paths to auto-generate a self-signed cert (dev only).
+      # When using cert files, mount them via volumes (see volumes section below).
+      # TLS_ENABLED: false
+      # TLS_PORT: 8443
+      # TLS_CERT_FILE: /certs/cert.pem
+      # TLS_KEY_FILE: /certs/key.pem
       # Database
       DB_HOST: postgres
       DB_PORT: 5432
@@ -52,6 +62,8 @@ services:
       STORAGE_BASE_PATH: /data/storage
     volumes:
       - document_storage:/data/storage
+      # Uncomment to mount TLS certificates (required when TLS_CERT_FILE is set):
+      # - ./certs:/certs:ro
     networks:
       - documcp
     healthcheck:
