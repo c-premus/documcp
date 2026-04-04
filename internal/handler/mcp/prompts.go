@@ -551,20 +551,6 @@ Please search across the specified sources, read the most relevant content, and 
 
 // defaultArg returns the argument value for the given key, or the fallback if
 // the key is absent or empty.
-func defaultArg(args map[string]string, key, fallback string) string {
-	if v := args[key]; v != "" {
-		return v
-	}
-	return fallback
-}
-
-// truncate shortens s to maxLen characters, appending "..." if truncated.
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
-}
 
 // --- Task/focus/length guidance for document_analysis ---
 

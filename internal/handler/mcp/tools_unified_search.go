@@ -86,13 +86,7 @@ func (h *Handler) handleUnifiedSearch(
 		}, nil
 	}
 
-	limit := int64(input.Limit)
-	if limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
+	limit := int64(clampPagination(input.Limit, 20, 100))
 
 	// Build type filter set for quick lookup.
 	typeSet := make(map[string]bool, len(input.Types))

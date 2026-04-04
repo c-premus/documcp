@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/c-premus/documcp/internal/archive"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/queue"
 )
@@ -32,302 +33,6 @@ import (
 // ---------------------------------------------------------------------------
 // slugifyTemplateName tests
 // ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// substituteTemplateVariables tests
-// ---------------------------------------------------------------------------
-
-func TestSubstituteTemplateVariables(t *testing.T) {
-	t.Parallel()
-
-	t.Run("substitutes single variable", func(t *testing.T) {
-		t.Parallel()
-
-		content := "Hello, {{name}}!"
-		vars := map[string]string{"name": "World"}
-
-		got, unresolved := substituteTemplateVariables(content, vars)
-
-		if got != "Hello, World!" {
-			t.Errorf("content = %q, want %q", got, "Hello, World!")
-		}
-		if len(unresolved) != 0 {
-			t.Errorf("unresolved = %v, want empty", unresolved)
-		}
-	})
-
-	t.Run("substitutes multiple variables", func(t *testing.T) {
-		t.Parallel()
-
-		content := "{{greeting}}, {{name}}! Welcome to {{place}}."
-		vars := map[string]string{
-			"greeting": "Hello",
-			"name":     "Alice",
-			"place":    "Wonderland",
-		}
-
-		got, unresolved := substituteTemplateVariables(content, vars)
-
-		want := "Hello, Alice! Welcome to Wonderland."
-		if got != want {
-			t.Errorf("content = %q, want %q", got, want)
-		}
-		if len(unresolved) != 0 {
-			t.Errorf("unresolved = %v, want empty", unresolved)
-		}
-	})
-
-	t.Run("tracks unresolved variables", func(t *testing.T) {
-		t.Parallel()
-
-		content := "{{found}} and {{missing}}"
-		vars := map[string]string{"found": "yes"}
-
-		got, unresolved := substituteTemplateVariables(content, vars)
-
-		if got != "yes and {{missing}}" {
-			t.Errorf("content = %q, want %q", got, "yes and {{missing}}")
-		}
-		if len(unresolved) != 1 || unresolved[0] != "missing" {
-			t.Errorf("unresolved = %v, want [missing]", unresolved)
-		}
-	})
-
-	t.Run("deduplicates unresolved variables", func(t *testing.T) {
-		t.Parallel()
-
-		content := "{{x}} and {{x}} and {{x}}"
-		vars := map[string]string{}
-
-		_, unresolved := substituteTemplateVariables(content, vars)
-
-		if len(unresolved) != 1 {
-			t.Errorf("unresolved count = %d, want 1 (deduped)", len(unresolved))
-		}
-		if len(unresolved) > 0 && unresolved[0] != "x" {
-			t.Errorf("unresolved[0] = %q, want %q", unresolved[0], "x")
-		}
-	})
-
-	t.Run("no variables in content", func(t *testing.T) {
-		t.Parallel()
-
-		content := "plain text with no placeholders"
-		vars := map[string]string{"key": "value"}
-
-		got, unresolved := substituteTemplateVariables(content, vars)
-
-		if got != content {
-			t.Errorf("content = %q, want %q", got, content)
-		}
-		if len(unresolved) != 0 {
-			t.Errorf("unresolved = %v, want empty", unresolved)
-		}
-	})
-
-	t.Run("empty content", func(t *testing.T) {
-		t.Parallel()
-
-		got, unresolved := substituteTemplateVariables("", map[string]string{"key": "val"})
-
-		if got != "" {
-			t.Errorf("content = %q, want empty", got)
-		}
-		if len(unresolved) != 0 {
-			t.Errorf("unresolved = %v, want empty", unresolved)
-		}
-	})
-
-	t.Run("empty variables map", func(t *testing.T) {
-		t.Parallel()
-
-		content := "{{a}} and {{b}}"
-		got, unresolved := substituteTemplateVariables(content, map[string]string{})
-
-		if got != content {
-			t.Errorf("content = %q, want %q", got, content)
-		}
-		if len(unresolved) != 2 {
-			t.Errorf("unresolved count = %d, want 2", len(unresolved))
-		}
-	})
-
-	t.Run("replaces same variable multiple times in content", func(t *testing.T) {
-		t.Parallel()
-
-		content := "{{x}}-{{x}}-{{x}}"
-		vars := map[string]string{"x": "A"}
-
-		got, unresolved := substituteTemplateVariables(content, vars)
-
-		if got != "A-A-A" {
-			t.Errorf("content = %q, want %q", got, "A-A-A")
-		}
-		if len(unresolved) != 0 {
-			t.Errorf("unresolved = %v, want empty", unresolved)
-		}
-	})
-
-	t.Run("variable substituted with empty string", func(t *testing.T) {
-		t.Parallel()
-
-		content := "prefix-{{var}}-suffix"
-		vars := map[string]string{"var": ""}
-
-		got, unresolved := substituteTemplateVariables(content, vars)
-
-		if got != "prefix--suffix" {
-			t.Errorf("content = %q, want %q", got, "prefix--suffix")
-		}
-		if len(unresolved) != 0 {
-			t.Errorf("unresolved = %v, want empty", unresolved)
-		}
-	})
-
-	t.Run("mixed resolved and unresolved", func(t *testing.T) {
-		t.Parallel()
-
-		content := "host={{host}} port={{port}} db={{db}}"
-		vars := map[string]string{"host": "localhost", "port": "5432"}
-
-		got, unresolved := substituteTemplateVariables(content, vars)
-
-		if got != "host=localhost port=5432 db={{db}}" {
-			t.Errorf("content = %q, want %q", got, "host=localhost port=5432 db={{db}}")
-		}
-		if len(unresolved) != 1 || unresolved[0] != "db" {
-			t.Errorf("unresolved = %v, want [db]", unresolved)
-		}
-	})
-}
-
-// ---------------------------------------------------------------------------
-// parseTemplateVariablesJSON tests
-// ---------------------------------------------------------------------------
-
-func TestParseTemplateVariablesJSON(t *testing.T) {
-	t.Parallel()
-
-	t.Run("valid JSON with key-value pairs", func(t *testing.T) {
-		t.Parallel()
-
-		raw := `{"name":"Alice","age":"30"}`
-		vars, err := parseTemplateVariablesJSON(raw)
-
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if vars["name"] != "Alice" {
-			t.Errorf("vars[name] = %q, want Alice", vars["name"])
-		}
-		if vars["age"] != "30" {
-			t.Errorf("vars[age] = %q, want 30", vars["age"])
-		}
-	})
-
-	t.Run("empty string returns empty map", func(t *testing.T) {
-		t.Parallel()
-
-		vars, err := parseTemplateVariablesJSON("")
-
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if vars == nil {
-			t.Fatal("vars should not be nil")
-		}
-		if len(vars) != 0 {
-			t.Errorf("vars length = %d, want 0", len(vars))
-		}
-	})
-
-	t.Run("invalid JSON returns error", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := parseTemplateVariablesJSON("{not valid json}")
-
-		if err == nil {
-			t.Error("expected error for invalid JSON, got nil")
-		}
-	})
-
-	t.Run("empty JSON object returns empty map", func(t *testing.T) {
-		t.Parallel()
-
-		vars, err := parseTemplateVariablesJSON("{}")
-
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(vars) != 0 {
-			t.Errorf("vars length = %d, want 0", len(vars))
-		}
-	})
-
-	t.Run("nested JSON returns error", func(t *testing.T) {
-		t.Parallel()
-
-		raw := `{"key":{"nested":"value"}}`
-		_, err := parseTemplateVariablesJSON(raw)
-
-		if err == nil {
-			t.Error("expected error for nested JSON, got nil")
-		}
-	})
-
-	t.Run("JSON array returns error", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := parseTemplateVariablesJSON(`["a","b"]`)
-
-		if err == nil {
-			t.Error("expected error for JSON array, got nil")
-		}
-	})
-
-	t.Run("JSON with numeric value returns error", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := parseTemplateVariablesJSON(`{"key":123}`)
-
-		if err == nil {
-			t.Error("expected error for non-string value, got nil")
-		}
-	})
-
-	t.Run("single key-value pair", func(t *testing.T) {
-		t.Parallel()
-
-		vars, err := parseTemplateVariablesJSON(`{"host":"localhost"}`)
-
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(vars) != 1 {
-			t.Errorf("vars length = %d, want 1", len(vars))
-		}
-		if vars["host"] != "localhost" {
-			t.Errorf("vars[host] = %q, want localhost", vars["host"])
-		}
-	})
-
-	t.Run("values with special characters", func(t *testing.T) {
-		t.Parallel()
-
-		raw := `{"url":"https://example.com/path?q=1&r=2","path":"/usr/local/bin"}`
-		vars, err := parseTemplateVariablesJSON(raw)
-
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if vars["url"] != "https://example.com/path?q=1&r=2" {
-			t.Errorf("vars[url] = %q, want https://example.com/path?q=1&r=2", vars["url"])
-		}
-		if vars["path"] != "/usr/local/bin" {
-			t.Errorf("vars[path] = %q, want /usr/local/bin", vars["path"])
-		}
-	})
-}
 
 // ---------------------------------------------------------------------------
 // toGitTemplateResponse tests
@@ -583,12 +288,12 @@ func TestBuildTemplateArchiveZip(t *testing.T) {
 	t.Run("creates valid zip with single entry", func(t *testing.T) {
 		t.Parallel()
 
-		entries := []templateArchiveEntry{
-			{path: "README.md", content: "# Hello"},
+		entries := []archive.Entry{
+			{Path: "README.md", Content: "# Hello"},
 		}
 
 		var buf bytes.Buffer
-		err := buildTemplateArchiveZip(&buf, entries)
+		err := archive.BuildZip(&buf, entries)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -620,14 +325,14 @@ func TestBuildTemplateArchiveZip(t *testing.T) {
 	t.Run("creates zip with multiple entries", func(t *testing.T) {
 		t.Parallel()
 
-		entries := []templateArchiveEntry{
-			{path: "file1.txt", content: "content1"},
-			{path: "dir/file2.txt", content: "content2"},
-			{path: "dir/sub/file3.txt", content: "content3"},
+		entries := []archive.Entry{
+			{Path: "file1.txt", Content: "content1"},
+			{Path: "dir/file2.txt", Content: "content2"},
+			{Path: "dir/sub/file3.txt", Content: "content3"},
 		}
 
 		var buf bytes.Buffer
-		err := buildTemplateArchiveZip(&buf, entries)
+		err := archive.BuildZip(&buf, entries)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -653,7 +358,7 @@ func TestBuildTemplateArchiveZip(t *testing.T) {
 		t.Parallel()
 
 		var buf bytes.Buffer
-		err := buildTemplateArchiveZip(&buf, []templateArchiveEntry{})
+		err := archive.BuildZip(&buf, []archive.Entry{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -671,12 +376,12 @@ func TestBuildTemplateArchiveZip(t *testing.T) {
 	t.Run("handles entry with empty content", func(t *testing.T) {
 		t.Parallel()
 
-		entries := []templateArchiveEntry{
-			{path: "empty.txt", content: ""},
+		entries := []archive.Entry{
+			{Path: "empty.txt", Content: ""},
 		}
 
 		var buf bytes.Buffer
-		err := buildTemplateArchiveZip(&buf, entries)
+		err := archive.BuildZip(&buf, entries)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -699,12 +404,12 @@ func TestBuildTemplateArchiveZip(t *testing.T) {
 		t.Parallel()
 
 		bigContent := strings.Repeat("x", 100_000)
-		entries := []templateArchiveEntry{
-			{path: "big.txt", content: bigContent},
+		entries := []archive.Entry{
+			{Path: "big.txt", Content: bigContent},
 		}
 
 		var buf bytes.Buffer
-		err := buildTemplateArchiveZip(&buf, entries)
+		err := archive.BuildZip(&buf, entries)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -734,12 +439,12 @@ func TestBuildTemplateArchiveTarGz(t *testing.T) {
 	t.Run("creates valid tar.gz with single entry", func(t *testing.T) {
 		t.Parallel()
 
-		entries := []templateArchiveEntry{
-			{path: "README.md", content: "# Hello"},
+		entries := []archive.Entry{
+			{Path: "README.md", Content: "# Hello"},
 		}
 
 		var buf bytes.Buffer
-		err := buildTemplateArchiveTarGz(&buf, entries)
+		err := archive.BuildTarGz(&buf, entries)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -781,13 +486,13 @@ func TestBuildTemplateArchiveTarGz(t *testing.T) {
 	t.Run("creates tar.gz with multiple entries", func(t *testing.T) {
 		t.Parallel()
 
-		entries := []templateArchiveEntry{
-			{path: "file1.txt", content: "content1"},
-			{path: "dir/file2.txt", content: "content2"},
+		entries := []archive.Entry{
+			{Path: "file1.txt", Content: "content1"},
+			{Path: "dir/file2.txt", Content: "content2"},
 		}
 
 		var buf bytes.Buffer
-		err := buildTemplateArchiveTarGz(&buf, entries)
+		err := archive.BuildTarGz(&buf, entries)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -822,7 +527,7 @@ func TestBuildTemplateArchiveTarGz(t *testing.T) {
 		t.Parallel()
 
 		var buf bytes.Buffer
-		err := buildTemplateArchiveTarGz(&buf, []templateArchiveEntry{})
+		err := archive.BuildTarGz(&buf, []archive.Entry{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -843,12 +548,12 @@ func TestBuildTemplateArchiveTarGz(t *testing.T) {
 	t.Run("handles entry with empty content", func(t *testing.T) {
 		t.Parallel()
 
-		entries := []templateArchiveEntry{
-			{path: "empty.txt", content: ""},
+		entries := []archive.Entry{
+			{Path: "empty.txt", Content: ""},
 		}
 
 		var buf bytes.Buffer
-		err := buildTemplateArchiveTarGz(&buf, entries)
+		err := archive.BuildTarGz(&buf, entries)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -866,14 +571,14 @@ func TestBuildTemplateArchiveTarGz(t *testing.T) {
 	t.Run("all entries have mode 0o600", func(t *testing.T) {
 		t.Parallel()
 
-		entries := []templateArchiveEntry{
-			{path: "a.txt", content: "a"},
-			{path: "b.txt", content: "b"},
-			{path: "c.txt", content: "c"},
+		entries := []archive.Entry{
+			{Path: "a.txt", Content: "a"},
+			{Path: "b.txt", Content: "b"},
+			{Path: "c.txt", Content: "c"},
 		}
 
 		var buf bytes.Buffer
-		err := buildTemplateArchiveTarGz(&buf, entries)
+		err := archive.BuildTarGz(&buf, entries)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

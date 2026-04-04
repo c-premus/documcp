@@ -128,13 +128,7 @@ func (h *Handler) handleListZimArchives(ctx context.Context, _ *mcp.CallToolRequ
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, listZimArchivesResponse{}, errors.New("mcp:read scope required")
 	}
-	limit := input.Limit
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 100 {
-		limit = 100
-	}
+	limit := clampPagination(input.Limit, 50, 100)
 
 	archives, err := h.zimArchiveRepo.List(ctx, input.Category, input.Language, input.Query, limit, 0)
 	if err != nil {
@@ -188,13 +182,7 @@ func (h *Handler) handleSearchZim(ctx context.Context, _ *mcp.CallToolRequest, i
 		searchType = "fulltext"
 	}
 
-	limit := input.Limit
-	if limit <= 0 {
-		limit = 20
-	}
-	if limit > 50 {
-		limit = 50
-	}
+	limit := clampPagination(input.Limit, 20, 50)
 
 	// Detect whether the client will fall back from fulltext to suggest.
 	fallback := searchType == "fulltext" && !kiwixClient.HasFulltextIndex(ctx, input.Archive)

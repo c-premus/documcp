@@ -8,7 +8,13 @@ import (
 	"errors"
 	"io"
 	"testing"
+
+	"github.com/c-premus/documcp/internal/archive"
+	gitclient "github.com/c-premus/documcp/internal/client/git"
 )
+
+// SubstituteVariables and ParseVariablesJSON unit tests are in internal/client/git/substitution_test.go.
+// These tests verify the integration through the mcphandler package using the exported functions.
 
 func TestSubstituteVariables(t *testing.T) {
 	tests := []struct {
@@ -99,7 +105,7 @@ func TestSubstituteVariables(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotContent, gotUnresolved := substituteVariables(tt.content, tt.variables)
+			gotContent, gotUnresolved := gitclient.SubstituteVariables(tt.content, tt.variables)
 
 			if gotContent != tt.wantContent {
 				t.Errorf("content = %q, want %q", gotContent, tt.wantContent)
@@ -170,7 +176,7 @@ func TestParseVariablesJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseVariablesJSON(tt.raw)
+			got, err := gitclient.ParseVariablesJSON(tt.raw)
 
 			if tt.wantErr {
 				if err == nil {
@@ -202,14 +208,14 @@ func TestParseVariablesJSON(t *testing.T) {
 
 func TestBuildZip(t *testing.T) {
 	t.Run("creates valid zip with entries", func(t *testing.T) {
-		entries := []archiveEntry{
-			{path: "README.md", content: "# Hello\n\nWelcome to the project."},
-			{path: "src/main.go", content: "package main\n\nfunc main() {}"},
-			{path: "docs/guide.md", content: "Guide content here."},
+		entries := []archive.Entry{
+			{Path: "README.md", Content: "# Hello\n\nWelcome to the project."},
+			{Path: "src/main.go", Content: "package main\n\nfunc main() {}"},
+			{Path: "docs/guide.md", Content: "Guide content here."},
 		}
 
 		var buf bytes.Buffer
-		if err := buildZip(&buf, entries); err != nil {
+		if err := archive.BuildZip(&buf, entries); err != nil {
 			t.Fatalf("buildZip error: %v", err)
 		}
 
@@ -224,8 +230,8 @@ func TestBuildZip(t *testing.T) {
 		}
 
 		for i, f := range reader.File {
-			if f.Name != entries[i].path {
-				t.Errorf("file[%d].Name = %q, want %q", i, f.Name, entries[i].path)
+			if f.Name != entries[i].Path {
+				t.Errorf("file[%d].Name = %q, want %q", i, f.Name, entries[i].Path)
 			}
 
 			rc, err := f.Open()
@@ -238,15 +244,15 @@ func TestBuildZip(t *testing.T) {
 				t.Fatalf("reading zip entry %q: %v", f.Name, err)
 			}
 
-			if string(data) != entries[i].content {
-				t.Errorf("file[%d] content = %q, want %q", i, string(data), entries[i].content)
+			if string(data) != entries[i].Content {
+				t.Errorf("file[%d] content = %q, want %q", i, string(data), entries[i].Content)
 			}
 		}
 	})
 
 	t.Run("creates valid zip with no entries", func(t *testing.T) {
 		var buf bytes.Buffer
-		if err := buildZip(&buf, nil); err != nil {
+		if err := archive.BuildZip(&buf, nil); err != nil {
 			t.Fatalf("buildZip error: %v", err)
 		}
 
@@ -261,12 +267,12 @@ func TestBuildZip(t *testing.T) {
 	})
 
 	t.Run("handles empty content entries", func(t *testing.T) {
-		entries := []archiveEntry{
-			{path: ".gitkeep", content: ""},
+		entries := []archive.Entry{
+			{Path: ".gitkeep", Content: ""},
 		}
 
 		var buf bytes.Buffer
-		if err := buildZip(&buf, entries); err != nil {
+		if err := archive.BuildZip(&buf, entries); err != nil {
 			t.Fatalf("buildZip error: %v", err)
 		}
 
@@ -297,14 +303,14 @@ func TestBuildZip(t *testing.T) {
 
 func TestBuildTarGz(t *testing.T) {
 	t.Run("creates valid tar.gz with entries", func(t *testing.T) {
-		entries := []archiveEntry{
-			{path: "README.md", content: "# Hello\n\nWelcome."},
-			{path: "src/main.go", content: "package main\n\nfunc main() {}"},
-			{path: "config.yaml", content: "key: value\n"},
+		entries := []archive.Entry{
+			{Path: "README.md", Content: "# Hello\n\nWelcome."},
+			{Path: "src/main.go", Content: "package main\n\nfunc main() {}"},
+			{Path: "config.yaml", Content: "key: value\n"},
 		}
 
 		var buf bytes.Buffer
-		if err := buildTarGz(&buf, entries); err != nil {
+		if err := archive.BuildTarGz(&buf, entries); err != nil {
 			t.Fatalf("buildTarGz error: %v", err)
 		}
 
@@ -330,11 +336,11 @@ func TestBuildTarGz(t *testing.T) {
 				t.Fatalf("more tar entries than expected")
 			}
 
-			if hdr.Name != entries[idx].path {
-				t.Errorf("entry[%d].Name = %q, want %q", idx, hdr.Name, entries[idx].path)
+			if hdr.Name != entries[idx].Path {
+				t.Errorf("entry[%d].Name = %q, want %q", idx, hdr.Name, entries[idx].Path)
 			}
-			if hdr.Size != int64(len(entries[idx].content)) {
-				t.Errorf("entry[%d].Size = %d, want %d", idx, hdr.Size, len(entries[idx].content))
+			if hdr.Size != int64(len(entries[idx].Content)) {
+				t.Errorf("entry[%d].Size = %d, want %d", idx, hdr.Size, len(entries[idx].Content))
 			}
 			if hdr.Mode != 0o600 {
 				t.Errorf("entry[%d].Mode = %o, want %o", idx, hdr.Mode, 0o600)
@@ -344,8 +350,8 @@ func TestBuildTarGz(t *testing.T) {
 			if err != nil {
 				t.Fatalf("reading tar entry %q: %v", hdr.Name, err)
 			}
-			if string(data) != entries[idx].content {
-				t.Errorf("entry[%d] content = %q, want %q", idx, string(data), entries[idx].content)
+			if string(data) != entries[idx].Content {
+				t.Errorf("entry[%d] content = %q, want %q", idx, string(data), entries[idx].Content)
 			}
 
 			idx++
@@ -358,7 +364,7 @@ func TestBuildTarGz(t *testing.T) {
 
 	t.Run("creates valid tar.gz with no entries", func(t *testing.T) {
 		var buf bytes.Buffer
-		if err := buildTarGz(&buf, nil); err != nil {
+		if err := archive.BuildTarGz(&buf, nil); err != nil {
 			t.Fatalf("buildTarGz error: %v", err)
 		}
 
@@ -376,12 +382,12 @@ func TestBuildTarGz(t *testing.T) {
 	})
 
 	t.Run("handles entries with empty content", func(t *testing.T) {
-		entries := []archiveEntry{
-			{path: ".gitkeep", content: ""},
+		entries := []archive.Entry{
+			{Path: ".gitkeep", Content: ""},
 		}
 
 		var buf bytes.Buffer
-		if err := buildTarGz(&buf, entries); err != nil {
+		if err := archive.BuildTarGz(&buf, entries); err != nil {
 			t.Fatalf("buildTarGz error: %v", err)
 		}
 
@@ -414,12 +420,12 @@ func TestBuildTarGz(t *testing.T) {
 	})
 
 	t.Run("handles entries with unicode content", func(t *testing.T) {
-		entries := []archiveEntry{
-			{path: "unicode.txt", content: "Hello, \n\n\t"},
+		entries := []archive.Entry{
+			{Path: "unicode.txt", Content: "Hello, \n\n\t"},
 		}
 
 		var buf bytes.Buffer
-		if err := buildTarGz(&buf, entries); err != nil {
+		if err := archive.BuildTarGz(&buf, entries); err != nil {
 			t.Fatalf("buildTarGz error: %v", err)
 		}
 
