@@ -450,7 +450,7 @@ func TestCleanupOrphanedFilesWorker_Work(t *testing.T) {
 
 		err := worker.Work(context.Background(), makeJob(CleanupOrphanedFilesArgs{}))
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "walking storage directory")
+		assert.Contains(t, err.Error(), "opening storage root")
 	})
 
 	t.Run("active files preserved orphans deleted", func(t *testing.T) {

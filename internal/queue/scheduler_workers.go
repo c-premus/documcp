@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -318,20 +319,27 @@ func (w *CleanupOrphanedFilesWorker) Work(ctx context.Context, job *river.Job[Cl
 
 	activeSet := make(map[string]bool, len(activePaths))
 	for _, fp := range activePaths {
-		absPath := filepath.Join(w.Deps.StoragePath, fp.FilePath)
-		activeSet[absPath] = true
+		activeSet[fp.FilePath] = true
 	}
 
+	// Open a root-scoped handle to prevent symlink traversal outside the
+	// storage directory (eliminates gosec G122 TOCTOU risk).
+	root, err := os.OpenRoot(w.Deps.StoragePath)
+	if err != nil {
+		return fmt.Errorf("opening storage root: %w", err)
+	}
+	defer func() { _ = root.Close() }()
+
 	var deletedCount int
-	walkErr := filepath.WalkDir(w.Deps.StoragePath, func(path string, d os.DirEntry, err error) error {
+	walkErr := fs.WalkDir(root.FS(), ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() || d.Type()&os.ModeSymlink != 0 {
+		if d.IsDir() || d.Type()&fs.ModeSymlink != 0 {
 			return nil
 		}
 		if !activeSet[path] {
-			if removeErr := os.Remove(path); removeErr != nil {
+			if removeErr := root.Remove(path); removeErr != nil {
 				logger.Error("removing orphaned file", "path", path, "error", removeErr)
 			} else {
 				deletedCount++
