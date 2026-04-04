@@ -18,18 +18,32 @@ import (
 const (
 	mimeTypePDF = "application/pdf"
 
-	// maxExtractedTextSize is the maximum size of extracted text (50 MiB).
-	maxExtractedTextSize = 50 * 1024 * 1024
+	// defaultMaxExtractedTextSize is the maximum size of extracted text (50 MiB).
+	defaultMaxExtractedTextSize = 50 * 1024 * 1024
 )
 
 // PDFExtractor extracts text from PDF files via pure Go libraries.
 //
 //nolint:revive // exported stutter is intentional; renaming would be a breaking change
-type PDFExtractor struct{}
+type PDFExtractor struct {
+	maxExtractedTextSize int64
+}
 
-// New creates a new PDFExtractor.
+// New creates a new PDFExtractor with default limits.
 func New() *PDFExtractor {
-	return &PDFExtractor{}
+	return &PDFExtractor{
+		maxExtractedTextSize: defaultMaxExtractedTextSize,
+	}
+}
+
+// NewWithLimits creates a PDFExtractor with configurable limits.
+// Zero values fall back to defaults.
+func NewWithLimits(maxExtractedText int64) *PDFExtractor {
+	e := New()
+	if maxExtractedText > 0 {
+		e.maxExtractedTextSize = maxExtractedText
+	}
+	return e
 }
 
 // Supports reports whether this extractor handles the given MIME type.
@@ -44,7 +58,7 @@ func (e *PDFExtractor) Extract(ctx context.Context, filePath string) (*extractor
 		return nil, fmt.Errorf("context canceled before PDF extraction: %w", err)
 	}
 
-	text, err := extractText(filePath)
+	text, err := extractText(filePath, e.maxExtractedTextSize)
 	if err != nil {
 		return nil, fmt.Errorf("extracting PDF text: %w", err)
 	}
@@ -59,7 +73,7 @@ func (e *PDFExtractor) Extract(ctx context.Context, filePath string) (*extractor
 }
 
 // extractText uses ledongthuc/pdf to extract plain text from a PDF file.
-func extractText(filePath string) (string, error) {
+func extractText(filePath string, maxSize int64) (string, error) {
 	f, r, err := lpdf.Open(filePath)
 	if err != nil {
 		return "", fmt.Errorf("opening PDF: %w", err)
@@ -71,12 +85,12 @@ func extractText(filePath string) (string, error) {
 		return "", fmt.Errorf("reading PDF text: %w", err)
 	}
 
-	b, err := io.ReadAll(io.LimitReader(reader, maxExtractedTextSize+1))
+	b, err := io.ReadAll(io.LimitReader(reader, maxSize+1))
 	if err != nil {
 		return "", fmt.Errorf("reading PDF text output: %w", err)
 	}
-	if len(b) > maxExtractedTextSize {
-		return "", fmt.Errorf("extracted PDF text exceeds %d bytes limit", maxExtractedTextSize)
+	if int64(len(b)) > maxSize {
+		return "", fmt.Errorf("extracted PDF text exceeds %d bytes limit", maxSize)
 	}
 
 	return string(b), nil

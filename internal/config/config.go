@@ -194,6 +194,12 @@ type StorageConfig struct {
 	BasePath     string `mapstructure:"storage_base_path"`
 	DocumentPath string `mapstructure:"storage_document_path"`
 	TempPath     string `mapstructure:"storage_temp_path"`
+
+	// Extraction limits — safety guards for document processing.
+	MaxUploadSize    int64 `mapstructure:"storage_max_upload_size"`
+	MaxExtractedText int64 `mapstructure:"storage_max_extracted_text"`
+	MaxZIPFiles      int   `mapstructure:"storage_max_zip_files"`
+	MaxSheets        int   `mapstructure:"storage_max_sheets"`
 }
 
 // OTELConfig holds OpenTelemetry observability settings.
@@ -313,6 +319,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("storage_base_path", "./storage")
 	v.SetDefault("storage_document_path", "documents")
 	v.SetDefault("storage_temp_path", "tmp")
+	v.SetDefault("storage_max_upload_size", 50*1024*1024)    // 50 MiB
+	v.SetDefault("storage_max_extracted_text", 50*1024*1024) // 50 MiB
+	v.SetDefault("storage_max_zip_files", 100)
+	v.SetDefault("storage_max_sheets", 100)
 
 	// OTEL
 	v.SetDefault("otel_enabled", false)
@@ -492,10 +502,14 @@ func Load() (*Config, error) {
 	}
 
 	cfg.Storage = StorageConfig{
-		Driver:       v.GetString("storage_driver"),
-		BasePath:     v.GetString("storage_base_path"),
-		DocumentPath: v.GetString("storage_document_path"),
-		TempPath:     v.GetString("storage_temp_path"),
+		Driver:           v.GetString("storage_driver"),
+		BasePath:         v.GetString("storage_base_path"),
+		DocumentPath:     v.GetString("storage_document_path"),
+		TempPath:         v.GetString("storage_temp_path"),
+		MaxUploadSize:    v.GetInt64("storage_max_upload_size"),
+		MaxExtractedText: v.GetInt64("storage_max_extracted_text"),
+		MaxZIPFiles:      v.GetInt("storage_max_zip_files"),
+		MaxSheets:        v.GetInt("storage_max_sheets"),
 	}
 
 	cfg.OTEL = OTELConfig{

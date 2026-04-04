@@ -106,13 +106,25 @@ func TestHTMLExtractor_Extract(t *testing.T) {
 		{
 			name:         "title with HTML entities",
 			htmlContent:  `<html><head><title>Tom &amp; Jerry</title></head><body><p>Cartoon</p></body></html>`,
-			wantTitle:    "Tom &amp; Jerry",
+			wantTitle:    "Tom & Jerry",
 			wantHasTitle: true,
 		},
 		{
 			name:         "case-insensitive title tag matching",
 			htmlContent:  `<html><head><TITLE>Upper Title</TITLE></head><body><p>text</p></body></html>`,
 			wantTitle:    "Upper Title",
+			wantHasTitle: true,
+		},
+		{
+			name:         "title tag with attributes containing angle bracket",
+			htmlContent:  `<html><head><title data-x="a>b">Real Title</title></head><body><p>text</p></body></html>`,
+			wantTitle:    "Real Title",
+			wantHasTitle: true,
+		},
+		{
+			name:         "title inside HTML comment is ignored",
+			htmlContent:  `<html><head><!-- <title>Fake Title</title> --><title>Real Title</title></head><body><p>text</p></body></html>`,
+			wantTitle:    "Real Title",
 			wantHasTitle: true,
 		},
 		{

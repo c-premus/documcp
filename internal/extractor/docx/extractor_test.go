@@ -15,10 +15,24 @@ import (
 // wNS is the WordprocessingML namespace used in document.xml.
 const wNS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
+// docxOpts holds options for creating a test DOCX file.
+type docxOpts struct {
+	paragraphs []string
+	metadata   *coreProps
+	headers    []string // paragraphs for word/header1.xml (nil = omit)
+	footers    []string // paragraphs for word/footer1.xml (nil = omit)
+}
+
 // createDocx builds a minimal DOCX file (ZIP archive) containing
 // word/document.xml and optionally docProps/core.xml, then writes it to
 // the returned file path inside t.TempDir().
 func createDocx(t *testing.T, paragraphs []string, metadata *coreProps) string {
+	t.Helper()
+	return createDocxFull(t, docxOpts{paragraphs: paragraphs, metadata: metadata})
+}
+
+// createDocxFull builds a DOCX file with optional headers, footers, and metadata.
+func createDocxFull(t *testing.T, opts docxOpts) string {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -34,28 +48,34 @@ func createDocx(t *testing.T, paragraphs []string, metadata *coreProps) string {
 	defer func() { _ = zw.Close() }()
 
 	// Write word/document.xml
-	docXML := buildDocumentXML(paragraphs)
-	w, err := zw.Create("word/document.xml")
-	if err != nil {
-		t.Fatalf("creating document.xml in zip: %v", err)
+	writeZipXML(t, zw, "word/document.xml", buildDocumentXML(opts.paragraphs))
+
+	// Optionally write headers and footers.
+	if opts.headers != nil {
+		writeZipXML(t, zw, "word/header1.xml", buildDocumentXML(opts.headers))
 	}
-	if _, err := w.Write([]byte(docXML)); err != nil {
-		t.Fatalf("writing document.xml: %v", err)
+	if opts.footers != nil {
+		writeZipXML(t, zw, "word/footer1.xml", buildDocumentXML(opts.footers))
 	}
 
 	// Optionally write docProps/core.xml
-	if metadata != nil {
-		coreXML := buildCoreXML(metadata)
-		cw, err := zw.Create("docProps/core.xml")
-		if err != nil {
-			t.Fatalf("creating core.xml in zip: %v", err)
-		}
-		if _, err := cw.Write([]byte(coreXML)); err != nil {
-			t.Fatalf("writing core.xml: %v", err)
-		}
+	if opts.metadata != nil {
+		writeZipXML(t, zw, "docProps/core.xml", buildCoreXML(opts.metadata))
 	}
 
 	return filePath
+}
+
+// writeZipXML creates a file in the ZIP archive and writes content to it.
+func writeZipXML(t *testing.T, zw *zip.Writer, name, content string) {
+	t.Helper()
+	w, err := zw.Create(name)
+	if err != nil {
+		t.Fatalf("creating %s in zip: %v", name, err)
+	}
+	if _, err := w.Write([]byte(content)); err != nil {
+		t.Fatalf("writing %s: %v", name, err)
+	}
 }
 
 // coreProps mirrors the metadata fields the docx extractor reads.
@@ -178,6 +198,105 @@ func TestDOCXExtractor_Extract(t *testing.T) {
 				}
 				if got, ok := title.(string); !ok || got != tt.wantTitle {
 					t.Errorf("title = %v, want %q", title, tt.wantTitle)
+				}
+			}
+		})
+	}
+}
+
+func TestDOCXExtractor_Extract_HeadersFooters(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		opts          docxOpts
+		wantContains  []string
+		wantWordCount int
+		wantOrder     [][2]string // pairs where first must appear before second
+	}{
+		{
+			name: "headers and footers extracted",
+			opts: docxOpts{
+				paragraphs: []string{"Body text"},
+				headers:    []string{"Header text"},
+				footers:    []string{"Footer text"},
+			},
+			wantContains:  []string{"Header text", "Body text", "Footer text"},
+			wantWordCount: 6,
+		},
+		{
+			name: "headers only no footers",
+			opts: docxOpts{
+				paragraphs: []string{"Body text"},
+				headers:    []string{"Header text"},
+			},
+			wantContains:  []string{"Header text", "Body text"},
+			wantWordCount: 4,
+		},
+		{
+			name: "footers only no headers",
+			opts: docxOpts{
+				paragraphs: []string{"Body text"},
+				footers:    []string{"Footer text"},
+			},
+			wantContains:  []string{"Body text", "Footer text"},
+			wantWordCount: 4,
+		},
+		{
+			name: "header appears before body and footer appears after",
+			opts: docxOpts{
+				paragraphs: []string{"BodyMarker"},
+				headers:    []string{"HeaderMarker"},
+				footers:    []string{"FooterMarker"},
+			},
+			wantContains: []string{"HeaderMarker", "BodyMarker", "FooterMarker"},
+			wantOrder: [][2]string{
+				{"HeaderMarker", "BodyMarker"},
+				{"BodyMarker", "FooterMarker"},
+			},
+		},
+		{
+			name: "empty headers and footers are excluded",
+			opts: docxOpts{
+				paragraphs: []string{"Body only"},
+				headers:    []string{},
+				footers:    []string{},
+			},
+			wantContains:  []string{"Body only"},
+			wantWordCount: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			filePath := createDocxFull(t, tt.opts)
+
+			ext := docx.New()
+			result, err := ext.Extract(context.Background(), filePath)
+			if err != nil {
+				t.Fatalf("Extract() unexpected error: %v", err)
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(result.Content, want) {
+					t.Errorf("Content does not contain %q, got: %q", want, result.Content)
+				}
+			}
+
+			if tt.wantWordCount > 0 && result.WordCount != tt.wantWordCount {
+				t.Errorf("WordCount = %d, want %d", result.WordCount, tt.wantWordCount)
+			}
+
+			for _, pair := range tt.wantOrder {
+				first := strings.Index(result.Content, pair[0])
+				second := strings.Index(result.Content, pair[1])
+				if first == -1 || second == -1 {
+					t.Errorf("Content missing %q or %q", pair[0], pair[1])
+				} else if first >= second {
+					t.Errorf("%q (at %d) should appear before %q (at %d) in: %q",
+						pair[0], first, pair[1], second, result.Content)
 				}
 			}
 		})
