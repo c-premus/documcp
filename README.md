@@ -177,6 +177,28 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 
 ## Configuration
 
+### Application
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `APP_URL` | No | `http://localhost` | Public application URL |
+| `INTERNAL_API_TOKEN` | No | -- | Token for internal API endpoints |
+| `ENCRYPTION_KEY` | No | -- | 32-byte key for AES-256-GCM encryption of stored Git tokens |
+
+### Server & TLS
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `SERVER_HOST` | No | `0.0.0.0` | Listen address |
+| `SERVER_PORT` | No | `8080` | Listen port |
+| `TRUSTED_PROXIES` | No | -- | CIDR ranges for trusted reverse proxies |
+| `TLS_ENABLED` | No | `false` | Terminate TLS directly (no reverse proxy needed) |
+| `TLS_PORT` | No | `8443` | HTTPS listen port (`SERVER_PORT` becomes HTTP→HTTPS redirect) |
+| `TLS_CERT_FILE` | No | -- | PEM certificate path (empty + TLS enabled = self-signed) |
+| `TLS_KEY_FILE` | No | -- | PEM private key path |
+
+### Database (PostgreSQL)
+
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `DB_HOST` | Yes | -- | PostgreSQL host |
@@ -185,30 +207,62 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `DB_USERNAME` | Yes | -- | Database user |
 | `DB_PASSWORD` | Yes | -- | Database password |
 | `DB_SSLMODE` | No | `require` | PostgreSQL SSL mode |
+| `DB_MAX_OPEN_CONNS` | No | `25` | Maximum database connections (increase to 40-50 for combined serve+worker mode) |
+| `DB_PGX_MIN_CONNS` | No | `5` | Minimum idle database connections |
+
+### Redis
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
 | `REDIS_ADDR` | Yes | -- | Redis address (`host:port`) |
 | `REDIS_USERNAME` | No | -- | Redis 6+ ACL username |
 | `REDIS_PASSWORD` | No | -- | Redis password |
 | `REDIS_DB` | No | `0` | Redis database number |
 | `REDIS_POOL_SIZE` | No | `10` | Redis connection pool size |
 | `REDIS_DIAL_TIMEOUT` | No | `5s` | Redis connection timeout |
+
+### Authentication & OAuth
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
 | `OIDC_PROVIDER_URL` | No | -- | OpenID Connect provider URL |
 | `OIDC_CLIENT_ID` | No | -- | OIDC client ID |
 | `OIDC_CLIENT_SECRET` | No | -- | OIDC client secret |
 | `OIDC_REDIRECT_URI` | No | -- | OIDC callback URL |
 | `OAUTH_SESSION_SECRET` | Yes | -- | Session secret (min 32 bytes); derives CSRF and token HMAC keys via HKDF |
-| `ENCRYPTION_KEY` | No | -- | 32-byte key for AES-256-GCM encryption of stored Git tokens |
-| `SERVER_HOST` | No | `0.0.0.0` | Listen address |
-| `SERVER_PORT` | No | `8080` | Listen port |
-| `TLS_ENABLED` | No | `false` | Terminate TLS directly (no reverse proxy needed) |
-| `TLS_PORT` | No | `8443` | HTTPS listen port (`SERVER_PORT` becomes HTTP→HTTPS redirect) |
-| `TLS_CERT_FILE` | No | -- | PEM certificate path (empty + TLS enabled = self-signed) |
-| `TLS_KEY_FILE` | No | -- | PEM private key path |
+
+### Storage
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
 | `STORAGE_DRIVER` | No | `local` | File storage driver |
 | `STORAGE_BASE_PATH` | No | -- | Base path for local file storage |
 | `STORAGE_MAX_UPLOAD_SIZE` | No | `52428800` | Max upload file size in bytes (50 MiB) |
 | `STORAGE_MAX_EXTRACTED_TEXT` | No | `52428800` | Max decompressed text per file in bytes (50 MiB) |
 | `STORAGE_MAX_ZIP_FILES` | No | `100` | Max files in a DOCX ZIP archive |
 | `STORAGE_MAX_SHEETS` | No | `100` | Max sheets in an XLSX file |
+
+### External Services (Kiwix)
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `KIWIX_FEDERATED_SEARCH_TIMEOUT` | No | `3s` | Deadline for Kiwix fan-out during unified search |
+| `KIWIX_FEDERATED_MAX_ARCHIVES` | No | `10` | Max archives to search in parallel |
+| `KIWIX_FEDERATED_PER_ARCHIVE_LIMIT` | No | `3` | Max results per archive |
+
+### Queue Workers
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `QUEUE_HIGH_WORKERS` | No | `10` | River queue concurrency for high-priority jobs |
+| `QUEUE_DEFAULT_WORKERS` | No | `5` | River queue concurrency for default jobs |
+| `QUEUE_LOW_WORKERS` | No | `2` | River queue concurrency for low-priority jobs |
+| `WORKER_HEALTH_PORT` | No | `9090` | Health endpoint port for worker-only mode |
+
+### Observability
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
 | `OTEL_ENABLED` | No | `false` | Enable OpenTelemetry tracing |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | No | -- | OTLP HTTP exporter endpoint (e.g., `tempo:4318`) |
 | `OTEL_SERVICE_NAME` | No | `documcp` | Service name in traces |
@@ -217,18 +271,6 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `OTEL_ENVIRONMENT` | No | -- | `deployment.environment` resource attribute |
 | `SENTRY_DSN` | No | -- | Sentry/GlitchTip DSN for error tracking (empty = disabled) |
 | `SENTRY_SAMPLE_RATE` | No | `1.0` | Error sample rate (0.0--1.0) |
-| `INTERNAL_API_TOKEN` | No | -- | Token for internal API endpoints |
-| `APP_URL` | No | `http://localhost` | Public application URL |
-| `TRUSTED_PROXIES` | No | -- | CIDR ranges for trusted reverse proxies |
-| `KIWIX_FEDERATED_SEARCH_TIMEOUT` | No | `3s` | Deadline for Kiwix fan-out during unified search |
-| `KIWIX_FEDERATED_MAX_ARCHIVES` | No | `10` | Max archives to search in parallel |
-| `KIWIX_FEDERATED_PER_ARCHIVE_LIMIT` | No | `3` | Max results per archive |
-| `QUEUE_HIGH_WORKERS` | No | `10` | River queue concurrency for high-priority jobs |
-| `QUEUE_DEFAULT_WORKERS` | No | `5` | River queue concurrency for default jobs |
-| `QUEUE_LOW_WORKERS` | No | `2` | River queue concurrency for low-priority jobs |
-| `WORKER_HEALTH_PORT` | No | `9090` | Health endpoint port for worker-only mode |
-| `DB_MAX_OPEN_CONNS` | No | `25` | Maximum database connections (increase to 40-50 for combined serve+worker mode) |
-| `DB_PGX_MIN_CONNS` | No | `5` | Minimum idle database connections |
 
 See `.env.example` for the full list of configurable variables with defaults.
 
