@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	lpdf "github.com/ledongthuc/pdf"
 	pdfcpuapi "github.com/pdfcpu/pdfcpu/pkg/api"
@@ -93,7 +95,112 @@ func extractText(filePath string, maxSize int64) (string, error) {
 		return "", fmt.Errorf("extracted PDF text exceeds %d bytes limit", maxSize)
 	}
 
-	return string(b), nil
+	return cleanText(string(b)), nil
+}
+
+// Compiled regexes for PDF text cleanup.
+var (
+	// brokenBracketRef matches footnote/endnote references split across lines: [\n1\n] or [\na\n].
+	brokenBracketRef = regexp.MustCompile(`\[\s*\n(\w+)\s*\n\]`)
+	// excessiveBlankLines collapses 3+ consecutive blank lines to 2.
+	excessiveBlankLines = regexp.MustCompile(`\n{4,}`)
+)
+
+// cleanText normalizes raw PDF text output.
+// PDF text objects (each styling span: bold, italic, link) are emitted as
+// separate lines by ledongthuc/pdf. This function rejoins continuation lines
+// so that styled inline fragments become contiguous sentences.
+func cleanText(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	s = brokenBracketRef.ReplaceAllString(s, "[$1]")
+	s = joinContinuationLines(s)
+	s = excessiveBlankLines.ReplaceAllString(s, "\n\n\n")
+	return s
+}
+
+// joinContinuationLines merges lines that are continuations of the previous
+// line. A line is a continuation when it starts with a lowercase letter,
+// punctuation, or whitespace — indicating it was split at a PDF text object
+// boundary (styling change) rather than a real line break.
+func joinContinuationLines(s string) string {
+	lines := strings.Split(s, "\n")
+	if len(lines) <= 1 {
+		return s
+	}
+
+	var b strings.Builder
+	b.Grow(len(s))
+	b.WriteString(lines[0])
+
+	// Track last byte written to avoid b.String() copies in the hot loop.
+	lastByte := lastByteOf(lines[0])
+
+	for i := 1; i < len(lines); i++ {
+		line := lines[i]
+		if line == "" {
+			// Blank line = paragraph break, keep it.
+			b.WriteByte('\n')
+			lastByte = '\n'
+			continue
+		}
+
+		first, _ := utf8.DecodeRuneInString(line)
+		if isContinuation(first) {
+			// Continuation of previous text object — join without newline.
+			// Insert a space if the previous line didn't end with whitespace
+			// and this line doesn't start with whitespace or punctuation,
+			// to avoid "writingstyle" from "writing\nstyle".
+			if lastByte != ' ' && lastByte != '\t' && !isAttaching(first) {
+				b.WriteByte(' ')
+			}
+			b.WriteString(line)
+		} else {
+			b.WriteByte('\n')
+			b.WriteString(line)
+		}
+		lastByte = line[len(line)-1]
+	}
+
+	return b.String()
+}
+
+// isAttaching reports whether a rune attaches to the preceding word without
+// a space (punctuation, closing brackets, whitespace).
+func isAttaching(r rune) bool {
+	switch r {
+	case ' ', '\t', ',', '.', ';', ':', '!', '?', ')', ']', '}',
+		'\u2014', '\u2013', '\u2019', '\u201D': // em dash, en dash, right quotes
+		return true
+	}
+	return false
+}
+
+// lastByteOf returns the last byte of s, or 0 if empty.
+func lastByteOf(s string) byte {
+	if s == "" {
+		return 0
+	}
+	return s[len(s)-1]
+}
+
+// isContinuation reports whether a rune at the start of a line indicates it
+// is a continuation of the previous line (i.e. a PDF text object boundary,
+// not a real line break). Lowercase letters, punctuation, whitespace, and
+// opening brackets all signal continuation.
+func isContinuation(r rune) bool {
+	if r >= 'a' && r <= 'z' {
+		return true
+	}
+	switch r {
+	case ' ', '\t', // leading whitespace
+		',', '.', ';', ':', '!', '?', // sentence punctuation
+		')', ']', '}', // closing brackets
+		'\u2014', '\u2013', '\u2026', // em dash, en dash, ellipsis
+		'\u201C', '\u201D', '\u2018', '\u2019': // curly quotes
+		return true
+	}
+	return false
 }
 
 // extractMetadata uses pdfcpu to read PDF document properties.

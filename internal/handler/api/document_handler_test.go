@@ -1491,6 +1491,11 @@ func TestFirstParagraph(t *testing.T) {
 			content: "   \n\n   \n\n   ",
 			want:    "",
 		},
+		{
+			name:    "normalizes CRLF before splitting",
+			content: "First paragraph.\r\n\r\nSecond paragraph.",
+			want:    "First paragraph.",
+		},
 	}
 
 	for _, tt := range tests {
@@ -1560,6 +1565,11 @@ func TestExtractKeywords(t *testing.T) {
 			name:    "sorts by count descending then alphabetically",
 			content: "zebra zebra apple apple mango",
 			want:    []string{"apple", "zebra", "mango"},
+		},
+		{
+			name:    "strips unicode punctuation (em dash, curly quotes)",
+			content: "\u2014hello\u2014 \u201Cworld\u201D \u2018testing\u2019 hello hello",
+			want:    []string{"hello", "testing", "world"},
 		},
 	}
 

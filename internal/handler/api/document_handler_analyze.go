@@ -176,7 +176,8 @@ func extractHeadingTags(content string) []string {
 // firstParagraph returns the first non-empty, non-heading paragraph of content,
 // capped at 500 characters.
 func firstParagraph(content string) string {
-	for p := range strings.SplitSeq(content, "\n\n") {
+	normalized := strings.ReplaceAll(content, "\r\n", "\n")
+	for p := range strings.SplitSeq(normalized, "\n\n") {
 		trimmed := strings.TrimSpace(p)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
@@ -189,6 +190,10 @@ func firstParagraph(content string) string {
 	}
 	return ""
 }
+
+// unicodePunctuation contains Unicode punctuation characters to strip from words
+// during keyword extraction (em dash, en dash, ellipsis, curly quotes, middle dot, bullet).
+const unicodePunctuation = "\u2014\u2013\u2026\u201C\u201D\u2018\u2019\u00B7\u2022"
 
 // stopWords is the set of common English words excluded from keyword extraction.
 var stopWords = map[string]struct{}{
@@ -215,7 +220,7 @@ var stopWords = map[string]struct{}{
 func extractKeywords(content string) []string {
 	freq := make(map[string]int)
 	for word := range strings.FieldsSeq(content) {
-		w := strings.ToLower(strings.Trim(word, ".,;:!?\"'()[]{}"))
+		w := strings.ToLower(strings.Trim(word, ".,;:!?\"'()][}{"+unicodePunctuation))
 		if len(w) < 3 {
 			continue
 		}
