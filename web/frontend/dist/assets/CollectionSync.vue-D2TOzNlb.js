@@ -1,0 +1,1 @@
+import{H as e,at as t,d as n,v as r,x as i}from"./runtime-core.esm-bundler-4LFy1H3S.js";import{t as a}from"./ViewLayoutSection.vue-BTdnrCQC.js";var o=i({__name:`CollectionSync`,setup(i){return(i,o)=>(e(),n(a,null,{title:t(()=>[...o[0]||=[r(`Sync`,-1)]]),_:1}))}});export{o as default};
