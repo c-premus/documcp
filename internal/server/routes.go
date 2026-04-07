@@ -185,8 +185,11 @@ func (s *Server) registerAuthRoutes(deps Deps) {
 			r.Post("/authorize/approve", deps.OAuthHandler.AuthorizeApprove)
 			r.Post("/authorize/deny", deps.OAuthHandler.AuthorizeDeny)
 			r.Get("/device", deps.OAuthHandler.DeviceVerification)
-			r.Post("/device", deps.OAuthHandler.DeviceVerificationSubmit)
-			r.Post("/device/approve", deps.OAuthHandler.DeviceApprove)
+			r.Group(func(r chi.Router) {
+				r.Use(rateLimitByIP(10, time.Minute, deps.BareRedisClient))
+				r.Post("/device", deps.OAuthHandler.DeviceVerificationSubmit)
+				r.Post("/device/approve", deps.OAuthHandler.DeviceApprove)
+			})
 
 			// Machine-to-machine endpoints — no CSRF (clients don't have browser cookies).
 			r.Group(func(r chi.Router) {

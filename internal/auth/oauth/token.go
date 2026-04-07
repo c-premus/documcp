@@ -22,8 +22,9 @@ import (
 // brute-force attacks if the database is compromised.
 // When nil, falls back to plain SHA-256 (still safe for high-entropy tokens).
 var (
-	tokenHMACKey []byte      //nolint:gochecknoglobals // module-level singleton initialized once at startup
+	tokenHMACKey []byte       //nolint:gochecknoglobals // module-level singleton initialized once at startup
 	hmacKeyMu    sync.RWMutex //nolint:gochecknoglobals // guards read/write access to tokenHMACKey
+	hmacWarnOnce sync.Once    //nolint:gochecknoglobals // ensures HMAC fallback warning is logged only once
 )
 
 // SetTokenHMACKey configures the HMAC key used for token hashing.
@@ -127,7 +128,9 @@ func hashToken(s string) string {
 		mac.Write([]byte(s))
 		return hex.EncodeToString(mac.Sum(nil))
 	}
-	slog.Warn("token HMAC key not configured, falling back to plain SHA-256")
+	hmacWarnOnce.Do(func() {
+		slog.Warn("token HMAC key not configured, falling back to plain SHA-256")
+	})
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
 }

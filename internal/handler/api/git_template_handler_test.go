@@ -660,15 +660,17 @@ func (m *mockGitTemplateRepo) FindFileByPath(ctx context.Context, templateID int
 
 func newTestGitTemplateHandler() *GitTemplateHandler {
 	return &GitTemplateHandler{
-		repo:   nil,
-		logger: slog.New(slog.DiscardHandler),
+		repo:              nil,
+		logger:            slog.New(slog.DiscardHandler),
+		encryptionEnabled: true,
 	}
 }
 
 func newGitTemplateHandlerWithMock(repo *mockGitTemplateRepo) *GitTemplateHandler {
 	return &GitTemplateHandler{
-		repo:   repo,
-		logger: slog.New(slog.DiscardHandler),
+		repo:              repo,
+		logger:            slog.New(slog.DiscardHandler),
+		encryptionEnabled: true,
 	}
 }
 
@@ -1081,13 +1083,16 @@ func TestNewGitTemplateHandler(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.New(slog.DiscardHandler)
-	h := NewGitTemplateHandler(nil, nil, logger)
+	h := NewGitTemplateHandler(nil, nil, logger, true)
 
 	if h == nil {
 		t.Fatal("expected non-nil handler")
 	}
 	if h.logger != logger {
 		t.Error("logger not set correctly")
+	}
+	if !h.encryptionEnabled {
+		t.Error("encryptionEnabled not set correctly")
 	}
 }
 
@@ -1600,9 +1605,10 @@ func TestGitTemplateHandler_ValidateURL(t *testing.T) {
 // Uses mockJobInserter from external_service_handler_test.go (same package).
 func newGitTemplateHandlerFull(repo *mockGitTemplateRepo, ins gitTemplateJobInserter) *GitTemplateHandler {
 	return &GitTemplateHandler{
-		repo:     repo,
-		inserter: ins,
-		logger:   slog.New(slog.DiscardHandler),
+		repo:              repo,
+		inserter:          ins,
+		logger:            slog.New(slog.DiscardHandler),
+		encryptionEnabled: true,
 	}
 }
 

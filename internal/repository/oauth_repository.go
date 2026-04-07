@@ -288,7 +288,7 @@ func (r *OAuthRepository) CreateDeviceCode(ctx context.Context, dc *model.OAuthD
 // FindDeviceCodeByDeviceCode returns a device code by its hash.
 func (r *OAuthRepository) FindDeviceCodeByDeviceCode(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error) {
 	dc, err := database.Get[model.OAuthDeviceCode](ctx, r.db,
-		`SELECT * FROM oauth_device_codes WHERE device_code = $1`, deviceCodeHash)
+		`SELECT * FROM oauth_device_codes WHERE device_code = $1 AND expires_at > NOW()`, deviceCodeHash)
 	if err != nil {
 		return nil, fmt.Errorf("finding device code: %w", err)
 	}

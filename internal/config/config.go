@@ -49,6 +49,8 @@ type RedisConfig struct {
 	ReadTimeout     time.Duration `mapstructure:"redis_read_timeout"`
 	WriteTimeout    time.Duration `mapstructure:"redis_write_timeout"`
 	MaxRetries      int           `mapstructure:"redis_max_retries"`
+	TLSEnabled      bool          `mapstructure:"redis_tls_enabled"`
+	TLSCAFile       string        `mapstructure:"redis_tls_ca_file"`
 }
 
 // QueueConfig holds River queue worker concurrency settings.
@@ -272,6 +274,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("redis_write_timeout", 5*time.Second)
 	v.SetDefault("redis_max_retries", 3)
 	v.SetDefault("redis_max_active_conns", 0)
+	v.SetDefault("redis_tls_enabled", false)
+	v.SetDefault("redis_tls_ca_file", "")
 
 	// Database
 	v.SetDefault("db_host", "127.0.0.1")

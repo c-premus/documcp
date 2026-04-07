@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -96,6 +99,26 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	// in structured logs instead of raw stderr.
 	redis.SetLogger(&redisSlogLogger{logger: logger})
 
+	// Build TLS config for Redis if enabled (cloud-managed Redis requires TLS).
+	var redisTLS *tls.Config
+	if cfg.Redis.TLSEnabled {
+		redisTLS = &tls.Config{MinVersion: tls.VersionTLS12}
+		if cfg.Redis.TLSCAFile != "" {
+			caCert, readErr := os.ReadFile(cfg.Redis.TLSCAFile)
+			if readErr != nil {
+				pgxPool.Close()
+				return nil, fmt.Errorf("reading redis TLS CA file: %w", readErr)
+			}
+			pool := x509.NewCertPool()
+			if !pool.AppendCertsFromPEM(caCert) {
+				pgxPool.Close()
+				return nil, errors.New("redis TLS CA file contains no valid certificates")
+			}
+			redisTLS.RootCAs = pool
+		}
+		logger.Info("redis TLS enabled", "ca_file", cfg.Redis.TLSCAFile)
+	}
+
 	redisOpts := &redis.Options{
 		Addr:     cfg.Redis.Addr,
 		Username: cfg.Redis.Username,
@@ -121,6 +144,8 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		MinIdleConns:    cfg.Redis.MinIdleConns,
 		MaxActiveConns:  cfg.Redis.MaxActiveConns,
 		ConnMaxIdleTime: cfg.Redis.ConnMaxIdleTime,
+
+		TLSConfig: redisTLS,
 	}
 	redisClient := redis.NewClient(redisOpts)
 	if err = redisClient.Ping(context.Background()).Err(); err != nil {
@@ -141,18 +166,19 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	// No redisotel hook — counter increments are high-frequency, low-value to trace.
 	// NOTE: Redis ACL must include +@transaction for MULTI/EXEC to succeed.
 	bareRedisClient := redis.NewClient(&redis.Options{
-		Addr:            cfg.Redis.Addr,
-		Username:        cfg.Redis.Username,
-		Password:        cfg.Redis.Password,
-		DB:              cfg.Redis.DB,
-		Protocol:        2, // RESP2: match main client; avoid RESP3 push notifications
-		DisableIdentity: true,
-		PoolSize:        3,
-		MinIdleConns:    1,
-		MaxRetries:      -1,
-		ReadTimeout:     500 * time.Millisecond,
-		WriteTimeout:    500 * time.Millisecond,
+		Addr:                  cfg.Redis.Addr,
+		Username:              cfg.Redis.Username,
+		Password:              cfg.Redis.Password,
+		DB:                    cfg.Redis.DB,
+		Protocol:              2, // RESP2: match main client; avoid RESP3 push notifications
+		DisableIdentity:       true,
+		PoolSize:              3,
+		MinIdleConns:          1,
+		MaxRetries:            -1,
+		ReadTimeout:           500 * time.Millisecond,
+		WriteTimeout:          500 * time.Millisecond,
 		ContextTimeoutEnabled: true,
+		TLSConfig:             redisTLS,
 	})
 	if err = bareRedisClient.Ping(context.Background()).Err(); err != nil {
 		_ = redisClient.Close()

@@ -5,10 +5,10 @@ package pdf
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	lpdf "github.com/ledongthuc/pdf"
@@ -22,6 +22,10 @@ const (
 
 	// defaultMaxExtractedTextSize is the maximum size of extracted text (50 MiB).
 	defaultMaxExtractedTextSize = 50 * 1024 * 1024
+
+	// defaultExtractionTimeout is the maximum duration for PDF text extraction.
+	// Protects against PDFs with complex structures that cause excessive parse time.
+	defaultExtractionTimeout = 2 * time.Minute
 )
 
 // PDFExtractor extracts text from PDF files via pure Go libraries.
@@ -55,47 +59,88 @@ func (e *PDFExtractor) Supports(mimeType string) bool {
 
 // Extract reads the PDF at filePath and returns its text content and metadata.
 // It uses ledongthuc/pdf for text extraction and pdfcpu for metadata.
+// Extraction runs in a goroutine with a timeout to prevent indefinite blocking
+// (the underlying library does not accept context.Context).
 func (e *PDFExtractor) Extract(ctx context.Context, filePath string) (*extractor.ExtractedContent, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("context canceled before PDF extraction: %w", err)
 	}
 
-	text, err := extractText(filePath, e.maxExtractedTextSize)
-	if err != nil {
-		return nil, fmt.Errorf("extracting PDF text: %w", err)
+	ctx, cancel := context.WithTimeout(ctx, defaultExtractionTimeout)
+	defer cancel()
+
+	type result struct {
+		content *extractor.ExtractedContent
+		err     error
 	}
+	ch := make(chan result, 1)
+	go func() {
+		text, err := extractText(filePath, e.maxExtractedTextSize)
+		if err != nil {
+			ch <- result{err: fmt.Errorf("extracting PDF text: %w", err)}
+			return
+		}
+		metadata := extractMetadata(filePath)
+		ch <- result{content: &extractor.ExtractedContent{
+			Content:   text,
+			Metadata:  metadata,
+			WordCount: len(strings.Fields(text)),
+		}}
+	}()
 
-	metadata := extractMetadata(filePath)
-
-	return &extractor.ExtractedContent{
-		Content:   text,
-		Metadata:  metadata,
-		WordCount: len(strings.Fields(text)),
-	}, nil
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("PDF extraction timed out: %w", ctx.Err())
+	case r := <-ch:
+		return r.content, r.err
+	}
 }
 
-// extractText uses ledongthuc/pdf to extract plain text from a PDF file.
-func extractText(filePath string, maxSize int64) (string, error) {
+// extractText extracts plain text from a PDF file page-by-page.
+// Unlike Reader.GetPlainText() which accumulates all pages into memory before
+// returning, this checks the running size after each page to bound memory usage.
+// The per-page Page.GetPlainText() has its own recover() for panics during
+// content parsing. We add an outer recover() for panics during Open/NumPage/Page
+// (cross-reference table parsing, encryption handling, etc.).
+func extractText(filePath string, maxSize int64) (text string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			text = ""
+			err = fmt.Errorf("PDF parser panic: %v", r)
+		}
+	}()
+
 	f, r, err := lpdf.Open(filePath)
 	if err != nil {
 		return "", fmt.Errorf("opening PDF: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 
-	reader, err := r.GetPlainText()
-	if err != nil {
-		return "", fmt.Errorf("reading PDF text: %w", err)
+	pages := r.NumPage()
+	fonts := make(map[string]*lpdf.Font)
+
+	var buf strings.Builder
+	buf.Grow(min(int(maxSize), 1<<20)) // pre-allocate up to 1 MiB
+
+	for i := 1; i <= pages; i++ {
+		p := r.Page(i)
+		for _, name := range p.Fonts() {
+			if _, ok := fonts[name]; !ok {
+				font := p.Font(name)
+				fonts[name] = &font
+			}
+		}
+		pageText, pageErr := p.GetPlainText(fonts)
+		if pageErr != nil {
+			return "", fmt.Errorf("extracting page %d: %w", i, pageErr)
+		}
+		buf.WriteString(pageText)
+		if int64(buf.Len()) > maxSize {
+			return "", fmt.Errorf("extracted PDF text exceeds %d bytes limit at page %d", maxSize, i)
+		}
 	}
 
-	b, err := io.ReadAll(io.LimitReader(reader, maxSize+1))
-	if err != nil {
-		return "", fmt.Errorf("reading PDF text output: %w", err)
-	}
-	if int64(len(b)) > maxSize {
-		return "", fmt.Errorf("extracted PDF text exceeds %d bytes limit", maxSize)
-	}
-
-	return cleanText(string(b)), nil
+	return cleanText(buf.String()), nil
 }
 
 // Compiled regexes for PDF text cleanup.
@@ -204,10 +249,16 @@ func isContinuation(r rune) bool {
 }
 
 // extractMetadata uses pdfcpu to read PDF document properties.
-// It returns a best-effort result — if metadata extraction fails,
+// It returns a best-effort result — if metadata extraction fails or panics,
 // an empty map is returned.
-func extractMetadata(filePath string) map[string]any {
-	metadata := make(map[string]any)
+func extractMetadata(filePath string) (metadata map[string]any) {
+	metadata = make(map[string]any)
+
+	defer func() {
+		if r := recover(); r != nil {
+			metadata = make(map[string]any)
+		}
+	}()
 
 	f, err := os.Open(filePath)
 	if err != nil {

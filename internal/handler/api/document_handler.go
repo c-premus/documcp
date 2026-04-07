@@ -495,7 +495,7 @@ func canAccessDocument(user *model.User, doc *model.Document) bool {
 // (quotes, backslashes, control characters including DEL, path separators).
 func sanitizeFilename(name string) string {
 	return strings.Map(func(r rune) rune {
-		if r == '"' || r == '\\' || r < 32 || r == 127 || r == '/' || r == ':' {
+		if r == '"' || r == '\\' || r < 32 || r == 127 || r == '/' || r == ':' || r == ';' {
 			return '_'
 		}
 		return r

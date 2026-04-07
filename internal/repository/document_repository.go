@@ -401,7 +401,7 @@ func (r *DocumentRepository) ListDistinctTags(ctx context.Context, prefix string
 		WHERE d.deleted_at IS NULL AND dt.tag ILIKE $1
 		ORDER BY dt.tag LIMIT $2`
 
-	rows, err := r.db.Query(ctx, query, prefix+"%", limit)
+	rows, err := r.db.Query(ctx, query, escapeLike(prefix)+"%", limit)
 	if err != nil {
 		return nil, fmt.Errorf("listing distinct tags: %w", err)
 	}
