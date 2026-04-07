@@ -122,7 +122,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	documentH := apihandler.NewDocumentHandler(documentPipeline, f.DocumentRepo, logger)
 	searchH := apihandler.NewSearchHandler(f.Searcher, f.SearchQueryRepo, f.DocumentRepo, logger)
 	zimH := apihandler.NewZimHandler(f.ZimArchiveRepo, &apihandler.KiwixFactoryAdapter{Factory: f.KiwixFactory}, logger)
-	gitTemplateH := apihandler.NewGitTemplateHandler(f.GitTemplateRepo, riverClient, logger)
+	gitTemplateH := apihandler.NewGitTemplateHandler(f.GitTemplateRepo, riverClient, logger, f.Encryptor != nil)
 	externalServiceH := apihandler.NewExternalServiceHandler(externalServiceSvc, f.ExternalServiceRepo, riverClient, f.KiwixFactory, logger)
 	userH := apihandler.NewUserHandler(f.OAuthRepo, logger)
 	oauthClientH := apihandler.NewOAuthClientHandler(f.OAuthRepo, logger)
