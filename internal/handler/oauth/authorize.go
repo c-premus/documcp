@@ -213,6 +213,7 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 
 	contentType := r.Header.Get("Content-Type")
 	if contentType == "application/json" {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		var body struct {
 			ClientID            string `json:"client_id"`
 			RedirectURI         string `json:"redirect_uri"`
@@ -323,12 +324,18 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	}
 	if reqScope != pendingScope {
 		h.logger.Warn("scope mismatch between POST body and session", "post", reqScope, "session", pendingScope)
+		http.Error(w, "scope mismatch", http.StatusBadRequest)
+		return
 	}
 	if reqCodeChallenge != pendingCodeChallenge {
 		h.logger.Warn("code_challenge mismatch between POST body and session", "post", reqCodeChallenge, "session", pendingCodeChallenge)
+		http.Error(w, "code_challenge mismatch", http.StatusBadRequest)
+		return
 	}
 	if reqCodeChallengeMethod != pendingCodeChallengeMethod {
 		h.logger.Warn("code_challenge_method mismatch between POST body and session", "post", reqCodeChallengeMethod, "session", pendingCodeChallengeMethod)
+		http.Error(w, "code_challenge_method mismatch", http.StatusBadRequest)
+		return
 	}
 
 	// Look up client to get internal ID.
@@ -356,10 +363,20 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build redirect URL using session-validated URI — not user-supplied POST body.
-	redirectURL := pendingRedirectURI + "?code=" + url.QueryEscape(code)
-	if reqState != "" {
-		redirectURL += "&state=" + url.QueryEscape(reqState)
+	// Use url.Parse to correctly append query params even if the redirect URI
+	// already contains a query string (RFC 6749 §4.1.2).
+	parsedRedirect, parseErr := url.Parse(pendingRedirectURI)
+	if parseErr != nil {
+		http.Error(w, "Invalid redirect URI", http.StatusBadRequest)
+		return
 	}
+	q := parsedRedirect.Query()
+	q.Set("code", code)
+	if reqState != "" {
+		q.Set("state", reqState)
+	}
+	parsedRedirect.RawQuery = q.Encode()
+	redirectURL := parsedRedirect.String()
 
 	// Replace pending state with completed state so retries re-redirect
 	// instead of returning 400. The auth code is single-use at the token
@@ -395,6 +412,7 @@ func (h *Handler) AuthorizeDeny(w http.ResponseWriter, r *http.Request) {
 
 	contentType := r.Header.Get("Content-Type")
 	if contentType == "application/json" {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		var body struct {
 			Nonce string `json:"nonce"`
 		}

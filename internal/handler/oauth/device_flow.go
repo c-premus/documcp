@@ -1,8 +1,11 @@
 package oauthhandler
 
 import (
+	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -46,10 +49,8 @@ func (h *Handler) DeviceAuthorization(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		h.logger.Error("generating device code", "error", err)
-		// Check for specific client errors
-		msg := err.Error()
-		if msg == "invalid or inactive client" || msg == "client does not support device_code grant type" {
-			oauthError(w, http.StatusBadRequest, "invalid_client", msg)
+		if errors.Is(err, oauth.ErrInvalidClient) || errors.Is(err, oauth.ErrUnsupportedGrant) {
+			oauthError(w, http.StatusBadRequest, "invalid_client", err.Error())
 			return
 		}
 		oauthError(w, http.StatusInternalServerError, "server_error", "An internal error occurred while processing the device authorization request")
@@ -69,7 +70,7 @@ func (h *Handler) DeviceVerification(w http.ResponseWriter, r *http.Request) {
 	}
 	userID, ok := session.Values["user_id"].(int64)
 	if !ok || userID == 0 {
-		http.Redirect(w, r, "/auth/login?redirect="+r.URL.RequestURI(), http.StatusFound)
+		http.Redirect(w, r, "/auth/login?redirect="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
 		return
 	}
 
@@ -241,7 +242,7 @@ func (h *Handler) DeviceApprove(w http.ResponseWriter, r *http.Request) {
 
 	// Validate user code matches
 	pendingUserCode, _ := pending["user_code"].(string)
-	if oauth.NormalizeUserCode(userCode) != oauth.NormalizeUserCode(pendingUserCode) {
+	if subtle.ConstantTimeCompare([]byte(oauth.NormalizeUserCode(userCode)), []byte(oauth.NormalizeUserCode(pendingUserCode))) != 1 {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = deviceErrorTmpl.Execute(w, "User code mismatch. Please restart the authorization flow.")
 		return

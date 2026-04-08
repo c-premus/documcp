@@ -158,7 +158,7 @@ func (h *ExternalServiceHandler) Create(w http.ResponseWriter, r *http.Request) 
 	})
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidURL) {
-			errorResponse(w, http.StatusUnprocessableEntity, err.Error())
+			errorResponse(w, http.StatusUnprocessableEntity, "invalid URL")
 			return
 		}
 		h.logger.Error("creating external service", "error", err)
@@ -211,7 +211,7 @@ func (h *ExternalServiceHandler) Update(w http.ResponseWriter, r *http.Request) 
 	})
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidURL) {
-			errorResponse(w, http.StatusUnprocessableEntity, err.Error())
+			errorResponse(w, http.StatusUnprocessableEntity, "invalid URL")
 			return
 		}
 		h.logger.Error("updating external service", "uuid", svcUUID, "error", err)

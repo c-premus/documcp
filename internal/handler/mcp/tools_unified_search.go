@@ -321,7 +321,9 @@ func (h *Handler) searchKiwixArchives(ctx context.Context, query string, perArch
 	var wg sync.WaitGroup
 
 	// Limit concurrent Kiwix requests to avoid overwhelming the server.
-	sem := make(chan struct{}, 20)
+	// Matches MaxIdleConnsPerHost on the Kiwix HTTP transport so all
+	// goroutines can reuse persistent connections without head-of-line blocking.
+	sem := make(chan struct{}, 10)
 
 	for i := range archives {
 		wg.Add(1)

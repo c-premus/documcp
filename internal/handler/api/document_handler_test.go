@@ -311,6 +311,12 @@ func chiContext(r *http.Request, params map[string]string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 }
 
+// withAdminUser injects an admin user into the request context for ownership checks.
+func withAdminUser(r *http.Request) *http.Request {
+	ctx := context.WithValue(r.Context(), authmiddleware.UserContextKey, &model.User{ID: 1, IsAdmin: true})
+	return r.WithContext(ctx)
+}
+
 func decodeJSONBody(t *testing.T, body io.Reader) map[string]any {
 	t.Helper()
 	var result map[string]any
@@ -395,6 +401,7 @@ func TestDocumentHandler_Update(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPut, "/api/documents/abc-123",
 			strings.NewReader("not json"))
 		req = chiContext(req, map[string]string{"uuid": "abc-123"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Update(rr, req)
@@ -422,6 +429,7 @@ func TestDocumentHandler_Update(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPut, "/api/documents/nonexistent",
 			strings.NewReader(body))
 		req = chiContext(req, map[string]string{"uuid": "nonexistent"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Update(rr, req)
@@ -452,6 +460,7 @@ func TestDocumentHandler_Update(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPut, "/api/documents/abc-123",
 			strings.NewReader(reqBody))
 		req = chiContext(req, map[string]string{"uuid": "abc-123"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Update(rr, req)
@@ -473,6 +482,7 @@ func TestDocumentHandler_Update(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPut, "/api/documents/missing",
 			strings.NewReader(reqBody))
 		req = chiContext(req, map[string]string{"uuid": "missing"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Update(rr, req)
@@ -510,6 +520,7 @@ func TestDocumentHandler_Delete(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/documents/abc-123", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "abc-123"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Delete(rr, req)
@@ -535,6 +546,7 @@ func TestDocumentHandler_Delete(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/documents/nonexistent", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "nonexistent"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Delete(rr, req)
@@ -563,6 +575,7 @@ func TestDocumentHandler_Delete(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/documents/abc-123", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "abc-123"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Delete(rr, req)
@@ -1867,6 +1880,7 @@ func TestDocumentHandler_Restore(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, "/api/documents/restore-uuid/restore", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "restore-uuid"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Restore(rr, req)
@@ -1890,6 +1904,7 @@ func TestDocumentHandler_Restore(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, "/api/documents/missing/restore", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "missing"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Restore(rr, req)
@@ -1911,6 +1926,7 @@ func TestDocumentHandler_Restore(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, "/api/documents/err/restore", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "err"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Restore(rr, req)
@@ -1935,6 +1951,7 @@ func TestDocumentHandler_Restore(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, "/api/documents/not-deleted-uuid/restore", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "not-deleted-uuid"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Restore(rr, req)
@@ -1962,6 +1979,7 @@ func TestDocumentHandler_Restore(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, "/api/documents/restore-fail-uuid/restore", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "restore-fail-uuid"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Restore(rr, req)
@@ -1992,6 +2010,7 @@ func TestDocumentHandler_Restore(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, "/api/documents/refetch-fail-uuid/restore", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "refetch-fail-uuid"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Restore(rr, req)
@@ -2026,6 +2045,7 @@ func TestDocumentHandler_Purge(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/documents/purge-uuid/purge", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "purge-uuid"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Purge(rr, req)
@@ -2058,6 +2078,7 @@ func TestDocumentHandler_Purge(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/documents/purge-file-uuid/purge", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "purge-file-uuid"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Purge(rr, req)
@@ -2079,6 +2100,7 @@ func TestDocumentHandler_Purge(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/documents/missing/purge", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "missing"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Purge(rr, req)
@@ -2098,6 +2120,7 @@ func TestDocumentHandler_Purge(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/documents/err/purge", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "err"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Purge(rr, req)
@@ -2121,6 +2144,7 @@ func TestDocumentHandler_Purge(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/documents/purge-err-uuid/purge", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "purge-err-uuid"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.Purge(rr, req)

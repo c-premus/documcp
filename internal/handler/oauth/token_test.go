@@ -482,7 +482,7 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 					ExpiresAt: time.Now().Add(15 * time.Minute),
 				}, nil
 			},
-			UpdateDeviceCodeStatusFunc: func(_ context.Context, _ int64, _ model.DeviceCodeStatus, _ *int64) error {
+			ExchangeDeviceCodeStatusFunc: func(_ context.Context, _ int64) error {
 				return nil
 			},
 			CreateAccessTokenFunc: func(_ context.Context, token *model.OAuthAccessToken) error {
@@ -534,7 +534,7 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 					ExpiresAt: time.Now().Add(15 * time.Minute),
 				}, nil
 			},
-			UpdateDeviceCodeStatusFunc: func(_ context.Context, _ int64, _ model.DeviceCodeStatus, _ *int64) error {
+			ExchangeDeviceCodeStatusFunc: func(_ context.Context, _ int64) error {
 				return errors.New("disk full")
 			},
 		}

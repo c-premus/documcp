@@ -19,6 +19,11 @@ import (
 func (h *DocumentHandler) Restore(w http.ResponseWriter, r *http.Request) {
 	docUUID := chi.URLParam(r, "uuid")
 
+	if !h.checkOwnership(r, docUUID) {
+		errorResponse(w, http.StatusNotFound, "document not found")
+		return
+	}
+
 	doc, err := h.repo.FindByUUIDIncludingDeleted(r.Context(), docUUID)
 	if err != nil {
 		h.logger.Error("finding document for restore", "uuid", docUUID, "error", err)
@@ -59,6 +64,11 @@ func (h *DocumentHandler) Restore(w http.ResponseWriter, r *http.Request) {
 // Purge handles DELETE /api/documents/{uuid}/purge — permanently delete a document.
 func (h *DocumentHandler) Purge(w http.ResponseWriter, r *http.Request) {
 	docUUID := chi.URLParam(r, "uuid")
+
+	if !h.checkOwnership(r, docUUID) {
+		errorResponse(w, http.StatusNotFound, "document not found")
+		return
+	}
 
 	doc, err := h.repo.FindByUUIDIncludingDeleted(r.Context(), docUUID)
 	if err != nil {

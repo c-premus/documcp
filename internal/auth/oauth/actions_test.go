@@ -51,6 +51,7 @@ type mockOAuthRepo struct {
 	FindDeviceCodeByUserCodeFunc   func(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
 	UpdateDeviceCodeStatusFunc         func(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64) error
 	UpdateDeviceCodeStatusAndScopeFunc func(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64, scope string) error
+	ExchangeDeviceCodeStatusFunc       func(ctx context.Context, id int64) error
 	UpdateDeviceCodeLastPolledFunc     func(ctx context.Context, id int64, interval int) error
 	// Users
 	FindUserByIDFunc func(ctx context.Context, id int64) (*model.User, error)
@@ -206,6 +207,13 @@ func (m *mockOAuthRepo) UpdateDeviceCodeStatus(ctx context.Context, id int64, st
 func (m *mockOAuthRepo) UpdateDeviceCodeStatusAndScope(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64, scope string) error {
 	if m.UpdateDeviceCodeStatusAndScopeFunc != nil {
 		return m.UpdateDeviceCodeStatusAndScopeFunc(ctx, id, status, userID, scope)
+	}
+	return nil
+}
+
+func (m *mockOAuthRepo) ExchangeDeviceCodeStatus(ctx context.Context, id int64) error {
+	if m.ExchangeDeviceCodeStatusFunc != nil {
+		return m.ExchangeDeviceCodeStatusFunc(ctx, id)
 	}
 	return nil
 }
@@ -2397,7 +2405,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 
 		dcPlaintext, dcHash, client, dc := setupDeviceExchange(t, model.DeviceCodeStatusAuthorized)
 
-		var statusUpdated model.DeviceCodeStatus
+		var exchangeCalled bool
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
 				return client, nil
@@ -2409,8 +2417,8 @@ func TestExchangeDeviceCode(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 			UpdateDeviceCodeLastPolledFunc: func(_ context.Context, _ int64, _ int) error { return nil },
-			UpdateDeviceCodeStatusFunc: func(_ context.Context, _ int64, status model.DeviceCodeStatus, _ *int64) error {
-				statusUpdated = status
+			ExchangeDeviceCodeStatusFunc: func(_ context.Context, _ int64) error {
+				exchangeCalled = true
 				return nil
 			},
 			CreateAccessTokenFunc:  func(_ context.Context, t *model.OAuthAccessToken) error { t.ID = 301; return nil },
@@ -2429,7 +2437,7 @@ func TestExchangeDeviceCode(t *testing.T) {
 		assert.NotEmpty(t, result.RefreshToken)
 		assert.Equal(t, "Bearer", result.TokenType)
 		assert.Equal(t, "mcp:access", result.Scope)
-		assert.Equal(t, model.DeviceCodeStatusExchanged, statusUpdated)
+		assert.True(t, exchangeCalled)
 	})
 
 	t.Run("pending status returns authorization_pending", func(t *testing.T) {

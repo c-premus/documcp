@@ -642,6 +642,12 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	if c.Redis.PoolSize < 0 {
 		errs = append(errs, "REDIS_POOL_SIZE must be non-negative")
 	}
+	totalWorkers := c.Queue.HighWorkers + c.Queue.DefaultWorkers + c.Queue.LowWorkers
+	if c.Database.MaxOpenConns > 0 && totalWorkers > 2*c.Database.MaxOpenConns {
+		errs = append(errs, fmt.Sprintf(
+			"total queue workers (%d) exceed 2× DB_MAX_OPEN_CONNS (%d); increase pool or reduce workers",
+			totalWorkers, c.Database.MaxOpenConns))
+	}
 	if c.Git.MaxFileSize <= 0 {
 		errs = append(errs, "GIT_MAX_FILE_SIZE must be positive")
 	}

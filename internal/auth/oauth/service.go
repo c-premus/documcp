@@ -47,6 +47,7 @@ type OAuthRepo interface {
 	FindDeviceCodeByUserCode(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
 	UpdateDeviceCodeStatus(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64) error
 	UpdateDeviceCodeStatusAndScope(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64, scope string) error
+	ExchangeDeviceCodeStatus(ctx context.Context, id int64) error
 	UpdateDeviceCodeLastPolled(ctx context.Context, id int64, interval int) error
 	// Users
 	FindUserByID(ctx context.Context, id int64) (*model.User, error)

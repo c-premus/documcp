@@ -195,7 +195,7 @@ func New(cfg Config) *Handler {
 	// Apply federated search defaults.
 	fedTimeout := cfg.FederatedSearchTimeout
 	if fedTimeout == 0 {
-		fedTimeout = 3 * time.Second
+		fedTimeout = 5 * time.Second
 	}
 	fedMaxArchives := cfg.FederatedMaxArchives
 	if fedMaxArchives == 0 {

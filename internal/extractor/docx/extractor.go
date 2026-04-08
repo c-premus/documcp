@@ -25,6 +25,10 @@ const (
 
 	// defaultMaxDecompressedFileSize is the maximum decompressed size per file (50 MiB).
 	defaultMaxDecompressedFileSize = 50 * 1024 * 1024
+
+	// defaultMaxTotalDecompressed is the cumulative decompression budget across all files (100 MiB).
+	// Prevents zip bombs where many small entries each decompress within per-file limits.
+	defaultMaxTotalDecompressed = 100 * 1024 * 1024
 )
 
 // wordprocessingML namespace.
@@ -41,8 +45,9 @@ type coreProperties struct {
 //
 //nolint:revive // exported stutter is intentional; renaming would be a breaking change
 type DOCXExtractor struct {
-	maxZIPFiles            int
+	maxZIPFiles             int
 	maxDecompressedFileSize int64
+	maxTotalDecompressed    int64
 }
 
 // Compile-time check that DOCXExtractor implements extractor.Extractor.
@@ -51,8 +56,9 @@ var _ extractor.Extractor = (*DOCXExtractor)(nil)
 // New creates a new DOCXExtractor with default limits.
 func New() *DOCXExtractor {
 	return &DOCXExtractor{
-		maxZIPFiles:            defaultMaxZIPFiles,
+		maxZIPFiles:             defaultMaxZIPFiles,
 		maxDecompressedFileSize: defaultMaxDecompressedFileSize,
+		maxTotalDecompressed:    defaultMaxTotalDecompressed,
 	}
 }
 
@@ -88,6 +94,18 @@ func (e *DOCXExtractor) Extract(ctx context.Context, filePath string) (*extracto
 
 	if len(zr.File) > e.maxZIPFiles {
 		return nil, fmt.Errorf("docx %q contains %d files, exceeding limit of %d", filePath, len(zr.File), e.maxZIPFiles)
+	}
+
+	// Pre-flight check: verify cumulative decompressed size from ZIP directory
+	// headers. This is a first gate against zip bombs; per-file io.LimitReader
+	// in parseZipXML is the enforcement layer.
+	var totalUncompressed uint64
+	budget := uint64(max(e.maxTotalDecompressed, 0)) //nolint:gosec // maxTotalDecompressed is always positive (default 100 MiB)
+	for _, f := range zr.File {
+		totalUncompressed += f.UncompressedSize64
+		if totalUncompressed > budget {
+			return nil, fmt.Errorf("docx %q total decompressed size exceeds budget of %d bytes", filePath, e.maxTotalDecompressed)
+		}
 	}
 
 	content, err := extractText(zr, e.maxDecompressedFileSize)

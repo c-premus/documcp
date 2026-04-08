@@ -90,7 +90,12 @@ func ParseToken(plaintext string) (id int64, hash string, err error) {
 }
 
 // HashSecret hashes a client secret using bcrypt.
+// Bcrypt silently truncates input at 72 bytes — reject longer secrets to
+// prevent two distinct secrets from hashing identically.
 func HashSecret(secret string) (string, error) {
+	if len(secret) > 72 {
+		return "", fmt.Errorf("secret length %d exceeds bcrypt maximum of 72 bytes", len(secret))
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
 	if err != nil {
 		return "", fmt.Errorf("hashing secret: %w", err)
@@ -99,7 +104,11 @@ func HashSecret(secret string) (string, error) {
 }
 
 // VerifySecret checks a plaintext secret against a bcrypt hash.
+// Returns false for secrets exceeding bcrypt's 72-byte limit.
 func VerifySecret(hash, secret string) bool {
+	if len(secret) > 72 {
+		return false
+	}
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(secret)) == nil
 }
 
