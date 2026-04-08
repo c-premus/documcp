@@ -96,7 +96,17 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
           go build -o bin/documcp ./cmd/documcp
-          govulncheck -mode=binary ./bin/documcp
+          govulncheck -mode=binary ./bin/documcp 2>&1 | tee /tmp/vulncheck.out || true
+
+          # Fail only if fixable vulnerabilities exist (have a "Fixed in" version).
+          # Unfixed vulns (Fixed in: N/A) are tracked but don't block CI.
+          if grep -q 'Fixed in: v' /tmp/vulncheck.out; then
+            echo "::error::Fixable vulnerabilities found — upgrade the affected modules"
+            exit 1
+          fi
+          if grep -q 'Vulnerability #' /tmp/vulncheck.out; then
+            echo "::warning::Unfixed vulnerabilities detected (no patch available) — see scan output above"
+          fi
 
   frontend:
     name: Frontend
