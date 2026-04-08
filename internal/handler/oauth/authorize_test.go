@@ -339,9 +339,11 @@ func TestHandler_Authorize(t *testing.T) {
 		assert.NotNil(t, pending["timestamp"])
 	})
 
-	t.Run("admin user expands read-only client scope on authorize", func(t *testing.T) {
+	t.Run("admin user creates scope grant on authorize", func(t *testing.T) {
 		t.Parallel()
-		var expandedScope string
+		var grantedScope string
+		var grantedBy int64
+		baseScope := "documents:read mcp:access search:read services:read templates:read zim:read"
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
 				return &model.OAuthClient{
@@ -350,22 +352,22 @@ func TestHandler_Authorize(t *testing.T) {
 					ClientName:              "Auto-Registered App",
 					RedirectURIs:            `["https://example.com/cb"]`,
 					TokenEndpointAuthMethod: "none",
-					Scope:                   sql.NullString{String: "documents:read mcp:access search:read services:read templates:read zim:read", Valid: true},
-				}, nil
-			},
-			FindClientByIDFunc: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
-				return &model.OAuthClient{
-					ID:       1,
-					ClientID: "cid",
-					Scope:    sql.NullString{String: "documents:read mcp:access search:read services:read templates:read zim:read", Valid: true},
+					Scope:                   sql.NullString{String: baseScope, Valid: true},
 				}, nil
 			},
 			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
 				return &model.User{ID: id, IsAdmin: true}, nil
 			},
-			UpdateClientScopeFunc: func(_ context.Context, _ int64, scope string) error {
-				expandedScope = scope
+			UpsertScopeGrantFunc: func(_ context.Context, grant *model.OAuthClientScopeGrant) error {
+				grantedScope = grant.Scope
+				grantedBy = grant.GrantedBy
 				return nil
+			},
+			FindActiveScopeGrantsFunc: func(_ context.Context, _ int64) ([]model.OAuthClientScopeGrant, error) {
+				// Return the grant we just created to simulate effective scope.
+				return []model.OAuthClientScopeGrant{
+					{Scope: "admin documents:read documents:write mcp:access"},
+				}, nil
 			},
 		}
 		h, store := newHandlerWithRepo(repo)
@@ -379,18 +381,20 @@ func TestHandler_Authorize(t *testing.T) {
 		h.Authorize(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
-		// Verify client scope was expanded to include admin and write scopes.
-		assert.NotEmpty(t, expandedScope, "UpdateClientScope should have been called")
-		assert.Contains(t, expandedScope, "admin")
-		assert.Contains(t, expandedScope, "documents:write")
+		// Verify a scope grant was created (not permanent client scope mutation).
+		assert.NotEmpty(t, grantedScope, "UpsertScopeGrant should have been called")
+		assert.Contains(t, grantedScope, "admin")
+		assert.Contains(t, grantedScope, "documents:write")
+		assert.Equal(t, int64(42), grantedBy)
 		// Verify consent screen shows the requested admin scopes.
 		body := rr.Body.String()
 		assert.Contains(t, body, "admin")
 	})
 
-	t.Run("non-admin user does not expand client scope beyond defaults", func(t *testing.T) {
+	t.Run("non-admin user grant contains only default scopes", func(t *testing.T) {
 		t.Parallel()
-		var expandCalled bool
+		var grantCalled bool
+		baseScope := "documents:read mcp:access search:read services:read templates:read zim:read"
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
 				return &model.OAuthClient{
@@ -399,22 +403,18 @@ func TestHandler_Authorize(t *testing.T) {
 					ClientName:              "Auto-Registered App",
 					RedirectURIs:            `["https://example.com/cb"]`,
 					TokenEndpointAuthMethod: "none",
-					Scope:                   sql.NullString{String: "documents:read mcp:access search:read services:read templates:read zim:read", Valid: true},
-				}, nil
-			},
-			FindClientByIDFunc: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
-				return &model.OAuthClient{
-					ID:       1,
-					ClientID: "cid",
-					Scope:    sql.NullString{String: "documents:read mcp:access search:read services:read templates:read zim:read", Valid: true},
+					Scope:                   sql.NullString{String: baseScope, Valid: true},
 				}, nil
 			},
 			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
 				return &model.User{ID: id, IsAdmin: false}, nil
 			},
-			UpdateClientScopeFunc: func(_ context.Context, _ int64, _ string) error {
-				expandCalled = true
+			UpsertScopeGrantFunc: func(_ context.Context, _ *model.OAuthClientScopeGrant) error {
+				grantCalled = true
 				return nil
+			},
+			FindActiveScopeGrantsFunc: func(_ context.Context, _ int64) ([]model.OAuthClientScopeGrant, error) {
+				return nil, nil
 			},
 		}
 		h, store := newHandlerWithRepo(repo)
@@ -428,9 +428,9 @@ func TestHandler_Authorize(t *testing.T) {
 		h.Authorize(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
-		// Non-admin requesting only default scopes — client already has them,
-		// so ExpandClientScope is a no-op (Union returns same set).
-		assert.False(t, expandCalled, "UpdateClientScope should not be called when scope is unchanged")
+		// Non-admin requesting only default scopes — grant is created but
+		// contains only scopes that intersect with user entitlements.
+		assert.True(t, grantCalled, "UpsertScopeGrant should be called even for default scopes")
 	})
 }
 

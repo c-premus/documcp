@@ -153,20 +153,31 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 		scope = authCode.Scope.String
 	}
 
-	// Defense-in-depth: narrow scope to client's registered scope.
+	// Defense-in-depth: narrow scope to client's effective scope (base + grants).
 	// The authorize handler already intersects, but enforce here too so a
 	// regression in the handler cannot produce over-scoped tokens.
-	if scope != "" && client.Scope.Valid && client.Scope.String != "" {
-		narrowed := authscope.Intersect(scope, client.Scope.String)
-		if narrowed != scope {
-			s.logger.Warn("narrowed auth code scope to client registration",
-				"original_scope", scope, "effective_scope", narrowed,
-				"client_id", params.ClientID,
-			)
-			scope = narrowed
+	if scope != "" {
+		baseScope := ""
+		if client.Scope.Valid {
+			baseScope = client.Scope.String
 		}
-		if scope == "" {
-			return nil, errors.New("none of the granted scopes are allowed for this client")
+		clientEffective, effErr := s.EffectiveClientScope(ctx, client.ID, baseScope)
+		if effErr != nil {
+			s.logger.Error("computing effective client scope for token exchange", "error", effErr)
+			clientEffective = baseScope
+		}
+		if clientEffective != "" {
+			narrowed := authscope.Intersect(scope, clientEffective)
+			if narrowed != scope {
+				s.logger.Warn("narrowed auth code scope to effective client scope",
+					"original_scope", scope, "effective_scope", narrowed,
+					"client_id", params.ClientID,
+				)
+				scope = narrowed
+			}
+			if scope == "" {
+				return nil, errors.New("none of the granted scopes are allowed for this client")
+			}
 		}
 	}
 

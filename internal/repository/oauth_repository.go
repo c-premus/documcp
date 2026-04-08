@@ -561,6 +561,63 @@ func (r *OAuthRepository) UpdateClientScope(ctx context.Context, clientID int64,
 	return nil
 }
 
+//nolint:godot // ---------------------------------------------------------------------------
+// Scope Grants.
+//nolint:godot // ---------------------------------------------------------------------------
+
+// UpsertScopeGrant creates or updates a scope grant for a client-user pair.
+// On conflict (same client + user), the scope and TTL are refreshed.
+func (r *OAuthRepository) UpsertScopeGrant(ctx context.Context, grant *model.OAuthClientScopeGrant) error {
+	err := r.db.QueryRow(ctx,
+		`INSERT INTO oauth_client_scope_grants (client_id, scope, granted_by, expires_at)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (client_id, granted_by) DO UPDATE
+			SET scope = $2, expires_at = $4, updated_at = NOW()
+		RETURNING id, granted_at, created_at, updated_at`,
+		grant.ClientID, grant.Scope, grant.GrantedBy, grant.ExpiresAt,
+	).Scan(&grant.ID, &grant.GrantedAt, &grant.CreatedAt, &grant.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("upserting scope grant for client %d: %w", grant.ClientID, err)
+	}
+	return nil
+}
+
+// FindActiveScopeGrants returns non-expired grants for a client.
+func (r *OAuthRepository) FindActiveScopeGrants(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error) {
+	grants, err := database.Select[model.OAuthClientScopeGrant](ctx, r.db,
+		`SELECT id, client_id, scope, granted_by, granted_at, expires_at, created_at, updated_at
+		FROM oauth_client_scope_grants
+		WHERE client_id = $1 AND (expires_at IS NULL OR expires_at > NOW())
+		ORDER BY granted_at`, clientID)
+	if err != nil {
+		return nil, fmt.Errorf("finding active scope grants for client %d: %w", clientID, err)
+	}
+	return grants, nil
+}
+
+// DeleteScopeGrant removes a scope grant by ID. Returns sql.ErrNoRows if not found.
+func (r *OAuthRepository) DeleteScopeGrant(ctx context.Context, id int64) error {
+	tag, err := r.db.Exec(ctx,
+		`DELETE FROM oauth_client_scope_grants WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("deleting scope grant %d: %w", id, err)
+	}
+	if tag.RowsAffected() == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// DeleteExpiredScopeGrants removes all grants past their expiry.
+func (r *OAuthRepository) DeleteExpiredScopeGrants(ctx context.Context) (int64, error) {
+	tag, err := r.db.Exec(ctx,
+		`DELETE FROM oauth_client_scope_grants WHERE expires_at IS NOT NULL AND expires_at < NOW()`)
+	if err != nil {
+		return 0, fmt.Errorf("deleting expired scope grants: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // CountUsers returns the total number of users.
 func (r *OAuthRepository) CountUsers(ctx context.Context) (int, error) {
 	var count int

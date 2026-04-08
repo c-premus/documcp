@@ -21,10 +21,12 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockOAuthClientRepo struct {
-	listClientsFn      func(ctx context.Context, query string, limit, offset int) ([]model.OAuthClient, int, error)
-	createClientFn     func(ctx context.Context, client *model.OAuthClient) error
-	findClientByIDFn   func(ctx context.Context, id int64) (*model.OAuthClient, error)
-	deleteClientFn func(ctx context.Context, id int64) error
+	listClientsFn           func(ctx context.Context, query string, limit, offset int) ([]model.OAuthClient, int, error)
+	createClientFn          func(ctx context.Context, client *model.OAuthClient) error
+	findClientByIDFn        func(ctx context.Context, id int64) (*model.OAuthClient, error)
+	deleteClientFn          func(ctx context.Context, id int64) error
+	findActiveScopeGrantsFn func(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error)
+	deleteScopeGrantFn      func(ctx context.Context, id int64) error
 }
 
 func (m *mockOAuthClientRepo) ListClients(ctx context.Context, query string, limit, offset int) ([]model.OAuthClient, int, error) {
@@ -51,6 +53,20 @@ func (m *mockOAuthClientRepo) FindClientByID(ctx context.Context, id int64) (*mo
 func (m *mockOAuthClientRepo) DeleteClient(ctx context.Context, id int64) error {
 	if m.deleteClientFn != nil {
 		return m.deleteClientFn(ctx, id)
+	}
+	return nil
+}
+
+func (m *mockOAuthClientRepo) FindActiveScopeGrants(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error) {
+	if m.findActiveScopeGrantsFn != nil {
+		return m.findActiveScopeGrantsFn(ctx, clientID)
+	}
+	return nil, nil
+}
+
+func (m *mockOAuthClientRepo) DeleteScopeGrant(ctx context.Context, id int64) error {
+	if m.deleteScopeGrantFn != nil {
+		return m.deleteScopeGrantFn(ctx, id)
 	}
 	return nil
 }

@@ -405,6 +405,8 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 					r.Post("/", deps.OAuthClientHandler.Create)
 					r.Get("/{id}", deps.OAuthClientHandler.Show)
 					r.Delete("/{id}", deps.OAuthClientHandler.Delete)
+					r.Get("/{id}/scope-grants", deps.OAuthClientHandler.ListScopeGrants)
+					r.Delete("/{id}/scope-grants/{grantId}", deps.OAuthClientHandler.RevokeScopeGrant)
 				})
 			}
 

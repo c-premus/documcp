@@ -27,6 +27,20 @@ type OAuthClient struct {
 	UpdatedAt               sql.NullTime   `db:"updated_at" json:"updated_at"`
 }
 
+// OAuthClientScopeGrant represents a time-bounded scope expansion for an
+// OAuth client, created when a user approves consent for scopes beyond the
+// client's base registration. One grant per (client, user) pair.
+type OAuthClientScopeGrant struct {
+	ID        int64        `db:"id"         json:"id"`
+	ClientID  int64        `db:"client_id"  json:"client_id"`
+	Scope     string       `db:"scope"      json:"scope"`
+	GrantedBy int64        `db:"granted_by" json:"granted_by"`
+	GrantedAt time.Time    `db:"granted_at" json:"granted_at"`
+	ExpiresAt sql.NullTime `db:"expires_at" json:"expires_at"`
+	CreatedAt sql.NullTime `db:"created_at" json:"created_at"`
+	UpdatedAt sql.NullTime `db:"updated_at" json:"updated_at"`
+}
+
 // ParseRedirectURIs decodes the JSON redirect_uris string into a string slice.
 func (c *OAuthClient) ParseRedirectURIs() ([]string, error) {
 	var uris []string
