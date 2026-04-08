@@ -344,7 +344,7 @@ func buildSessionStore(cfg *config.Config, logger *slog.Logger) (*sessions.Cooki
 	store.Options = &sessions.Options{
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   strings.HasPrefix(cfg.App.URL, "https://"),
+		Secure:   strings.HasPrefix(cfg.App.URL, "https://") || cfg.Server.TLSEnabled,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(cfg.OAuth.SessionMaxAge.Seconds()),
 	}

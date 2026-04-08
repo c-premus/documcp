@@ -158,6 +158,8 @@ func (s *Server) registerInfraRoutes(deps Deps) {
 		r.Group(func(r chi.Router) {
 			if deps.InternalAPIToken != "" {
 				r.Use(internalTokenAuth(deps.InternalAPIToken))
+			} else {
+				s.logger.Warn("metrics endpoint exposed without authentication (INTERNAL_API_TOKEN not set)")
 			}
 			r.Method(http.MethodGet, "/metrics", observability.MetricsHandler())
 		})

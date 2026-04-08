@@ -13,6 +13,12 @@ import (
 	"github.com/c-premus/documcp/internal/model"
 )
 
+// Sentinel errors for device authorization.
+var (
+	ErrInvalidClient    = errors.New("invalid or inactive client")
+	ErrUnsupportedGrant = errors.New("client does not support device_code grant type")
+)
+
 //nolint:godot // ---------------------------------------------------------------------------
 // Device Authorization (RFC 8628).
 //nolint:godot // ---------------------------------------------------------------------------
@@ -38,19 +44,16 @@ func (s *Service) GenerateDeviceCode(ctx context.Context, params DeviceAuthoriza
 	// Look up the client
 	client, err := s.repo.FindClientByClientID(ctx, params.ClientID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, errors.New("invalid or inactive client")
-		}
-		return nil, errors.New("invalid or inactive client")
+		return nil, ErrInvalidClient
 	}
 
 	// Check client supports device_code grant
 	grantTypes, err := client.ParseGrantTypes()
 	if err != nil {
-		return nil, errors.New("client does not support device_code grant type")
+		return nil, ErrUnsupportedGrant
 	}
 	if !slices.Contains(grantTypes, "urn:ietf:params:oauth:grant-type:device_code") {
-		return nil, errors.New("client does not support device_code grant type")
+		return nil, ErrUnsupportedGrant
 	}
 
 	// Validate requested scopes
@@ -231,9 +234,13 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceC
 	case model.DeviceCodeStatusExchanged:
 		return nil, &DeviceCodeError{Code: "invalid_grant", Description: "Device code has already been used"}
 	case model.DeviceCodeStatusAuthorized:
-		// Mark as exchanged
-		if err := s.repo.UpdateDeviceCodeStatus(ctx, dc.ID, model.DeviceCodeStatusExchanged, nil); err != nil {
-			return nil, fmt.Errorf("updating device code status: %w", err)
+		// Atomically mark as exchanged — prevents concurrent polls from minting
+		// multiple token pairs (TOCTOU race). Returns error if already consumed.
+		if err := s.repo.ExchangeDeviceCodeStatus(ctx, dc.ID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, &DeviceCodeError{Code: "invalid_grant", Description: "Device code has already been used"}
+			}
+			return nil, fmt.Errorf("exchanging device code status: %w", err)
 		}
 
 		scope := ""

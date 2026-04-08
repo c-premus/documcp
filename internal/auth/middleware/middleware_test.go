@@ -203,6 +203,10 @@ func (m *mockOAuthRepo) UpdateDeviceCodeStatusAndScope(_ context.Context, _ int6
 	return nil
 }
 
+func (m *mockOAuthRepo) ExchangeDeviceCodeStatus(_ context.Context, _ int64) error {
+	return nil
+}
+
 func (m *mockOAuthRepo) UpdateDeviceCodeLastPolled(ctx context.Context, id int64, interval int) error {
 	if m.updateDeviceCodeLastPolledFn != nil {
 		return m.updateDeviceCodeLastPolledFn(ctx, id, interval)

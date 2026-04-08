@@ -43,6 +43,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req oauth.RegisterClientParams
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		oauthError(w, http.StatusBadRequest, "invalid_client_metadata", "Invalid request body")

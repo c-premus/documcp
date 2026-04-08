@@ -326,6 +326,22 @@ func (r *OAuthRepository) UpdateDeviceCodeStatus(ctx context.Context, id int64, 
 	return nil
 }
 
+// ExchangeDeviceCodeStatus atomically transitions a device code from authorized to exchanged.
+// Returns sql.ErrNoRows if the code is not in authorized state (already consumed or wrong state).
+func (r *OAuthRepository) ExchangeDeviceCodeStatus(ctx context.Context, id int64) error {
+	tag, err := r.db.Exec(ctx,
+		`UPDATE oauth_device_codes SET status = $1, updated_at = NOW()
+		WHERE id = $2 AND status = $3`,
+		model.DeviceCodeStatusExchanged, id, model.DeviceCodeStatusAuthorized)
+	if err != nil {
+		return fmt.Errorf("exchanging device code %d: %w", id, err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("device code %d not in authorized state: %w", id, sql.ErrNoRows)
+	}
+	return nil
+}
+
 // UpdateDeviceCodeStatusAndScope atomically updates status, user_id, and scope of a device code.
 func (r *OAuthRepository) UpdateDeviceCodeStatusAndScope(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64, scope string) error {
 	_, err := r.db.Exec(ctx,
