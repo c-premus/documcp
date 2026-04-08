@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/riverqueue/river"
@@ -395,7 +394,11 @@ func (w *PurgeSoftDeletedWorker) Work(ctx context.Context, job *river.Job[PurgeS
 
 	for _, fp := range purged {
 		if fp.FilePath != "" {
-			absPath := filepath.Join(w.Deps.StoragePath, fp.FilePath)
+			absPath, pathErr := security.SafeStoragePath(w.Deps.StoragePath, fp.FilePath)
+			if pathErr != nil {
+				logger.Error("unsafe file path for purged document", "path", fp.FilePath, "error", pathErr)
+				continue
+			}
 			if removeErr := os.Remove(absPath); removeErr != nil && !os.IsNotExist(removeErr) {
 				logger.Error("removing purged document file", "path", absPath, "error", removeErr)
 			}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
 	"github.com/c-premus/documcp/internal/model"
@@ -132,6 +133,10 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusBadRequest, "name and email are required")
 		return
 	}
+	if !isValidEmail(req.Email) {
+		errorResponse(w, http.StatusBadRequest, "invalid email address")
+		return
+	}
 
 	user := &model.User{
 		Name:    req.Name,
@@ -180,6 +185,10 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 		user.Name = req.Name
 	}
 	if req.Email != "" {
+		if !isValidEmail(req.Email) {
+			errorResponse(w, http.StatusBadRequest, "invalid email address")
+			return
+		}
 		user.Email = req.Email
 	}
 
@@ -261,4 +270,17 @@ func (h *UserHandler) ToggleAdmin(w http.ResponseWriter, r *http.Request) {
 // Returns the parsed ID and true on success, or writes an error response and returns false.
 func (h *UserHandler) parseID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return parseIDParam(w, r, "id", "user ID")
+}
+
+// isValidEmail performs basic email validation: must contain exactly one @,
+// have non-empty local and domain parts, and be within RFC 5321 length limit.
+func isValidEmail(email string) bool {
+	if len(email) > 254 {
+		return false
+	}
+	at := strings.Index(email, "@")
+	if at < 1 || at >= len(email)-1 {
+		return false
+	}
+	return strings.Count(email, "@") == 1
 }

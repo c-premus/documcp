@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
 	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/search"
 )
@@ -118,12 +119,18 @@ func (h *SearchHandler) FederatedSearch(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	resp, err := h.searcher.FederatedSearch(r.Context(), search.FederatedSearchParams{
+	fedParams := search.FederatedSearchParams{
 		Query:   query,
 		Indexes: indexes,
 		Limit:   limit,
 		Offset:  offset,
-	})
+	}
+	if user, ok := authmiddleware.UserFromContext(r.Context()); ok {
+		fedParams.UserID = &user.ID
+		fedParams.IsAdmin = user.IsAdmin
+	}
+
+	resp, err := h.searcher.FederatedSearch(r.Context(), fedParams)
 	if err != nil {
 		h.logger.Error("federated search", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "search failed")
