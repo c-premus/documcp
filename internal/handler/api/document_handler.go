@@ -278,8 +278,12 @@ func (h *DocumentHandler) ReplaceContent(w http.ResponseWriter, r *http.Request)
 			errorResponse(w, http.StatusNotFound, "document not found")
 			return
 		}
-		if errors.Is(err, service.ErrUnsupportedFileType) || errors.Is(err, service.ErrFileTooLarge) {
-			errorResponse(w, http.StatusBadRequest, err.Error())
+		if errors.Is(err, service.ErrUnsupportedFileType) {
+			errorResponse(w, http.StatusBadRequest, "unsupported file type")
+			return
+		}
+		if errors.Is(err, service.ErrFileTooLarge) {
+			errorResponse(w, http.StatusBadRequest, "file exceeds maximum upload size")
 			return
 		}
 		errorResponse(w, http.StatusInternalServerError, "failed to replace document content")

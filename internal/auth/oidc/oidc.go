@@ -211,6 +211,14 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid state parameter", http.StatusBadRequest)
 		return
 	}
+
+	// RFC 9207: validate issuer parameter to prevent mix-up attacks.
+	if iss := r.URL.Query().Get("iss"); iss != "" && iss != h.providerURL {
+		h.logger.Warn("OIDC callback issuer mismatch", "expected", h.providerURL, "got", iss)
+		http.Error(w, "Issuer mismatch", http.StatusBadRequest)
+		return
+	}
+
 	expectedNonce, _ := session.Values["oidc_nonce"].(string)
 	delete(session.Values, "oidc_state")
 	delete(session.Values, "oidc_nonce")

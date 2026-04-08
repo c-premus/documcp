@@ -107,8 +107,8 @@ func (h *DocumentHandler) BulkPurge(w http.ResponseWriter, r *http.Request) {
 	days := 30
 	if d := r.URL.Query().Get("older_than_days"); d != "" {
 		parsed, err := strconv.Atoi(d)
-		if err != nil || parsed < 0 {
-			errorResponse(w, http.StatusBadRequest, "older_than_days must be a non-negative integer")
+		if err != nil || parsed < 0 || parsed > 3650 {
+			errorResponse(w, http.StatusBadRequest, "older_than_days must be between 0 and 3650")
 			return
 		}
 		days = parsed

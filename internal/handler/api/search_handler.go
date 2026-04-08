@@ -209,12 +209,17 @@ func (h *SearchHandler) Autocomplete(w http.ResponseWriter, r *http.Request) {
 
 // highlightPrefix wraps the matched prefix portion of title in <em> tags.
 // The match is case-insensitive. Both segments are HTML-escaped to prevent XSS.
+// Uses rune-based slicing to correctly handle multi-byte UTF-8 characters.
 func highlightPrefix(title, prefix string) string {
-	if prefix == "" || len(prefix) > len(title) {
+	prefixRunes := []rune(prefix)
+	titleRunes := []rune(title)
+	if len(prefixRunes) == 0 || len(prefixRunes) > len(titleRunes) {
 		return html.EscapeString(title)
 	}
-	if !strings.EqualFold(title[:len(prefix)], prefix) {
+	titlePrefix := string(titleRunes[:len(prefixRunes)])
+	if !strings.EqualFold(titlePrefix, prefix) {
 		return html.EscapeString(title)
 	}
-	return "<em>" + html.EscapeString(title[:len(prefix)]) + "</em>" + html.EscapeString(title[len(prefix):])
+	titleRest := string(titleRunes[len(prefixRunes):])
+	return "<em>" + html.EscapeString(titlePrefix) + "</em>" + html.EscapeString(titleRest)
 }

@@ -112,7 +112,7 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
 		assert.Equal(t, "invalid_client", result["error"])
-		assert.Contains(t, result["error_description"], "device_code")
+		assert.Contains(t, result["error_description"], "grant type")
 	})
 
 	t.Run("returns server_error for unexpected service errors", func(t *testing.T) {
