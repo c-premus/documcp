@@ -109,10 +109,14 @@ func (reb *RedisEventBus) Publish(event Event) {
 }
 
 // Subscribe returns a channel that receives events. Call Unsubscribe with the
-// same ID when done.
+// same ID when done. Returns nil if the subscriber limit is reached.
 func (reb *RedisEventBus) Subscribe(id string) <-chan Event {
 	reb.mu.Lock()
 	defer reb.mu.Unlock()
+	if len(reb.subscribers) >= maxSubscribers {
+		reb.logger.Warn("redis event bus subscriber limit reached", "max", maxSubscribers)
+		return nil
+	}
 	ch := make(chan Event, eventBusBufferSize)
 	reb.subscribers[id] = ch
 	return ch

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
 	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/search"
 )
@@ -50,6 +51,10 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	if query == "" {
 		errorResponse(w, http.StatusBadRequest, "query parameter 'q' is required")
+		return
+	}
+	if len(query) > 500 {
+		errorResponse(w, http.StatusBadRequest, "query must be at most 500 characters")
 		return
 	}
 
@@ -99,6 +104,10 @@ func (h *SearchHandler) FederatedSearch(w http.ResponseWriter, r *http.Request) 
 		errorResponse(w, http.StatusBadRequest, "query parameter 'q' is required")
 		return
 	}
+	if len(query) > 500 {
+		errorResponse(w, http.StatusBadRequest, "query must be at most 500 characters")
+		return
+	}
 
 	limitInt, offsetInt := parsePagination(r, 20, 100)
 	limit, offset := int64(limitInt), int64(offsetInt)
@@ -118,12 +127,18 @@ func (h *SearchHandler) FederatedSearch(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	resp, err := h.searcher.FederatedSearch(r.Context(), search.FederatedSearchParams{
+	fedParams := search.FederatedSearchParams{
 		Query:   query,
 		Indexes: indexes,
 		Limit:   limit,
 		Offset:  offset,
-	})
+	}
+	if user, ok := authmiddleware.UserFromContext(r.Context()); ok {
+		fedParams.UserID = &user.ID
+		fedParams.IsAdmin = user.IsAdmin
+	}
+
+	resp, err := h.searcher.FederatedSearch(r.Context(), fedParams)
 	if err != nil {
 		h.logger.Error("federated search", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "search failed")
@@ -194,12 +209,17 @@ func (h *SearchHandler) Autocomplete(w http.ResponseWriter, r *http.Request) {
 
 // highlightPrefix wraps the matched prefix portion of title in <em> tags.
 // The match is case-insensitive. Both segments are HTML-escaped to prevent XSS.
+// Uses rune-based slicing to correctly handle multi-byte UTF-8 characters.
 func highlightPrefix(title, prefix string) string {
-	if prefix == "" || len(prefix) > len(title) {
+	prefixRunes := []rune(prefix)
+	titleRunes := []rune(title)
+	if len(prefixRunes) == 0 || len(prefixRunes) > len(titleRunes) {
 		return html.EscapeString(title)
 	}
-	if !strings.EqualFold(title[:len(prefix)], prefix) {
+	titlePrefix := string(titleRunes[:len(prefixRunes)])
+	if !strings.EqualFold(titlePrefix, prefix) {
 		return html.EscapeString(title)
 	}
-	return "<em>" + html.EscapeString(title[:len(prefix)]) + "</em>" + html.EscapeString(title[len(prefix):])
+	titleRest := string(titleRunes[len(prefixRunes):])
+	return "<em>" + html.EscapeString(titlePrefix) + "</em>" + html.EscapeString(titleRest)
 }

@@ -97,6 +97,10 @@ func (h *Handler) tokenAuthorizationCode(w http.ResponseWriter, r *http.Request,
 			"client_id", clientID,
 			"error", err,
 		)
+		if errors.Is(err, oauth.ErrUnsupportedGrant) {
+			oauthError(w, http.StatusBadRequest, "unauthorized_client", "This client is not authorized for the authorization_code grant type")
+			return
+		}
 		oauthError(w, http.StatusBadRequest, "invalid_grant", "The authorization code is invalid, expired, or has already been used")
 		return
 	}
@@ -122,6 +126,10 @@ func (h *Handler) tokenRefreshToken(w http.ResponseWriter, r *http.Request, clie
 			"client_id", clientID,
 			"error", err,
 		)
+		if errors.Is(err, oauth.ErrUnsupportedGrant) {
+			oauthError(w, http.StatusBadRequest, "unauthorized_client", "This client is not authorized for the refresh_token grant type")
+			return
+		}
 		oauthError(w, http.StatusBadRequest, "invalid_grant", "The refresh token is invalid, expired, or has been revoked")
 		return
 	}

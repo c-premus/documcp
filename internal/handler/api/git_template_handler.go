@@ -45,9 +45,10 @@ type gitTemplateJobInserter interface {
 
 // GitTemplateHandler handles REST API endpoints for git templates.
 type GitTemplateHandler struct {
-	repo     gitTemplateRepo
-	inserter gitTemplateJobInserter
-	logger   *slog.Logger
+	repo              gitTemplateRepo
+	inserter          gitTemplateJobInserter
+	logger            *slog.Logger
+	encryptionEnabled bool
 }
 
 // NewGitTemplateHandler creates a new GitTemplateHandler.
@@ -55,11 +56,13 @@ func NewGitTemplateHandler(
 	repo gitTemplateRepo,
 	inserter gitTemplateJobInserter,
 	logger *slog.Logger,
+	encryptionEnabled bool,
 ) *GitTemplateHandler {
 	return &GitTemplateHandler{
-		repo:     repo,
-		inserter: inserter,
-		logger:   logger,
+		repo:              repo,
+		inserter:          inserter,
+		logger:            logger,
+		encryptionEnabled: encryptionEnabled,
 	}
 }
 
@@ -223,6 +226,10 @@ func (h *GitTemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
 		tmpl.Description = sql.NullString{String: body.Description, Valid: true}
 	}
 	if body.GitToken != "" {
+		if !h.encryptionEnabled {
+			errorResponse(w, http.StatusUnprocessableEntity, "git tokens require encryption; set ENCRYPTION_KEY")
+			return
+		}
 		tmpl.GitToken = sql.NullString{String: body.GitToken, Valid: true}
 	}
 	if body.Category != "" {
@@ -306,6 +313,10 @@ func (h *GitTemplateHandler) Update(w http.ResponseWriter, r *http.Request) {
 		tmpl.Branch = body.Branch
 	}
 	if body.GitToken != "" {
+		if !h.encryptionEnabled {
+			errorResponse(w, http.StatusUnprocessableEntity, "git tokens require encryption; set ENCRYPTION_KEY")
+			return
+		}
 		tmpl.GitToken = sql.NullString{String: body.GitToken, Valid: true}
 	}
 	if body.Category != "" {

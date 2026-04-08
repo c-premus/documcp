@@ -158,6 +158,8 @@ func (s *Server) registerInfraRoutes(deps Deps) {
 		r.Group(func(r chi.Router) {
 			if deps.InternalAPIToken != "" {
 				r.Use(internalTokenAuth(deps.InternalAPIToken))
+			} else {
+				s.logger.Warn("metrics endpoint exposed without authentication (INTERNAL_API_TOKEN not set)")
 			}
 			r.Method(http.MethodGet, "/metrics", observability.MetricsHandler())
 		})
@@ -185,8 +187,11 @@ func (s *Server) registerAuthRoutes(deps Deps) {
 			r.Post("/authorize/approve", deps.OAuthHandler.AuthorizeApprove)
 			r.Post("/authorize/deny", deps.OAuthHandler.AuthorizeDeny)
 			r.Get("/device", deps.OAuthHandler.DeviceVerification)
-			r.Post("/device", deps.OAuthHandler.DeviceVerificationSubmit)
-			r.Post("/device/approve", deps.OAuthHandler.DeviceApprove)
+			r.Group(func(r chi.Router) {
+				r.Use(rateLimitByIP(10, time.Minute, deps.BareRedisClient))
+				r.Post("/device", deps.OAuthHandler.DeviceVerificationSubmit)
+				r.Post("/device/approve", deps.OAuthHandler.DeviceApprove)
+			})
 
 			// Machine-to-machine endpoints — no CSRF (clients don't have browser cookies).
 			r.Group(func(r chi.Router) {
@@ -220,13 +225,6 @@ func (s *Server) registerAuthRoutes(deps Deps) {
 		s.logger.Info("OIDC auth endpoints registered")
 	}
 
-	if deps.AuthHandler != nil {
-		r.Group(func(r chi.Router) {
-			r.Use(rateLimitByIP(60, time.Minute, deps.BareRedisClient))
-			r.Get("/api/auth/me", deps.AuthHandler.Me)
-		})
-		s.logger.Info("auth/me endpoint registered", "path", "/api/auth/me")
-	}
 }
 
 // registerAPIRoutes registers the REST API route group with dual-auth model.
@@ -248,6 +246,14 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 					w.WriteHeader(http.StatusServiceUnavailable)
 					_, _ = w.Write([]byte(`{"error":"Service Unavailable","message":"authentication not configured"}`))
 				})
+			})
+		}
+
+		// Auth status endpoint (no scope requirement — any authenticated user)
+		if deps.AuthHandler != nil {
+			r.Group(func(r chi.Router) {
+				r.Use(rateLimitByIP(60, time.Minute, deps.BareRedisClient))
+				r.Get("/auth/me", deps.AuthHandler.Me)
 			})
 		}
 
@@ -399,6 +405,8 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 					r.Post("/", deps.OAuthClientHandler.Create)
 					r.Get("/{id}", deps.OAuthClientHandler.Show)
 					r.Delete("/{id}", deps.OAuthClientHandler.Delete)
+					r.Get("/{id}/scope-grants", deps.OAuthClientHandler.ListScopeGrants)
+					r.Delete("/{id}/scope-grants/{grantId}", deps.OAuthClientHandler.RevokeScopeGrant)
 				})
 			}
 

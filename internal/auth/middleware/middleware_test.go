@@ -51,6 +51,9 @@ type mockOAuthRepo struct {
 	findDeviceCodeByUserCodeFn   func(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
 	updateDeviceCodeStatusFn     func(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64) error
 	updateDeviceCodeLastPolledFn func(ctx context.Context, id int64, interval int) error
+	// Scope Grants
+	upsertScopeGrantFn      func(ctx context.Context, grant *model.OAuthClientScopeGrant) error
+	findActiveScopeGrantsFn func(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error)
 	// Users
 	findUserByIDFn func(ctx context.Context, id int64) (*model.User, error)
 }
@@ -203,11 +206,29 @@ func (m *mockOAuthRepo) UpdateDeviceCodeStatusAndScope(_ context.Context, _ int6
 	return nil
 }
 
+func (m *mockOAuthRepo) ExchangeDeviceCodeStatus(_ context.Context, _ int64) error {
+	return nil
+}
+
 func (m *mockOAuthRepo) UpdateDeviceCodeLastPolled(ctx context.Context, id int64, interval int) error {
 	if m.updateDeviceCodeLastPolledFn != nil {
 		return m.updateDeviceCodeLastPolledFn(ctx, id, interval)
 	}
 	return nil
+}
+
+func (m *mockOAuthRepo) UpsertScopeGrant(ctx context.Context, grant *model.OAuthClientScopeGrant) error {
+	if m.upsertScopeGrantFn != nil {
+		return m.upsertScopeGrantFn(ctx, grant)
+	}
+	return nil
+}
+
+func (m *mockOAuthRepo) FindActiveScopeGrants(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error) {
+	if m.findActiveScopeGrantsFn != nil {
+		return m.findActiveScopeGrantsFn(ctx, clientID)
+	}
+	return nil, nil
 }
 
 func (m *mockOAuthRepo) FindUserByID(ctx context.Context, id int64) (*model.User, error) {

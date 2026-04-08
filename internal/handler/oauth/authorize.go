@@ -112,28 +112,33 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Expand the client's registered scope to include scopes the user is
-	// entitled to grant. This allows auto-registered (read-only) clients to
-	// gain write/admin scopes when an admin approves consent.
+	// Record a time-bounded scope grant so the client can use these scopes
+	// in future consent flows (replaces permanent scope widening).
 	if effectiveScope != "" {
-		expandedScope, expandErr := h.service.ExpandClientScope(r.Context(), client.ID, effectiveScope)
-		if expandErr != nil {
-			h.logger.Error("expanding client scope", "error", expandErr)
-			// Non-fatal: proceed with existing client scope.
-		} else {
-			client.Scope = sql.NullString{String: expandedScope, Valid: expandedScope != ""}
+		if grantErr := h.service.GrantClientScope(r.Context(), client.ID, effectiveScope, userID); grantErr != nil {
+			h.logger.Error("granting client scope", "error", grantErr)
+			// Non-fatal: proceed with base client scope.
 		}
 	}
 
-	// Further narrow to the client's registered scope. A client should not
-	// receive scopes beyond what it registered for, even if the user could
-	// grant them. This prevents over-scoping when clients (e.g. Claude.ai)
-	// request all scopes_supported in the authorize URL.
-	if effectiveScope != "" && client.Scope.Valid && client.Scope.String != "" {
-		effectiveScope = authscope.Intersect(effectiveScope, client.Scope.String)
-		if effectiveScope == "" {
-			oauthError(w, http.StatusBadRequest, "invalid_scope", "None of the requested scopes are available for this client.")
-			return
+	// Narrow to the client's effective scope (base registration + active grants).
+	// A client should not receive scopes beyond what it has been granted.
+	if effectiveScope != "" {
+		baseScope := ""
+		if client.Scope.Valid {
+			baseScope = client.Scope.String
+		}
+		clientEffective, effErr := h.service.EffectiveClientScope(r.Context(), client.ID, baseScope)
+		if effErr != nil {
+			h.logger.Error("computing effective client scope", "error", effErr)
+			clientEffective = baseScope
+		}
+		if clientEffective != "" {
+			effectiveScope = authscope.Intersect(effectiveScope, clientEffective)
+			if effectiveScope == "" {
+				oauthError(w, http.StatusBadRequest, "invalid_scope", "None of the requested scopes are available for this client.")
+				return
+			}
 		}
 	}
 
@@ -213,6 +218,7 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 
 	contentType := r.Header.Get("Content-Type")
 	if contentType == "application/json" {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		var body struct {
 			ClientID            string `json:"client_id"`
 			RedirectURI         string `json:"redirect_uri"`
@@ -323,12 +329,18 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	}
 	if reqScope != pendingScope {
 		h.logger.Warn("scope mismatch between POST body and session", "post", reqScope, "session", pendingScope)
+		http.Error(w, "scope mismatch", http.StatusBadRequest)
+		return
 	}
 	if reqCodeChallenge != pendingCodeChallenge {
 		h.logger.Warn("code_challenge mismatch between POST body and session", "post", reqCodeChallenge, "session", pendingCodeChallenge)
+		http.Error(w, "code_challenge mismatch", http.StatusBadRequest)
+		return
 	}
 	if reqCodeChallengeMethod != pendingCodeChallengeMethod {
 		h.logger.Warn("code_challenge_method mismatch between POST body and session", "post", reqCodeChallengeMethod, "session", pendingCodeChallengeMethod)
+		http.Error(w, "code_challenge_method mismatch", http.StatusBadRequest)
+		return
 	}
 
 	// Look up client to get internal ID.
@@ -356,10 +368,20 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build redirect URL using session-validated URI — not user-supplied POST body.
-	redirectURL := pendingRedirectURI + "?code=" + url.QueryEscape(code)
-	if reqState != "" {
-		redirectURL += "&state=" + url.QueryEscape(reqState)
+	// Use url.Parse to correctly append query params even if the redirect URI
+	// already contains a query string (RFC 6749 §4.1.2).
+	parsedRedirect, parseErr := url.Parse(pendingRedirectURI)
+	if parseErr != nil {
+		http.Error(w, "Invalid redirect URI", http.StatusBadRequest)
+		return
 	}
+	q := parsedRedirect.Query()
+	q.Set("code", code)
+	if reqState != "" {
+		q.Set("state", reqState)
+	}
+	parsedRedirect.RawQuery = q.Encode()
+	redirectURL := parsedRedirect.String()
 
 	// Replace pending state with completed state so retries re-redirect
 	// instead of returning 400. The auth code is single-use at the token
@@ -395,6 +417,7 @@ func (h *Handler) AuthorizeDeny(w http.ResponseWriter, r *http.Request) {
 
 	contentType := r.Header.Get("Content-Type")
 	if contentType == "application/json" {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		var body struct {
 			Nonce string `json:"nonce"`
 		}
@@ -441,14 +464,19 @@ func (h *Handler) AuthorizeDeny(w http.ResponseWriter, r *http.Request) {
 	state, _ := pending["state"].(string)
 
 	if redirectURI != "" {
-		q := url.Values{}
+		parsedRedirect, parseErr := url.Parse(redirectURI)
+		if parseErr != nil {
+			http.Error(w, "Invalid redirect URI", http.StatusBadRequest)
+			return
+		}
+		q := parsedRedirect.Query()
 		q.Set("error", "access_denied")
 		q.Set("error_description", "The resource owner denied the request")
 		if state != "" {
 			q.Set("state", state)
 		}
-		redirectURL := redirectURI + "?" + q.Encode()
-		jsRedirect(w, redirectURL)
+		parsedRedirect.RawQuery = q.Encode()
+		jsRedirect(w, parsedRedirect.String())
 		return
 	}
 

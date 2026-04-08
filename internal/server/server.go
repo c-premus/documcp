@@ -126,12 +126,21 @@ func (s *Server) Start() error {
 
 // startRedirectServer launches a background HTTP listener on the plain HTTP
 // port (SERVER_PORT) that redirects all requests to the HTTPS address.
+// The redirect target uses the server's configured HTTPS address rather than
+// reflecting the request Host header to prevent host header injection.
 func (s *Server) startRedirectServer() {
+	// Use the configured HTTPS listen address as the redirect target.
+	// This prevents an attacker from injecting a crafted Host header
+	// to redirect users to a malicious domain.
+	httpsHost := s.httpServer.Addr
 	s.redirectServer = &http.Server{
 		Addr:              s.redirectAddr,
+		ReadTimeout:       5 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      5 * time.Second,
+		IdleTimeout:       30 * time.Second,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			target := "https://" + r.Host + r.URL.RequestURI()
+			target := "https://" + httpsHost + r.URL.RequestURI()
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
 		}),
 	}

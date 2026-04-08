@@ -225,9 +225,12 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	doc, err := h.pipeline.Upload(r.Context(), params)
 	if err != nil {
 		h.logger.Error("uploading document", "error", err)
-		if errors.Is(err, service.ErrUnsupportedFileType) || errors.Is(err, service.ErrFileTooLarge) {
-			errorResponse(w, http.StatusBadRequest, err.Error())
-		} else {
+		switch {
+		case errors.Is(err, service.ErrUnsupportedFileType):
+			errorResponse(w, http.StatusBadRequest, "unsupported file type")
+		case errors.Is(err, service.ErrFileTooLarge):
+			errorResponse(w, http.StatusBadRequest, "file exceeds maximum upload size")
+		default:
 			errorResponse(w, http.StatusInternalServerError, "failed to process document upload")
 		}
 		return
@@ -275,8 +278,12 @@ func (h *DocumentHandler) ReplaceContent(w http.ResponseWriter, r *http.Request)
 			errorResponse(w, http.StatusNotFound, "document not found")
 			return
 		}
-		if errors.Is(err, service.ErrUnsupportedFileType) || errors.Is(err, service.ErrFileTooLarge) {
-			errorResponse(w, http.StatusBadRequest, err.Error())
+		if errors.Is(err, service.ErrUnsupportedFileType) {
+			errorResponse(w, http.StatusBadRequest, "unsupported file type")
+			return
+		}
+		if errors.Is(err, service.ErrFileTooLarge) {
+			errorResponse(w, http.StatusBadRequest, "file exceeds maximum upload size")
 			return
 		}
 		errorResponse(w, http.StatusInternalServerError, "failed to replace document content")
@@ -290,9 +297,32 @@ func (h *DocumentHandler) ReplaceContent(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// checkOwnership verifies the requesting user has access to the document.
+// Admins can access any document. Non-admin users can only access their own.
+// Defense-in-depth: these routes are also behind RequireAdmin middleware.
+func (h *DocumentHandler) checkOwnership(r *http.Request, docUUID string) bool {
+	user, ok := authmiddleware.UserFromContext(r.Context())
+	if !ok || user == nil {
+		return false
+	}
+	if user.IsAdmin {
+		return true
+	}
+	doc, err := h.repo.FindByUUIDIncludingDeleted(r.Context(), docUUID)
+	if err != nil {
+		return false
+	}
+	return doc.UserID.Valid && doc.UserID.Int64 == user.ID
+}
+
 // Update handles PUT /api/documents/{uuid} — update document metadata.
 func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 	docUUID := chi.URLParam(r, "uuid")
+
+	if !h.checkOwnership(r, docUUID) {
+		errorResponse(w, http.StatusNotFound, "document not found")
+		return
+	}
 
 	var body struct {
 		Title       string   `json:"title"`
@@ -332,6 +362,11 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 // Delete handles DELETE /api/documents/{uuid} — soft delete a document.
 func (h *DocumentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	docUUID := chi.URLParam(r, "uuid")
+
+	if !h.checkOwnership(r, docUUID) {
+		errorResponse(w, http.StatusNotFound, "document not found")
+		return
+	}
 
 	if err := h.pipeline.Delete(r.Context(), docUUID); err != nil {
 		h.logger.Error("deleting document", "uuid", docUUID, "error", err)
@@ -409,7 +444,7 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 			errorResponse(w, http.StatusNotFound, "document has no associated file")
 			return
 		}
-		filename := sanitizeFilename(doc.Title) + "." + doc.FileType
+		filename := sanitizeFilename(doc.Title) + sanitizeExtension("."+doc.FileType)
 		w.Header().Set("Content-Type", doc.MIMEType)
 		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 		w.Header().Set("Content-Length", strconv.Itoa(len(doc.Content.String)))
@@ -445,9 +480,10 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Determine filename for Content-Disposition, sanitizing special characters.
-	filename := doc.UUID + filepath.Ext(doc.FilePath)
+	ext := sanitizeExtension(filepath.Ext(doc.FilePath))
+	filename := doc.UUID + ext
 	if doc.Title != "" {
-		filename = sanitizeFilename(doc.Title) + filepath.Ext(doc.FilePath)
+		filename = sanitizeFilename(doc.Title) + ext
 	}
 
 	w.Header().Set("Content-Type", contentType)
@@ -495,9 +531,26 @@ func canAccessDocument(user *model.User, doc *model.Document) bool {
 // (quotes, backslashes, control characters including DEL, path separators).
 func sanitizeFilename(name string) string {
 	return strings.Map(func(r rune) rune {
-		if r == '"' || r == '\\' || r < 32 || r == 127 || r == '/' || r == ':' {
+		if r == '"' || r == '\\' || r < 32 || r == 127 || r == '/' || r == ':' || r == ';' {
 			return '_'
 		}
 		return r
 	}, name)
+}
+
+// sanitizeExtension validates that a file extension contains only safe characters
+// (letters, digits, and the leading dot). Returns empty string if unsafe.
+func sanitizeExtension(ext string) string {
+	if ext == "" {
+		return ""
+	}
+	for i, r := range ext {
+		if i == 0 && r == '.' {
+			continue
+		}
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
+			return ""
+		}
+	}
+	return ext
 }

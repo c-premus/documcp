@@ -9,9 +9,14 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
+
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
+	oauth "github.com/c-premus/documcp/internal/auth/oauth"
+	authscope "github.com/c-premus/documcp/internal/auth/scope"
 	"github.com/c-premus/documcp/internal/model"
 )
 
@@ -21,6 +26,8 @@ type oauthClientRepo interface {
 	CreateClient(ctx context.Context, client *model.OAuthClient) error
 	FindClientByID(ctx context.Context, id int64) (*model.OAuthClient, error)
 	DeleteClient(ctx context.Context, id int64) error
+	FindActiveScopeGrants(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error)
+	DeleteScopeGrant(ctx context.Context, id int64) error
 }
 
 // OAuthClientHandler handles REST API endpoints for OAuth client administration.
@@ -94,6 +101,53 @@ func (h *OAuthClientHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if body.ClientName == "" {
 		errorResponse(w, http.StatusBadRequest, "client_name is required")
 		return
+	}
+	if len(body.ClientName) > 255 {
+		errorResponse(w, http.StatusBadRequest, "client_name must not exceed 255 characters")
+		return
+	}
+
+	// Validate scope against canonical list.
+	if body.Scope != "" {
+		if invalid := authscope.ValidateAll(body.Scope); len(invalid) > 0 {
+			errorResponse(w, http.StatusBadRequest, "invalid scopes: "+strings.Join(invalid, ", "))
+			return
+		}
+	}
+
+	// Validate redirect URIs: must use HTTPS for non-loopback hosts.
+	for _, uri := range body.RedirectURIs {
+		parsed, err := url.ParseRequestURI(uri)
+		if err != nil {
+			errorResponse(w, http.StatusBadRequest, "invalid redirect URI: "+uri)
+			return
+		}
+		if parsed.Scheme != "https" && !oauth.IsLoopbackHost(parsed.Hostname()) {
+			errorResponse(w, http.StatusBadRequest, "redirect URIs must use HTTPS for non-loopback hosts")
+			return
+		}
+	}
+
+	// Validate grant types.
+	validGrantTypes := map[string]bool{
+		"authorization_code": true,
+		"refresh_token":      true,
+		"urn:ietf:params:oauth:grant-type:device_code": true,
+	}
+	for _, gt := range body.GrantTypes {
+		if !validGrantTypes[gt] {
+			errorResponse(w, http.StatusBadRequest, "invalid grant type: "+gt)
+			return
+		}
+	}
+
+	// Validate token_endpoint_auth_method.
+	if body.TokenEndpointAuthMethod != "" {
+		validMethods := map[string]bool{"none": true, "client_secret_basic": true, "client_secret_post": true}
+		if !validMethods[body.TokenEndpointAuthMethod] {
+			errorResponse(w, http.StatusBadRequest, "invalid token_endpoint_auth_method")
+			return
+		}
 	}
 
 	// Generate client credentials.
@@ -231,4 +285,70 @@ func toOAuthClientResponse(c *model.OAuthClient) oauthClientResponse {
 	}
 
 	return resp
+}
+
+// scopeGrantResponse is the JSON representation of a scope grant.
+type scopeGrantResponse struct {
+	ID        int64   `json:"id"`
+	Scope     string  `json:"scope"`
+	GrantedBy int64   `json:"granted_by"`
+	GrantedAt string  `json:"granted_at"`
+	ExpiresAt *string `json:"expires_at"`
+}
+
+// ListScopeGrants handles GET /api/admin/oauth-clients/{id}/scope-grants.
+func (h *OAuthClientHandler) ListScopeGrants(w http.ResponseWriter, r *http.Request) {
+	clientID, ok := parseIDParam(w, r, "id", "client id")
+	if !ok {
+		return
+	}
+
+	// Verify client exists.
+	if _, err := h.repo.FindClientByID(r.Context(), clientID); err != nil {
+		errorResponse(w, http.StatusNotFound, "oauth client not found")
+		return
+	}
+
+	grants, err := h.repo.FindActiveScopeGrants(r.Context(), clientID)
+	if err != nil {
+		h.logger.Error("listing scope grants", "client_id", clientID, "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to list scope grants")
+		return
+	}
+
+	out := make([]scopeGrantResponse, len(grants))
+	for i := range grants {
+		out[i] = scopeGrantResponse{
+			ID:        grants[i].ID,
+			Scope:     grants[i].Scope,
+			GrantedBy: grants[i].GrantedBy,
+			GrantedAt: grants[i].GrantedAt.Format("2006-01-02T15:04:05Z07:00"),
+			ExpiresAt: nullTimePtr(grants[i].ExpiresAt),
+		}
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{"data": out})
+}
+
+// RevokeScopeGrant handles DELETE /api/admin/oauth-clients/{id}/scope-grants/{grantId}.
+func (h *OAuthClientHandler) RevokeScopeGrant(w http.ResponseWriter, r *http.Request) {
+	if _, ok := parseIDParam(w, r, "id", "client id"); !ok {
+		return
+	}
+	grantID, ok := parseIDParam(w, r, "grantId", "grant id")
+	if !ok {
+		return
+	}
+
+	if err := h.repo.DeleteScopeGrant(r.Context(), grantID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			errorResponse(w, http.StatusNotFound, "scope grant not found")
+			return
+		}
+		h.logger.Error("revoking scope grant", "grant_id", grantID, "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to revoke scope grant")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

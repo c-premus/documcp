@@ -33,6 +33,12 @@ func NewWorkerApp(f *Foundation) (*WorkerApp, error) {
 
 	// --- EventBus (Redis-backed for cross-instance event delivery) ---
 	eventBus := queue.NewRedisEventBus(context.Background(), f.RedisClient, logger)
+	var eventBusOK bool
+	defer func() {
+		if !eventBusOK {
+			eventBus.Close()
+		}
+	}()
 
 	// Token HMAC key — needed by workers that process token-related jobs.
 	sessionSecret := f.Config.OAuth.SessionSecret
@@ -75,6 +81,7 @@ func NewWorkerApp(f *Foundation) (*WorkerApp, error) {
 		"port", healthPort,
 	)
 
+	eventBusOK = true
 	return &WorkerApp{
 		Foundation:   f,
 		RiverClient:  riverClient,
@@ -183,7 +190,10 @@ func newHealthServer(port int, f *Foundation) *http.Server {
 	return &http.Server{
 		Addr:              net.JoinHostPort("0.0.0.0", strconv.Itoa(port)),
 		Handler:           mux,
+		ReadTimeout:       5 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       30 * time.Second,
 		ErrorLog:          slog.NewLogLogger(f.Logger.Handler(), slog.LevelError),
 	}
 }

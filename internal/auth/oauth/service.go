@@ -47,7 +47,11 @@ type OAuthRepo interface {
 	FindDeviceCodeByUserCode(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
 	UpdateDeviceCodeStatus(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64) error
 	UpdateDeviceCodeStatusAndScope(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64, scope string) error
+	ExchangeDeviceCodeStatus(ctx context.Context, id int64) error
 	UpdateDeviceCodeLastPolled(ctx context.Context, id int64, interval int) error
+	// Scope Grants
+	UpsertScopeGrant(ctx context.Context, grant *model.OAuthClientScopeGrant) error
+	FindActiveScopeGrants(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error)
 	// Users
 	FindUserByID(ctx context.Context, id int64) (*model.User, error)
 }
@@ -96,36 +100,51 @@ func (s *Service) TouchClientLastUsed(ctx context.Context, clientID int64) error
 	return s.repo.TouchClientLastUsed(ctx, clientID)
 }
 
-// ExpandClientScope widens the client's registered scope to include
-// additionalScopes. The result is the sorted union of the existing scope and
-// the additional scopes. This allows dynamically-registered clients to receive
-// broader tokens when an authenticated user approves the authorization.
-// Returns the new effective client scope.
-func (s *Service) ExpandClientScope(ctx context.Context, clientID int64, additionalScopes string) (string, error) {
-	client, err := s.repo.FindClientByID(ctx, clientID)
-	if err != nil {
-		return "", fmt.Errorf("finding client for scope expansion: %w", err)
+// GrantClientScope records a time-bounded scope expansion for a client,
+// created when a user approves consent for scopes beyond the client's base
+// registration. The grant is upserted per (client, user) pair — re-approval
+// refreshes the TTL and widens the granted scope.
+func (s *Service) GrantClientScope(ctx context.Context, clientID int64, additionalScopes string, grantedByUserID int64) error {
+	if additionalScopes == "" {
+		return nil
 	}
-	if client == nil {
-		return "", errors.New("client not found for scope expansion")
+
+	var expiresAt sql.NullTime
+	if s.config.ScopeGrantTTL > 0 {
+		expiresAt = sql.NullTime{Time: time.Now().Add(s.config.ScopeGrantTTL), Valid: true}
 	}
-	currentScope := ""
-	if client.Scope.Valid {
-		currentScope = client.Scope.String
+
+	grant := &model.OAuthClientScopeGrant{
+		ClientID:  clientID,
+		Scope:     additionalScopes,
+		GrantedBy: grantedByUserID,
+		ExpiresAt: expiresAt,
 	}
-	newScope := authscope.Union(currentScope, additionalScopes)
-	if newScope == currentScope {
-		return currentScope, nil
+	if err := s.repo.UpsertScopeGrant(ctx, grant); err != nil {
+		return fmt.Errorf("upserting scope grant: %w", err)
 	}
-	s.logger.Info("expanding client scope",
-		"client_id", client.ClientID,
-		"old_scope", currentScope,
-		"new_scope", newScope,
+
+	s.logger.Info("granted client scope",
+		"client_id", clientID,
+		"scope", additionalScopes,
+		"granted_by", grantedByUserID,
+		"expires_at", expiresAt,
 	)
-	if err := s.repo.UpdateClientScope(ctx, client.ID, newScope); err != nil {
-		return "", fmt.Errorf("updating client scope: %w", err)
+	return nil
+}
+
+// EffectiveClientScope returns the union of a client's base registered scope
+// and all active (non-expired) scope grants.
+func (s *Service) EffectiveClientScope(ctx context.Context, clientID int64, baseScope string) (string, error) {
+	grants, err := s.repo.FindActiveScopeGrants(ctx, clientID)
+	if err != nil {
+		return baseScope, fmt.Errorf("finding active scope grants: %w", err)
 	}
-	return newScope, nil
+	effective := baseScope
+	for i := range grants {
+		effective = authscope.Union(effective, grants[i].Scope)
+	}
+	return effective, nil
 }
 
 // FindDeviceCodeByUserCode looks up a pending device code by user code.

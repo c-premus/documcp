@@ -19,6 +19,11 @@ import (
 func (h *DocumentHandler) Restore(w http.ResponseWriter, r *http.Request) {
 	docUUID := chi.URLParam(r, "uuid")
 
+	if !h.checkOwnership(r, docUUID) {
+		errorResponse(w, http.StatusNotFound, "document not found")
+		return
+	}
+
 	doc, err := h.repo.FindByUUIDIncludingDeleted(r.Context(), docUUID)
 	if err != nil {
 		h.logger.Error("finding document for restore", "uuid", docUUID, "error", err)
@@ -60,6 +65,11 @@ func (h *DocumentHandler) Restore(w http.ResponseWriter, r *http.Request) {
 func (h *DocumentHandler) Purge(w http.ResponseWriter, r *http.Request) {
 	docUUID := chi.URLParam(r, "uuid")
 
+	if !h.checkOwnership(r, docUUID) {
+		errorResponse(w, http.StatusNotFound, "document not found")
+		return
+	}
+
 	doc, err := h.repo.FindByUUIDIncludingDeleted(r.Context(), docUUID)
 	if err != nil {
 		h.logger.Error("finding document for purge", "uuid", docUUID, "error", err)
@@ -97,8 +107,8 @@ func (h *DocumentHandler) BulkPurge(w http.ResponseWriter, r *http.Request) {
 	days := 30
 	if d := r.URL.Query().Get("older_than_days"); d != "" {
 		parsed, err := strconv.Atoi(d)
-		if err != nil || parsed < 0 {
-			errorResponse(w, http.StatusBadRequest, "older_than_days must be a non-negative integer")
+		if err != nil || parsed < 0 || parsed > 3650 {
+			errorResponse(w, http.StatusBadRequest, "older_than_days must be between 0 and 3650")
 			return
 		}
 		days = parsed

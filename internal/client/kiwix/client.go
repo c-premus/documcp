@@ -62,8 +62,12 @@ func NewClient(cfg ClientConfig, logger *slog.Logger) (*Client, error) {
 	return &Client{
 		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
 		httpClient: &http.Client{
-			Timeout:   cfg.HTTPTimeout,
-			Transport: otelhttp.NewTransport(security.SafeTransportAllowPrivate(cfg.SSRFDialerTimeout)),
+			Timeout: cfg.HTTPTimeout,
+			Transport: otelhttp.NewTransport(func() *http.Transport {
+				t := security.SafeTransportAllowPrivate(cfg.SSRFDialerTimeout)
+				t.MaxIdleConnsPerHost = 10 // match fan-out semaphore to avoid connection pool contention
+				return t
+			}()),
 		},
 		cache:              newCache(),
 		logger:             logger,

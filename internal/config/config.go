@@ -49,6 +49,8 @@ type RedisConfig struct {
 	ReadTimeout     time.Duration `mapstructure:"redis_read_timeout"`
 	WriteTimeout    time.Duration `mapstructure:"redis_write_timeout"`
 	MaxRetries      int           `mapstructure:"redis_max_retries"`
+	TLSEnabled      bool          `mapstructure:"redis_tls_enabled"`
+	TLSCAFile       string        `mapstructure:"redis_tls_ca_file"`
 }
 
 // QueueConfig holds River queue worker concurrency settings.
@@ -168,6 +170,7 @@ type OAuthConfig struct {
 	RegistrationEnabled     bool          `mapstructure:"oauth_registration_enabled"`
 	RegistrationRequireAuth bool          `mapstructure:"oauth_registration_require_auth"`
 	ClientTouchTimeout      time.Duration `mapstructure:"oauth_client_touch_timeout"`
+	ScopeGrantTTL           time.Duration `mapstructure:"oauth_scope_grant_ttl"`
 }
 
 // KiwixConfig holds Kiwix external service client settings.
@@ -272,6 +275,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("redis_write_timeout", 5*time.Second)
 	v.SetDefault("redis_max_retries", 3)
 	v.SetDefault("redis_max_active_conns", 0)
+	v.SetDefault("redis_tls_enabled", false)
+	v.SetDefault("redis_tls_ca_file", "")
 
 	// Database
 	v.SetDefault("db_host", "127.0.0.1")
@@ -313,6 +318,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oauth_registration_enabled", true)
 	v.SetDefault("oauth_registration_require_auth", true)
 	v.SetDefault("oauth_client_touch_timeout", 3*time.Second)
+	v.SetDefault("oauth_scope_grant_ttl", 30*24*time.Hour) // 30 days; 0 = no expiry
 
 	// Storage
 	v.SetDefault("storage_driver", "local")
@@ -499,6 +505,7 @@ func Load() (*Config, error) {
 		RegistrationEnabled:     v.GetBool("oauth_registration_enabled"),
 		RegistrationRequireAuth: v.GetBool("oauth_registration_require_auth"),
 		ClientTouchTimeout:      v.GetDuration("oauth_client_touch_timeout"),
+		ScopeGrantTTL:           v.GetDuration("oauth_scope_grant_ttl"),
 	}
 
 	cfg.Storage = StorageConfig{
@@ -637,6 +644,12 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	}
 	if c.Redis.PoolSize < 0 {
 		errs = append(errs, "REDIS_POOL_SIZE must be non-negative")
+	}
+	totalWorkers := c.Queue.HighWorkers + c.Queue.DefaultWorkers + c.Queue.LowWorkers
+	if c.Database.MaxOpenConns > 0 && totalWorkers > 2*c.Database.MaxOpenConns {
+		errs = append(errs, fmt.Sprintf(
+			"total queue workers (%d) exceed 2× DB_MAX_OPEN_CONNS (%d); increase pool or reduce workers",
+			totalWorkers, c.Database.MaxOpenConns))
 	}
 	if c.Git.MaxFileSize <= 0 {
 		errs = append(errs, "GIT_MAX_FILE_SIZE must be positive")

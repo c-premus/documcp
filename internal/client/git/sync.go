@@ -108,6 +108,10 @@ func Sync(ctx context.Context, params SyncParams) (retErr error) {
 			Dest:   dest,
 		})
 		if err != nil {
+			// Clean up partial clone directory left by go-git on failure.
+			if rmErr := os.RemoveAll(dest); rmErr != nil {
+				logger.Warn("failed to clean up partial clone", "dest", dest, "error", rmErr)
+			}
 			syncErr := fmt.Sprintf("clone failed: %v", err)
 			if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, model.GitTemplateStatusFailed, "", 0, 0, syncErr); statusErr != nil {
 				logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)

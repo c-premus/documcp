@@ -3,74 +3,37 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gorilla/sessions"
-
+	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
 	"github.com/c-premus/documcp/internal/model"
 )
-
-// ---------------------------------------------------------------------------
-// Mock user finder
-// ---------------------------------------------------------------------------
-
-type mockAuthUserFinder struct {
-	findUserByIDFn func(ctx context.Context, id int64) (*model.User, error)
-}
-
-func (m *mockAuthUserFinder) FindUserByID(ctx context.Context, id int64) (*model.User, error) {
-	if m.findUserByIDFn != nil {
-		return m.findUserByIDFn(ctx, id)
-	}
-	return nil, errors.New("user not found")
-}
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-func TestAuthHandler_Me_ValidSession(t *testing.T) {
+func TestAuthHandler_Me_ValidUser(t *testing.T) {
 	t.Parallel()
 
-	store := sessions.NewCookieStore([]byte("test-secret-32-bytes-long!!!!!!!"))
-	finder := &mockAuthUserFinder{
-		findUserByIDFn: func(_ context.Context, id int64) (*model.User, error) {
-			return &model.User{ID: id, Email: "test@example.com", Name: "Test User", IsAdmin: true}, nil
-		},
-	}
+	h := NewAuthHandler(discardLogger())
 
-	h := NewAuthHandler(store, finder, discardLogger())
+	user := &model.User{ID: 42, Email: "test@example.com", Name: "Test User", IsAdmin: true}
+	ctx := context.WithValue(context.Background(), authmiddleware.UserContextKey, user)
 
-	// Create a request with a valid session cookie.
-	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", http.NoBody)
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", http.NoBody).WithContext(ctx)
 	rec := httptest.NewRecorder()
 
-	// Pre-set the session via the store.
-	session, _ := store.Get(req, "documcp_session")
-	session.Values["user_id"] = int64(42)
-	if err := session.Save(req, rec); err != nil {
-		t.Fatalf("saving session: %v", err)
-	}
+	h.Me(rec, req)
 
-	// Copy the Set-Cookie to a new request.
-	cookies := rec.Result().Cookies()
-	req2 := httptest.NewRequest(http.MethodGet, "/api/auth/me", http.NoBody)
-	for _, c := range cookies {
-		req2.AddCookie(c)
-	}
-	rec2 := httptest.NewRecorder()
-
-	h.Me(rec2, req2)
-
-	if rec2.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec2.Code, http.StatusOK)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
 	var resp map[string]any
-	if err := json.NewDecoder(rec2.Body).Decode(&resp); err != nil {
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decoding response: %v", err)
 	}
 
@@ -89,12 +52,10 @@ func TestAuthHandler_Me_ValidSession(t *testing.T) {
 	}
 }
 
-func TestAuthHandler_Me_NoSession(t *testing.T) {
+func TestAuthHandler_Me_NoUser(t *testing.T) {
 	t.Parallel()
 
-	store := sessions.NewCookieStore([]byte("test-secret-32-bytes-long!!!!!!!"))
-	finder := &mockAuthUserFinder{}
-	h := NewAuthHandler(store, finder, discardLogger())
+	h := NewAuthHandler(discardLogger())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -106,46 +67,10 @@ func TestAuthHandler_Me_NoSession(t *testing.T) {
 	}
 }
 
-func TestAuthHandler_Me_UserNotFound(t *testing.T) {
-	t.Parallel()
-
-	store := sessions.NewCookieStore([]byte("test-secret-32-bytes-long!!!!!!!"))
-	finder := &mockAuthUserFinder{
-		findUserByIDFn: func(_ context.Context, _ int64) (*model.User, error) {
-			return nil, errors.New("no rows")
-		},
-	}
-
-	h := NewAuthHandler(store, finder, discardLogger())
-
-	// Build request with a valid session containing user_id.
-	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", http.NoBody)
-	rec := httptest.NewRecorder()
-	session, _ := store.Get(req, "documcp_session")
-	session.Values["user_id"] = int64(999)
-	if err := session.Save(req, rec); err != nil {
-		t.Fatalf("saving session: %v", err)
-	}
-
-	cookies := rec.Result().Cookies()
-	req2 := httptest.NewRequest(http.MethodGet, "/api/auth/me", http.NoBody)
-	for _, c := range cookies {
-		req2.AddCookie(c)
-	}
-	rec2 := httptest.NewRecorder()
-
-	h.Me(rec2, req2)
-
-	if rec2.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want %d", rec2.Code, http.StatusUnauthorized)
-	}
-}
-
 func TestNewAuthHandler(t *testing.T) {
 	t.Parallel()
 
-	store := sessions.NewCookieStore([]byte("test-secret"))
-	h := NewAuthHandler(store, &mockAuthUserFinder{}, discardLogger())
+	h := NewAuthHandler(discardLogger())
 	if h == nil {
 		t.Fatal("expected non-nil handler")
 	}

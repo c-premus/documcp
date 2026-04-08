@@ -183,10 +183,11 @@ func (s *Searcher) FederatedSearch(ctx context.Context, params FederatedSearchPa
 		SELECT uuid, title, description, source, rank, extra
 		FROM (%s) federated
 		ORDER BY rank DESC
-		LIMIT %d OFFSET %d`,
+		LIMIT $%d OFFSET $%d`,
 		strings.Join(unions, " UNION ALL "),
-		limit, params.Offset,
+		argIdx, argIdx+1,
 	)
+	args = append(args, limit, params.Offset)
 
 	rows, err := s.db.Query(ctx, sql, args...)
 	if err != nil {

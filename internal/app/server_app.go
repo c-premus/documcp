@@ -61,6 +61,12 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 
 	// --- EventBus (Redis-backed for cross-instance SSE delivery) ---
 	eventBus := queue.NewRedisEventBus(context.Background(), f.RedisClient, logger)
+	var eventBusOK bool
+	defer func() {
+		if !eventBusOK {
+			eventBus.Close()
+		}
+	}()
 
 	// --- River Workers + Client ---
 	rs, err := buildRiverClient(f, eventBus, !withWorker)
@@ -122,13 +128,13 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	documentH := apihandler.NewDocumentHandler(documentPipeline, f.DocumentRepo, logger)
 	searchH := apihandler.NewSearchHandler(f.Searcher, f.SearchQueryRepo, f.DocumentRepo, logger)
 	zimH := apihandler.NewZimHandler(f.ZimArchiveRepo, &apihandler.KiwixFactoryAdapter{Factory: f.KiwixFactory}, logger)
-	gitTemplateH := apihandler.NewGitTemplateHandler(f.GitTemplateRepo, riverClient, logger)
+	gitTemplateH := apihandler.NewGitTemplateHandler(f.GitTemplateRepo, riverClient, logger, f.Encryptor != nil)
 	externalServiceH := apihandler.NewExternalServiceHandler(externalServiceSvc, f.ExternalServiceRepo, riverClient, f.KiwixFactory, logger)
 	userH := apihandler.NewUserHandler(f.OAuthRepo, logger)
 	oauthClientH := apihandler.NewOAuthClientHandler(f.OAuthRepo, logger)
 
 	// --- Auth & SPA Handlers ---
-	authH := apihandler.NewAuthHandler(sessionStore, f.OAuthRepo, logger)
+	authH := apihandler.NewAuthHandler(logger)
 	spaHandler := frontend.Handler()
 	rootAssetHandler := frontend.RootAssetHandler()
 
@@ -238,6 +244,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		"mode", riverMode(withWorker),
 	)
 
+	eventBusOK = true
 	return &ServerApp{
 		Foundation:  f,
 		Server:      srv,
@@ -344,7 +351,7 @@ func buildSessionStore(cfg *config.Config, logger *slog.Logger) (*sessions.Cooki
 	store.Options = &sessions.Options{
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   strings.HasPrefix(cfg.App.URL, "https://"),
+		Secure:   strings.HasPrefix(cfg.App.URL, "https://") || cfg.Server.TLSEnabled,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(cfg.OAuth.SessionMaxAge.Seconds()),
 	}

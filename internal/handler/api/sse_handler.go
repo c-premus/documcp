@@ -43,6 +43,10 @@ func (h *SSEHandler) Stream(w http.ResponseWriter, r *http.Request) {
 
 	subID := uuid.New().String()
 	events := h.eventBus.Subscribe(subID)
+	if events == nil {
+		http.Error(w, "too many concurrent connections", http.StatusServiceUnavailable)
+		return
+	}
 	defer h.eventBus.Unsubscribe(subID)
 
 	// Flush headers immediately so the browser's EventSource fires onopen now,
