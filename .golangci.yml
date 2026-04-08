@@ -177,14 +177,6 @@ linters:
           - revive
         text: "var-naming"
 
-      # Generated OpenAPI client and other codegen output uses patterns (deep nesting,
-      # unexported types in exported positions) that trigger gocritic and revive.
-      # We cannot modify generated output; the _gen.go suffix is the project convention.
-      - path: ".*_gen\\.go"
-        linters:
-          - gocritic
-          - revive
-
       # gosec G304: The document pipeline reads uploaded files from the storage
       # directory for text extraction. The path is validated by security.SafeStoragePath
       # before being passed to extractors.
