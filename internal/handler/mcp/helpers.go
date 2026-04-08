@@ -64,6 +64,9 @@ func truncateContent(content string, summaryOnly bool, maxParagraphs int) (strin
 		return strings.TrimSpace(truncated), len(truncated) < len(content)
 	}
 
+	if maxParagraphs > 100 {
+		maxParagraphs = 100
+	}
 	if maxParagraphs > 0 {
 		paragraphs := strings.Split(content, "\n\n")
 		if maxParagraphs < len(paragraphs) {

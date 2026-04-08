@@ -459,14 +459,19 @@ func (h *Handler) AuthorizeDeny(w http.ResponseWriter, r *http.Request) {
 	state, _ := pending["state"].(string)
 
 	if redirectURI != "" {
-		q := url.Values{}
+		parsedRedirect, parseErr := url.Parse(redirectURI)
+		if parseErr != nil {
+			http.Error(w, "Invalid redirect URI", http.StatusBadRequest)
+			return
+		}
+		q := parsedRedirect.Query()
 		q.Set("error", "access_denied")
 		q.Set("error_description", "The resource owner denied the request")
 		if state != "" {
 			q.Set("state", state)
 		}
-		redirectURL := redirectURI + "?" + q.Encode()
-		jsRedirect(w, redirectURL)
+		parsedRedirect.RawQuery = q.Encode()
+		jsRedirect(w, parsedRedirect.String())
 		return
 	}
 

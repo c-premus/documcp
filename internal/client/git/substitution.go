@@ -26,8 +26,12 @@ func SubstituteVariables(content string, variables map[string]string) (result st
 	return result, missingVars
 }
 
+// maxVariableValueLen limits individual variable values to prevent memory
+// amplification when a variable appears multiple times in a template.
+const maxVariableValueLen = 10 * 1024 // 10 KiB
+
 // ParseVariablesJSON decodes a JSON string into a map of variable substitutions.
-// Returns an empty map if the input is empty.
+// Returns an empty map if the input is empty. Rejects values exceeding 10 KiB.
 func ParseVariablesJSON(raw string) (map[string]string, error) {
 	if raw == "" {
 		return map[string]string{}, nil
@@ -35,6 +39,11 @@ func ParseVariablesJSON(raw string) (map[string]string, error) {
 	var vars map[string]string
 	if err := json.Unmarshal([]byte(raw), &vars); err != nil {
 		return nil, fmt.Errorf("decoding variables JSON: %w", err)
+	}
+	for k, v := range vars {
+		if len(v) > maxVariableValueLen {
+			return nil, fmt.Errorf("variable %q value exceeds maximum length of %d bytes", k, maxVariableValueLen)
+		}
 	}
 	return vars, nil
 }

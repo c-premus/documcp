@@ -440,7 +440,7 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 			errorResponse(w, http.StatusNotFound, "document has no associated file")
 			return
 		}
-		filename := sanitizeFilename(doc.Title) + "." + doc.FileType
+		filename := sanitizeFilename(doc.Title) + sanitizeExtension("."+doc.FileType)
 		w.Header().Set("Content-Type", doc.MIMEType)
 		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 		w.Header().Set("Content-Length", strconv.Itoa(len(doc.Content.String)))
@@ -476,9 +476,10 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Determine filename for Content-Disposition, sanitizing special characters.
-	filename := doc.UUID + filepath.Ext(doc.FilePath)
+	ext := sanitizeExtension(filepath.Ext(doc.FilePath))
+	filename := doc.UUID + ext
 	if doc.Title != "" {
-		filename = sanitizeFilename(doc.Title) + filepath.Ext(doc.FilePath)
+		filename = sanitizeFilename(doc.Title) + ext
 	}
 
 	w.Header().Set("Content-Type", contentType)
@@ -531,4 +532,21 @@ func sanitizeFilename(name string) string {
 		}
 		return r
 	}, name)
+}
+
+// sanitizeExtension validates that a file extension contains only safe characters
+// (letters, digits, and the leading dot). Returns empty string if unsafe.
+func sanitizeExtension(ext string) string {
+	if ext == "" {
+		return ""
+	}
+	for i, r := range ext {
+		if i == 0 && r == '.' {
+			continue
+		}
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
+			return ""
+		}
+	}
+	return ext
 }

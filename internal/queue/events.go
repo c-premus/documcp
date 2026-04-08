@@ -66,11 +66,19 @@ func NewEventBus(logger *slog.Logger) *EventBus {
 	}
 }
 
+// maxSubscribers limits the number of concurrent EventBus subscriptions to
+// prevent memory exhaustion from reconnect loops or misbehaving clients.
+const maxSubscribers = 100
+
 // Subscribe returns a channel that receives events. Call Unsubscribe with the
-// returned ID when done.
+// returned ID when done. Returns nil if the subscriber limit is reached.
 func (eb *EventBus) Subscribe(id string) <-chan Event {
 	eb.mu.Lock()
 	defer eb.mu.Unlock()
+	if len(eb.subscribers) >= maxSubscribers {
+		eb.logger.Warn("event bus subscriber limit reached", "max", maxSubscribers)
+		return nil
+	}
 	ch := make(chan Event, eventBusBufferSize)
 	eb.subscribers[id] = ch
 	return ch
