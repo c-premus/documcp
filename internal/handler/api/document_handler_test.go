@@ -2224,7 +2224,7 @@ func TestDocumentHandler_BulkPurge(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 		body := decodeJSONBody(t, rr.Body)
-		assert.Equal(t, "older_than_days must be a non-negative integer", body["message"])
+		assert.Equal(t, "older_than_days must be between 0 and 3650", body["message"])
 	})
 
 	t.Run("returns 400 for non-integer older_than_days", func(t *testing.T) {

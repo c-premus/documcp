@@ -13,10 +13,10 @@ import (
 	"github.com/c-premus/documcp/internal/model"
 )
 
-// Sentinel errors for device authorization.
+// Sentinel errors for OAuth grant validation.
 var (
 	ErrInvalidClient    = errors.New("invalid or inactive client")
-	ErrUnsupportedGrant = errors.New("client does not support device_code grant type")
+	ErrUnsupportedGrant = errors.New("client does not support the requested grant type")
 )
 
 //nolint:godot // ---------------------------------------------------------------------------

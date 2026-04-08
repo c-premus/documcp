@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	authscope "github.com/c-premus/documcp/internal/auth/scope"
 )
@@ -32,6 +33,12 @@ func (s *Service) RefreshAccessToken(ctx context.Context, params RefreshTokenPar
 	client, err := s.repo.FindClientByClientID(ctx, params.ClientID)
 	if err != nil {
 		return nil, errors.New("invalid client credentials")
+	}
+
+	// Verify client supports refresh_token grant type
+	grantTypes, err := client.ParseGrantTypes()
+	if err != nil || !slices.Contains(grantTypes, "refresh_token") {
+		return nil, ErrUnsupportedGrant
 	}
 
 	// Verify client secret

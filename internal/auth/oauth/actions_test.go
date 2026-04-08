@@ -1344,6 +1344,7 @@ func TestRefreshAccessToken(t *testing.T) {
 		t.Helper()
 		refreshPlaintext, refreshHash = makeTokenPlaintext(t, 500)
 		client = makePublicClient(testClientDBID, testClientID)
+		client.GrantTypes = `["authorization_code","refresh_token"]`
 		accessToken = &model.OAuthAccessToken{
 			ID:       300,
 			Token:    "access-hash",
@@ -2018,7 +2019,7 @@ func TestGenerateDeviceCode(t *testing.T) {
 		})
 
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "client does not support device_code grant type")
+		assert.ErrorIs(t, err, ErrUnsupportedGrant)
 	})
 
 	t.Run("invalid grant types JSON returns error", func(t *testing.T) {
@@ -2039,7 +2040,7 @@ func TestGenerateDeviceCode(t *testing.T) {
 		})
 
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "client does not support device_code grant type")
+		assert.ErrorIs(t, err, ErrUnsupportedGrant)
 	})
 
 	t.Run("database error on persist propagates", func(t *testing.T) {

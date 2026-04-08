@@ -9,8 +9,8 @@ COPY docs/contracts/openapi.yaml ../docs/contracts/openapi.yaml
 RUN npm run build
 
 # Stage 2: Go build (always native — cross-compile for target arch)
-# golang:1.26.1-alpine — pinned for supply chain integrity
-FROM --platform=$BUILDPLATFORM golang:1.26.1-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS builder
+# golang:1.26.2-alpine — pinned for supply chain integrity
+FROM --platform=$BUILDPLATFORM golang:1.26.2-alpine@sha256:c2a1f7b2095d046ae14b286b18413a05bb82c9bca9b25fe7ff5efef0f0826166 AS builder
 
 # Target architecture injected by Buildx (e.g., amd64, arm64).
 ARG TARGETARCH

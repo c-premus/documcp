@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -92,6 +93,12 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 	client, err := s.repo.FindClientByClientID(ctx, params.ClientID)
 	if err != nil {
 		return nil, errors.New("invalid client credentials")
+	}
+
+	// Verify client supports authorization_code grant type
+	grantTypes, err := client.ParseGrantTypes()
+	if err != nil || !slices.Contains(grantTypes, "authorization_code") {
+		return nil, ErrUnsupportedGrant
 	}
 
 	// Verify client secret for confidential clients

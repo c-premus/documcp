@@ -61,6 +61,12 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 
 	// --- EventBus (Redis-backed for cross-instance SSE delivery) ---
 	eventBus := queue.NewRedisEventBus(context.Background(), f.RedisClient, logger)
+	var eventBusOK bool
+	defer func() {
+		if !eventBusOK {
+			eventBus.Close()
+		}
+	}()
 
 	// --- River Workers + Client ---
 	rs, err := buildRiverClient(f, eventBus, !withWorker)
@@ -238,6 +244,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		"mode", riverMode(withWorker),
 	)
 
+	eventBusOK = true
 	return &ServerApp{
 		Foundation:  f,
 		Server:      srv,

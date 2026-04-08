@@ -68,7 +68,7 @@ See [docs/OAUTH_CLIENT_GUIDE.md](docs/OAUTH_CLIENT_GUIDE.md) for connecting AI a
 
 ### Prerequisites
 
-- Go 1.26.1
+- Go 1.26.2
 - Node.js 24 (frontend)
 - PostgreSQL (with `pg_trgm` and `unaccent` extensions)
 - Redis 8+ (distributed rate limiting and SSE events)
