@@ -170,6 +170,7 @@ type OAuthConfig struct {
 	RegistrationEnabled     bool          `mapstructure:"oauth_registration_enabled"`
 	RegistrationRequireAuth bool          `mapstructure:"oauth_registration_require_auth"`
 	ClientTouchTimeout      time.Duration `mapstructure:"oauth_client_touch_timeout"`
+	ScopeGrantTTL           time.Duration `mapstructure:"oauth_scope_grant_ttl"`
 }
 
 // KiwixConfig holds Kiwix external service client settings.
@@ -317,6 +318,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oauth_registration_enabled", true)
 	v.SetDefault("oauth_registration_require_auth", true)
 	v.SetDefault("oauth_client_touch_timeout", 3*time.Second)
+	v.SetDefault("oauth_scope_grant_ttl", 30*24*time.Hour) // 30 days; 0 = no expiry
 
 	// Storage
 	v.SetDefault("storage_driver", "local")
@@ -503,6 +505,7 @@ func Load() (*Config, error) {
 		RegistrationEnabled:     v.GetBool("oauth_registration_enabled"),
 		RegistrationRequireAuth: v.GetBool("oauth_registration_require_auth"),
 		ClientTouchTimeout:      v.GetDuration("oauth_client_touch_timeout"),
+		ScopeGrantTTL:           v.GetDuration("oauth_scope_grant_ttl"),
 	}
 
 	cfg.Storage = StorageConfig{

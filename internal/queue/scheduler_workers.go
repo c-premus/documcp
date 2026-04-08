@@ -37,9 +37,10 @@ type ExternalServiceHealthChecker interface {
 	UpdateHealthStatus(ctx context.Context, id int64, status model.ExternalServiceStatus, latencyMs int, lastError string) error
 }
 
-// OAuthTokenPurger purges expired OAuth tokens.
+// OAuthTokenPurger purges expired OAuth tokens and scope grants.
 type OAuthTokenPurger interface {
 	PurgeExpiredTokens(ctx context.Context, retentionDays int) (int64, error)
+	DeleteExpiredScopeGrants(ctx context.Context) (int64, error)
 }
 
 // DocumentRepoDeps provides document repository methods needed by cleanup workers.
@@ -275,6 +276,15 @@ func (w *CleanupOAuthTokensWorker) Work(ctx context.Context, job *river.Job[Clea
 	}
 
 	w.Deps.Logger.Info("OAuth token cleanup completed", "purged_count", count)
+
+	// Also purge expired scope grants.
+	grantCount, grantErr := w.Deps.OAuthRepo.DeleteExpiredScopeGrants(ctx)
+	if grantErr != nil {
+		w.Deps.Logger.Error("purging expired scope grants", "error", grantErr)
+	} else if grantCount > 0 {
+		w.Deps.Logger.Info("expired scope grants cleanup completed", "purged_count", grantCount)
+	}
+
 	recordJobCompleted(w.Deps.Metrics, job.Queue, job.Kind, time.Since(start))
 	return nil
 }

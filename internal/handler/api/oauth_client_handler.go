@@ -26,6 +26,8 @@ type oauthClientRepo interface {
 	CreateClient(ctx context.Context, client *model.OAuthClient) error
 	FindClientByID(ctx context.Context, id int64) (*model.OAuthClient, error)
 	DeleteClient(ctx context.Context, id int64) error
+	FindActiveScopeGrants(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error)
+	DeleteScopeGrant(ctx context.Context, id int64) error
 }
 
 // OAuthClientHandler handles REST API endpoints for OAuth client administration.
@@ -283,4 +285,70 @@ func toOAuthClientResponse(c *model.OAuthClient) oauthClientResponse {
 	}
 
 	return resp
+}
+
+// scopeGrantResponse is the JSON representation of a scope grant.
+type scopeGrantResponse struct {
+	ID        int64   `json:"id"`
+	Scope     string  `json:"scope"`
+	GrantedBy int64   `json:"granted_by"`
+	GrantedAt string  `json:"granted_at"`
+	ExpiresAt *string `json:"expires_at"`
+}
+
+// ListScopeGrants handles GET /api/admin/oauth-clients/{id}/scope-grants.
+func (h *OAuthClientHandler) ListScopeGrants(w http.ResponseWriter, r *http.Request) {
+	clientID, ok := parseIDParam(w, r, "id", "client id")
+	if !ok {
+		return
+	}
+
+	// Verify client exists.
+	if _, err := h.repo.FindClientByID(r.Context(), clientID); err != nil {
+		errorResponse(w, http.StatusNotFound, "oauth client not found")
+		return
+	}
+
+	grants, err := h.repo.FindActiveScopeGrants(r.Context(), clientID)
+	if err != nil {
+		h.logger.Error("listing scope grants", "client_id", clientID, "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to list scope grants")
+		return
+	}
+
+	out := make([]scopeGrantResponse, len(grants))
+	for i := range grants {
+		out[i] = scopeGrantResponse{
+			ID:        grants[i].ID,
+			Scope:     grants[i].Scope,
+			GrantedBy: grants[i].GrantedBy,
+			GrantedAt: grants[i].GrantedAt.Format("2006-01-02T15:04:05Z07:00"),
+			ExpiresAt: nullTimePtr(grants[i].ExpiresAt),
+		}
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{"data": out})
+}
+
+// RevokeScopeGrant handles DELETE /api/admin/oauth-clients/{id}/scope-grants/{grantId}.
+func (h *OAuthClientHandler) RevokeScopeGrant(w http.ResponseWriter, r *http.Request) {
+	if _, ok := parseIDParam(w, r, "id", "client id"); !ok {
+		return
+	}
+	grantID, ok := parseIDParam(w, r, "grantId", "grant id")
+	if !ok {
+		return
+	}
+
+	if err := h.repo.DeleteScopeGrant(r.Context(), grantID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			errorResponse(w, http.StatusNotFound, "scope grant not found")
+			return
+		}
+		h.logger.Error("revoking scope grant", "grant_id", grantID, "error", err)
+		errorResponse(w, http.StatusInternalServerError, "failed to revoke scope grant")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

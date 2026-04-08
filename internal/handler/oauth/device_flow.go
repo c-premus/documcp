@@ -169,12 +169,12 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 			_ = deviceErrorTmpl.Execute(w, "An error occurred while processing your authorization.")
 			return
 		}
-		// Expand the client's registered scope with the user's entitlements so
-		// auto-registered clients gain write/admin scopes when an admin approves.
+		// Record a time-bounded scope grant so the client can use these scopes
+		// in future consent flows (replaces permanent scope widening).
 		userEntitlements := authscope.UserScopes(user.IsAdmin)
 		if entitled := authscope.Intersect(scope, userEntitlements); entitled != "" {
-			if _, expandErr := h.service.ExpandClientScope(r.Context(), dc.ClientID, entitled); expandErr != nil {
-				h.logger.Error("expanding client scope for device consent", "error", expandErr)
+			if grantErr := h.service.GrantClientScope(r.Context(), dc.ClientID, entitled, userID); grantErr != nil {
+				h.logger.Error("granting client scope for device consent", "error", grantErr)
 			}
 		}
 

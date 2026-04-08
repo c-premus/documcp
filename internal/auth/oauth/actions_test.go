@@ -53,6 +53,9 @@ type mockOAuthRepo struct {
 	UpdateDeviceCodeStatusAndScopeFunc func(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64, scope string) error
 	ExchangeDeviceCodeStatusFunc       func(ctx context.Context, id int64) error
 	UpdateDeviceCodeLastPolledFunc     func(ctx context.Context, id int64, interval int) error
+	// Scope Grants
+	UpsertScopeGrantFunc      func(ctx context.Context, grant *model.OAuthClientScopeGrant) error
+	FindActiveScopeGrantsFunc func(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error)
 	// Users
 	FindUserByIDFunc func(ctx context.Context, id int64) (*model.User, error)
 }
@@ -225,6 +228,20 @@ func (m *mockOAuthRepo) UpdateDeviceCodeLastPolled(ctx context.Context, id int64
 	return nil
 }
 
+func (m *mockOAuthRepo) UpsertScopeGrant(ctx context.Context, grant *model.OAuthClientScopeGrant) error {
+	if m.UpsertScopeGrantFunc != nil {
+		return m.UpsertScopeGrantFunc(ctx, grant)
+	}
+	return nil
+}
+
+func (m *mockOAuthRepo) FindActiveScopeGrants(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error) {
+	if m.FindActiveScopeGrantsFunc != nil {
+		return m.FindActiveScopeGrantsFunc(ctx, clientID)
+	}
+	return nil, nil
+}
+
 func (m *mockOAuthRepo) FindUserByID(ctx context.Context, id int64) (*model.User, error) {
 	if m.FindUserByIDFunc != nil {
 		return m.FindUserByIDFunc(ctx, id)
@@ -248,6 +265,10 @@ func testConfig() config.OAuthConfig {
 
 func testService(repo OAuthRepo) *Service {
 	return NewService(repo, testConfig(), "https://app.example.com", slog.Default())
+}
+
+func testServiceWithConfig(repo OAuthRepo, cfg config.OAuthConfig) *Service {
+	return NewService(repo, cfg, "https://app.example.com", slog.Default())
 }
 
 // makeTokenPlaintext generates a real token via GenerateToken, assigns it an ID,
@@ -312,71 +333,132 @@ func makeDeviceClient() *model.OAuthClient {
 // TestExpandClientScope
 // ---------------------------------------------------------------------------
 
-func TestExpandClientScope(t *testing.T) {
+func TestGrantClientScope(t *testing.T) {
 	t.Parallel()
 
-	t.Run("expands read-only client to include admin scopes", func(t *testing.T) {
+	t.Run("creates grant with TTL when ScopeGrantTTL > 0", func(t *testing.T) {
 		t.Parallel()
-		var savedScope string
+		var captured *model.OAuthClientScopeGrant
 		repo := &mockOAuthRepo{
-			FindClientByIDFunc: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
-				return &model.OAuthClient{
-					ID:       1,
-					ClientID: "cid",
-					Scope:    sql.NullString{String: "documents:read mcp:access", Valid: true},
-				}, nil
+			UpsertScopeGrantFunc: func(_ context.Context, grant *model.OAuthClientScopeGrant) error {
+				captured = grant
+				return nil
 			},
-			UpdateClientScopeFunc: func(_ context.Context, _ int64, scope string) error {
-				savedScope = scope
+		}
+		svc := testServiceWithConfig(repo, config.OAuthConfig{
+			ScopeGrantTTL: 24 * time.Hour,
+		})
+
+		err := svc.GrantClientScope(context.Background(), 42, "admin documents:write", 7)
+		require.NoError(t, err)
+		require.NotNil(t, captured)
+		assert.Equal(t, int64(42), captured.ClientID)
+		assert.Equal(t, "admin documents:write", captured.Scope)
+		assert.Equal(t, int64(7), captured.GrantedBy)
+		assert.True(t, captured.ExpiresAt.Valid)
+		assert.WithinDuration(t, time.Now().Add(24*time.Hour), captured.ExpiresAt.Time, 5*time.Second)
+	})
+
+	t.Run("creates grant with NULL expiry when ScopeGrantTTL = 0", func(t *testing.T) {
+		t.Parallel()
+		var captured *model.OAuthClientScopeGrant
+		repo := &mockOAuthRepo{
+			UpsertScopeGrantFunc: func(_ context.Context, grant *model.OAuthClientScopeGrant) error {
+				captured = grant
+				return nil
+			},
+		}
+		svc := testServiceWithConfig(repo, config.OAuthConfig{
+			ScopeGrantTTL: 0,
+		})
+
+		err := svc.GrantClientScope(context.Background(), 1, "admin", 5)
+		require.NoError(t, err)
+		require.NotNil(t, captured)
+		assert.False(t, captured.ExpiresAt.Valid, "expires_at should be NULL when TTL is 0")
+	})
+
+	t.Run("no-op when additionalScopes is empty", func(t *testing.T) {
+		t.Parallel()
+		upsertCalled := false
+		repo := &mockOAuthRepo{
+			UpsertScopeGrantFunc: func(_ context.Context, _ *model.OAuthClientScopeGrant) error {
+				upsertCalled = true
 				return nil
 			},
 		}
 		svc := testService(repo)
 
-		result, err := svc.ExpandClientScope(context.Background(), 1, "admin documents:read mcp:access")
+		err := svc.GrantClientScope(context.Background(), 1, "", 5)
+		require.NoError(t, err)
+		assert.False(t, upsertCalled)
+	})
+
+	t.Run("returns error when upsert fails", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			UpsertScopeGrantFunc: func(_ context.Context, _ *model.OAuthClientScopeGrant) error {
+				return errors.New("db error")
+			},
+		}
+		svc := testService(repo)
+
+		err := svc.GrantClientScope(context.Background(), 1, "admin", 5)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "upserting scope grant")
+	})
+}
+
+func TestEffectiveClientScope(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns base scope when no grants exist", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			FindActiveScopeGrantsFunc: func(_ context.Context, _ int64) ([]model.OAuthClientScopeGrant, error) {
+				return nil, nil
+			},
+		}
+		svc := testService(repo)
+
+		result, err := svc.EffectiveClientScope(context.Background(), 1, "documents:read mcp:access")
+		require.NoError(t, err)
+		assert.Equal(t, "documents:read mcp:access", result)
+	})
+
+	t.Run("unions base scope with active grants", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			FindActiveScopeGrantsFunc: func(_ context.Context, _ int64) ([]model.OAuthClientScopeGrant, error) {
+				return []model.OAuthClientScopeGrant{
+					{Scope: "admin documents:write"},
+					{Scope: "mcp:write"},
+				}, nil
+			},
+		}
+		svc := testService(repo)
+
+		result, err := svc.EffectiveClientScope(context.Background(), 1, "documents:read mcp:access")
 		require.NoError(t, err)
 		assert.Contains(t, result, "admin")
 		assert.Contains(t, result, "documents:read")
+		assert.Contains(t, result, "documents:write")
 		assert.Contains(t, result, "mcp:access")
-		assert.Equal(t, result, savedScope)
+		assert.Contains(t, result, "mcp:write")
 	})
 
-	t.Run("no-op when client scope already covers additional scopes", func(t *testing.T) {
+	t.Run("returns base scope on query error", func(t *testing.T) {
 		t.Parallel()
-		var updateCalled bool
 		repo := &mockOAuthRepo{
-			FindClientByIDFunc: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
-				return &model.OAuthClient{
-					ID:       1,
-					ClientID: "cid",
-					Scope:    sql.NullString{String: "documents:read mcp:access", Valid: true},
-				}, nil
-			},
-			UpdateClientScopeFunc: func(_ context.Context, _ int64, _ string) error {
-				updateCalled = true
-				return nil
+			FindActiveScopeGrantsFunc: func(_ context.Context, _ int64) ([]model.OAuthClientScopeGrant, error) {
+				return nil, errors.New("db error")
 			},
 		}
 		svc := testService(repo)
 
-		result, err := svc.ExpandClientScope(context.Background(), 1, "mcp:access")
-		require.NoError(t, err)
-		assert.Equal(t, "documents:read mcp:access", result)
-		assert.False(t, updateCalled, "UpdateClientScope should not be called when scope is unchanged")
-	})
-
-	t.Run("returns error when client not found", func(t *testing.T) {
-		t.Parallel()
-		repo := &mockOAuthRepo{
-			FindClientByIDFunc: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
-				return nil, sql.ErrNoRows
-			},
-		}
-		svc := testService(repo)
-
-		_, err := svc.ExpandClientScope(context.Background(), 1, "admin")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "finding client for scope expansion")
+		result, err := svc.EffectiveClientScope(context.Background(), 1, "documents:read")
+		assert.Error(t, err)
+		assert.Equal(t, "documents:read", result)
 	})
 }
 
@@ -2220,11 +2302,12 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 		assert.Contains(t, capturedScope, "documents:read")
 	})
 
-	t.Run("approve with admin user preserves all scopes and expands client", func(t *testing.T) {
+	t.Run("approve with admin user preserves all scopes and creates grant", func(t *testing.T) {
 		t.Parallel()
 
 		var capturedScope string
-		var expandedScope string
+		var grantedScope string
+		var grantedBy int64
 		repo := &mockOAuthRepo{
 			FindDeviceCodeByUserCodeFunc: func(_ context.Context, _ string) (*model.OAuthDeviceCode, error) {
 				return &model.OAuthDeviceCode{
@@ -2235,18 +2318,12 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 					ExpiresAt: time.Now().Add(5 * time.Minute),
 				}, nil
 			},
-			FindClientByIDFunc: func(_ context.Context, _ int64) (*model.OAuthClient, error) {
-				return &model.OAuthClient{
-					ID:       100,
-					ClientID: "cid",
-					Scope:    sql.NullString{String: "mcp:access", Valid: true},
-				}, nil
-			},
 			FindUserByIDFunc: func(_ context.Context, _ int64) (*model.User, error) {
 				return &model.User{ID: 42, IsAdmin: true}, nil
 			},
-			UpdateClientScopeFunc: func(_ context.Context, _ int64, scope string) error {
-				expandedScope = scope
+			UpsertScopeGrantFunc: func(_ context.Context, grant *model.OAuthClientScopeGrant) error {
+				grantedScope = grant.Scope
+				grantedBy = grant.GrantedBy
 				return nil
 			},
 			UpdateDeviceCodeStatusAndScopeFunc: func(_ context.Context, _ int64, _ model.DeviceCodeStatus, _ *int64, scope string) error {
@@ -2261,9 +2338,10 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, capturedScope, "mcp:access")
 		assert.Contains(t, capturedScope, "admin")
-		// Verify client scope was expanded.
-		assert.Contains(t, expandedScope, "admin")
-		assert.Contains(t, expandedScope, "mcp:access")
+		// Verify a scope grant was created (not permanent client scope mutation).
+		assert.Contains(t, grantedScope, "admin")
+		assert.Contains(t, grantedScope, "mcp:access")
+		assert.Equal(t, int64(42), grantedBy)
 	})
 
 	t.Run("approve rejects when no scopes overlap with user entitlements", func(t *testing.T) {

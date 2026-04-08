@@ -71,6 +71,10 @@ func (m *mockOAuthTokenPurger) PurgeExpiredTokens(_ context.Context, retentionDa
 	return m.purgeCount, m.purgeErr
 }
 
+func (m *mockOAuthTokenPurger) DeleteExpiredScopeGrants(_ context.Context) (int64, error) {
+	return 0, nil
+}
+
 type mockExternalServiceFinder struct {
 	findEnabledByTypeFn func(ctx context.Context, serviceType string) ([]model.ExternalService, error)
 }

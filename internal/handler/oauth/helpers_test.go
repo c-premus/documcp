@@ -45,6 +45,8 @@ type mockOAuthRepo struct {
 	ExchangeDeviceCodeStatusFunc          func(ctx context.Context, id int64) error
 	UpdateDeviceCodeLastPolledFunc        func(ctx context.Context, id int64, interval int) error
 	FindUserByIDFunc                      func(ctx context.Context, id int64) (*model.User, error)
+	UpsertScopeGrantFunc                  func(ctx context.Context, grant *model.OAuthClientScopeGrant) error
+	FindActiveScopeGrantsFunc             func(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error)
 }
 
 func (m *mockOAuthRepo) CreateClient(ctx context.Context, client *model.OAuthClient) error {
@@ -215,6 +217,20 @@ func (m *mockOAuthRepo) UpdateDeviceCodeLastPolled(ctx context.Context, id int64
 func (m *mockOAuthRepo) FindUserByID(ctx context.Context, id int64) (*model.User, error) {
 	if m.FindUserByIDFunc != nil {
 		return m.FindUserByIDFunc(ctx, id)
+	}
+	return nil, nil
+}
+
+func (m *mockOAuthRepo) UpsertScopeGrant(ctx context.Context, grant *model.OAuthClientScopeGrant) error {
+	if m.UpsertScopeGrantFunc != nil {
+		return m.UpsertScopeGrantFunc(ctx, grant)
+	}
+	return nil
+}
+
+func (m *mockOAuthRepo) FindActiveScopeGrants(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error) {
+	if m.FindActiveScopeGrantsFunc != nil {
+		return m.FindActiveScopeGrantsFunc(ctx, clientID)
 	}
 	return nil, nil
 }

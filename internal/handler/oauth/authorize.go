@@ -112,28 +112,33 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Expand the client's registered scope to include scopes the user is
-	// entitled to grant. This allows auto-registered (read-only) clients to
-	// gain write/admin scopes when an admin approves consent.
+	// Record a time-bounded scope grant so the client can use these scopes
+	// in future consent flows (replaces permanent scope widening).
 	if effectiveScope != "" {
-		expandedScope, expandErr := h.service.ExpandClientScope(r.Context(), client.ID, effectiveScope)
-		if expandErr != nil {
-			h.logger.Error("expanding client scope", "error", expandErr)
-			// Non-fatal: proceed with existing client scope.
-		} else {
-			client.Scope = sql.NullString{String: expandedScope, Valid: expandedScope != ""}
+		if grantErr := h.service.GrantClientScope(r.Context(), client.ID, effectiveScope, userID); grantErr != nil {
+			h.logger.Error("granting client scope", "error", grantErr)
+			// Non-fatal: proceed with base client scope.
 		}
 	}
 
-	// Further narrow to the client's registered scope. A client should not
-	// receive scopes beyond what it registered for, even if the user could
-	// grant them. This prevents over-scoping when clients (e.g. Claude.ai)
-	// request all scopes_supported in the authorize URL.
-	if effectiveScope != "" && client.Scope.Valid && client.Scope.String != "" {
-		effectiveScope = authscope.Intersect(effectiveScope, client.Scope.String)
-		if effectiveScope == "" {
-			oauthError(w, http.StatusBadRequest, "invalid_scope", "None of the requested scopes are available for this client.")
-			return
+	// Narrow to the client's effective scope (base registration + active grants).
+	// A client should not receive scopes beyond what it has been granted.
+	if effectiveScope != "" {
+		baseScope := ""
+		if client.Scope.Valid {
+			baseScope = client.Scope.String
+		}
+		clientEffective, effErr := h.service.EffectiveClientScope(r.Context(), client.ID, baseScope)
+		if effErr != nil {
+			h.logger.Error("computing effective client scope", "error", effErr)
+			clientEffective = baseScope
+		}
+		if clientEffective != "" {
+			effectiveScope = authscope.Intersect(effectiveScope, clientEffective)
+			if effectiveScope == "" {
+				oauthError(w, http.StatusBadRequest, "invalid_scope", "None of the requested scopes are available for this client.")
+				return
+			}
 		}
 	}
 

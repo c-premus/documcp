@@ -143,11 +143,11 @@ func (s *Service) AuthorizeDeviceCode(ctx context.Context, userCode string, user
 		if err != nil {
 			return fmt.Errorf("looking up approving user: %w", err)
 		}
-		// Expand client scope with user entitlements before narrowing.
+		// Record a time-bounded scope grant (replaces permanent scope widening).
 		userEntitlements := authscope.UserScopes(user.IsAdmin)
 		if entitled := authscope.Intersect(scope, userEntitlements); entitled != "" {
-			if _, expandErr := s.ExpandClientScope(ctx, dc.ClientID, entitled); expandErr != nil {
-				s.logger.Error("expanding client scope for device flow", "error", expandErr)
+			if grantErr := s.GrantClientScope(ctx, dc.ClientID, entitled, userID); grantErr != nil {
+				s.logger.Error("granting client scope for device flow", "error", grantErr)
 			}
 		}
 		scope = authscope.Intersect(scope, userEntitlements)
