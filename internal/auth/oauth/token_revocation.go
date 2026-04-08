@@ -59,9 +59,15 @@ func (s *Service) tryRevokeAccessToken(ctx context.Context, tokenHash string, cl
 	if token.ClientID != clientID {
 		return
 	}
-	_ = s.repo.RevokeAccessToken(ctx, token.ID)
+	if err = s.repo.RevokeAccessToken(ctx, token.ID); err != nil {
+		s.logger.Warn("failed to revoke access token during revocation",
+			"access_token_id", token.ID, "error", err)
+	}
 	// Also revoke associated refresh tokens
-	_ = s.repo.RevokeRefreshTokenByAccessTokenID(ctx, token.ID)
+	if err = s.repo.RevokeRefreshTokenByAccessTokenID(ctx, token.ID); err != nil {
+		s.logger.Warn("failed to revoke associated refresh tokens",
+			"access_token_id", token.ID, "error", err)
+	}
 }
 
 func (s *Service) tryRevokeRefreshToken(ctx context.Context, tokenHash string, clientID int64) {
@@ -74,7 +80,13 @@ func (s *Service) tryRevokeRefreshToken(ctx context.Context, tokenHash string, c
 	if err != nil || accessToken.ClientID != clientID {
 		return
 	}
-	_ = s.repo.RevokeRefreshToken(ctx, token.ID)
+	if err = s.repo.RevokeRefreshToken(ctx, token.ID); err != nil {
+		s.logger.Warn("failed to revoke refresh token during revocation",
+			"refresh_token_id", token.ID, "error", err)
+	}
 	// Also revoke the associated access token
-	_ = s.repo.RevokeAccessToken(ctx, token.AccessTokenID)
+	if err = s.repo.RevokeAccessToken(ctx, token.AccessTokenID); err != nil {
+		s.logger.Warn("failed to revoke associated access token",
+			"access_token_id", token.AccessTokenID, "error", err)
+	}
 }

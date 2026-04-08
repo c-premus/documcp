@@ -225,13 +225,6 @@ func (s *Server) registerAuthRoutes(deps Deps) {
 		s.logger.Info("OIDC auth endpoints registered")
 	}
 
-	if deps.AuthHandler != nil {
-		r.Group(func(r chi.Router) {
-			r.Use(rateLimitByIP(60, time.Minute, deps.BareRedisClient))
-			r.Get("/api/auth/me", deps.AuthHandler.Me)
-		})
-		s.logger.Info("auth/me endpoint registered", "path", "/api/auth/me")
-	}
 }
 
 // registerAPIRoutes registers the REST API route group with dual-auth model.
@@ -253,6 +246,14 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 					w.WriteHeader(http.StatusServiceUnavailable)
 					_, _ = w.Write([]byte(`{"error":"Service Unavailable","message":"authentication not configured"}`))
 				})
+			})
+		}
+
+		// Auth status endpoint (no scope requirement — any authenticated user)
+		if deps.AuthHandler != nil {
+			r.Group(func(r chi.Router) {
+				r.Use(rateLimitByIP(60, time.Minute, deps.BareRedisClient))
+				r.Get("/auth/me", deps.AuthHandler.Me)
 			})
 		}
 

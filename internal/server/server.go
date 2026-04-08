@@ -129,7 +129,10 @@ func (s *Server) Start() error {
 func (s *Server) startRedirectServer() {
 	s.redirectServer = &http.Server{
 		Addr:              s.redirectAddr,
+		ReadTimeout:       5 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      5 * time.Second,
+		IdleTimeout:       30 * time.Second,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			target := "https://" + r.Host + r.URL.RequestURI()
 			http.Redirect(w, r, target, http.StatusMovedPermanently)

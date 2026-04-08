@@ -183,7 +183,10 @@ func newHealthServer(port int, f *Foundation) *http.Server {
 	return &http.Server{
 		Addr:              net.JoinHostPort("0.0.0.0", strconv.Itoa(port)),
 		Handler:           mux,
+		ReadTimeout:       5 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       30 * time.Second,
 		ErrorLog:          slog.NewLogLogger(f.Logger.Handler(), slog.LevelError),
 	}
 }

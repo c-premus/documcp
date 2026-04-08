@@ -128,7 +128,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	oauthClientH := apihandler.NewOAuthClientHandler(f.OAuthRepo, logger)
 
 	// --- Auth & SPA Handlers ---
-	authH := apihandler.NewAuthHandler(sessionStore, f.OAuthRepo, logger)
+	authH := apihandler.NewAuthHandler(logger)
 	spaHandler := frontend.Handler()
 	rootAssetHandler := frontend.RootAssetHandler()
 
