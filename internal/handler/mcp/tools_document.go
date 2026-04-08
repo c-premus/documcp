@@ -268,6 +268,9 @@ func (h *Handler) handleSearchDocuments(
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, searchDocumentsResponse{}, errors.New("mcp:read scope required for document search")
 	}
+	if len(input.Query) > 500 {
+		return nil, searchDocumentsResponse{}, errors.New("query must be at most 500 characters")
+	}
 	if h.searcher == nil {
 		return nil, searchDocumentsResponse{
 			Success: false,
@@ -387,6 +390,29 @@ func (h *Handler) handleCreateDocument(
 	if err := requireMCPScope(ctx, authscope.MCPWrite); err != nil {
 		return nil, createDocumentResponse{}, errors.New("mcp:write scope required for document creation")
 	}
+
+	// Validate inputs — DTO jsonschema hints are descriptive only, not enforced.
+	if input.Title == "" || len(input.Title) > 255 {
+		return nil, createDocumentResponse{}, errors.New("title is required and must be at most 255 characters")
+	}
+	if input.Content == "" || len(input.Content) > 10*1024*1024 {
+		return nil, createDocumentResponse{}, errors.New("content is required and must be at most 10 MB")
+	}
+	if input.FileType != "markdown" && input.FileType != "html" {
+		return nil, createDocumentResponse{}, errors.New("file_type must be 'markdown' or 'html'")
+	}
+	if len(input.Description) > 1000 {
+		return nil, createDocumentResponse{}, errors.New("description must be at most 1000 characters")
+	}
+	if len(input.Tags) > 50 {
+		return nil, createDocumentResponse{}, errors.New("maximum 50 tags allowed")
+	}
+	for _, tag := range input.Tags {
+		if len(tag) > 100 {
+			return nil, createDocumentResponse{}, errors.New("each tag must be at most 100 characters")
+		}
+	}
+
 	// Set the owner from the authenticated user context.
 	var userID *int64
 	if user, _ := authmiddleware.UserFromContext(ctx); user != nil {
@@ -426,6 +452,23 @@ func (h *Handler) handleUpdateDocument(
 	if err := requireMCPScope(ctx, authscope.MCPWrite); err != nil {
 		return nil, updateDocumentResponse{}, errors.New("mcp:write scope required for document updates")
 	}
+
+	// Validate inputs.
+	if input.Title != "" && len(input.Title) > 255 {
+		return nil, updateDocumentResponse{}, errors.New("title must be at most 255 characters")
+	}
+	if len(input.Description) > 1000 {
+		return nil, updateDocumentResponse{}, errors.New("description must be at most 1000 characters")
+	}
+	if len(input.Tags) > 50 {
+		return nil, updateDocumentResponse{}, errors.New("maximum 50 tags allowed")
+	}
+	for _, tag := range input.Tags {
+		if len(tag) > 100 {
+			return nil, updateDocumentResponse{}, errors.New("each tag must be at most 100 characters")
+		}
+	}
+
 	// Non-admin users can only update their own documents.
 	if err := h.checkDocumentOwnership(ctx, input.UUID); err != nil {
 		return nil, updateDocumentResponse{}, err

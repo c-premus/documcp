@@ -143,13 +143,17 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 		return nil, fmt.Errorf("creating file %s: %w", absPath, err)
 	}
 
-	written, err := io.Copy(f, params.Reader)
+	written, err := io.Copy(f, io.LimitReader(params.Reader, p.maxUploadSize+1))
 	if closeErr := f.Close(); closeErr != nil && err == nil {
 		err = closeErr
 	}
 	if err != nil {
 		_ = os.Remove(absPath)
 		return nil, fmt.Errorf("writing uploaded file: %w", err)
+	}
+	if written > p.maxUploadSize {
+		_ = os.Remove(absPath)
+		return nil, fmt.Errorf("%w: actual bytes %d exceeds limit of %d", ErrFileTooLarge, written, p.maxUploadSize)
 	}
 
 	// Create DB record.
@@ -246,13 +250,17 @@ func (p *DocumentPipeline) ReplaceContent(ctx context.Context, docUUID string, p
 		return nil, fmt.Errorf("creating file %s: %w", fullPath, err)
 	}
 
-	written, err := io.Copy(f, params.Reader)
+	written, err := io.Copy(f, io.LimitReader(params.Reader, p.maxUploadSize+1))
 	if closeErr := f.Close(); closeErr != nil && err == nil {
 		err = closeErr
 	}
 	if err != nil {
 		_ = os.Remove(fullPath)
 		return nil, fmt.Errorf("writing replacement file: %w", err)
+	}
+	if written > p.maxUploadSize {
+		_ = os.Remove(fullPath)
+		return nil, fmt.Errorf("%w: actual bytes %d exceeds limit of %d", ErrFileTooLarge, written, p.maxUploadSize)
 	}
 
 	// Reset document fields for re-processing.

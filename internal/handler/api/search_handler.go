@@ -53,6 +53,10 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusBadRequest, "query parameter 'q' is required")
 		return
 	}
+	if len(query) > 500 {
+		errorResponse(w, http.StatusBadRequest, "query must be at most 500 characters")
+		return
+	}
 
 	limitInt, offsetInt := parsePagination(r, 20, 100)
 	limit, offset := int64(limitInt), int64(offsetInt)
@@ -98,6 +102,10 @@ func (h *SearchHandler) FederatedSearch(w http.ResponseWriter, r *http.Request) 
 	query := r.URL.Query().Get("q")
 	if query == "" {
 		errorResponse(w, http.StatusBadRequest, "query parameter 'q' is required")
+		return
+	}
+	if len(query) > 500 {
+		errorResponse(w, http.StatusBadRequest, "query must be at most 500 characters")
 		return
 	}
 

@@ -166,6 +166,9 @@ func (h *Handler) handleSearchZim(ctx context.Context, _ *mcp.CallToolRequest, i
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, searchZimResponse{}, errors.New("mcp:read scope required")
 	}
+	if len(input.Query) > 500 {
+		return nil, searchZimResponse{}, errors.New("query must be at most 500 characters")
+	}
 	kiwixClient, _ := h.getKiwixClient(ctx)
 	if kiwixClient == nil {
 		return nil, searchZimResponse{

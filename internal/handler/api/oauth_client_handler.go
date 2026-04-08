@@ -9,9 +9,14 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
+
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
+	oauth "github.com/c-premus/documcp/internal/auth/oauth"
+	authscope "github.com/c-premus/documcp/internal/auth/scope"
 	"github.com/c-premus/documcp/internal/model"
 )
 
@@ -94,6 +99,53 @@ func (h *OAuthClientHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if body.ClientName == "" {
 		errorResponse(w, http.StatusBadRequest, "client_name is required")
 		return
+	}
+	if len(body.ClientName) > 255 {
+		errorResponse(w, http.StatusBadRequest, "client_name must not exceed 255 characters")
+		return
+	}
+
+	// Validate scope against canonical list.
+	if body.Scope != "" {
+		if invalid := authscope.ValidateAll(body.Scope); len(invalid) > 0 {
+			errorResponse(w, http.StatusBadRequest, "invalid scopes: "+strings.Join(invalid, ", "))
+			return
+		}
+	}
+
+	// Validate redirect URIs: must use HTTPS for non-loopback hosts.
+	for _, uri := range body.RedirectURIs {
+		parsed, err := url.ParseRequestURI(uri)
+		if err != nil {
+			errorResponse(w, http.StatusBadRequest, "invalid redirect URI: "+uri)
+			return
+		}
+		if parsed.Scheme != "https" && !oauth.IsLoopbackHost(parsed.Hostname()) {
+			errorResponse(w, http.StatusBadRequest, "redirect URIs must use HTTPS for non-loopback hosts")
+			return
+		}
+	}
+
+	// Validate grant types.
+	validGrantTypes := map[string]bool{
+		"authorization_code": true,
+		"refresh_token":      true,
+		"urn:ietf:params:oauth:grant-type:device_code": true,
+	}
+	for _, gt := range body.GrantTypes {
+		if !validGrantTypes[gt] {
+			errorResponse(w, http.StatusBadRequest, "invalid grant type: "+gt)
+			return
+		}
+	}
+
+	// Validate token_endpoint_auth_method.
+	if body.TokenEndpointAuthMethod != "" {
+		validMethods := map[string]bool{"none": true, "client_secret_basic": true, "client_secret_post": true}
+		if !validMethods[body.TokenEndpointAuthMethod] {
+			errorResponse(w, http.StatusBadRequest, "invalid token_endpoint_auth_method")
+			return
+		}
 	}
 
 	// Generate client credentials.

@@ -321,6 +321,9 @@ func (h *Handler) handleSearchGitTemplates(
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, searchGitTemplatesResponse{}, errors.New("mcp:read scope required")
 	}
+	if len(input.Query) > 500 {
+		return nil, searchGitTemplatesResponse{}, errors.New("query must be at most 500 characters")
+	}
 
 	limit := int64(clampPagination(input.Limit, 10, 50))
 
