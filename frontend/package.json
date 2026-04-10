@@ -19,7 +19,7 @@
   "dependencies": {
     "@headlessui/vue": "^1.7.23",
     "@heroicons/vue": "^2.2.0",
-    "@scalar/api-reference": "^1.49.7",
+    "@scalar/api-reference": "^1.52.0",
     "@sentry/vue": "^10.47.0",
     "@tanstack/vue-table": "^8.21.3",
     "date-fns": "^4.1.0",
