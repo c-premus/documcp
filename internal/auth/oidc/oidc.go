@@ -23,6 +23,7 @@ import (
 
 	"github.com/c-premus/documcp/internal/config"
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/security"
 )
 
 // UserRepo defines the repository interface consumed by the OIDC handler.
@@ -63,15 +64,37 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 		return nil, nil
 	}
 
+	// Validate operator-configured URLs before any outbound HTTP. Private RFC-1918
+	// ranges are allowed for homelab / internal Authentik deployments, matching
+	// the SSRF policy used for Kiwix and Git template URLs.
+	if err := validateOIDCURL(cfg.OIDCCfg.ProviderURL); err != nil {
+		return nil, fmt.Errorf("validating OIDC_PROVIDER_URL: %w", err)
+	}
+	if cfg.OIDCCfg.ManualEndpoints() {
+		if err := validateOIDCURL(cfg.OIDCCfg.AuthorizationURL); err != nil {
+			return nil, fmt.Errorf("validating OIDC_AUTHORIZATION_URL: %w", err)
+		}
+		if err := validateOIDCURL(cfg.OIDCCfg.TokenURL); err != nil {
+			return nil, fmt.Errorf("validating OIDC_TOKEN_URL: %w", err)
+		}
+		if cfg.OIDCCfg.JWKSURL != "" {
+			if err := validateOIDCURL(cfg.OIDCCfg.JWKSURL); err != nil {
+				return nil, fmt.Errorf("validating OIDC_JWKS_URL: %w", err)
+			}
+		}
+	}
+
 	scopes := cfg.OIDCCfg.Scopes
 	if len(scopes) == 0 {
 		scopes = []string{gooidc.ScopeOpenID, "profile", "email"}
 	}
 
 	// Instrumented HTTP client for all outbound OIDC calls (discovery, JWKS, token exchange).
+	// The base transport re-validates resolved IPs at dial time to prevent DNS
+	// rebinding attacks against the configured OIDC endpoints (see oidcBaseTransport).
 	httpClient := &http.Client{
 		Timeout:   30 * time.Second,
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
+		Transport: otelhttp.NewTransport(oidcBaseTransport()),
 	}
 	// go-oidc and golang.org/x/oauth2 both read the HTTP client from context.
 	ctx = context.WithValue(ctx, oauth2.HTTPClient, httpClient)
@@ -155,6 +178,24 @@ var (
 	discoveryMaxRetries = 4
 	discoveryBaseDelay  = 1 * time.Second
 )
+
+// validateOIDCURL checks an operator-configured OIDC URL against the SSRF
+// block-list. It is a package-level variable so tests that spin up httptest
+// servers (bound to 127.0.0.1) can replace it with a no-op. Production code
+// must never reassign this — the default enforces loopback/link-local blocks
+// while still permitting private RFC-1918 ranges for homelab deployments.
+var validateOIDCURL = func(url string) error {
+	return security.ValidateExternalURL(url, true)
+}
+
+// oidcBaseTransport returns the base http.RoundTripper used by the OIDC HTTP
+// client. It is wrapped with otelhttp for tracing inside New(). The default
+// is SafeTransportAllowPrivate which re-validates resolved IPs at dial time
+// to prevent DNS rebinding. Tests override this so they can reach httptest
+// servers bound to 127.0.0.1.
+var oidcBaseTransport = func() http.RoundTripper {
+	return security.SafeTransportAllowPrivate(10 * time.Second)
+}
 
 // Login handles GET /auth/login — redirects to the OIDC provider.
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
