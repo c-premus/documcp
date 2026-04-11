@@ -23,7 +23,17 @@ import (
 
 	"github.com/c-premus/documcp/internal/config"
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/security"
 )
+
+func init() {
+	// httptest servers bind to 127.0.0.1, which SafeTransport correctly rejects
+	// as loopback at both validation and dial time. Disable both guards for the
+	// test binary. Tests that need to exercise the real validator (e.g.
+	// TestNew_RejectsUnsafeProviderURL) save and restore these vars themselves.
+	validateOIDCURL = func(string) error { return nil }
+	oidcBaseTransport = func() http.RoundTripper { return http.DefaultTransport }
+}
 
 // mockUserRepo implements UserRepo for testing.
 type mockUserRepo struct {
@@ -1373,4 +1383,45 @@ func newCustomTokenHandler(t *testing.T, repo UserRepo, tokenHandler func(http.R
 // parseRedirectURL is a helper to parse the Location header URL.
 func parseRedirectURL(rawURL string) (*neturl.URL, error) {
 	return neturl.Parse(rawURL)
+}
+
+// TestNew_RejectsUnsafeProviderURL verifies that New() rejects OIDC provider
+// URLs that fall in the SSRF block-list (loopback, link-local, unspecified).
+// It restores the real validateOIDCURL for the duration of the test — the
+// package-level init() in this file otherwise no-ops it so existing tests
+// can use httptest servers bound to 127.0.0.1.
+func TestNew_RejectsUnsafeProviderURL(t *testing.T) {
+	orig := validateOIDCURL
+	validateOIDCURL = func(u string) error {
+		return security.ValidateExternalURL(u, true)
+	}
+	t.Cleanup(func() { validateOIDCURL = orig })
+
+	cases := []struct {
+		name, url, wantSubstr string
+	}{
+		{"loopback IPv4", "http://127.0.0.1/", "loopback"},
+		{"loopback IPv6", "http://[::1]/", "loopback"},
+		{"localhost hostname", "http://localhost/", "localhost"},
+		{"link-local IPv4", "http://169.254.169.254/", "link-local"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := New(context.Background(), Config{
+				OIDCCfg: config.OIDCConfig{
+					ProviderURL: tc.url,
+					ClientID:    "test-client-id",
+				},
+				SessionStore: sessions.NewCookieStore([]byte("test-secret-key-32-bytes-long!!")),
+				Repo:         &mockUserRepo{},
+				Logger:       slog.Default(),
+			})
+			if err == nil {
+				t.Fatalf("expected validation error, got nil")
+			}
+			if !strings.Contains(err.Error(), tc.wantSubstr) {
+				t.Errorf("error %q does not contain %q", err.Error(), tc.wantSubstr)
+			}
+		})
+	}
 }
