@@ -159,17 +159,33 @@ func (h *Handler) registerDocumentTools() {
 	mcp.AddTool(h.server, &mcp.Tool{
 		Name:        "create_document",
 		Description: "Create a new document (markdown or html). Auto-indexed for search.",
+		Annotations: &mcp.ToolAnnotations{
+			// Additive only — creating a document doesn't modify or remove
+			// anything else. Each call yields a new document, so it's not idempotent.
+			DestructiveHint: &boolFalse,
+		},
 	}, h.handleCreateDocument)
 
 	mcp.AddTool(h.server, &mcp.Tool{
 		Name:        "update_document",
 		Description: "Modify a document's title, description, tags, or visibility.",
+		Annotations: &mcp.ToolAnnotations{
+			DestructiveHint: &boolTrue,
+			IdempotentHint:  true,
+		},
 	}, h.handleUpdateDocument)
 
 	mcp.AddTool(h.server, &mcp.Tool{
 		Name:        "delete_document",
 		Description: "Remove a document by UUID (ownership required).",
+		Annotations: &mcp.ToolAnnotations{
+			DestructiveHint: &boolTrue,
+			IdempotentHint:  true,
+		},
 	}, h.handleDeleteDocument)
+	// NOTE: if you add a write tool here, also add its handler to the
+	// TestMCPWriteTools_RequireMCPWriteScope table in tools_document_test.go
+	// so CI catches any future regression where the scope check is forgotten.
 }
 
 // --- Tool handlers ---
