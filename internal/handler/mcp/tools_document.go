@@ -404,14 +404,8 @@ func (h *Handler) handleCreateDocument(
 	if len(input.Description) > 1000 {
 		return nil, createDocumentResponse{}, errors.New("description must be at most 1000 characters")
 	}
-	if len(input.Tags) > 50 {
-		return nil, createDocumentResponse{}, errors.New("maximum 50 tags allowed")
-	}
-	for _, tag := range input.Tags {
-		if len(tag) > 100 {
-			return nil, createDocumentResponse{}, errors.New("each tag must be at most 100 characters")
-		}
-	}
+	// Tag count + length validation happens at the service layer
+	// (see service.validateTags, service.ErrTagValidation).
 
 	// Set the owner from the authenticated user context.
 	var userID *int64
@@ -460,14 +454,8 @@ func (h *Handler) handleUpdateDocument(
 	if len(input.Description) > 1000 {
 		return nil, updateDocumentResponse{}, errors.New("description must be at most 1000 characters")
 	}
-	if len(input.Tags) > 50 {
-		return nil, updateDocumentResponse{}, errors.New("maximum 50 tags allowed")
-	}
-	for _, tag := range input.Tags {
-		if len(tag) > 100 {
-			return nil, updateDocumentResponse{}, errors.New("each tag must be at most 100 characters")
-		}
-	}
+	// Tag count + length validation happens at the service layer
+	// (see service.validateTags, service.ErrTagValidation).
 
 	// Non-admin users can only update their own documents.
 	if err := h.checkDocumentOwnership(ctx, input.UUID); err != nil {
