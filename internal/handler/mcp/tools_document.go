@@ -159,17 +159,33 @@ func (h *Handler) registerDocumentTools() {
 	mcp.AddTool(h.server, &mcp.Tool{
 		Name:        "create_document",
 		Description: "Create a new document (markdown or html). Auto-indexed for search.",
+		Annotations: &mcp.ToolAnnotations{
+			// Additive only — creating a document doesn't modify or remove
+			// anything else. Each call yields a new document, so it's not idempotent.
+			DestructiveHint: &boolFalse,
+		},
 	}, h.handleCreateDocument)
 
 	mcp.AddTool(h.server, &mcp.Tool{
 		Name:        "update_document",
 		Description: "Modify a document's title, description, tags, or visibility.",
+		Annotations: &mcp.ToolAnnotations{
+			DestructiveHint: &boolTrue,
+			IdempotentHint:  true,
+		},
 	}, h.handleUpdateDocument)
 
 	mcp.AddTool(h.server, &mcp.Tool{
 		Name:        "delete_document",
 		Description: "Remove a document by UUID (ownership required).",
+		Annotations: &mcp.ToolAnnotations{
+			DestructiveHint: &boolTrue,
+			IdempotentHint:  true,
+		},
 	}, h.handleDeleteDocument)
+	// NOTE: if you add a write tool here, also add its handler to the
+	// TestMCPWriteTools_RequireMCPWriteScope table in tools_document_test.go
+	// so CI catches any future regression where the scope check is forgotten.
 }
 
 // --- Tool handlers ---
@@ -404,14 +420,8 @@ func (h *Handler) handleCreateDocument(
 	if len(input.Description) > 1000 {
 		return nil, createDocumentResponse{}, errors.New("description must be at most 1000 characters")
 	}
-	if len(input.Tags) > 50 {
-		return nil, createDocumentResponse{}, errors.New("maximum 50 tags allowed")
-	}
-	for _, tag := range input.Tags {
-		if len(tag) > 100 {
-			return nil, createDocumentResponse{}, errors.New("each tag must be at most 100 characters")
-		}
-	}
+	// Tag count + length validation happens at the service layer
+	// (see service.validateTags, service.ErrTagValidation).
 
 	// Set the owner from the authenticated user context.
 	var userID *int64
@@ -460,14 +470,8 @@ func (h *Handler) handleUpdateDocument(
 	if len(input.Description) > 1000 {
 		return nil, updateDocumentResponse{}, errors.New("description must be at most 1000 characters")
 	}
-	if len(input.Tags) > 50 {
-		return nil, updateDocumentResponse{}, errors.New("maximum 50 tags allowed")
-	}
-	for _, tag := range input.Tags {
-		if len(tag) > 100 {
-			return nil, updateDocumentResponse{}, errors.New("each tag must be at most 100 characters")
-		}
-	}
+	// Tag count + length validation happens at the service layer
+	// (see service.validateTags, service.ErrTagValidation).
 
 	// Non-admin users can only update their own documents.
 	if err := h.checkDocumentOwnership(ctx, input.UUID); err != nil {
