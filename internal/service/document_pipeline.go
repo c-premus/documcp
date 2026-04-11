@@ -111,6 +111,9 @@ func (p *DocumentPipeline) ExtractorRegistry() *extractor.Registry {
 // Upload stores a file, creates a DB record with status "uploaded", and
 // dispatches background jobs for extraction and indexing.
 func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentParams) (*model.Document, error) {
+	if err := validateTags(params.Tags); err != nil {
+		return nil, err
+	}
 	if params.FileSize > p.maxUploadSize {
 		return nil, fmt.Errorf("%w: %d bytes exceeds limit of %d", ErrFileTooLarge, params.FileSize, p.maxUploadSize)
 	}

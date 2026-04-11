@@ -230,6 +230,8 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			errorResponse(w, http.StatusBadRequest, "unsupported file type")
 		case errors.Is(err, service.ErrFileTooLarge):
 			errorResponse(w, http.StatusBadRequest, "file exceeds maximum upload size")
+		case errors.Is(err, service.ErrTagValidation):
+			errorResponse(w, http.StatusBadRequest, err.Error())
 		default:
 			errorResponse(w, http.StatusInternalServerError, "failed to process document upload")
 		}
@@ -344,11 +346,14 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		h.logger.Error("updating document", "uuid", docUUID, "error", err)
-		if errors.Is(err, service.ErrNotFound) {
+		switch {
+		case errors.Is(err, service.ErrNotFound):
 			errorResponse(w, http.StatusNotFound, "document not found")
-			return
+		case errors.Is(err, service.ErrTagValidation):
+			errorResponse(w, http.StatusBadRequest, err.Error())
+		default:
+			errorResponse(w, http.StatusInternalServerError, "failed to update document")
 		}
-		errorResponse(w, http.StatusInternalServerError, "failed to update document")
 		return
 	}
 

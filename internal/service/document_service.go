@@ -73,6 +73,10 @@ func (s *DocumentService) FindByUUID(ctx context.Context, docUUID string) (*mode
 
 // Create creates a new document with computed defaults and optional tags.
 func (s *DocumentService) Create(ctx context.Context, params CreateDocumentParams) (*model.Document, error) {
+	if err := validateTags(params.Tags); err != nil {
+		return nil, err
+	}
+
 	hash := sha256.Sum256([]byte(params.Content))
 	contentHash := hex.EncodeToString(hash[:])
 	wordCount := int64(len(strings.Fields(params.Content)))
@@ -119,6 +123,10 @@ func (s *DocumentService) Create(ctx context.Context, params CreateDocumentParam
 
 // Update applies partial updates to an existing document identified by UUID.
 func (s *DocumentService) Update(ctx context.Context, docUUID string, params UpdateDocumentParams) (*model.Document, error) {
+	if err := validateTags(params.Tags); err != nil {
+		return nil, err
+	}
+
 	doc, err := s.FindByUUID(ctx, docUUID)
 	if err != nil {
 		return nil, fmt.Errorf("finding document for update: %w", err)
