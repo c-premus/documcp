@@ -93,3 +93,12 @@ func defaultArg(args map[string]string, key, fallback string) string {
 	}
 	return fallback
 }
+
+// boolTrue and boolFalse are addressable bool values used for MCP tool
+// annotations, where the SDK distinguishes nil (default) from an explicitly-set
+// pointer. Package-level vars let callers pass &boolTrue / &boolFalse without
+// a helper function, which the modernize linter prefers.
+var (
+	boolTrue  = true
+	boolFalse = false
+)
