@@ -27,6 +27,7 @@ import (
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/service"
+	"github.com/c-premus/documcp/internal/storage"
 )
 
 // ---------------------------------------------------------------------------
@@ -110,7 +111,6 @@ type mockPipeline struct {
 	updateFn           func(ctx context.Context, docUUID string, params service.UpdateDocumentParams) (*model.Document, error)
 	deleteFn           func(ctx context.Context, docUUID string) error
 	replaceContentFn   func(ctx context.Context, docUUID string, params service.ReplaceContentParams) (*model.Document, error)
-	storagePathVal     string
 	extractorRegistryV *extractor.Registry
 }
 
@@ -147,10 +147,6 @@ func (m *mockPipeline) Delete(ctx context.Context, docUUID string) error {
 		return m.deleteFn(ctx, docUUID)
 	}
 	return nil
-}
-
-func (m *mockPipeline) StoragePath() string {
-	return m.storagePathVal
 }
 
 func (m *mockPipeline) ExtractorRegistry() *extractor.Registry {
@@ -281,15 +277,24 @@ func newTestDocument(uuid string) *model.Document {
 // newDocumentHandlerForTest creates a DocumentHandler backed by a mock service-level
 // repo. The pipeline is a real *service.DocumentPipeline backed by the mock.
 // The handler repo is a mockHandlerRepo with TagsForDocument wired through.
-func newDocumentHandlerForTest(mockRepo *mockDocumentRepo) *DocumentHandler {
+func newDocumentHandlerForTest(t *testing.T, mockRepo *mockDocumentRepo) *DocumentHandler {
+	t.Helper()
 	docService := service.NewDocumentService(mockRepo, testLogger())
-	pipeline := service.NewDocumentPipeline(docService, nil, nil, "", 0)
+	storageDir := t.TempDir()
+	blob, err := storage.NewFSBlob(storageDir)
+	if err != nil {
+		t.Fatalf("NewFSBlob: %v", err)
+	}
+	t.Cleanup(func() { _ = blob.Close() })
+	pipeline := service.NewDocumentPipeline(docService, nil, nil, blob, t.TempDir(), 0)
 	return &DocumentHandler{
 		pipeline: pipeline,
 		repo: &mockHandlerRepo{
 			tagsForDocumentFn: mockRepo.tagsForDocumentFn,
 		},
-		logger: testLogger(),
+		blob:          blob,
+		workerTempDir: t.TempDir(),
+		logger:        testLogger(),
 	}
 }
 
@@ -299,6 +304,25 @@ func newTestHandler(p *mockPipeline, r *mockHandlerRepo) *DocumentHandler {
 		pipeline: p,
 		repo:     r,
 		logger:   testLogger(),
+	}
+}
+
+// newTestHandlerWithBlob wires a DocumentHandler with an FSBlob rooted at
+// storagePath (which must already exist). Used by download / purge tests
+// that need the handler to read or delete real on-disk content.
+func newTestHandlerWithBlob(t *testing.T, p *mockPipeline, r *mockHandlerRepo, storagePath string) *DocumentHandler {
+	t.Helper()
+	blob, err := storage.NewFSBlob(storagePath)
+	if err != nil {
+		t.Fatalf("NewFSBlob: %v", err)
+	}
+	t.Cleanup(func() { _ = blob.Close() })
+	return &DocumentHandler{
+		pipeline:      p,
+		repo:          r,
+		blob:          blob,
+		workerTempDir: t.TempDir(),
+		logger:        testLogger(),
 	}
 }
 
@@ -345,7 +369,7 @@ func TestDocumentHandler_Show(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 		}
-		h := newDocumentHandlerForTest(mock)
+		h := newDocumentHandlerForTest(t, mock)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/documents/nonexistent", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "nonexistent"})
@@ -371,7 +395,7 @@ func TestDocumentHandler_Show(t *testing.T) {
 				return nil, errors.New("connection refused")
 			},
 		}
-		h := newDocumentHandlerForTest(mock)
+		h := newDocumentHandlerForTest(t, mock)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/documents/abc-123", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "abc-123"})
@@ -396,7 +420,7 @@ func TestDocumentHandler_Update(t *testing.T) {
 		t.Parallel()
 
 		mock := &mockDocumentRepo{}
-		h := newDocumentHandlerForTest(mock)
+		h := newDocumentHandlerForTest(t, mock)
 
 		req := httptest.NewRequest(http.MethodPut, "/api/documents/abc-123",
 			strings.NewReader("not json"))
@@ -423,7 +447,7 @@ func TestDocumentHandler_Update(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 		}
-		h := newDocumentHandlerForTest(mock)
+		h := newDocumentHandlerForTest(t, mock)
 
 		body := `{"title":"New Title"}`
 		req := httptest.NewRequest(http.MethodPut, "/api/documents/nonexistent",
@@ -454,7 +478,7 @@ func TestDocumentHandler_Update(t *testing.T) {
 				return errors.New("database write error")
 			},
 		}
-		h := newDocumentHandlerForTest(mock)
+		h := newDocumentHandlerForTest(t, mock)
 
 		reqBody := `{"title":"Updated Title"}`
 		req := httptest.NewRequest(http.MethodPut, "/api/documents/abc-123",
@@ -474,7 +498,7 @@ func TestDocumentHandler_Update(t *testing.T) {
 		t.Parallel()
 
 		mock := &mockDocumentRepo{}
-		h := newDocumentHandlerForTest(mock)
+		h := newDocumentHandlerForTest(t, mock)
 
 		// Empty object is valid JSON, should proceed to pipeline.Update
 		// which will fail because the doc won't be found.
@@ -516,7 +540,7 @@ func TestDocumentHandler_Delete(t *testing.T) {
 				return nil
 			},
 		}
-		h := newDocumentHandlerForTest(mock)
+		h := newDocumentHandlerForTest(t, mock)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/documents/abc-123", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "abc-123"})
@@ -542,7 +566,7 @@ func TestDocumentHandler_Delete(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 		}
-		h := newDocumentHandlerForTest(mock)
+		h := newDocumentHandlerForTest(t, mock)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/documents/nonexistent", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "nonexistent"})
@@ -571,7 +595,7 @@ func TestDocumentHandler_Delete(t *testing.T) {
 				return errors.New("database error")
 			},
 		}
-		h := newDocumentHandlerForTest(mock)
+		h := newDocumentHandlerForTest(t, mock)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/documents/abc-123", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "abc-123"})
@@ -597,7 +621,7 @@ func TestDocumentHandler_Upload(t *testing.T) {
 		t.Parallel()
 
 		mock := &mockDocumentRepo{}
-		h := newDocumentHandlerForTest(mock)
+		h := newDocumentHandlerForTest(t, mock)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/documents",
 			strings.NewReader("not multipart"))
@@ -619,7 +643,7 @@ func TestDocumentHandler_Upload(t *testing.T) {
 		t.Parallel()
 
 		mock := &mockDocumentRepo{}
-		h := newDocumentHandlerForTest(mock)
+		h := newDocumentHandlerForTest(t, mock)
 
 		var buf bytes.Buffer
 		writer := multipart.NewWriter(&buf)
@@ -645,7 +669,7 @@ func TestDocumentHandler_Upload(t *testing.T) {
 		t.Parallel()
 
 		mock := &mockDocumentRepo{}
-		h := newDocumentHandlerForTest(mock)
+		h := newDocumentHandlerForTest(t, mock)
 
 		var buf bytes.Buffer
 		writer := multipart.NewWriter(&buf)
@@ -940,14 +964,23 @@ func (m *mockExtractor) Supports(mimeType string) bool {
 
 // newDocumentHandlerWithExtractor creates a DocumentHandler with a pipeline
 // that has a working ExtractorRegistry backed by the given mock extractor.
-func newDocumentHandlerWithExtractor(mockRepo *mockDocumentRepo, ext extractor.Extractor) *DocumentHandler {
+func newDocumentHandlerWithExtractor(t *testing.T, mockRepo *mockDocumentRepo, ext extractor.Extractor) *DocumentHandler {
+	t.Helper()
 	docService := service.NewDocumentService(mockRepo, testLogger())
 	registry := extractor.NewRegistry(ext)
-	pipeline := service.NewDocumentPipeline(docService, registry, nil, "", 0)
+	blob, err := storage.NewFSBlob(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewFSBlob: %v", err)
+	}
+	t.Cleanup(func() { _ = blob.Close() })
+	workerTmp := t.TempDir()
+	pipeline := service.NewDocumentPipeline(docService, registry, nil, blob, workerTmp, 0)
 	return &DocumentHandler{
-		pipeline: pipeline,
-		repo:     &mockHandlerRepo{},
-		logger:   testLogger(),
+		pipeline:      pipeline,
+		repo:          &mockHandlerRepo{},
+		blob:          blob,
+		workerTempDir: workerTmp,
+		logger:        testLogger(),
 	}
 }
 
@@ -962,7 +995,7 @@ func TestDocumentHandler_Analyze(t *testing.T) {
 		t.Parallel()
 
 		ext := &mockExtractor{mimeTypes: []string{"text/markdown"}}
-		h := newDocumentHandlerWithExtractor(&mockDocumentRepo{}, ext)
+		h := newDocumentHandlerWithExtractor(t, &mockDocumentRepo{}, ext)
 
 		var buf bytes.Buffer
 		writer := multipart.NewWriter(&buf)
@@ -989,7 +1022,7 @@ func TestDocumentHandler_Analyze(t *testing.T) {
 		t.Parallel()
 
 		ext := &mockExtractor{mimeTypes: []string{"text/markdown"}}
-		h := newDocumentHandlerWithExtractor(&mockDocumentRepo{}, ext)
+		h := newDocumentHandlerWithExtractor(t, &mockDocumentRepo{}, ext)
 
 		var buf bytes.Buffer
 		writer := multipart.NewWriter(&buf)
@@ -1011,7 +1044,7 @@ func TestDocumentHandler_Analyze(t *testing.T) {
 		t.Parallel()
 
 		ext := &mockExtractor{mimeTypes: []string{"text/markdown"}}
-		h := newDocumentHandlerWithExtractor(&mockDocumentRepo{}, ext)
+		h := newDocumentHandlerWithExtractor(t, &mockDocumentRepo{}, ext)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/documents/analyze",
 			strings.NewReader("not multipart data"))
@@ -1039,7 +1072,7 @@ func TestDocumentHandler_Analyze(t *testing.T) {
 				}, nil
 			},
 		}
-		h := newDocumentHandlerWithExtractor(&mockDocumentRepo{}, ext)
+		h := newDocumentHandlerWithExtractor(t, &mockDocumentRepo{}, ext)
 
 		var buf bytes.Buffer
 		writer := multipart.NewWriter(&buf)
@@ -1082,7 +1115,7 @@ func TestDocumentHandler_Analyze(t *testing.T) {
 
 		// Create an extractor that does NOT support text/markdown.
 		ext := &mockExtractor{mimeTypes: []string{"application/pdf"}}
-		h := newDocumentHandlerWithExtractor(&mockDocumentRepo{}, ext)
+		h := newDocumentHandlerWithExtractor(t, &mockDocumentRepo{}, ext)
 
 		var buf bytes.Buffer
 		writer := multipart.NewWriter(&buf)
@@ -1113,7 +1146,7 @@ func TestDocumentHandler_Analyze(t *testing.T) {
 				return nil, errors.New("extraction engine failure")
 			},
 		}
-		h := newDocumentHandlerWithExtractor(&mockDocumentRepo{}, ext)
+		h := newDocumentHandlerWithExtractor(t, &mockDocumentRepo{}, ext)
 
 		var buf bytes.Buffer
 		writer := multipart.NewWriter(&buf)
@@ -1145,7 +1178,7 @@ func TestDocumentHandler_Analyze(t *testing.T) {
 				}, nil
 			},
 		}
-		h := newDocumentHandlerWithExtractor(&mockDocumentRepo{}, ext)
+		h := newDocumentHandlerWithExtractor(t, &mockDocumentRepo{}, ext)
 
 		var buf bytes.Buffer
 		writer := multipart.NewWriter(&buf)
@@ -1305,7 +1338,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 				return doc, nil
 			},
 		}
-		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
+		h := newTestHandlerWithBlob(t, &mockPipeline{}, repo, tmpDir)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/documents/missing-file-uuid/download", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "missing-file-uuid"})
@@ -1339,7 +1372,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 				return doc, nil
 			},
 		}
-		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
+		h := newTestHandlerWithBlob(t, &mockPipeline{}, repo, tmpDir)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/documents/dl-uuid-1/download", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "dl-uuid-1"})
@@ -1371,7 +1404,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 				return doc, nil
 			},
 		}
-		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
+		h := newTestHandlerWithBlob(t, &mockPipeline{}, repo, tmpDir)
 
 		user := &model.User{ID: 42, Name: "Owner"}
 		req := httptest.NewRequest(http.MethodGet, "/api/documents/owner-dl-uuid/download", http.NoBody)
@@ -1404,7 +1437,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 				return doc, nil
 			},
 		}
-		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
+		h := newTestHandlerWithBlob(t, &mockPipeline{}, repo, tmpDir)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/documents/notitle-uuid/download", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "notitle-uuid"})
@@ -1434,7 +1467,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 				return doc, nil
 			},
 		}
-		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
+		h := newTestHandlerWithBlob(t, &mockPipeline{}, repo, tmpDir)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/documents/notype-uuid/download", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "notype-uuid"})
@@ -1680,13 +1713,19 @@ func TestNewDocumentHandler(t *testing.T) {
 
 		p := &mockPipeline{}
 		r := &mockHandlerRepo{}
+		blob, err := storage.NewFSBlob(t.TempDir())
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = blob.Close() })
+		workerTmp := t.TempDir()
 		l := testLogger()
 
-		h := NewDocumentHandler(p, r, l)
+		h := NewDocumentHandler(p, r, blob, workerTmp, l)
 
 		assert.NotNil(t, h)
 		assert.Equal(t, p, h.pipeline)
 		assert.Equal(t, r, h.repo)
+		assert.Equal(t, blob, h.blob)
+		assert.Equal(t, workerTmp, h.workerTempDir)
 		assert.Equal(t, l, h.logger)
 	})
 }
@@ -2074,7 +2113,7 @@ func TestDocumentHandler_Purge(t *testing.T) {
 				return "markdown/to-delete.md", nil
 			},
 		}
-		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
+		h := newTestHandlerWithBlob(t, &mockPipeline{}, repo, tmpDir)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/documents/purge-file-uuid/purge", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "purge-file-uuid"})
@@ -2277,7 +2316,7 @@ func TestDocumentHandler_BulkPurge(t *testing.T) {
 				}, nil
 			},
 		}
-		h := newTestHandler(&mockPipeline{storagePathVal: tmpDir}, repo)
+		h := newTestHandlerWithBlob(t, &mockPipeline{}, repo, tmpDir)
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/admin/documents/purge", http.NoBody)
 		rr := httptest.NewRecorder()

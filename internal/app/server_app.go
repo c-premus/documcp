@@ -22,6 +22,7 @@ import (
 	apihandler "github.com/c-premus/documcp/internal/handler/api"
 	mcphandler "github.com/c-premus/documcp/internal/handler/mcp"
 	oauthhandler "github.com/c-premus/documcp/internal/handler/oauth"
+	"github.com/c-premus/documcp/internal/observability"
 	"github.com/c-premus/documcp/internal/queue"
 	"github.com/c-premus/documcp/internal/server"
 	"github.com/c-premus/documcp/internal/service"
@@ -68,6 +69,21 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		}
 	}()
 
+	// --- Control Bus Subscriptions ---
+	// Remote replicas publish on this topic after admin-UI edits to
+	// external services; we clear our local kiwix factory cache so the
+	// next request re-reads from Postgres. The subscription's goroutine
+	// lives until Foundation.ControlBus.Close() runs during shutdown.
+	if f.ControlBus != nil {
+		subErr := f.ControlBus.Subscribe(context.Background(), apihandler.KiwixCacheInvalidateTopic, func(_ []byte) {
+			f.KiwixFactory.Invalidate()
+			logger.Info("kiwix cache invalidated by control bus")
+		})
+		if subErr != nil {
+			return nil, fmt.Errorf("subscribing to kiwix cache invalidation: %w", subErr)
+		}
+	}
+
 	// --- River Workers + Client ---
 	rs, err := buildRiverClient(f, eventBus, !withWorker)
 	if err != nil {
@@ -85,7 +101,8 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		documentService,
 		f.ExtractorRegistry,
 		riverClient,
-		f.StoragePath,
+		f.BlobStore,
+		f.WorkerTempDir,
 		f.Config.Storage.MaxUploadSize,
 	)
 
@@ -125,11 +142,11 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	}
 
 	// --- API Handlers ---
-	documentH := apihandler.NewDocumentHandler(documentPipeline, f.DocumentRepo, logger)
+	documentH := apihandler.NewDocumentHandler(documentPipeline, f.DocumentRepo, f.BlobStore, f.WorkerTempDir, logger)
 	searchH := apihandler.NewSearchHandler(f.Searcher, f.SearchQueryRepo, f.DocumentRepo, logger)
 	zimH := apihandler.NewZimHandler(f.ZimArchiveRepo, &apihandler.KiwixFactoryAdapter{Factory: f.KiwixFactory}, logger)
 	gitTemplateH := apihandler.NewGitTemplateHandler(f.GitTemplateRepo, riverClient, logger, f.Encryptor != nil)
-	externalServiceH := apihandler.NewExternalServiceHandler(externalServiceSvc, f.ExternalServiceRepo, riverClient, f.KiwixFactory, logger)
+	externalServiceH := apihandler.NewExternalServiceHandler(externalServiceSvc, f.ExternalServiceRepo, riverClient, f.KiwixFactory, f.ControlBus, logger)
 	userH := apihandler.NewUserHandler(f.OAuthRepo, logger)
 	oauthClientH := apihandler.NewOAuthClientHandler(f.OAuthRepo, logger)
 
@@ -176,6 +193,10 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	mcpCfg.KiwixFactory = f.KiwixFactory
 	mcpCfg.Searcher = f.Searcher
 	mcpH := mcphandler.New(mcpCfg)
+
+	// Register the per-replica MCP session gauge so operators can observe
+	// session distribution across sticky-session-routed replicas.
+	observability.RegisterMCPSessionGauge(mcpH.ActiveSessionCount)
 
 	// --- HTTP Server ---
 	trustedProxies, err := config.ParseCIDRs(cfg.Server.TrustedProxies)
@@ -380,8 +401,8 @@ func buildRiverClient(f *Foundation, eventBus queue.EventPublisher, insertOnly b
 		OAuthRepo:         f.OAuthRepo,
 		DocRepo:           f.DocumentRepo,
 		Metrics:           f.Metrics,
+		Blob:              f.BlobStore,
 		GitTempDir:        f.GitTempDir,
-		StoragePath:       f.StoragePath,
 		Logger:            f.Logger,
 		GitMaxFileSize:    cfg.Git.MaxFileSize,
 		GitMaxTotalSize:   cfg.Git.MaxTotalSize,

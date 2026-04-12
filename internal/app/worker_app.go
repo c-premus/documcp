@@ -65,7 +65,8 @@ func NewWorkerApp(f *Foundation) (*WorkerApp, error) {
 		documentService,
 		f.ExtractorRegistry,
 		riverClient,
-		f.StoragePath,
+		f.BlobStore,
+		f.WorkerTempDir,
 		f.Config.Storage.MaxUploadSize,
 	)
 

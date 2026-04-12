@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/riverqueue/river"
@@ -22,6 +20,7 @@ import (
 	"github.com/c-premus/documcp/internal/observability"
 	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/security"
+	"github.com/c-premus/documcp/internal/storage"
 )
 
 // --- Interfaces (defined where consumed) ---.
@@ -72,8 +71,8 @@ type SchedulerDeps struct {
 	OAuthRepo         OAuthTokenPurger
 	DocRepo           DocumentRepoDeps
 	Metrics           *observability.Metrics
+	Blob              storage.Blob
 	GitTempDir        string
-	StoragePath       string
 	Logger            *slog.Logger
 	GitMaxFileSize    int64
 	GitMaxTotalSize   int64
@@ -313,8 +312,8 @@ func (w *CleanupOrphanedFilesWorker) Work(ctx context.Context, job *river.Job[Cl
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
-	if w.Deps.DocRepo == nil || w.Deps.StoragePath == "" {
-		w.Deps.Logger.Warn("skipping orphaned files cleanup: document repository or storage path not configured")
+	if w.Deps.DocRepo == nil || w.Deps.Blob == nil {
+		w.Deps.Logger.Warn("skipping orphaned files cleanup: document repository or blob store not configured")
 		return nil
 	}
 
@@ -331,33 +330,21 @@ func (w *CleanupOrphanedFilesWorker) Work(ctx context.Context, job *river.Job[Cl
 		activeSet[fp.FilePath] = true
 	}
 
-	// Open a root-scoped handle to prevent symlink traversal outside the
-	// storage directory (eliminates gosec G122 TOCTOU risk).
-	root, err := os.OpenRoot(w.Deps.StoragePath)
-	if err != nil {
-		return fmt.Errorf("opening storage root: %w", err)
-	}
-	defer func() { _ = root.Close() }()
-
 	var deletedCount int
-	walkErr := fs.WalkDir(root.FS(), ".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	it := w.Deps.Blob.List(ctx, "")
+	for it.Next(ctx) {
+		key := it.Key()
+		if activeSet[key] {
+			continue
 		}
-		if d.IsDir() || d.Type()&fs.ModeSymlink != 0 {
-			return nil
+		if removeErr := w.Deps.Blob.Delete(ctx, key); removeErr != nil {
+			logger.Error("removing orphaned blob", "key", key, "error", removeErr)
+			continue
 		}
-		if !activeSet[path] {
-			if removeErr := root.Remove(path); removeErr != nil {
-				logger.Error("removing orphaned file", "path", path, "error", removeErr)
-			} else {
-				deletedCount++
-			}
-		}
-		return nil
-	})
-	if walkErr != nil {
-		return fmt.Errorf("walking storage directory: %w", walkErr)
+		deletedCount++
+	}
+	if iterErr := it.Err(); iterErr != nil {
+		return fmt.Errorf("listing blobs: %w", iterErr)
 	}
 
 	logger.Info("orphaned files cleanup completed", "deleted_count", deletedCount)
@@ -403,15 +390,15 @@ func (w *PurgeSoftDeletedWorker) Work(ctx context.Context, job *river.Job[PurgeS
 	}
 
 	for _, fp := range purged {
-		if fp.FilePath != "" {
-			absPath, pathErr := security.SafeStoragePath(w.Deps.StoragePath, fp.FilePath)
-			if pathErr != nil {
-				logger.Error("unsafe file path for purged document", "path", fp.FilePath, "error", pathErr)
-				continue
-			}
-			if removeErr := os.Remove(absPath); removeErr != nil && !os.IsNotExist(removeErr) {
-				logger.Error("removing purged document file", "path", absPath, "error", removeErr)
-			}
+		if fp.FilePath == "" {
+			continue
+		}
+		if w.Deps.Blob == nil {
+			logger.Warn("skipping purged document removal: blob store not configured", "key", fp.FilePath)
+			continue
+		}
+		if removeErr := w.Deps.Blob.Delete(ctx, fp.FilePath); removeErr != nil {
+			logger.Error("removing purged document blob", "key", fp.FilePath, "error", removeErr)
 		}
 	}
 
