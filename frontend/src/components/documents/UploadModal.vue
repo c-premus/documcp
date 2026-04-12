@@ -6,7 +6,7 @@ import { useDocumentsStore } from '@/stores/documents'
 import { toast } from 'vue-sonner'
 import TagInput from '@/components/documents/TagInput.vue'
 
-const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.html,.md,.txt'
+const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.html,.md,.txt,.epub'
 const MAX_SIZE_BYTES = 50 * 1024 * 1024
 
 const props = defineProps<{ readonly open: boolean }>()

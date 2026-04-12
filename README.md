@@ -14,7 +14,7 @@ DocuMCP gives AI agents structured access to your documentation via MCP tools an
 
 - **MCP Server** -- 16 tools and 6 prompts via the official [Go MCP SDK](https://github.com/modelcontextprotocol/go-sdk). Search, read, create, update, and delete documents. Federated search across documents, ZIM archives, and Git templates in a single query.
 - **OAuth 2.1 Authorization Server** -- PKCE, device authorization ([RFC 8628](https://datatracker.ietf.org/doc/html/rfc8628)), dynamic client registration ([RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591)), and [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) Protected Resource Metadata for automatic discovery.
-- **Document Pipeline** -- Upload PDF, DOCX, XLSX, HTML, or Markdown. Text is extracted, indexed via PostgreSQL full-text search, and searchable within seconds.
+- **Document Pipeline** -- Upload PDF, DOCX, XLSX, HTML, EPUB, or Markdown. Text is extracted, indexed via PostgreSQL full-text search, and searchable within seconds.
 - **External Integrations** -- Kiwix ZIM archives (federated article search) and Git template repositories.
 - **Background Jobs** -- [River](https://riverqueue.com/) Postgres-native job queue with 7 worker types, 3 priority queues, and 6 periodic schedules.
 - **Admin UI** -- Vue 3 + TypeScript SPA for managing documents, users, OAuth clients, external services, and queue status.
@@ -130,7 +130,7 @@ internal/
   crypto/                AES-256-GCM encryption for secrets at rest
   database/              PostgreSQL connection and migrations (goose)
   dto/                   Data transfer objects
-  extractor/             Text extraction (PDF, DOCX, XLSX, HTML, Markdown)
+  extractor/             Text extraction (PDF, DOCX, XLSX, HTML, EPUB, Markdown)
   handler/api/           REST API handlers
   handler/mcp/           MCP tool and prompt handlers
   handler/oauth/         OAuth endpoint handlers
@@ -239,7 +239,7 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `STORAGE_BASE_PATH` | No | `./storage` | Filesystem root (always required — workers use it for git clones and extraction scratch, even with `s3`) |
 | `STORAGE_MAX_UPLOAD_SIZE` | No | `52428800` | Max upload file size in bytes (50 MiB) |
 | `STORAGE_MAX_EXTRACTED_TEXT` | No | `52428800` | Max decompressed text per file in bytes (50 MiB) |
-| `STORAGE_MAX_ZIP_FILES` | No | `100` | Max files in a DOCX ZIP archive |
+| `STORAGE_MAX_ZIP_FILES` | No | `100` | Max files in a DOCX/EPUB ZIP archive |
 | `STORAGE_MAX_SHEETS` | No | `100` | Max sheets in an XLSX file |
 | `STORAGE_S3_ENDPOINT` | No† | -- | S3 endpoint URL (empty = AWS default). Required for Garage, SeaweedFS, R2, B2, etc. |
 | `STORAGE_S3_BUCKET` | No† | -- | Target bucket name |
