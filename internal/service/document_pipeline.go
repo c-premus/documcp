@@ -43,6 +43,7 @@ var AllowedMIMETypes = map[string]string{
 	".htm":  "text/html",
 	".md":   "text/markdown",
 	".txt":  "text/plain",
+	".epub": "application/epub+zip",
 }
 
 // UploadDocumentParams holds input for uploading a file-based document.

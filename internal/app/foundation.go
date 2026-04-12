@@ -21,6 +21,7 @@ import (
 	"github.com/c-premus/documcp/internal/database"
 	"github.com/c-premus/documcp/internal/extractor"
 	docxext "github.com/c-premus/documcp/internal/extractor/docx"
+	epubext "github.com/c-premus/documcp/internal/extractor/epub"
 	htmlext "github.com/c-premus/documcp/internal/extractor/html"
 	markdownext "github.com/c-premus/documcp/internal/extractor/markdown"
 	pdfext "github.com/c-premus/documcp/internal/extractor/pdf"
@@ -277,6 +278,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		pdfext.NewWithLimits(cfg.Storage.MaxExtractedText),
 		docxext.NewWithLimits(cfg.Storage.MaxZIPFiles, cfg.Storage.MaxExtractedText),
 		xlsxext.NewWithLimits(cfg.Storage.MaxSheets, cfg.Storage.MaxExtractedText),
+		epubext.NewWithLimits(cfg.Storage.MaxZIPFiles, cfg.Storage.MaxExtractedText),
 		htmlext.New(),
 		markdownext.New(),
 	)

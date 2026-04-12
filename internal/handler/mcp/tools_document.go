@@ -118,7 +118,7 @@ func (h *Handler) registerDocumentTools() {
 			"Returns all accessible documents (respects visibility: admins see all, " +
 			"users see own + public, M2M tokens see public only).\n\n" +
 			"**Filters:**\n" +
-			"- `file_type`: markdown, pdf, docx, xlsx, html\n" +
+			"- `file_type`: markdown, pdf, docx, xlsx, html, epub\n" +
 			"- `status`: pending, indexed, failed\n\n" +
 			"Returns UUID, title, description, file type, file size, word count, tags, and timestamps. " +
 			"Sorted by creation date (newest first). Max 100 results per page.\n\n" +
@@ -134,7 +134,7 @@ func (h *Handler) registerDocumentTools() {
 		Name: "search_documents",
 		Description: "Full-text search across documents.\n\n" +
 			"**Filters:**\n" +
-			"- `file_type`: markdown, pdf, docx, xlsx, html\n" +
+			"- `file_type`: markdown, pdf, docx, xlsx, html, epub\n" +
 			"- `tags`: Filter by document tags (AND logic)\n" +
 			"- `include_snippets`: Show matched text context\n" +
 			"- `include_content`: Include full document content in results (default false to reduce response size)\n\n" +
