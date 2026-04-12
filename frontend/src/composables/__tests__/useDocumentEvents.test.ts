@@ -10,6 +10,7 @@ import { useZimArchivesStore } from '@/stores/zimArchives'
 import { useGitTemplatesStore } from '@/stores/gitTemplates'
 import { useExternalServicesStore } from '@/stores/externalServices'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useAuthStore } from '@/stores/auth'
 import { useQueueStore } from '@/stores/queue'
 
 vi.mock('vue-sonner', () => ({
@@ -206,6 +207,9 @@ describe('useDocumentEvents', () => {
 
   describe('job.completed — queue stats refresh', () => {
     it('refreshes queue stats when stats are loaded', () => {
+      const auth = useAuthStore()
+      auth.user = { id: 1, email: 'admin@test.com', name: 'Admin', is_admin: true }
+
       const queue = useQueueStore()
       queue.$patch({
         stats: { available: 0, running: 0, retryable: 0, discarded: 0, cancelled: 0 },
@@ -288,6 +292,9 @@ describe('useDocumentEvents', () => {
     })
 
     it('refreshes queue stats and failed jobs on failure when stats loaded', () => {
+      const auth = useAuthStore()
+      auth.user = { id: 1, email: 'admin@test.com', name: 'Admin', is_admin: true }
+
       const queue = useQueueStore()
       queue.$patch({
         stats: { available: 0, running: 0, retryable: 0, discarded: 0, cancelled: 0 },

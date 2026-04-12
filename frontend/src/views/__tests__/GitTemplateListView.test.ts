@@ -107,10 +107,25 @@ describe('GitTemplateListView', () => {
     expect(wrapper.find('[data-testid="data-table"]').exists()).toBe(true)
   })
 
-  it('has add template button', async () => {
+  it('has add template button for admin', async () => {
+    const { useAuthStore } = await import('@/stores/auth')
+    const auth = useAuthStore()
+    auth.user = { id: 1, email: 'admin@test.com', name: 'Admin', is_admin: true }
+
     const wrapper = mountView()
     await flushPromises()
     const btn = wrapper.findAll('button').find((b) => b.text().includes('Add Template'))
     expect(btn).toBeDefined()
+  })
+
+  it('hides add template button for non-admin', async () => {
+    const { useAuthStore } = await import('@/stores/auth')
+    const auth = useAuthStore()
+    auth.user = { id: 2, email: 'user@test.com', name: 'User', is_admin: false }
+
+    const wrapper = mountView()
+    await flushPromises()
+    const btn = wrapper.findAll('button').find((b) => b.text().includes('Add Template'))
+    expect(btn).toBeUndefined()
   })
 })
