@@ -6,7 +6,7 @@ import { toast } from 'vue-sonner'
 import type { Document } from '@/stores/documents'
 import { useDocumentsStore } from '@/stores/documents'
 
-const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.html,.md,.txt'
+const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.html,.md,.txt,.epub'
 const MAX_SIZE_BYTES = 50 * 1024 * 1024
 
 const props = defineProps<{

@@ -97,8 +97,11 @@ func (h *DocumentHandler) Analyze(w http.ResponseWriter, r *http.Request) {
 		description = firstParagraph(content)
 	}
 
-	// Derive tags: headings first, fall back to keyword frequency.
-	tags := extractHeadingTags(content)
+	// Derive tags: metadata subjects first, then headings, then keyword frequency.
+	tags := metadataSubjects(result.Metadata)
+	if len(tags) < 3 {
+		tags = extractHeadingTags(content)
+	}
 	if len(tags) < 3 {
 		tags = extractKeywords(content)
 	}
@@ -253,6 +256,26 @@ func extractKeywords(content string) []string {
 		keywords[i] = ranked[i].word
 	}
 	return keywords
+}
+
+// metadataSubjects extracts subject tags from extractor metadata. Returns nil
+// if no subjects are present. Caps at 5 entries, lowercased for consistency.
+func metadataSubjects(metadata map[string]any) []string {
+	v, ok := metadata["subjects"]
+	if !ok {
+		return nil
+	}
+	subjects, ok := v.([]string)
+	if !ok || len(subjects) == 0 {
+		return nil
+	}
+
+	limit := min(5, len(subjects))
+	tags := make([]string, limit)
+	for i := range limit {
+		tags[i] = strings.ToLower(strings.TrimSpace(subjects[i]))
+	}
+	return tags
 }
 
 // detectLanguage is a placeholder that returns "en".

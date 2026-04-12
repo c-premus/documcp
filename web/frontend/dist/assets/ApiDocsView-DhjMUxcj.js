@@ -7,7 +7,7 @@ info:
 
     DocuMCP serves documentation through REST endpoints and the Model Context Protocol (MCP),
     enabling AI agents to access and search your knowledge base. It processes PDF, DOCX, XLSX,
-    HTML, and Markdown documents, provides full-text search via PostgreSQL, and authenticates
+    HTML, EPUB, and Markdown documents, provides full-text search via PostgreSQL, and authenticates
     via OIDC with RFC 7591 dynamic client registration support.
 
     ## Authentication
@@ -171,7 +171,7 @@ paths:
           description: Filter by document file type
           schema:
             type: string
-            enum: [pdf, docx, xlsx, html, markdown]
+            enum: [pdf, docx, xlsx, html, markdown, epub]
         - name: tags
           in: query
           description: Filter by tags (documents must match ALL specified tags)
@@ -395,7 +395,7 @@ paths:
           description: Filter by document file type
           schema:
             type: string
-            enum: [pdf, docx, xlsx, html, markdown]
+            enum: [pdf, docx, xlsx, html, markdown, epub]
       responses:
         "200":
           description: Paginated list of documents
@@ -422,7 +422,7 @@ paths:
       tags: [Documents]
       summary: Create document
       description: |
-        Upload and process a new document. Supports PDF, DOCX, XLSX, HTML, and Markdown.
+        Upload and process a new document. Supports PDF, DOCX, XLSX, HTML, EPUB, and Markdown.
         Maximum file size: 50 MB. Requires authentication. Rate limit: \`api-write\` (30/min).
 
         **Required scope:** \`documents:write\` + admin role
@@ -439,7 +439,7 @@ paths:
                 file:
                   type: string
                   format: binary
-                  description: "Document file (PDF, DOCX, XLSX, HTML, Markdown). Max 50 MB."
+                  description: "Document file (PDF, DOCX, XLSX, HTML, EPUB, Markdown). Max 50 MB."
                 title:
                   type: string
                   maxLength: 255
@@ -738,7 +738,7 @@ paths:
                 file:
                   type: string
                   format: binary
-                  description: "Replacement file (PDF, DOCX, XLSX, HTML, Markdown). Max 50 MB."
+                  description: "Replacement file (PDF, DOCX, XLSX, HTML, EPUB, Markdown). Max 50 MB."
       responses:
         "200":
           description: Content replaced
@@ -915,7 +915,7 @@ paths:
                 file:
                   type: string
                   format: binary
-                  description: "Document file to analyze (PDF, DOC, DOCX, XLS, XLSX, HTML, Markdown, TXT). Max 50 MB."
+                  description: "Document file to analyze (PDF, DOCX, XLSX, HTML, EPUB, Markdown, TXT). Max 50 MB."
       responses:
         "200":
           description: Analysis results
@@ -2563,7 +2563,7 @@ components:
           type: [string, "null"]
         file_type:
           type: string
-          enum: [pdf, docx, xlsx, html, markdown]
+          enum: [pdf, docx, xlsx, html, markdown, epub]
         file_size:
           type: integer
           description: File size in bytes

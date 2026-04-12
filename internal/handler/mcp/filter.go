@@ -40,6 +40,7 @@ var validFileTypes = map[string]bool{
 	"docx":     true,
 	"xlsx":     true,
 	"html":     true,
+	"epub":     true,
 }
 
 // isValidFileType returns true if the file type is in the whitelist.

@@ -53,7 +53,7 @@ func (h *Handler) registerUnifiedSearchTool() {
 			"Use for discovery -- then use type-specific tools (search_documents, search_zim, " +
 			"search_git_templates) for deep content search with full filter options.\n\n" +
 			"**Sources** (filter with `types` param):\n" +
-			"- `document` -- Uploaded documents (PDF, DOCX, XLSX, HTML, Markdown)\n" +
+			"- `document` -- Uploaded documents (PDF, DOCX, XLSX, HTML, EPUB, Markdown)\n" +
 			"- `git_template` -- Git template README and metadata\n" +
 			"- `zim_archive` -- ZIM archive metadata (DevDocs, Wikipedia, Stack Exchange)\n" +
 			"- `zim_article` -- ZIM archive article content (searched via Kiwix). Results include " +
