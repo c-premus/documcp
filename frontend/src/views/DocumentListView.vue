@@ -48,7 +48,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const columns: ColumnDef<Document, unknown>[] = [
+const baseColumns: ColumnDef<Document, unknown>[] = [
   {
     accessorKey: 'title',
     header: 'Title',
@@ -104,60 +104,63 @@ const columns: ColumnDef<Document, unknown>[] = [
       return formatDistanceToNow(new Date(value), { addSuffix: true })
     },
   },
-  {
-    id: 'actions',
-    header: 'Actions',
-    enableSorting: false,
-    meta: { className: 'w-20' },
-    cell: ({ row }) => {
-      return h('div', { class: 'flex items-center gap-2' }, [
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
-            title: 'Edit document',
-            'aria-label': 'Edit document',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              editTarget.value = row.original
-              showEditModal.value = true
-            },
-          },
-          [h(PencilSquareIcon, { class: 'h-5 w-5' })],
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
-            title: 'View document',
-            'aria-label': 'View document',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              router.push(`/documents/${row.original.uuid}`)
-            },
-          },
-          [h(EyeIcon, { class: 'h-5 w-5' })],
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
-            title: 'Delete document',
-            'aria-label': 'Delete document',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              deleteTarget.value = row.original
-            },
-          },
-          [h(TrashIcon, { class: 'h-5 w-5' })],
-        ),
-      ])
-    },
-  },
 ]
+
+const actionsColumn: ColumnDef<Document, unknown> = {
+  id: 'actions',
+  header: 'Actions',
+  enableSorting: false,
+  meta: { className: 'w-20' },
+  cell: ({ row }) => {
+    return h('div', { class: 'flex items-center gap-2' }, [
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
+          title: 'Edit document',
+          'aria-label': 'Edit document',
+          onClick: (event: MouseEvent) => {
+            event.stopPropagation()
+            editTarget.value = row.original
+            showEditModal.value = true
+          },
+        },
+        [h(PencilSquareIcon, { class: 'h-5 w-5' })],
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
+          title: 'View document',
+          'aria-label': 'View document',
+          onClick: (event: MouseEvent) => {
+            event.stopPropagation()
+            router.push(`/documents/${row.original.uuid}`)
+          },
+        },
+        [h(EyeIcon, { class: 'h-5 w-5' })],
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
+          title: 'Delete document',
+          'aria-label': 'Delete document',
+          onClick: (event: MouseEvent) => {
+            event.stopPropagation()
+            deleteTarget.value = row.original
+          },
+        },
+        [h(TrashIcon, { class: 'h-5 w-5' })],
+      ),
+    ])
+  },
+}
+
+const columns: ColumnDef<Document, unknown>[] = [...baseColumns, actionsColumn]
 
 function fetchData(): void {
   const offset = (page.value - 1) * perPage.value

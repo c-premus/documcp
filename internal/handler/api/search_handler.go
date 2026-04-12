@@ -68,6 +68,13 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		Offset:   offset,
 	}
 
+	// Scope search results by user visibility: admins see all documents,
+	// non-admins see only public documents and their own.
+	if user, ok := authmiddleware.UserFromContext(r.Context()); ok {
+		params.UserID = &user.ID
+		params.IsAdmin = user.IsAdmin
+	}
+
 	if ft := r.URL.Query().Get("file_type"); ft != "" {
 		switch ft {
 		case "pdf", "docx", "xlsx", "html", "markdown":

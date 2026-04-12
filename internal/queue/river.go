@@ -145,6 +145,7 @@ func (rc *RiverClient) StartEventForwarding() {
 				Attempt:   re.Job.Attempt,
 				Timestamp: time.Now(),
 			}
+			evt.UserID, evt.DocUUID = extractDocumentUserID(re.Job.Kind, re.Job.EncodedArgs)
 			rc.eventBus.Publish(evt)
 		}
 	}()
@@ -176,13 +177,18 @@ func (rc *RiverClient) Insert(ctx context.Context, args river.JobArgs, opts *riv
 	result, err := rc.client.Insert(ctx, args, opts)
 	if err == nil {
 		if rc.eventBus != nil {
-			rc.eventBus.Publish(Event{
+			evt := Event{
 				Type:      EventJobDispatched,
 				JobKind:   args.Kind(),
 				JobID:     result.Job.ID,
 				Queue:     result.Job.Queue,
 				Timestamp: time.Now(),
-			})
+			}
+			if dea, ok := args.(DocumentExtractArgs); ok {
+				evt.UserID = dea.UserID
+				evt.DocUUID = dea.DocUUID
+			}
+			rc.eventBus.Publish(evt)
 		}
 		if rc.metrics != nil {
 			rc.metrics.QueueJobsDispatched.WithLabelValues(result.Job.Queue, args.Kind()).Inc()
@@ -243,7 +249,7 @@ func (h *riverErrorHandler) HandleError(ctx context.Context, job *rivertype.JobR
 		"error", jobErr,
 	)
 	if h.eventBus != nil {
-		h.eventBus.Publish(Event{
+		evt := Event{
 			Type:      EventJobFailed,
 			JobKind:   job.Kind,
 			JobID:     job.ID,
@@ -251,7 +257,9 @@ func (h *riverErrorHandler) HandleError(ctx context.Context, job *rivertype.JobR
 			Attempt:   job.Attempt,
 			Error:     "job processing failed",
 			Timestamp: time.Now(),
-		})
+		}
+		evt.UserID, evt.DocUUID = extractDocumentUserID(job.Kind, job.EncodedArgs)
+		h.eventBus.Publish(evt)
 	}
 	if h.metrics != nil {
 		h.metrics.QueueJobsFailed.WithLabelValues(job.Queue, job.Kind).Inc()
@@ -269,7 +277,7 @@ func (h *riverErrorHandler) HandlePanic(ctx context.Context, job *rivertype.JobR
 		"panic", panicVal,
 	)
 	if h.eventBus != nil {
-		h.eventBus.Publish(Event{
+		evt := Event{
 			Type:      EventJobFailed,
 			JobKind:   job.Kind,
 			JobID:     job.ID,
@@ -277,7 +285,9 @@ func (h *riverErrorHandler) HandlePanic(ctx context.Context, job *rivertype.JobR
 			Attempt:   job.Attempt,
 			Error:     "job panicked",
 			Timestamp: time.Now(),
-		})
+		}
+		evt.UserID, evt.DocUUID = extractDocumentUserID(job.Kind, job.EncodedArgs)
+		h.eventBus.Publish(evt)
 	}
 	return nil
 }

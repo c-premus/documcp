@@ -12,10 +12,12 @@ import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
 import GitTemplateCreateModal from '../components/git-templates/GitTemplateCreateModal.vue'
 import GitTemplateEditModal from '../components/git-templates/GitTemplateEditModal.vue'
+import { useAuthStore } from '@/stores/auth'
 import { useGitTemplatesStore } from '../stores/gitTemplates'
 import type { GitTemplate } from '../stores/gitTemplates'
 
 const router = useRouter()
+const auth = useAuthStore()
 const store = useGitTemplatesStore()
 
 const page = ref(1)
@@ -110,7 +112,7 @@ function categoryBadgeClasses(category: string): string {
   return styles[category] ?? 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
 }
 
-const columns: ColumnDef<GitTemplate, unknown>[] = [
+const baseColumns: ColumnDef<GitTemplate, unknown>[] = [
   {
     accessorKey: 'name',
     header: 'Name',
@@ -177,65 +179,70 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
     enableSorting: true,
     meta: { className: 'w-16 hidden sm:table-cell' },
   },
-  {
-    id: 'actions',
-    header: 'Actions',
-    enableSorting: false,
-    meta: { className: 'w-20' },
-    cell: ({ row }) => {
-      const template = row.original
-      const isSyncing = syncingUuids.value.has(template.uuid)
-      return h('div', { class: 'flex items-center gap-2' }, [
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
-            title: 'Edit template',
-            'aria-label': 'Edit template',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              editTarget.value = template
-            },
-          },
-          [h(PencilSquareIcon, { class: 'h-5 w-5' })],
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            class: [
-              'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
-              isSyncing ? 'animate-spin' : '',
-            ],
-            title: 'Sync template',
-            'aria-label': 'Sync template',
-            disabled: isSyncing,
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              handleSync(template)
-            },
-          },
-          [h(ArrowPathIcon, { class: 'h-5 w-5' })],
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
-            title: 'Delete template',
-            'aria-label': 'Delete template',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              deleteTarget.value = template
-            },
-          },
-          [h(TrashIcon, { class: 'h-5 w-5' })],
-        ),
-      ])
-    },
-  },
 ]
+
+const actionsColumn: ColumnDef<GitTemplate, unknown> = {
+  id: 'actions',
+  header: 'Actions',
+  enableSorting: false,
+  meta: { className: 'w-20' },
+  cell: ({ row }) => {
+    const template = row.original
+    const isSyncing = syncingUuids.value.has(template.uuid)
+    return h('div', { class: 'flex items-center gap-2' }, [
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
+          title: 'Edit template',
+          'aria-label': 'Edit template',
+          onClick: (event: MouseEvent) => {
+            event.stopPropagation()
+            editTarget.value = template
+          },
+        },
+        [h(PencilSquareIcon, { class: 'h-5 w-5' })],
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          class: [
+            'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
+            isSyncing ? 'animate-spin' : '',
+          ],
+          title: 'Sync template',
+          'aria-label': 'Sync template',
+          disabled: isSyncing,
+          onClick: (event: MouseEvent) => {
+            event.stopPropagation()
+            handleSync(template)
+          },
+        },
+        [h(ArrowPathIcon, { class: 'h-5 w-5' })],
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
+          title: 'Delete template',
+          'aria-label': 'Delete template',
+          onClick: (event: MouseEvent) => {
+            event.stopPropagation()
+            deleteTarget.value = template
+          },
+        },
+        [h(TrashIcon, { class: 'h-5 w-5' })],
+      ),
+    ])
+  },
+}
+
+const columns = computed(() =>
+  auth.isAdmin ? [...baseColumns, actionsColumn] : baseColumns,
+)
 </script>
 
 <template>
@@ -247,6 +254,7 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
       <div class="flex-1" />
 
       <button
+        v-if="auth.isAdmin"
         type="button"
         class="bg-indigo-600 text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-indigo-500"
         @click="showCreateModal = true"
@@ -258,10 +266,10 @@ const columns: ColumnDef<GitTemplate, unknown>[] = [
     <!-- Empty State -->
     <EmptyState
       v-if="!store.loading && store.templates.length === 0"
-      title="No git templates"
-      description="Add your first git template to get started."
+      :title="auth.isAdmin ? 'No git templates' : 'No git templates available'"
+      :description="auth.isAdmin ? 'Add your first git template to get started.' : 'There are no git templates configured yet.'"
     >
-      <template #action>
+      <template v-if="auth.isAdmin" #action>
         <button
           type="button"
           class="bg-indigo-600 text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-indigo-500"

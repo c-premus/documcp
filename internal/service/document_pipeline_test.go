@@ -892,7 +892,7 @@ func TestDocumentPipeline_DispatchExtraction_NilInserter(t *testing.T) {
 	pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 	// Should not panic with nil inserter.
-	err := pipeline.dispatchExtraction(context.Background(), 1, "test-uuid")
+	err := pipeline.dispatchExtraction(context.Background(), 1, "test-uuid", 0)
 	require.NoError(t, err)
 }
 
@@ -910,7 +910,7 @@ func TestDocumentPipeline_DispatchExtraction_Success(t *testing.T) {
 	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
 	pipeline := newPipelineAt(t, svc, nil, inserter, t.TempDir())
 
-	err := pipeline.dispatchExtraction(context.Background(), 42, "doc-uuid")
+	err := pipeline.dispatchExtraction(context.Background(), 42, "doc-uuid", 5)
 	require.NoError(t, err)
 
 	if !inserted {
@@ -931,7 +931,7 @@ func TestDocumentPipeline_DispatchExtraction_Error(t *testing.T) {
 	pipeline := newPipelineAt(t, svc, nil, inserter, t.TempDir())
 
 	// Should return error.
-	err := pipeline.dispatchExtraction(context.Background(), 42, "doc-uuid")
+	err := pipeline.dispatchExtraction(context.Background(), 42, "doc-uuid", 5)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "dispatching extraction job")
 }

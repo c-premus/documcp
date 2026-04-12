@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
+	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/queue"
 )
 
@@ -130,8 +132,8 @@ func publishUntilReady(t *testing.T, eb *queue.EventBus, rec *sseRecorder, event
 	rec.waitForFirstWrite(t)
 
 	// Handler is now subscribed and processing. Publish real events.
-	for _, e := range events {
-		eb.Publish(e)
+	for i := range events {
+		eb.Publish(events[i])
 		time.Sleep(5 * time.Millisecond)
 	}
 
@@ -418,4 +420,219 @@ func (w *nonFlushableWriter) Write(b []byte) (int, error) {
 
 func (w *nonFlushableWriter) WriteHeader(statusCode int) {
 	w.code = statusCode
+}
+
+// ---------------------------------------------------------------------------
+// stubEventSubscriber returns a pre-filled channel and tracks unsubscribe.
+// ---------------------------------------------------------------------------
+
+type stubEventSubscriber struct {
+	ch           chan queue.Event
+	unsubscribed bool
+}
+
+func (s *stubEventSubscriber) Subscribe(_ string) <-chan queue.Event {
+	return s.ch
+}
+
+func (s *stubEventSubscriber) Unsubscribe(_ string) {
+	s.unsubscribed = true
+}
+
+func (s *stubEventSubscriber) Close() {
+	if s.ch != nil {
+		close(s.ch)
+	}
+}
+
+// nilEventSubscriber always returns nil from Subscribe (subscriber limit).
+type nilEventSubscriber struct{}
+
+func (nilEventSubscriber) Subscribe(_ string) <-chan queue.Event { return nil }
+func (nilEventSubscriber) Unsubscribe(_ string)                 {}
+func (nilEventSubscriber) Close()                                {}
+
+// ctxWithUser returns a context with the given user set via the auth middleware key.
+func ctxWithUser(ctx context.Context, user *model.User) context.Context {
+	return context.WithValue(ctx, authmiddleware.UserContextKey, user)
+}
+
+// ---------------------------------------------------------------------------
+// UserStream handler tests
+// ---------------------------------------------------------------------------
+
+func TestSSEHandler_UserStream(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns 401 when no user in context", func(t *testing.T) {
+		t.Parallel()
+
+		h := NewSSEHandler(&stubEventSubscriber{}, 15*time.Second)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
+		w := httptest.NewRecorder()
+
+		h.UserStream(w, req)
+
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+		assert.Contains(t, w.Body.String(), "unauthorized")
+	})
+
+	t.Run("returns 503 when subscriber limit reached", func(t *testing.T) {
+		t.Parallel()
+
+		h := NewSSEHandler(nilEventSubscriber{}, 15*time.Second)
+
+		user := &model.User{ID: 1, IsAdmin: false}
+		ctx := ctxWithUser(context.Background(), user)
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
+		req = req.WithContext(ctx)
+		rec := newSSERecorder()
+
+		h.UserStream(rec, req)
+
+		rec.mu.Lock()
+		code := rec.rr.Code
+		body := rec.rr.Body.String()
+		rec.mu.Unlock()
+
+		assert.Equal(t, http.StatusServiceUnavailable, code)
+		assert.Contains(t, body, "too many concurrent connections")
+	})
+
+	t.Run("admin user receives all events including UserID=0", func(t *testing.T) {
+		t.Parallel()
+
+		ch := make(chan queue.Event, 10)
+		stub := &stubEventSubscriber{ch: ch}
+		h := NewSSEHandler(stub, 15*time.Second)
+
+		admin := &model.User{ID: 1, IsAdmin: true}
+		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), admin))
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
+		req = req.WithContext(ctx)
+		rec := newSSERecorder()
+
+		done := make(chan struct{})
+		go func() {
+			h.UserStream(rec, req)
+			close(done)
+		}()
+
+		// Wait for handler to start (retry line is the first write).
+		rec.waitForFirstWrite(t)
+
+		// Send events: one with UserID=0 (scheduler), one with UserID=99.
+		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "scheduler_job", JobID: 1, UserID: 0, Timestamp: time.Now()}
+		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "user_job", JobID: 2, UserID: 99, Timestamp: time.Now()}
+		time.Sleep(50 * time.Millisecond)
+
+		cancel()
+		<-done
+
+		body := rec.body()
+		assert.Contains(t, body, "scheduler_job", "admin should see UserID=0 events")
+		assert.Contains(t, body, "user_job", "admin should see all user events")
+	})
+
+	t.Run("non-admin user receives events matching their UserID", func(t *testing.T) {
+		t.Parallel()
+
+		ch := make(chan queue.Event, 10)
+		stub := &stubEventSubscriber{ch: ch}
+		h := NewSSEHandler(stub, 15*time.Second)
+
+		user := &model.User{ID: 42, IsAdmin: false}
+		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), user))
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
+		req = req.WithContext(ctx)
+		rec := newSSERecorder()
+
+		done := make(chan struct{})
+		go func() {
+			h.UserStream(rec, req)
+			close(done)
+		}()
+
+		rec.waitForFirstWrite(t)
+
+		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "my_job", JobID: 1, UserID: 42, Timestamp: time.Now()}
+		time.Sleep(50 * time.Millisecond)
+
+		cancel()
+		<-done
+
+		body := rec.body()
+		assert.Contains(t, body, "my_job", "non-admin should see events matching their UserID")
+	})
+
+	t.Run("non-admin user does NOT receive events with UserID=0", func(t *testing.T) {
+		t.Parallel()
+
+		ch := make(chan queue.Event, 10)
+		stub := &stubEventSubscriber{ch: ch}
+		h := NewSSEHandler(stub, 15*time.Second)
+
+		user := &model.User{ID: 42, IsAdmin: false}
+		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), user))
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
+		req = req.WithContext(ctx)
+		rec := newSSERecorder()
+
+		done := make(chan struct{})
+		go func() {
+			h.UserStream(rec, req)
+			close(done)
+		}()
+
+		rec.waitForFirstWrite(t)
+
+		// UserID=0 is a scheduler/system event — non-admins should not see it.
+		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "scheduler_job", JobID: 1, UserID: 0, Timestamp: time.Now()}
+		// Also send a matching event so the handler processes both before cancel.
+		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "own_job", JobID: 2, UserID: 42, Timestamp: time.Now()}
+		time.Sleep(50 * time.Millisecond)
+
+		cancel()
+		<-done
+
+		body := rec.body()
+		assert.NotContains(t, body, "scheduler_job", "non-admin should NOT see UserID=0 events")
+		assert.Contains(t, body, "own_job", "non-admin should see their own events")
+	})
+
+	t.Run("non-admin user does NOT receive events with different UserID", func(t *testing.T) {
+		t.Parallel()
+
+		ch := make(chan queue.Event, 10)
+		stub := &stubEventSubscriber{ch: ch}
+		h := NewSSEHandler(stub, 15*time.Second)
+
+		user := &model.User{ID: 42, IsAdmin: false}
+		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), user))
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
+		req = req.WithContext(ctx)
+		rec := newSSERecorder()
+
+		done := make(chan struct{})
+		go func() {
+			h.UserStream(rec, req)
+			close(done)
+		}()
+
+		rec.waitForFirstWrite(t)
+
+		// Event for a different user.
+		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "other_user_job", JobID: 1, UserID: 99, Timestamp: time.Now()}
+		// Own event to confirm filtering.
+		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "own_job", JobID: 2, UserID: 42, Timestamp: time.Now()}
+		time.Sleep(50 * time.Millisecond)
+
+		cancel()
+		<-done
+
+		body := rec.body()
+		assert.NotContains(t, body, "other_user_job", "non-admin should NOT see events for other users")
+		assert.Contains(t, body, "own_job", "non-admin should see their own events")
+	})
 }

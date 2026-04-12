@@ -68,7 +68,7 @@ describe('sse store', () => {
       store.connect()
 
       expect(lastCreatedES).not.toBeNull()
-      expect(lastCreatedES!.url).toBe('/api/admin/events/stream')
+      expect(lastCreatedES!.url).toBe('/api/events/stream')
     })
 
     it('creates EventSource with custom URL', () => {

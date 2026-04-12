@@ -69,7 +69,13 @@ func serveBlob(
 		w.Header().Set("Last-Modified", attrs.ModTime.UTC().Format(http.TimeFormat))
 	}
 	if filename != "" {
-		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+		safe := strings.Map(func(r rune) rune {
+			if r == '"' || r == '\\' || r < 32 || r == 127 {
+				return '_'
+			}
+			return r
+		}, filename)
+		w.Header().Set("Content-Disposition", `attachment; filename="`+safe+`"`)
 	}
 
 	// HEAD — headers only. Mirrors http.ServeContent semantics.

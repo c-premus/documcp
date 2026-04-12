@@ -43,7 +43,7 @@ type documentRepo interface {
 	PurgeSingle(ctx context.Context, id int64) (string, error)
 	PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
 	ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
-	ListDistinctTags(ctx context.Context, prefix string, limit int) ([]string, error)
+	ListDistinctTags(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error)
 }
 
 const maxUploadBodySize = 50*1024*1024 + 1024 // 50 MiB + metadata overhead
@@ -249,6 +249,11 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 func (h *DocumentHandler) ReplaceContent(w http.ResponseWriter, r *http.Request) {
 	docUUID := chi.URLParam(r, "uuid")
 
+	if !h.checkOwnership(r, docUUID) {
+		errorResponse(w, http.StatusNotFound, "document not found")
+		return
+	}
+
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBodySize)
 
 	if err := r.ParseMultipartForm(10 * 1024 * 1024); err != nil {
@@ -301,7 +306,6 @@ func (h *DocumentHandler) ReplaceContent(w http.ResponseWriter, r *http.Request)
 
 // checkOwnership verifies the requesting user has access to the document.
 // Admins can access any document. Non-admin users can only access their own.
-// Defense-in-depth: these routes are also behind RequireAdmin middleware.
 func (h *DocumentHandler) checkOwnership(r *http.Request, docUUID string) bool {
 	user, ok := authmiddleware.UserFromContext(r.Context())
 	if !ok || user == nil {
@@ -439,7 +443,7 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 	// Check access: public, admin, or owner.
 	user, _ := authmiddleware.UserFromContext(r.Context())
 	if !canAccessDocument(user, doc) {
-		errorResponse(w, http.StatusForbidden, "access denied")
+		errorResponse(w, http.StatusNotFound, "document not found")
 		return
 	}
 
@@ -487,7 +491,14 @@ func (h *DocumentHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tags, err := h.repo.ListDistinctTags(r.Context(), q, limit)
+	// Scope tags by user visibility: admins see all, non-admins see only
+	// tags from public documents or their own.
+	var tagUserID *int64
+	if user, ok := authmiddleware.UserFromContext(r.Context()); ok && !user.IsAdmin {
+		tagUserID = &user.ID
+	}
+
+	tags, err := h.repo.ListDistinctTags(r.Context(), q, limit, tagUserID)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "failed to list tags", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to list tags")
