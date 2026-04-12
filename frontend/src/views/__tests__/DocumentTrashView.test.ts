@@ -107,10 +107,25 @@ describe('DocumentTrashView', () => {
     expect(wrapper.find('[data-testid="data-table"]').exists()).toBe(true)
   })
 
-  it('has bulk purge button', async () => {
+  it('has bulk purge button for admin', async () => {
+    const { useAuthStore } = await import('@/stores/auth')
+    const auth = useAuthStore()
+    auth.user = { id: 1, email: 'admin@test.com', name: 'Admin', is_admin: true }
+
     const wrapper = mountView()
     await flushPromises()
     const btn = wrapper.findAll('button').find((b) => b.text().includes('Purge All'))
     expect(btn).toBeDefined()
+  })
+
+  it('hides bulk purge button for non-admin', async () => {
+    const { useAuthStore } = await import('@/stores/auth')
+    const auth = useAuthStore()
+    auth.user = { id: 2, email: 'user@test.com', name: 'User', is_admin: false }
+
+    const wrapper = mountView()
+    await flushPromises()
+    const btn = wrapper.findAll('button').find((b) => b.text().includes('Purge All'))
+    expect(btn).toBeUndefined()
   })
 })
