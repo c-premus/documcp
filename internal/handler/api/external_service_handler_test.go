@@ -96,7 +96,7 @@ func (m *mockExternalServiceRepo) ReorderPriorities(ctx context.Context, service
 
 func newExternalServiceHandler(mock *mockExternalServiceRepo) *ExternalServiceHandler {
 	svc := service.NewExternalServiceService(mock, nil, nil, testLogger())
-	return NewExternalServiceHandler(svc, mock, nil, nil, testLogger())
+	return NewExternalServiceHandler(svc, mock, nil, nil, nil, testLogger())
 }
 
 func newTestExternalService(uuid string) *model.ExternalService {
@@ -1248,13 +1248,13 @@ func (m *mockJobInserter) Insert(ctx context.Context, args river.JobArgs, opts *
 // newExternalServiceHandlerWithInserter creates a handler with a non-nil inserter for sync tests.
 func newExternalServiceHandlerWithInserter(repo *mockExternalServiceRepo, ins externalServiceJobInserter) *ExternalServiceHandler {
 	svc := service.NewExternalServiceService(repo, nil, nil, testLogger())
-	return NewExternalServiceHandler(svc, repo, ins, nil, testLogger())
+	return NewExternalServiceHandler(svc, repo, ins, nil, nil, testLogger())
 }
 
 // newExternalServiceHandlerWithKiwixCache creates a handler with a kiwix cache invalidator.
 func newExternalServiceHandlerWithKiwixCache(repo *mockExternalServiceRepo, ins externalServiceJobInserter, cache kiwixCacheInvalidator) *ExternalServiceHandler {
 	svc := service.NewExternalServiceService(repo, nil, nil, testLogger())
-	return NewExternalServiceHandler(svc, repo, ins, cache, testLogger())
+	return NewExternalServiceHandler(svc, repo, ins, cache, nil, testLogger())
 }
 
 // ---------------------------------------------------------------------------

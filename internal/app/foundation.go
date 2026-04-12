@@ -26,8 +26,10 @@ import (
 	pdfext "github.com/c-premus/documcp/internal/extractor/pdf"
 	xlsxext "github.com/c-premus/documcp/internal/extractor/xlsx"
 	"github.com/c-premus/documcp/internal/observability"
+	"github.com/c-premus/documcp/internal/queue"
 	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/search"
+	"github.com/c-premus/documcp/internal/storage"
 )
 
 // Foundation holds shared dependencies used by both ServerApp and WorkerApp.
@@ -43,6 +45,12 @@ type Foundation struct {
 	// health checks — both are high-frequency, low-value to trace.
 	// MaxRetries -1 prevents retry-induced partial responses.
 	BareRedisClient *redis.Client
+
+	// ControlBus is a cross-replica pub/sub channel for control messages
+	// (cache invalidation, etc.). Uses its own Redis channels, independent
+	// of the job-event bus so a flooded SSE subscriber pool can't crowd
+	// out invalidation broadcasts.
+	ControlBus queue.ControlBus
 
 	// Repositories
 	DocumentRepo        *repository.DocumentRepository
@@ -62,9 +70,28 @@ type Foundation struct {
 	// Encryption
 	Encryptor *crypto.Encryptor
 
-	// Storage paths
+	// Storage
+	//
+	// BlobStore is the document blob backend — filesystem or S3-compatible.
+	// Uploads, reads, deletes, and orphan cleanup all go through this
+	// interface. Callers treat file paths stored in the database as opaque
+	// keys into the store.
+	BlobStore storage.Blob
+
+	// StoragePath is the filesystem root for the local document store. It
+	// remains populated when Driver=local for callers that have not yet been
+	// migrated to the BlobStore interface. New code should use BlobStore.
 	StoragePath string
-	GitTempDir  string
+
+	// WorkerTempDir is a node-local scratch directory used by workers to
+	// stage blobs before handing them to extractors that require a seekable
+	// file path (PDF, DOCX, XLSX). Lives under BasePath so operators can
+	// size it with a volume or tmpfs.
+	WorkerTempDir string
+
+	// GitTempDir is the base directory for git template clones. Ephemeral
+	// per-replica; contents are regenerated on each sync.
+	GitTempDir string
 
 	tracerShutdown func(context.Context) error
 	sentryFlush    func()
@@ -260,10 +287,39 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		return nil, fmt.Errorf("creating document storage path: %w", err)
 	}
 
+	// Worker-tmp and git-tmp both live under BasePath so operators can size
+	// the whole scratch area with one volume or tmpfs. They exist even when
+	// the blob store is S3-backed — extraction still spills to local disk.
+	workerTempDir := filepath.Join(cfg.Storage.BasePath, "worker-tmp")
+	if err = os.MkdirAll(workerTempDir, 0o750); err != nil {
+		return nil, fmt.Errorf("creating worker temp path: %w", err)
+	}
+
 	gitTempDir := filepath.Join(cfg.Storage.BasePath, "git")
 	if err = os.MkdirAll(gitTempDir, 0o750); err != nil {
 		return nil, fmt.Errorf("creating git temp path: %w", err)
 	}
+
+	blobStore, err := openBlobStore(context.Background(), cfg.Storage, storagePath)
+	if err != nil {
+		return nil, fmt.Errorf("opening blob store: %w", err)
+	}
+	defer func() {
+		if !initOK {
+			_ = blobStore.Close()
+		}
+	}()
+	logger.Info("blob store opened", "driver", cfg.Storage.Driver)
+
+	// Control bus for cross-replica control messages (cache invalidation).
+	// Lives in its own Redis channels so it doesn't contend with the SSE
+	// subscriber cap on the main event bus.
+	controlBus := queue.NewRedisControlBus(redisClient, logger)
+	defer func() {
+		if !initOK {
+			_ = controlBus.Close()
+		}
+	}()
 
 	// --- Observability ---
 	metrics := observability.NewMetrics()
@@ -295,9 +351,9 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		Config:              cfg,
 		Logger:              logger,
 		PgxPool:             pgxPool,
-		RedisClient:          redisClient,
-		BareRedisClient: bareRedisClient,
-		Metrics:              metrics,
+		RedisClient:         redisClient,
+		BareRedisClient:     bareRedisClient,
+		Metrics:             metrics,
 		DocumentRepo:        documentRepo,
 		ExternalServiceRepo: externalServiceRepo,
 		ZimArchiveRepo:      zimArchiveRepo,
@@ -308,11 +364,38 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		KiwixFactory:        kiwixFactory,
 		ExtractorRegistry:   extractorRegistry,
 		Encryptor:           encryptor,
+		BlobStore:           blobStore,
 		StoragePath:         storagePath,
+		WorkerTempDir:       workerTempDir,
 		GitTempDir:          gitTempDir,
+		ControlBus:          controlBus,
 		tracerShutdown:      tracerShutdown,
 		sentryFlush:         sentryFlush,
 	}, nil
+}
+
+// openBlobStore constructs the configured blob backend. When Driver is
+// "local", "fs", or empty, it returns a filesystem-rooted FSBlob at
+// storagePath. When Driver is "s3", it opens the configured S3-compatible
+// bucket. Unknown drivers are an error (config validation should catch
+// those before we get here).
+func openBlobStore(ctx context.Context, cfg config.StorageConfig, storagePath string) (storage.Blob, error) {
+	switch cfg.Driver {
+	case "", "local", "fs":
+		return storage.NewFSBlob(storagePath)
+	case "s3":
+		return storage.NewS3Blob(ctx, storage.S3Config{
+			Endpoint:        cfg.S3Endpoint,
+			Bucket:          cfg.S3Bucket,
+			Region:          cfg.S3Region,
+			AccessKeyID:     cfg.S3AccessKeyID,
+			SecretAccessKey: cfg.S3SecretAccessKey,
+			UsePathStyle:    cfg.S3UsePathStyle,
+			ForceSSL:        cfg.S3ForceSSL,
+		})
+	default:
+		return nil, fmt.Errorf("unknown storage driver %q", cfg.Driver)
+	}
 }
 
 // Close releases all resources held by the Foundation.
@@ -325,6 +408,16 @@ func (f *Foundation) Close() {
 		defer cancel()
 		if err := f.tracerShutdown(ctx); err != nil {
 			f.Logger.Error("flushing tracer spans", "error", err)
+		}
+	}
+	if f.ControlBus != nil {
+		if err := f.ControlBus.Close(); err != nil {
+			f.Logger.Error("closing control bus", "error", err)
+		}
+	}
+	if f.BlobStore != nil {
+		if err := f.BlobStore.Close(); err != nil {
+			f.Logger.Error("closing blob store", "error", err)
 		}
 	}
 	if f.BareRedisClient != nil {

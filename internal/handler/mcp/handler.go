@@ -273,6 +273,18 @@ func (h *Handler) Close() {
 	}
 }
 
+// ActiveSessionCount returns the number of MCP sessions currently held by
+// this replica's in-memory session store. Used as the source for the
+// documcp_mcp_active_sessions gauge so operators can detect hot-spotting
+// across replicas behind a sticky-session load balancer.
+func (h *Handler) ActiveSessionCount() int {
+	var n int
+	for range h.server.Sessions() {
+		n++
+	}
+	return n
+}
+
 // kiwixFactoryAdapter wraps *kiwix.ClientFactory to satisfy kiwixClientFactory.
 type kiwixFactoryAdapter struct {
 	factory *kiwix.ClientFactory

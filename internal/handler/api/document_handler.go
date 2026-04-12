@@ -7,7 +7,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,15 +18,9 @@ import (
 	"github.com/c-premus/documcp/internal/extractor"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/repository"
-	"github.com/c-premus/documcp/internal/security"
 	"github.com/c-premus/documcp/internal/service"
+	"github.com/c-premus/documcp/internal/storage"
 )
-
-// safeStoragePath validates that filePath resolves inside storagePath,
-// preventing path-traversal attacks via manipulated DB values.
-func safeStoragePath(storagePath, filePath string) (string, error) {
-	return security.SafeStoragePath(storagePath, filePath)
-}
 
 // documentPipeline defines the pipeline methods used by DocumentHandler.
 type documentPipeline interface {
@@ -36,7 +29,6 @@ type documentPipeline interface {
 	ReplaceContent(ctx context.Context, docUUID string, params service.ReplaceContentParams) (*model.Document, error)
 	Update(ctx context.Context, docUUID string, params service.UpdateDocumentParams) (*model.Document, error)
 	Delete(ctx context.Context, docUUID string) error
-	StoragePath() string
 	ExtractorRegistry() *extractor.Registry
 }
 
@@ -58,21 +50,29 @@ const maxUploadBodySize = 50*1024*1024 + 1024 // 50 MiB + metadata overhead
 
 // DocumentHandler handles REST API endpoints for documents.
 type DocumentHandler struct {
-	pipeline documentPipeline
-	repo     documentRepo
-	logger   *slog.Logger
+	pipeline      documentPipeline
+	repo          documentRepo
+	blob          storage.Blob
+	workerTempDir string
+	logger        *slog.Logger
 }
 
-// NewDocumentHandler creates a new DocumentHandler.
+// NewDocumentHandler creates a new DocumentHandler. blob is the shared
+// document blob store; workerTempDir is a node-local scratch directory
+// used by the Analyze endpoint to stage uploaded files for extraction.
 func NewDocumentHandler(
 	pipeline documentPipeline,
 	repo documentRepo,
+	blob storage.Blob,
+	workerTempDir string,
 	logger *slog.Logger,
 ) *DocumentHandler {
 	return &DocumentHandler{
-		pipeline: pipeline,
-		repo:     repo,
-		logger:   logger,
+		pipeline:      pipeline,
+		repo:          repo,
+		blob:          blob,
+		workerTempDir: workerTempDir,
+		logger:        logger,
 	}
 }
 
@@ -457,33 +457,6 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	safePath, err := safeStoragePath(h.pipeline.StoragePath(), doc.FilePath)
-	if err != nil {
-		h.logger.Error("path traversal check failed", "file_path", doc.FilePath, "error", err)
-		errorResponse(w, http.StatusForbidden, "access denied")
-		return
-	}
-
-	f, err := os.Open(safePath)
-	if err != nil {
-		h.logger.Error("opening document file", "path", safePath, "error", err)
-		errorResponse(w, http.StatusNotFound, "file not found")
-		return
-	}
-	defer func() { _ = f.Close() }()
-
-	info, err := f.Stat()
-	if err != nil {
-		h.logger.Error("stat document file", "path", safePath, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to read file info")
-		return
-	}
-
-	contentType := doc.MIMEType
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-
 	// Determine filename for Content-Disposition, sanitizing special characters.
 	ext := sanitizeExtension(filepath.Ext(doc.FilePath))
 	filename := doc.UUID + ext
@@ -491,11 +464,16 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 		filename = sanitizeFilename(doc.Title) + ext
 	}
 
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
-	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	contentType := doc.MIMEType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
 
-	http.ServeContent(w, r, filename, info.ModTime(), f)
+	if err := serveBlob(w, r, h.blob, doc.FilePath, filename, contentType); err != nil {
+		h.logger.Error("serving document blob",
+			"uuid", doc.UUID, "key", doc.FilePath, "error", err)
+		// Headers may already be sent; no point writing another error response.
+	}
 }
 
 // ListTags handles GET /api/documents/tags — autocomplete tags.

@@ -44,8 +44,10 @@ func (h *DocumentHandler) Analyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Write to a temp file for extraction.
-	tmpFile, err := os.CreateTemp("", "analyze-*"+ext)
+	// Write to a temp file for extraction. Use the configured worker temp
+	// dir (under STORAGE_BASE_PATH) so operators can size the scratch area
+	// with a dedicated volume or tmpfs.
+	tmpFile, err := os.CreateTemp(h.workerTempDir, "analyze-*"+ext)
 	if err != nil {
 		h.logger.Error("creating temp file for analysis", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to process file")

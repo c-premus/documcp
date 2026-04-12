@@ -6,9 +6,11 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -20,7 +22,7 @@ import (
 	"github.com/c-premus/documcp/internal/extractor"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/queue"
-	"github.com/c-premus/documcp/internal/security"
+	"github.com/c-premus/documcp/internal/storage"
 )
 
 // JobInserter inserts jobs into the queue. Defined here (where consumed).
@@ -65,20 +67,30 @@ type ReplaceContentParams struct {
 
 // DocumentPipeline orchestrates file upload, content extraction, and search
 // indexing. It extends DocumentService with pipeline capabilities.
+//
+// Files flow through a Blob abstraction so the pipeline works against either
+// a local filesystem or S3-compatible object storage. For extraction, which
+// requires libraries like ledongthuc/pdf that take a filesystem path,
+// ProcessDocument stages the blob to a node-local temp file under
+// workerTempDir and cleans up after extraction.
 type DocumentPipeline struct {
 	*DocumentService
 	extractorRegistry *extractor.Registry
 	inserter          JobInserter
-	storagePath       string
+	blob              storage.Blob
+	workerTempDir     string
 	maxUploadSize     int64
 }
 
-// NewDocumentPipeline creates a DocumentPipeline.
+// NewDocumentPipeline creates a DocumentPipeline. blob is the backing blob
+// store; workerTempDir is a node-local scratch directory used to stage blob
+// reads before calling path-based extractors.
 func NewDocumentPipeline(
 	svc *DocumentService,
 	registry *extractor.Registry,
 	inserter JobInserter,
-	storagePath string,
+	blob storage.Blob,
+	workerTempDir string,
 	maxUploadSize int64,
 ) *DocumentPipeline {
 	if maxUploadSize <= 0 {
@@ -88,7 +100,8 @@ func NewDocumentPipeline(
 		DocumentService:   svc,
 		extractorRegistry: registry,
 		inserter:          inserter,
-		storagePath:       storagePath,
+		blob:              blob,
+		workerTempDir:     workerTempDir,
 		maxUploadSize:     maxUploadSize,
 	}
 }
@@ -98,9 +111,16 @@ func (p *DocumentPipeline) Delete(ctx context.Context, docUUID string) error {
 	return p.DocumentService.Delete(ctx, docUUID)
 }
 
-// StoragePath returns the base storage directory for uploaded documents.
-func (p *DocumentPipeline) StoragePath() string {
-	return p.storagePath
+// Blob returns the blob store backing uploaded documents. Used by HTTP
+// handlers that need to stream content directly (download, range GET).
+func (p *DocumentPipeline) Blob() storage.Blob {
+	return p.blob
+}
+
+// WorkerTempDir returns the node-local scratch directory used for staging
+// blob reads during extraction.
+func (p *DocumentPipeline) WorkerTempDir() string {
+	return p.workerTempDir
 }
 
 // ExtractorRegistry returns the content extractor registry.
@@ -132,30 +152,27 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 		fileType = "markdown"
 	}
 
-	// Store file to disk.
+	// Store file to the blob store. Key format is {fileType}/{uuid}{ext} —
+	// a forward-slash key that the filesystem backend maps to a relative
+	// path and the S3 backend uses as an object key.
 	docUUID := uuid.New().String()
-	relPath := filepath.Join(fileType, docUUID+ext)
-	absPath := filepath.Join(p.storagePath, relPath)
+	key := path.Join(fileType, docUUID+ext)
 
-	if err := os.MkdirAll(filepath.Dir(absPath), 0o750); err != nil {
-		return nil, fmt.Errorf("creating storage directory: %w", err)
-	}
-
-	f, err := os.Create(absPath)
+	w, err := p.blob.NewWriter(ctx, key, &storage.WriterOpts{ContentType: mimeType})
 	if err != nil {
-		return nil, fmt.Errorf("creating file %s: %w", absPath, err)
+		return nil, fmt.Errorf("opening blob writer for %s: %w", key, err)
 	}
 
-	written, err := io.Copy(f, io.LimitReader(params.Reader, p.maxUploadSize+1))
-	if closeErr := f.Close(); closeErr != nil && err == nil {
+	written, err := io.Copy(w, io.LimitReader(params.Reader, p.maxUploadSize+1))
+	if closeErr := w.Close(); closeErr != nil && err == nil {
 		err = closeErr
 	}
 	if err != nil {
-		_ = os.Remove(absPath)
-		return nil, fmt.Errorf("writing uploaded file: %w", err)
+		_ = p.blob.Delete(ctx, key)
+		return nil, fmt.Errorf("writing uploaded blob: %w", err)
 	}
 	if written > p.maxUploadSize {
-		_ = os.Remove(absPath)
+		_ = p.blob.Delete(ctx, key)
 		return nil, fmt.Errorf("%w: actual bytes %d exceeds limit of %d", ErrFileTooLarge, written, p.maxUploadSize)
 	}
 
@@ -164,7 +181,7 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 		UUID:     docUUID,
 		Title:    params.Title,
 		FileType: fileType,
-		FilePath: relPath,
+		FilePath: key,
 		FileSize: written,
 		MIMEType: mimeType,
 		IsPublic: params.IsPublic,
@@ -179,7 +196,7 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 	}
 
 	if err = p.repo.Create(ctx, doc); err != nil {
-		_ = os.Remove(absPath)
+		_ = p.blob.Delete(ctx, key)
 		return nil, fmt.Errorf("creating document record: %w", err)
 	}
 
@@ -228,46 +245,38 @@ func (p *DocumentPipeline) ReplaceContent(ctx context.Context, docUUID string, p
 		fileType = "markdown"
 	}
 
-	// Remove old file from disk (best-effort).
+	// Remove old blob (best-effort). Blob.Delete is already idempotent on
+	// missing keys, so there's no need to pre-check existence.
 	if doc.FilePath != "" {
-		oldPath, pathErr := security.SafeStoragePath(p.storagePath, doc.FilePath)
-		if pathErr != nil {
-			p.logger.Warn("unsafe old file path during content replacement",
-				"file_path", doc.FilePath, "error", pathErr)
-		} else if removeErr := os.Remove(oldPath); removeErr != nil && !os.IsNotExist(removeErr) {
-			p.logger.Warn("removing old file during content replacement",
-				"path", oldPath, "error", removeErr)
+		if removeErr := p.blob.Delete(ctx, doc.FilePath); removeErr != nil {
+			p.logger.Warn("removing old blob during content replacement",
+				"key", doc.FilePath, "error", removeErr)
 		}
 	}
 
-	// Write new file to disk.
-	relPath := filepath.Join(fileType, doc.UUID+ext)
-	fullPath := filepath.Join(p.storagePath, relPath)
+	// Write new blob. Key format matches Upload: {fileType}/{uuid}{ext}.
+	key := path.Join(fileType, doc.UUID+ext)
 
-	if err = os.MkdirAll(filepath.Dir(fullPath), 0o750); err != nil {
-		return nil, fmt.Errorf("creating storage directory: %w", err)
-	}
-
-	f, err := os.Create(fullPath)
+	w, err := p.blob.NewWriter(ctx, key, &storage.WriterOpts{ContentType: mimeType})
 	if err != nil {
-		return nil, fmt.Errorf("creating file %s: %w", fullPath, err)
+		return nil, fmt.Errorf("opening blob writer for %s: %w", key, err)
 	}
 
-	written, err := io.Copy(f, io.LimitReader(params.Reader, p.maxUploadSize+1))
-	if closeErr := f.Close(); closeErr != nil && err == nil {
+	written, err := io.Copy(w, io.LimitReader(params.Reader, p.maxUploadSize+1))
+	if closeErr := w.Close(); closeErr != nil && err == nil {
 		err = closeErr
 	}
 	if err != nil {
-		_ = os.Remove(fullPath)
-		return nil, fmt.Errorf("writing replacement file: %w", err)
+		_ = p.blob.Delete(ctx, key)
+		return nil, fmt.Errorf("writing replacement blob: %w", err)
 	}
 	if written > p.maxUploadSize {
-		_ = os.Remove(fullPath)
+		_ = p.blob.Delete(ctx, key)
 		return nil, fmt.Errorf("%w: actual bytes %d exceeds limit of %d", ErrFileTooLarge, written, p.maxUploadSize)
 	}
 
 	// Reset document fields for re-processing.
-	doc.FilePath = relPath
+	doc.FilePath = key
 	doc.FileSize = written
 	doc.FileType = fileType
 	doc.MIMEType = mimeType
@@ -295,15 +304,15 @@ func (p *DocumentPipeline) ReplaceContent(ctx context.Context, docUUID string, p
 
 // ProcessDocument extracts content from a document and updates its DB record.
 // This is called by the background worker.
+//
+// Extractors (PDF, DOCX, XLSX) take a filesystem path rather than an
+// io.Reader, so the blob is first staged to a node-local temp file under
+// workerTempDir. The temp file is removed after extraction completes or
+// fails — under normal operation it lives only for the duration of the job.
 func (p *DocumentPipeline) ProcessDocument(ctx context.Context, docID int64) error {
 	doc, err := p.repo.FindByID(ctx, docID)
 	if err != nil {
 		return fmt.Errorf("finding document %d for processing: %w", docID, err)
-	}
-
-	absPath, err := security.SafeStoragePath(p.storagePath, doc.FilePath)
-	if err != nil {
-		return p.markFailed(ctx, doc, fmt.Sprintf("unsafe file path: %v", err))
 	}
 
 	ext, err := p.extractorRegistry.ForMIMEType(doc.MIMEType)
@@ -311,7 +320,13 @@ func (p *DocumentPipeline) ProcessDocument(ctx context.Context, docID int64) err
 		return p.markFailed(ctx, doc, fmt.Sprintf("no extractor for %s: %v", doc.MIMEType, err))
 	}
 
-	result, err := ext.Extract(ctx, absPath)
+	localPath, cleanup, err := p.stageBlobToTemp(ctx, doc.FilePath)
+	if err != nil {
+		return p.markFailed(ctx, doc, fmt.Sprintf("staging blob for extraction: %v", err))
+	}
+	defer cleanup()
+
+	result, err := ext.Extract(ctx, localPath)
 	if err != nil {
 		return p.markFailed(ctx, doc, fmt.Sprintf("extraction failed: %v", err))
 	}
@@ -365,4 +380,47 @@ func (p *DocumentPipeline) markFailed(ctx context.Context, doc *model.Document, 
 	}
 	p.logger.Error("document processing failed", "id", doc.ID, "uuid", doc.UUID, "error", errMsg)
 	return fmt.Errorf("document %d: %s", doc.ID, errMsg)
+}
+
+// stageBlobToTemp downloads the blob at key into a temp file under
+// workerTempDir and returns the temp path plus a cleanup function. The
+// cleanup is safe to defer and is a no-op if the temp file was never
+// successfully created.
+//
+// Extractors that require a seekable filesystem file (PDF, DOCX, XLSX)
+// cannot consume an io.Reader directly — this staging step bridges the gap
+// between the blob store and those libraries.
+func (p *DocumentPipeline) stageBlobToTemp(ctx context.Context, key string) (tmpPath string, cleanup func(), err error) {
+	noop := func() {}
+
+	if p.workerTempDir == "" {
+		return "", noop, errors.New("worker temp dir is not configured")
+	}
+
+	// Preserve the extension so extractors that inspect the filename
+	// (e.g. html/markdown fallbacks) keep working.
+	tmp, err := os.CreateTemp(p.workerTempDir, "extract-*"+filepath.Ext(key))
+	if err != nil {
+		return "", noop, fmt.Errorf("creating temp file: %w", err)
+	}
+	removeTmp := func() { _ = os.Remove(tmp.Name()) }
+
+	r, err := p.blob.NewReader(ctx, key)
+	if err != nil {
+		_ = tmp.Close()
+		removeTmp()
+		return "", noop, fmt.Errorf("opening blob reader for %s: %w", key, err)
+	}
+	defer func() { _ = r.Close() }()
+
+	if _, err := io.Copy(tmp, r); err != nil {
+		_ = tmp.Close()
+		removeTmp()
+		return "", noop, fmt.Errorf("staging blob %s: %w", key, err)
+	}
+	if err := tmp.Close(); err != nil {
+		removeTmp()
+		return "", noop, fmt.Errorf("closing temp file: %w", err)
+	}
+	return tmp.Name(), removeTmp, nil
 }

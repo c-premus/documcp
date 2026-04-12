@@ -46,6 +46,15 @@ func Valid(s string) bool {
 
 // ParseScopes splits a space-delimited scope string into a deduplicated slice
 // of non-empty scope tokens, preserving first-occurrence order.
+//
+// Uses strings.SplitSeq on a literal space (0x20) rather than strings.FieldsSeq
+// deliberately: RFC 6749 §3.3 defines the scope separator as a single SP
+// character, not a run of arbitrary unicode whitespace. FieldsSeq would
+// silently accept tab- or newline-separated scope strings, which widens the
+// accepted grammar beyond the ABNF. The tok != "" guard handles multi-space
+// runs and leading/trailing spaces (see "extra spaces" test case), which is
+// a pragmatic concession to real-world clients without loosening the
+// separator definition.
 func ParseScopes(s string) []string {
 	seen := make(map[string]bool)
 	var out []string
