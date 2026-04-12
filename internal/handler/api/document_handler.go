@@ -43,7 +43,7 @@ type documentRepo interface {
 	PurgeSingle(ctx context.Context, id int64) (string, error)
 	PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
 	ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
-	ListDistinctTags(ctx context.Context, prefix string, limit int) ([]string, error)
+	ListDistinctTags(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error)
 }
 
 const maxUploadBodySize = 50*1024*1024 + 1024 // 50 MiB + metadata overhead
@@ -443,7 +443,7 @@ func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 	// Check access: public, admin, or owner.
 	user, _ := authmiddleware.UserFromContext(r.Context())
 	if !canAccessDocument(user, doc) {
-		errorResponse(w, http.StatusForbidden, "access denied")
+		errorResponse(w, http.StatusNotFound, "document not found")
 		return
 	}
 
@@ -491,7 +491,14 @@ func (h *DocumentHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tags, err := h.repo.ListDistinctTags(r.Context(), q, limit)
+	// Scope tags by user visibility: admins see all, non-admins see only
+	// tags from public documents or their own.
+	var tagUserID *int64
+	if user, ok := authmiddleware.UserFromContext(r.Context()); ok && !user.IsAdmin {
+		tagUserID = &user.ID
+	}
+
+	tags, err := h.repo.ListDistinctTags(r.Context(), q, limit, tagUserID)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "failed to list tags", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to list tags")

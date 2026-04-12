@@ -88,6 +88,11 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 			}
 		}
 	}
+	if cfg.OIDCCfg.EndSessionURL != "" {
+		if err := validateOIDCURL(cfg.OIDCCfg.EndSessionURL); err != nil {
+			return nil, fmt.Errorf("validating OIDC_END_SESSION_URL: %w", err)
+		}
+	}
 
 	scopes := cfg.OIDCCfg.Scopes
 	if len(scopes) == 0 {
