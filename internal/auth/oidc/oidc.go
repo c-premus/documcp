@@ -202,6 +202,12 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 
 const sessionName = "documcp_session"
 
+// idTokenSessionName is a separate cookie for the raw ID token used by
+// RP-Initiated Logout. Stored separately because the ID token JWT (~1500
+// bytes) combined with OAuth pending request state would exceed the browser's
+// ~4096-byte per-cookie limit and get silently dropped.
+const idTokenSessionName = "documcp_idt" //nolint:gosec // session cookie name, not a credential
+
 // discoveryMaxRetries and discoveryBaseDelay control OIDC provider discovery
 // retry behavior. With exponential backoff (1s, 2s, 4s) the total wait is ~7s
 // before giving up. Variables (not constants) so tests can override them.
@@ -366,12 +372,22 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	session.Values["user_id"] = user.ID
 	session.Values["is_admin"] = user.IsAdmin
 	session.Values["user_email"] = user.Email
-	session.Values["id_token"] = rawIDToken
 
 	if err := session.Save(r, w); err != nil {
 		h.logger.Error("saving session", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
+	}
+
+	// Store the raw ID token in a separate cookie to keep the main session
+	// small. The ID token JWT (~1500 bytes) is only needed for RP-Initiated
+	// Logout (id_token_hint parameter).
+	idtSession, _ := h.store.New(r, idTokenSessionName)
+	idtSession.Values["id_token"] = rawIDToken
+	if err := idtSession.Save(r, w); err != nil {
+		// Non-fatal — logout will work without id_token_hint, just won't
+		// terminate the provider session.
+		h.logger.Warn("saving id_token session", "error", err)
 	}
 
 	if redirect == "" || !isSafeRedirect(redirect) {
@@ -391,8 +407,13 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("session decode error in logout, clearing cookie", "error", err)
 	}
 
-	// Retrieve the ID token before clearing the session — needed for id_token_hint.
-	rawIDToken, _ := session.Values["id_token"].(string)
+	// Retrieve the ID token from its dedicated cookie — needed for id_token_hint.
+	var rawIDToken string
+	if idtSession, idtErr := h.store.Get(r, idTokenSessionName); idtErr == nil {
+		rawIDToken, _ = idtSession.Values["id_token"].(string)
+		idtSession.Options.MaxAge = -1
+		_ = idtSession.Save(r, w)
+	}
 
 	session.Options.MaxAge = -1
 	_ = session.Save(r, w)
