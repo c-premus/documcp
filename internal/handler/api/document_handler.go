@@ -249,6 +249,11 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 func (h *DocumentHandler) ReplaceContent(w http.ResponseWriter, r *http.Request) {
 	docUUID := chi.URLParam(r, "uuid")
 
+	if !h.checkOwnership(r, docUUID) {
+		errorResponse(w, http.StatusNotFound, "document not found")
+		return
+	}
+
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBodySize)
 
 	if err := r.ParseMultipartForm(10 * 1024 * 1024); err != nil {
@@ -301,7 +306,6 @@ func (h *DocumentHandler) ReplaceContent(w http.ResponseWriter, r *http.Request)
 
 // checkOwnership verifies the requesting user has access to the document.
 // Admins can access any document. Non-admin users can only access their own.
-// Defense-in-depth: these routes are also behind RequireAdmin middleware.
 func (h *DocumentHandler) checkOwnership(r *http.Request, docUUID string) bool {
 	user, ok := authmiddleware.UserFromContext(r.Context())
 	if !ok || user == nil {

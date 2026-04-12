@@ -11,6 +11,7 @@ import (
 type DocumentExtractArgs struct {
 	DocumentID int64  `json:"document_id"`
 	DocUUID    string `json:"doc_uuid"`
+	UserID     int64  `json:"user_id,omitempty"`
 }
 
 // Kind returns the job kind identifier for DocumentExtractArgs.

@@ -149,6 +149,7 @@ type OIDCConfig struct {
 	TokenURL         string   `mapstructure:"oidc_token_url"`
 	UserinfoURL      string   `mapstructure:"oidc_userinfo_url"`
 	JWKSURL          string   `mapstructure:"oidc_jwks_url"`
+	EndSessionURL    string   `mapstructure:"oidc_end_session_url"`
 }
 
 // ManualEndpoints returns true when manual OIDC endpoint configuration is active.
@@ -322,6 +323,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oidc_token_url", "")
 	v.SetDefault("oidc_userinfo_url", "")
 	v.SetDefault("oidc_jwks_url", "")
+	v.SetDefault("oidc_end_session_url", "")
 
 	// OAuth
 	v.SetDefault("oauth_authorization_code_lifetime", 10*time.Minute)
@@ -511,6 +513,7 @@ func Load() (*Config, error) {
 		TokenURL:         v.GetString("oidc_token_url"),
 		UserinfoURL:      v.GetString("oidc_userinfo_url"),
 		JWKSURL:          v.GetString("oidc_jwks_url"),
+		EndSessionURL:    v.GetString("oidc_end_session_url"),
 	}
 
 	cfg.OAuth = OAuthConfig{

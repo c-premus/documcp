@@ -341,6 +341,12 @@ func withAdminUser(r *http.Request) *http.Request {
 	return r.WithContext(ctx)
 }
 
+// withNonAdminUser injects a non-admin user with the given ID into the request context.
+func withNonAdminUser(r *http.Request, id int64) *http.Request {
+	ctx := context.WithValue(r.Context(), authmiddleware.UserContextKey, &model.User{ID: id, IsAdmin: false})
+	return r.WithContext(ctx)
+}
+
 func decodeJSONBody(t *testing.T, body io.Reader) map[string]any {
 	t.Helper()
 	var result map[string]any
@@ -2989,6 +2995,7 @@ func TestDocumentHandler_ReplaceContent(t *testing.T) {
 			strings.NewReader("not multipart"))
 		req.Header.Set("Content-Type", "text/plain")
 		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.ReplaceContent(rr, req)
@@ -3011,6 +3018,7 @@ func TestDocumentHandler_ReplaceContent(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/content", &buf)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.ReplaceContent(rr, req)
@@ -3039,6 +3047,7 @@ func TestDocumentHandler_ReplaceContent(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/documents/missing-uuid/content", &buf)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		req = chiContext(req, map[string]string{"uuid": "missing-uuid"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.ReplaceContent(rr, req)
@@ -3067,6 +3076,7 @@ func TestDocumentHandler_ReplaceContent(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/content", &buf)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.ReplaceContent(rr, req)
@@ -3093,6 +3103,7 @@ func TestDocumentHandler_ReplaceContent(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/content", &buf)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.ReplaceContent(rr, req)
@@ -3119,6 +3130,7 @@ func TestDocumentHandler_ReplaceContent(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/content", &buf)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.ReplaceContent(rr, req)
@@ -3155,6 +3167,7 @@ func TestDocumentHandler_ReplaceContent(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/documents/replace-uuid/content", &buf)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		req = chiContext(req, map[string]string{"uuid": "replace-uuid"})
+		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
 		h.ReplaceContent(rr, req)
@@ -3338,5 +3351,317 @@ func TestDocumentHandler_ListTags(t *testing.T) {
 		assert.Equal(t, 2, len(data))
 		assert.Equal(t, "golang", data[0])
 		assert.Equal(t, "goroutines", data[1])
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Write handler ownership enforcement tests
+//
+// Verify that non-admin users can modify their own documents, are blocked from
+// modifying other users' documents, and that missing user context is rejected.
+// ---------------------------------------------------------------------------
+
+// ownedDoc returns a mockHandlerRepo that serves a document owned by ownerID.
+func ownedDoc(ownerID int64) *mockHandlerRepo {
+	doc := newTestDocument("test-uuid")
+	doc.UserID = sql.NullInt64{Int64: ownerID, Valid: true}
+	return &mockHandlerRepo{
+		findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
+			return doc, nil
+		},
+		tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
+			return nil, nil
+		},
+	}
+}
+
+// unownedDoc returns a mockHandlerRepo that serves a document with no owner.
+func unownedDoc() *mockHandlerRepo {
+	doc := newTestDocument("test-uuid")
+	doc.UserID = sql.NullInt64{Valid: false}
+	return &mockHandlerRepo{
+		findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
+			return doc, nil
+		},
+	}
+}
+
+func TestDocumentHandler_Update_OwnershipEnforcement(t *testing.T) {
+	t.Parallel()
+
+	validBody := `{"title":"Updated"}`
+
+	t.Run("non-admin can update own document", func(t *testing.T) {
+		t.Parallel()
+
+		p := &mockPipeline{
+			updateFn: func(_ context.Context, _ string, _ service.UpdateDocumentParams) (*model.Document, error) {
+				return newTestDocument("test-uuid"), nil
+			},
+		}
+		h := newTestHandler(p, ownedDoc(42))
+
+		req := httptest.NewRequest(http.MethodPut, "/api/documents/test-uuid", strings.NewReader(validBody))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		req = withNonAdminUser(req, 42)
+		rr := httptest.NewRecorder()
+
+		h.Update(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+	})
+
+	t.Run("non-admin gets 404 for other users document", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(&mockPipeline{}, ownedDoc(99))
+
+		req := httptest.NewRequest(http.MethodPut, "/api/documents/test-uuid", strings.NewReader(validBody))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		req = withNonAdminUser(req, 42)
+		rr := httptest.NewRecorder()
+
+		h.Update(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+		body := decodeJSONBody(t, rr.Body)
+		assert.Equal(t, "document not found", body["message"])
+	})
+
+	t.Run("non-admin gets 404 for unowned document", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(&mockPipeline{}, unownedDoc())
+
+		req := httptest.NewRequest(http.MethodPut, "/api/documents/test-uuid", strings.NewReader(validBody))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		req = withNonAdminUser(req, 42)
+		rr := httptest.NewRecorder()
+
+		h.Update(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+	})
+
+	t.Run("no user in context gets 404", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(&mockPipeline{}, ownedDoc(42))
+
+		req := httptest.NewRequest(http.MethodPut, "/api/documents/test-uuid", strings.NewReader(validBody))
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Update(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+	})
+}
+
+func TestDocumentHandler_Delete_OwnershipEnforcement(t *testing.T) {
+	t.Parallel()
+
+	t.Run("non-admin can delete own document", func(t *testing.T) {
+		t.Parallel()
+
+		p := &mockPipeline{
+			deleteFn: func(_ context.Context, _ string) error {
+				return nil
+			},
+		}
+		h := newTestHandler(p, ownedDoc(7))
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/test-uuid", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		req = withNonAdminUser(req, 7)
+		rr := httptest.NewRecorder()
+
+		h.Delete(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+	})
+
+	t.Run("non-admin gets 404 for other users document", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(&mockPipeline{}, ownedDoc(99))
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/test-uuid", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		req = withNonAdminUser(req, 42)
+		rr := httptest.NewRecorder()
+
+		h.Delete(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+	})
+
+	t.Run("non-admin gets 404 for unowned document", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(&mockPipeline{}, unownedDoc())
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/test-uuid", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		req = withNonAdminUser(req, 42)
+		rr := httptest.NewRecorder()
+
+		h.Delete(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+	})
+
+	t.Run("no user in context gets 404", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(&mockPipeline{}, ownedDoc(42))
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/documents/test-uuid", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Delete(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+	})
+}
+
+func TestDocumentHandler_ReplaceContent_OwnershipEnforcement(t *testing.T) {
+	t.Parallel()
+
+	makeMultipart := func(t *testing.T) (*bytes.Buffer, string) {
+		t.Helper()
+		var buf bytes.Buffer
+		writer := multipart.NewWriter(&buf)
+		part, _ := writer.CreateFormFile("file", "test.md")
+		_, _ = part.Write([]byte("# Content"))
+		_ = writer.Close()
+		return &buf, writer.FormDataContentType()
+	}
+
+	t.Run("non-admin can replace content on own document", func(t *testing.T) {
+		t.Parallel()
+
+		p := &mockPipeline{
+			replaceContentFn: func(_ context.Context, _ string, _ service.ReplaceContentParams) (*model.Document, error) {
+				return newTestDocument("test-uuid"), nil
+			},
+		}
+		h := newTestHandler(p, ownedDoc(42))
+
+		buf, ct := makeMultipart(t)
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/content", buf)
+		req.Header.Set("Content-Type", ct)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		req = withNonAdminUser(req, 42)
+		rr := httptest.NewRecorder()
+
+		h.ReplaceContent(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+	})
+
+	t.Run("non-admin gets 404 for other users document", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(&mockPipeline{}, ownedDoc(99))
+
+		buf, ct := makeMultipart(t)
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/content", buf)
+		req.Header.Set("Content-Type", ct)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		req = withNonAdminUser(req, 42)
+		rr := httptest.NewRecorder()
+
+		h.ReplaceContent(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+	})
+
+	t.Run("no user in context gets 404", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(&mockPipeline{}, ownedDoc(42))
+
+		buf, ct := makeMultipart(t)
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/content", buf)
+		req.Header.Set("Content-Type", ct)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.ReplaceContent(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+	})
+}
+
+func TestDocumentHandler_Restore_OwnershipEnforcement(t *testing.T) {
+	t.Parallel()
+
+	// deletedDoc returns a repo serving a soft-deleted document owned by ownerID.
+	deletedDoc := func(ownerID int64) *mockHandlerRepo {
+		doc := newTestDocument("test-uuid")
+		doc.UserID = sql.NullInt64{Int64: ownerID, Valid: true}
+		doc.DeletedAt = sql.NullTime{Time: time.Now().Add(-time.Hour), Valid: true}
+		return &mockHandlerRepo{
+			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return doc, nil
+			},
+			restoreFn: func(_ context.Context, _ int64) error {
+				return nil
+			},
+			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
+				return nil, nil
+			},
+		}
+	}
+
+	t.Run("non-admin can restore own document", func(t *testing.T) {
+		t.Parallel()
+
+		repo := deletedDoc(42)
+		// FindByUUID (not IncludingDeleted) is called after restore to re-fetch.
+		repo.findByUUIDFn = func(_ context.Context, _ string) (*model.Document, error) {
+			return newTestDocument("test-uuid"), nil
+		}
+		h := newTestHandler(&mockPipeline{}, repo)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/restore", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		req = withNonAdminUser(req, 42)
+		rr := httptest.NewRecorder()
+
+		h.Restore(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+	})
+
+	t.Run("non-admin gets 404 for other users document", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(&mockPipeline{}, deletedDoc(99))
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/restore", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		req = withNonAdminUser(req, 42)
+		rr := httptest.NewRecorder()
+
+		h.Restore(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
+	})
+
+	t.Run("no user in context gets 404", func(t *testing.T) {
+		t.Parallel()
+
+		h := newTestHandler(&mockPipeline{}, deletedDoc(42))
+
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/restore", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
+		rr := httptest.NewRecorder()
+
+		h.Restore(rr, req)
+
+		assert.Equal(t, http.StatusNotFound, rr.Code)
 	})
 }

@@ -114,7 +114,7 @@ func (s *Server) registerGlobalMiddleware(deps Deps) {
 
 	r.Use(BlockSensitiveFiles)
 	r.Use(MaxBodySize(deps.MaxBodySize))
-	r.Use(TimeoutExcept(deps.RequestTimeout, "/documcp", "/api/admin/events/stream"))
+	r.Use(TimeoutExcept(deps.RequestTimeout, "/documcp", "/api/admin/events/stream", "/api/events/stream"))
 
 	// Cross-origin protection: blocks cross-origin POST/PUT/DELETE/PATCH using
 	// Sec-Fetch-Site (all modern browsers) with Origin fallback. GET/HEAD/OPTIONS
@@ -260,6 +260,14 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 			})
 		}
 
+		// User SSE endpoint (any authenticated user — server-side filtering by role)
+		if deps.SSEHandler != nil {
+			r.Group(func(r chi.Router) {
+				r.Use(authmiddleware.RequireScope(authscope.DocumentsRead, s.logger))
+				r.Get("/events/stream", deps.SSEHandler.UserStream)
+			})
+		}
+
 		// Document endpoints
 		if deps.DocumentHandler != nil {
 			r.Route("/documents", func(r chi.Router) {
@@ -273,16 +281,24 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 					r.Get("/{uuid}/download", deps.DocumentHandler.Download)
 				})
 
+				// Write operations: any authenticated user with documents:write scope.
+				// Handlers enforce ownership via checkOwnership (admins bypass).
 				r.Group(func(r chi.Router) {
 					r.Use(rateLimitByIP(30, time.Minute, deps.BareRedisClient))
 					r.Use(authmiddleware.RequireScope(authscope.DocumentsWrite, s.logger))
-					r.Use(authmiddleware.RequireAdmin)
 					r.Post("/", deps.DocumentHandler.Upload)
 					r.Post("/analyze", deps.DocumentHandler.Analyze)
 					r.Put("/{uuid}", deps.DocumentHandler.Update)
 					r.Delete("/{uuid}", deps.DocumentHandler.Delete)
 					r.Post("/{uuid}/content", deps.DocumentHandler.ReplaceContent)
 					r.Post("/{uuid}/restore", deps.DocumentHandler.Restore)
+				})
+
+				// Purge: admin-only (irreversible permanent deletion)
+				r.Group(func(r chi.Router) {
+					r.Use(rateLimitByIP(30, time.Minute, deps.BareRedisClient))
+					r.Use(authmiddleware.RequireScope(authscope.DocumentsWrite, s.logger))
+					r.Use(authmiddleware.RequireAdmin)
 					r.Delete("/{uuid}/purge", deps.DocumentHandler.Purge)
 				})
 			})

@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
@@ -500,6 +501,78 @@ func TestEvent_FieldValues(t *testing.T) {
 	assert.Equal(t, 3, event.Attempt)
 	assert.Equal(t, "timeout exceeded", event.Error)
 	assert.Equal(t, now, event.Timestamp)
+}
+
+// ---------------------------------------------------------------------------
+// extractDocumentUserID tests
+// ---------------------------------------------------------------------------
+
+func TestExtractDocumentUserID(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid document_extract args with UserID", func(t *testing.T) {
+		t.Parallel()
+
+		args := DocumentExtractArgs{
+			DocumentID: 10,
+			DocUUID:    "abc-123",
+			UserID:     42,
+		}
+		encoded, err := json.Marshal(args)
+		require.NoError(t, err)
+
+		userID, docUUID := extractDocumentUserID("document_extract", encoded)
+
+		assert.Equal(t, int64(42), userID)
+		assert.Equal(t, "abc-123", docUUID)
+	})
+
+	t.Run("non-document_extract kind returns zero values", func(t *testing.T) {
+		t.Parallel()
+
+		args := DocumentExtractArgs{
+			DocumentID: 10,
+			DocUUID:    "abc-123",
+			UserID:     42,
+		}
+		encoded, err := json.Marshal(args)
+		require.NoError(t, err)
+
+		userID, docUUID := extractDocumentUserID("sync_kiwix", encoded)
+
+		assert.Equal(t, int64(0), userID)
+		assert.Empty(t, docUUID)
+	})
+
+	t.Run("malformed JSON returns zero values", func(t *testing.T) {
+		t.Parallel()
+
+		userID, docUUID := extractDocumentUserID("document_extract", []byte(`{not valid json`))
+
+		assert.Equal(t, int64(0), userID)
+		assert.Empty(t, docUUID)
+	})
+
+	t.Run("legacy args without user_id returns zero UserID", func(t *testing.T) {
+		t.Parallel()
+
+		// Simulate legacy payload that lacks the user_id field.
+		encoded := []byte(`{"document_id":5,"doc_uuid":"legacy-uuid"}`)
+
+		userID, docUUID := extractDocumentUserID("document_extract", encoded)
+
+		assert.Equal(t, int64(0), userID)
+		assert.Equal(t, "legacy-uuid", docUUID)
+	})
+
+	t.Run("empty encodedArgs returns zero values", func(t *testing.T) {
+		t.Parallel()
+
+		userID, docUUID := extractDocumentUserID("document_extract", []byte{})
+
+		assert.Equal(t, int64(0), userID)
+		assert.Empty(t, docUUID)
+	})
 }
 
 func TestEventBus_Publish_eventFieldsPreserved(t *testing.T) {

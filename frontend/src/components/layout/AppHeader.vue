@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RouterLink } from 'vue-router'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue'
 import {
   Bars3Icon,
@@ -34,8 +35,10 @@ const logoSrc = `${import.meta.env.BASE_URL}logo-concept-1-transparent.svg`
         >
           <Bars3Icon class="h-6 w-6" aria-hidden="true" />
         </button>
-        <img :src="logoSrc" alt="" aria-hidden="true" class="h-8 w-8 shrink-0" />
-        <span class="hidden sm:inline text-lg font-semibold text-text-primary">DocuMCP</span>
+        <RouterLink to="/" class="flex items-center gap-3 no-underline">
+          <img :src="logoSrc" alt="" aria-hidden="true" class="h-8 w-8 shrink-0" />
+          <span class="hidden sm:inline text-lg font-semibold text-text-primary">DocuMCP</span>
+        </RouterLink>
       </div>
 
       <Menu v-if="auth.user" as="div" class="relative">

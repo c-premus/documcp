@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
 	"github.com/c-premus/documcp/internal/queue"
 )
 
@@ -22,7 +23,7 @@ func NewSSEHandler(eventBus queue.EventSubscriber, heartbeatInterval time.Durati
 	return &SSEHandler{eventBus: eventBus, heartbeatInterval: heartbeatInterval}
 }
 
-// Stream handles GET /api/events/stream — an SSE endpoint for queue events.
+// Stream handles GET /api/admin/events/stream — unfiltered SSE for admin clients.
 func (h *SSEHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -70,6 +71,70 @@ func (h *SSEHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		case event, ok := <-events:
 			if !ok {
 				return
+			}
+			data, err := json.Marshal(event)
+			if err != nil {
+				continue
+			}
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
+}
+
+// UserStream handles GET /api/events/stream — SSE with per-user filtering.
+// Admins see all events; non-admins see only events where UserID matches.
+func (h *SSEHandler) UserStream(w http.ResponseWriter, r *http.Request) {
+	user, ok := authmiddleware.UserFromContext(r.Context())
+	if !ok || user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	rc := http.NewResponseController(w)
+	_ = rc.SetWriteDeadline(time.Time{})
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	subID := uuid.New().String()
+	events := h.eventBus.Subscribe(subID)
+	if events == nil {
+		http.Error(w, "too many concurrent connections", http.StatusServiceUnavailable)
+		return
+	}
+	defer h.eventBus.Unsubscribe(subID)
+
+	_, _ = fmt.Fprint(w, "retry: 5000\n\n")
+	flusher.Flush()
+
+	heartbeat := time.NewTicker(h.heartbeatInterval)
+	defer heartbeat.Stop()
+
+	isAdmin := user.IsAdmin
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-heartbeat.C:
+			_, _ = fmt.Fprint(w, ": heartbeat\n\n")
+			flusher.Flush()
+		case event, ok := <-events:
+			if !ok {
+				return
+			}
+			// Non-admins only see events addressed to them.
+			if !isAdmin && event.UserID != user.ID {
+				continue
 			}
 			data, err := json.Marshal(event)
 			if err != nil {
