@@ -83,6 +83,18 @@ services:
       - "traefik.http.routers.documcp.entrypoints=websecure"
       - "traefik.http.routers.documcp.tls.certresolver=letsencrypt"
       - "traefik.http.services.documcp.loadbalancer.server.port=8080"
+      # Sticky-session cookie affinity. MCP sessions live in-memory per
+      # replica — the SDK has no cross-process session store — so a client
+      # that initialize()s on replica A must keep landing there for the
+      # life of the session. Traefik scopes sticky cookies at the service
+      # level, not the router level, so this cookie is set on every DocuMCP
+      # response (harmless for the stateless REST/SPA routes).
+      # NOTE: drop .secure=true when running the local stack without TLS.
+      - "traefik.http.services.documcp.loadbalancer.sticky.cookie=true"
+      - "traefik.http.services.documcp.loadbalancer.sticky.cookie.name=documcp_affinity"
+      - "traefik.http.services.documcp.loadbalancer.sticky.cookie.secure=true"
+      - "traefik.http.services.documcp.loadbalancer.sticky.cookie.httpOnly=true"
+      - "traefik.http.services.documcp.loadbalancer.sticky.cookie.sameSite=lax"
     security_opt:
       - no-new-privileges:true
     cap_drop:

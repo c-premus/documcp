@@ -277,13 +277,6 @@ linters:
           - gosec
         text: "G705"
 
-      # gosec G703: Download opens a file path validated by safeStoragePath()
-      # three lines above. gosec's taint analysis does not model the guard.
-      - path: internal/handler/api/document_handler\.go
-        linters:
-          - gosec
-        text: "G703"
-
 issues:
   max-issues-per-linter: 0  # Report every issue; no per-linter cap
   max-same-issues: 0        # Report every unique instance; no duplicate cap

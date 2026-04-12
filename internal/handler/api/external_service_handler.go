@@ -30,21 +30,35 @@ type kiwixCacheInvalidator interface {
 	Invalidate()
 }
 
+// controlPublisher publishes cross-replica control messages. Defined where
+// consumed so the handler stays unaware of the Redis bus implementation.
+type controlPublisher interface {
+	Publish(ctx context.Context, topic string, payload []byte) error
+}
+
+// KiwixCacheInvalidateTopic is the ControlBus topic used to broadcast
+// Kiwix-service cache invalidations across replicas. Exported so the
+// subscriber side (wired in server_app.go) can reference the same string.
+const KiwixCacheInvalidateTopic = "cache.kiwix.invalidate"
+
 // ExternalServiceHandler handles REST API endpoints for external services.
 type ExternalServiceHandler struct {
 	svc        *service.ExternalServiceService
 	reorderer  externalServiceReorderer
 	inserter   externalServiceJobInserter
 	kiwixCache kiwixCacheInvalidator
+	controlBus controlPublisher
 	logger     *slog.Logger
 }
 
 // NewExternalServiceHandler creates a new ExternalServiceHandler.
+// controlBus may be nil in tests that don't need cross-replica invalidation.
 func NewExternalServiceHandler(
 	svc *service.ExternalServiceService,
 	reorderer externalServiceReorderer,
 	inserter externalServiceJobInserter,
 	kiwixCache kiwixCacheInvalidator,
+	controlBus controlPublisher,
 	logger *slog.Logger,
 ) *ExternalServiceHandler {
 	return &ExternalServiceHandler{
@@ -52,7 +66,25 @@ func NewExternalServiceHandler(
 		reorderer:  reorderer,
 		inserter:   inserter,
 		kiwixCache: kiwixCache,
+		controlBus: controlBus,
 		logger:     logger,
+	}
+}
+
+// invalidateKiwixCache clears the local cache and, if a control bus is
+// wired, broadcasts the invalidation to all other replicas. Publish errors
+// are logged but never fail the originating request — the local clear
+// already succeeded, and remote replicas will re-read the next TTL tick.
+func (h *ExternalServiceHandler) invalidateKiwixCache(ctx context.Context) {
+	if h.kiwixCache != nil {
+		h.kiwixCache.Invalidate()
+	}
+	if h.controlBus == nil {
+		return
+	}
+	if err := h.controlBus.Publish(ctx, KiwixCacheInvalidateTopic, nil); err != nil {
+		h.logger.Warn("broadcasting kiwix cache invalidation",
+			"topic", KiwixCacheInvalidateTopic, "error", err)
 	}
 }
 
@@ -167,9 +199,7 @@ func (h *ExternalServiceHandler) Create(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if created.Type == "kiwix" {
-		if h.kiwixCache != nil {
-			h.kiwixCache.Invalidate()
-		}
+		h.invalidateKiwixCache(r.Context())
 		if h.inserter != nil {
 			if _, jobErr := h.inserter.Insert(r.Context(), queue.SyncKiwixArgs{}, nil); jobErr != nil {
 				h.logger.Warn("failed to enqueue sync after external service create", "type", created.Type, "error", jobErr)
@@ -224,9 +254,7 @@ func (h *ExternalServiceHandler) Update(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if updated.Type == "kiwix" {
-		if h.kiwixCache != nil {
-			h.kiwixCache.Invalidate()
-		}
+		h.invalidateKiwixCache(r.Context())
 		if h.inserter != nil {
 			if _, jobErr := h.inserter.Insert(r.Context(), queue.SyncKiwixArgs{}, nil); jobErr != nil {
 				h.logger.Warn("failed to enqueue sync after external service update", "type", updated.Type, "error", jobErr)
@@ -261,8 +289,8 @@ func (h *ExternalServiceHandler) Delete(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if lookupErr == nil && existing.Type == "kiwix" && h.kiwixCache != nil {
-		h.kiwixCache.Invalidate()
+	if lookupErr == nil && existing.Type == "kiwix" {
+		h.invalidateKiwixCache(r.Context())
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]any{

@@ -9,8 +9,8 @@ coverage.out
 .env
 .devcontainer/.env
 
-# Uploaded document storage
-storage/
+# Uploaded document storage (runtime data, not the Go source package)
+/storage/
 
 # Node modules (all locations)
 node_modules/

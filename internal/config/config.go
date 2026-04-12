@@ -193,6 +193,11 @@ type GitConfig struct {
 
 // StorageConfig holds file storage settings.
 type StorageConfig struct {
+	// Driver selects the blob backend: "local"/"fs" (default) or "s3".
+	// "local" writes to BasePath on disk. "s3" talks to any S3-compatible
+	// service (AWS S3, Cloudflare R2, Backblaze B2, Wasabi, Garage, SeaweedFS)
+	// via the S3 API. BasePath is still required in s3 mode for worker-local
+	// scratch directories (git clones, extractor temp files).
 	Driver       string `mapstructure:"storage_driver"`
 	BasePath     string `mapstructure:"storage_base_path"`
 	DocumentPath string `mapstructure:"storage_document_path"`
@@ -203,6 +208,20 @@ type StorageConfig struct {
 	MaxExtractedText int64 `mapstructure:"storage_max_extracted_text"`
 	MaxZIPFiles      int   `mapstructure:"storage_max_zip_files"`
 	MaxSheets        int   `mapstructure:"storage_max_sheets"`
+
+	// S3 driver fields — ignored when Driver != "s3".
+	// Endpoint can be empty for AWS (uses the default regional endpoint) but
+	// is required for self-hosted backends like Garage or SeaweedFS.
+	S3Endpoint        string `mapstructure:"storage_s3_endpoint"`
+	S3Bucket          string `mapstructure:"storage_s3_bucket"`
+	S3Region          string `mapstructure:"storage_s3_region"`
+	S3AccessKeyID     string `mapstructure:"storage_s3_access_key_id"`
+	S3SecretAccessKey string `mapstructure:"storage_s3_secret_access_key"`
+	// S3UsePathStyle defaults to true. Required for most self-hosted
+	// S3-compatible services; AWS S3 and R2 accept both.
+	S3UsePathStyle bool `mapstructure:"storage_s3_use_path_style"`
+	// S3ForceSSL defaults to true — rejects plaintext endpoints at Open time.
+	S3ForceSSL bool `mapstructure:"storage_s3_force_ssl"`
 }
 
 // OTELConfig holds OpenTelemetry observability settings.
@@ -329,6 +348,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("storage_max_extracted_text", 50*1024*1024) // 50 MiB
 	v.SetDefault("storage_max_zip_files", 100)
 	v.SetDefault("storage_max_sheets", 100)
+	v.SetDefault("storage_s3_use_path_style", true)
+	v.SetDefault("storage_s3_force_ssl", true)
 
 	// OTEL
 	v.SetDefault("otel_enabled", false)
@@ -509,14 +530,21 @@ func Load() (*Config, error) {
 	}
 
 	cfg.Storage = StorageConfig{
-		Driver:           v.GetString("storage_driver"),
-		BasePath:         v.GetString("storage_base_path"),
-		DocumentPath:     v.GetString("storage_document_path"),
-		TempPath:         v.GetString("storage_temp_path"),
-		MaxUploadSize:    v.GetInt64("storage_max_upload_size"),
-		MaxExtractedText: v.GetInt64("storage_max_extracted_text"),
-		MaxZIPFiles:      v.GetInt("storage_max_zip_files"),
-		MaxSheets:        v.GetInt("storage_max_sheets"),
+		Driver:            v.GetString("storage_driver"),
+		BasePath:          v.GetString("storage_base_path"),
+		DocumentPath:      v.GetString("storage_document_path"),
+		TempPath:          v.GetString("storage_temp_path"),
+		MaxUploadSize:     v.GetInt64("storage_max_upload_size"),
+		MaxExtractedText:  v.GetInt64("storage_max_extracted_text"),
+		MaxZIPFiles:       v.GetInt("storage_max_zip_files"),
+		MaxSheets:         v.GetInt("storage_max_sheets"),
+		S3Endpoint:        v.GetString("storage_s3_endpoint"),
+		S3Bucket:          v.GetString("storage_s3_bucket"),
+		S3Region:          v.GetString("storage_s3_region"),
+		S3AccessKeyID:     v.GetString("storage_s3_access_key_id"),
+		S3SecretAccessKey: v.GetString("storage_s3_secret_access_key"),
+		S3UsePathStyle:    v.GetBool("storage_s3_use_path_style"),
+		S3ForceSSL:        v.GetBool("storage_s3_force_ssl"),
 	}
 
 	cfg.OTEL = OTELConfig{
@@ -656,6 +684,31 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	}
 	if c.Git.MaxTotalSize <= 0 {
 		errs = append(errs, "GIT_MAX_TOTAL_SIZE must be positive")
+	}
+
+	// --- Storage driver validation ---
+	switch c.Storage.Driver {
+	case "", "local", "fs":
+		// Filesystem backend — no extra requirements beyond BasePath,
+		// which has a default.
+	case "s3":
+		if c.Storage.S3Bucket == "" {
+			errs = append(errs, "STORAGE_S3_BUCKET is required when STORAGE_DRIVER=s3")
+		}
+		if c.Storage.S3Region == "" {
+			errs = append(errs, "STORAGE_S3_REGION is required when STORAGE_DRIVER=s3 (use \"us-east-1\" as a placeholder for Garage/SeaweedFS)")
+		}
+		if c.Storage.S3AccessKeyID == "" {
+			errs = append(errs, "STORAGE_S3_ACCESS_KEY_ID is required when STORAGE_DRIVER=s3")
+		}
+		if c.Storage.S3SecretAccessKey == "" {
+			errs = append(errs, "STORAGE_S3_SECRET_ACCESS_KEY is required when STORAGE_DRIVER=s3")
+		}
+		if c.Storage.S3ForceSSL && c.Storage.S3Endpoint != "" && !strings.HasPrefix(c.Storage.S3Endpoint, "https://") {
+			errs = append(errs, "STORAGE_S3_ENDPOINT must use https:// when STORAGE_S3_FORCE_SSL=true (or set STORAGE_S3_FORCE_SSL=false for a plaintext endpoint)")
+		}
+	default:
+		errs = append(errs, fmt.Sprintf("STORAGE_DRIVER=%q is not recognized (expected: local, fs, s3)", c.Storage.Driver))
 	}
 
 	// --- Production requirements ---

@@ -235,12 +235,21 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `STORAGE_DRIVER` | No | `local` | File storage driver |
-| `STORAGE_BASE_PATH` | No | -- | Base path for local file storage |
+| `STORAGE_DRIVER` | No | `local` | Blob backend: `local` (or `fs`) for filesystem, `s3` for any S3-compatible service |
+| `STORAGE_BASE_PATH` | No | `./storage` | Filesystem root (always required — workers use it for git clones and extraction scratch, even with `s3`) |
 | `STORAGE_MAX_UPLOAD_SIZE` | No | `52428800` | Max upload file size in bytes (50 MiB) |
 | `STORAGE_MAX_EXTRACTED_TEXT` | No | `52428800` | Max decompressed text per file in bytes (50 MiB) |
 | `STORAGE_MAX_ZIP_FILES` | No | `100` | Max files in a DOCX ZIP archive |
 | `STORAGE_MAX_SHEETS` | No | `100` | Max sheets in an XLSX file |
+| `STORAGE_S3_ENDPOINT` | No† | -- | S3 endpoint URL (empty = AWS default). Required for Garage, SeaweedFS, R2, B2, etc. |
+| `STORAGE_S3_BUCKET` | No† | -- | Target bucket name |
+| `STORAGE_S3_REGION` | No† | -- | AWS region string (`us-east-1` is a safe placeholder for Garage/SeaweedFS) |
+| `STORAGE_S3_ACCESS_KEY_ID` | No† | -- | Static access key |
+| `STORAGE_S3_SECRET_ACCESS_KEY` | No† | -- | Static secret key |
+| `STORAGE_S3_USE_PATH_STYLE` | No | `true` | Force path-style addressing; required for most self-hosted backends |
+| `STORAGE_S3_FORCE_SSL` | No | `true` | Reject plaintext endpoints at startup |
+
+† Required when `STORAGE_DRIVER=s3`. The `s3` driver speaks the S3 API and works against AWS S3, Cloudflare R2, Backblaze B2, Wasabi, Garage, SeaweedFS, and any other S3-compatible service. Keys use the same `{file_type}/{uuid}.{ext}` layout as the filesystem driver, so switching backends requires no database migration.
 
 ### External Services (Kiwix)
 
@@ -273,6 +282,18 @@ ZIM and Git template tools are registered conditionally based on whether the cor
 | `SENTRY_SAMPLE_RATE` | No | `1.0` | Error sample rate (0.0--1.0) |
 
 See `.env.example` for the full list of configurable variables with defaults.
+
+## Running multiple replicas
+
+DocuMCP is designed to scale horizontally behind a load balancer. Three things have to be true:
+
+1. **Shared storage** -- set `STORAGE_DRIVER=s3` and point it at any S3-compatible service. The filesystem driver is node-local and will not work with more than one replica.
+2. **Sticky MCP sessions** -- the MCP SDK keeps session state in memory per replica, so a client that runs `initialize()` on replica A must keep landing on replica A for the rest of its session. The docker-compose file's Traefik labels set a `documcp_affinity` cookie on the `documcp` service to handle this automatically. If you deploy behind a different load balancer, enable cookie-based session affinity on the `/documcp` route (or the whole service). When a replica restarts, its sessions are gone and clients reinitialize on the next request -- the StreamableHTTP transport tolerates this.
+3. **At least one worker replica** -- scheduled jobs (document extraction, soft-delete purge, orphan cleanup, OAuth token cleanup, external-service health checks, expired scope-grant cleanup) run via River's periodic-job enqueuer. River elects a single leader across the cluster via the `river_leader` table, and only the leader enqueues periodic jobs. If every replica runs in insert-only `serve` mode (without `--with-worker`), no leader is elected and scheduled jobs never fire. Run at least one `serve --with-worker` or `worker` replica.
+
+Cross-replica cache invalidation is already handled: admin edits to Kiwix external services publish a message on a dedicated Redis pub/sub channel (`documcp:control:cache.kiwix.invalidate`) that all replicas subscribe to. Other caches are read-through against Postgres and don't need invalidation.
+
+Per-replica health is reported at `/health/ready` (which checks Postgres and Redis) and `documcp_mcp_active_sessions` is exposed as a Prometheus gauge so operators can detect sticky-session hot-spotting -- a large spread between `max` and `min` across replicas means one node is holding disproportionately many sessions.
 
 ## Documentation
 

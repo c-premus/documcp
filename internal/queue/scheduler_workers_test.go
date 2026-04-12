@@ -20,6 +20,7 @@ import (
 	"github.com/c-premus/documcp/internal/client/git"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/repository"
+	"github.com/c-premus/documcp/internal/storage"
 )
 
 // ---------------------------------------------------------------------------
@@ -35,6 +36,19 @@ func makeJob[T river.JobArgs](args T) *river.Job[T] {
 		JobRow: &rivertype.JobRow{ID: 1},
 		Args:   args,
 	}
+}
+
+// testBlob builds an FSBlob rooted at dir. Used by scheduler worker tests
+// that seed on-disk files and expect the worker to iterate them through
+// the blob interface.
+func testBlob(t *testing.T, dir string) storage.Blob {
+	t.Helper()
+	b, err := storage.NewFSBlob(dir)
+	if err != nil {
+		t.Fatalf("NewFSBlob: %v", err)
+	}
+	t.Cleanup(func() { _ = b.Close() })
+	return b
 }
 
 // ---------------------------------------------------------------------------
@@ -355,9 +369,9 @@ func TestCleanupOrphanedFilesWorker_Work(t *testing.T) {
 
 		worker := &CleanupOrphanedFilesWorker{
 			Deps: SchedulerDeps{
-				DocRepo:     nil,
-				StoragePath: "/tmp/test",
-				Logger:      testLogger(),
+				DocRepo: nil,
+				Blob:    testBlob(t, t.TempDir()),
+				Logger:  testLogger(),
 			},
 		}
 
@@ -365,14 +379,14 @@ func TestCleanupOrphanedFilesWorker_Work(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("empty StoragePath skips gracefully", func(t *testing.T) {
+	t.Run("nil Blob skips gracefully", func(t *testing.T) {
 		t.Parallel()
 
 		worker := &CleanupOrphanedFilesWorker{
 			Deps: SchedulerDeps{
-				DocRepo:     &mockDocumentRepo{},
-				StoragePath: "",
-				Logger:      testLogger(),
+				DocRepo: &mockDocumentRepo{},
+				Blob:    nil,
+				Logger:  testLogger(),
 			},
 		}
 
@@ -399,9 +413,9 @@ func TestCleanupOrphanedFilesWorker_Work(t *testing.T) {
 
 		worker := &CleanupOrphanedFilesWorker{
 			Deps: SchedulerDeps{
-				DocRepo:     mock,
-				StoragePath: dir,
-				Logger:      testLogger(),
+				DocRepo: mock,
+				Blob:    testBlob(t, dir),
+				Logger:  testLogger(),
 			},
 		}
 
@@ -426,35 +440,15 @@ func TestCleanupOrphanedFilesWorker_Work(t *testing.T) {
 
 		worker := &CleanupOrphanedFilesWorker{
 			Deps: SchedulerDeps{
-				DocRepo:     mock,
-				StoragePath: t.TempDir(),
-				Logger:      testLogger(),
+				DocRepo: mock,
+				Blob:    testBlob(t, t.TempDir()),
+				Logger:  testLogger(),
 			},
 		}
 
 		err := worker.Work(context.Background(), makeJob(CleanupOrphanedFilesArgs{}))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "listing active file paths")
-	})
-
-	t.Run("non-existent storage path returns walk error", func(t *testing.T) {
-		t.Parallel()
-
-		mock := &mockDocumentRepo{
-			activeFilePaths: []repository.DocumentFilePath{},
-		}
-
-		worker := &CleanupOrphanedFilesWorker{
-			Deps: SchedulerDeps{
-				DocRepo:     mock,
-				StoragePath: filepath.Join(t.TempDir(), "does-not-exist"),
-				Logger:      testLogger(),
-			},
-		}
-
-		err := worker.Work(context.Background(), makeJob(CleanupOrphanedFilesArgs{}))
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "opening storage root")
 	})
 
 	t.Run("active files preserved orphans deleted", func(t *testing.T) {
@@ -479,9 +473,9 @@ func TestCleanupOrphanedFilesWorker_Work(t *testing.T) {
 
 		worker := &CleanupOrphanedFilesWorker{
 			Deps: SchedulerDeps{
-				DocRepo:     mock,
-				StoragePath: dir,
-				Logger:      testLogger(),
+				DocRepo: mock,
+				Blob:    testBlob(t, dir),
+				Logger:  testLogger(),
 			},
 		}
 
@@ -536,9 +530,9 @@ func TestPurgeSoftDeletedWorker_Work(t *testing.T) {
 
 		worker := &PurgeSoftDeletedWorker{
 			Deps: SchedulerDeps{
-				DocRepo:     docRepo,
-				StoragePath: dir,
-				Logger:      testLogger(),
+				DocRepo: docRepo,
+				Blob:    testBlob(t, dir),
+				Logger:  testLogger(),
 			},
 		}
 
@@ -582,13 +576,13 @@ func TestPurgeSoftDeletedWorker_Work(t *testing.T) {
 
 		worker := &PurgeSoftDeletedWorker{
 			Deps: SchedulerDeps{
-				DocRepo:     docRepo,
-				StoragePath: dir,
-				Logger:      testLogger(),
+				DocRepo: docRepo,
+				Blob:    testBlob(t, dir),
+				Logger:  testLogger(),
 			},
 		}
 
-		// Should not error -- os.IsNotExist errors are silently handled.
+		// Should not error -- Blob.Delete is idempotent on missing keys.
 		err := worker.Work(context.Background(), makeJob(PurgeSoftDeletedArgs{}))
 		require.NoError(t, err)
 	})
@@ -605,9 +599,9 @@ func TestPurgeSoftDeletedWorker_Work(t *testing.T) {
 
 		worker := &PurgeSoftDeletedWorker{
 			Deps: SchedulerDeps{
-				DocRepo:     docRepo,
-				StoragePath: dir,
-				Logger:      testLogger(),
+				DocRepo: docRepo,
+				Blob:    testBlob(t, dir),
+				Logger:  testLogger(),
 			},
 		}
 

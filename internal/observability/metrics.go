@@ -144,6 +144,25 @@ func RegisterDocumentCount(pool *pgxpool.Pool) {
 	))
 }
 
+// RegisterMCPSessionGauge registers a gauge that reports the number of
+// active MCP sessions held by this replica. Sampled on each Prometheus
+// scrape by calling source().
+//
+// Because sessions live in-memory per replica, operators can divide
+// `max(documcp_mcp_active_sessions)` by `min(documcp_mcp_active_sessions)`
+// to spot sticky-session hot-spotting across replicas behind a load
+// balancer with cookie-based affinity.
+func RegisterMCPSessionGauge(source func() int) {
+	prometheus.MustRegister(prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "mcp_active_sessions",
+			Help:      "Number of MCP sessions currently held by this replica.",
+		},
+		func() float64 { return float64(source()) },
+	))
+}
+
 // RegisterDBMetrics registers Prometheus gauges for pgxpool connection stats.
 // The collector reads pool stats on each Prometheus scrape.
 func RegisterDBMetrics(pool *pgxpool.Pool) {

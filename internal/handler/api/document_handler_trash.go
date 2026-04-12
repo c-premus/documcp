@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
@@ -89,11 +88,8 @@ func (h *DocumentHandler) Purge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if filePath != "" {
-		safePath, pathErr := safeStoragePath(h.pipeline.StoragePath(), filePath)
-		if pathErr != nil {
-			h.logger.Error("path traversal check failed during purge", "file_path", filePath, "error", pathErr)
-		} else if err := os.Remove(safePath); err != nil && !os.IsNotExist(err) { //nolint:gosec // safePath validated by safeStoragePath above
-			h.logger.Error("removing file after purge", "path", safePath, "error", err)
+		if err := h.blob.Delete(r.Context(), filePath); err != nil {
+			h.logger.Error("removing blob after purge", "key", filePath, "error", err)
 		}
 	}
 
@@ -124,15 +120,11 @@ func (h *DocumentHandler) BulkPurge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, p := range paths {
-		if p.FilePath != "" {
-			safePath, pathErr := safeStoragePath(h.pipeline.StoragePath(), p.FilePath)
-			if pathErr != nil {
-				h.logger.Error("path traversal check failed during bulk purge", "file_path", p.FilePath, "error", pathErr)
-				continue
-			}
-			if err := os.Remove(safePath); err != nil && !os.IsNotExist(err) { //nolint:gosec // safePath validated by safeStoragePath above
-				h.logger.Error("removing file after bulk purge", "path", safePath, "error", err)
-			}
+		if p.FilePath == "" {
+			continue
+		}
+		if err := h.blob.Delete(r.Context(), p.FilePath); err != nil {
+			h.logger.Error("removing blob after bulk purge", "key", p.FilePath, "error", err)
 		}
 	}
 
