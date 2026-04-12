@@ -95,6 +95,7 @@ func setupMockOIDCProvider(t *testing.T) (*httptest.Server, *rsa.PrivateKey, *st
 			"authorization_endpoint":                serverURL + "/authorize",
 			"token_endpoint":                        serverURL + "/token",
 			"jwks_uri":                              serverURL + "/certs",
+			"end_session_endpoint":                  serverURL + "/end-session",
 			"id_token_signing_alg_values_supported": []string{"RS256"},
 			"subject_types_supported":               []string{"public"},
 			"response_types_supported":              []string{"code"},
@@ -190,6 +191,7 @@ func newTestHandler(t *testing.T, repo UserRepo) (*Handler, *httptest.Server, *s
 		SessionStore: store,
 		Repo:         repo,
 		Logger:       slog.Default(),
+		AppURL:       "http://localhost:8080",
 	})
 	if err != nil {
 		t.Fatalf("creating OIDC handler: %v", err)
@@ -926,31 +928,129 @@ func TestCallback(t *testing.T) {
 }
 
 func TestLogout(t *testing.T) {
-	t.Run("clears session and redirects to root", func(t *testing.T) {
-		repo := &mockUserRepo{}
-		h, server, _ := newTestHandler(t, repo)
+	t.Run("returns end_session URL with id_token_hint when configured", func(t *testing.T) {
+		repo := &mockUserRepo{
+			createFn: func(ctx context.Context, user *model.User) error {
+				user.ID = 1
+				return nil
+			},
+		}
+		h, server, noncePtr := newTestHandler(t, repo)
 		defer server.Close()
 
-		req := httptest.NewRequest(http.MethodPost, "/auth/logout", http.NoBody)
-		w := httptest.NewRecorder()
-
-		h.Logout(w, req)
-
-		if w.Code != http.StatusFound {
-			t.Fatalf("expected 302, got %d", w.Code)
+		// Do a full login+callback to populate session with id_token.
+		state, loginCookies := doLogin(t, h, noncePtr)
+		callbackReq := httptest.NewRequest(http.MethodGet, "/auth/callback?code=test-code&state="+state, http.NoBody)
+		for _, c := range loginCookies {
+			callbackReq.AddCookie(c)
 		}
-		location := w.Header().Get("Location")
-		if location != "/" {
-			t.Errorf("expected redirect to /, got %q", location)
+		callbackW := httptest.NewRecorder()
+		h.Callback(callbackW, callbackReq)
+		if callbackW.Code != http.StatusFound {
+			t.Fatalf("callback: expected 302, got %d", callbackW.Code)
+		}
+
+		// Now call logout with the session cookie from callback.
+		// The callback response contains two Set-Cookie headers for the same
+		// name (one expiring the old session, one setting the new one). Use
+		// only the last one — browsers replace by name, but AddCookie appends.
+		logoutReq := httptest.NewRequest(http.MethodPost, "/auth/logout", http.NoBody)
+		callbackCookies := callbackW.Result().Cookies()
+		for i := len(callbackCookies) - 1; i >= 0; i-- {
+			if callbackCookies[i].Name == sessionName {
+				logoutReq.AddCookie(callbackCookies[i])
+				break
+			}
+		}
+		logoutW := httptest.NewRecorder()
+		h.Logout(logoutW, logoutReq)
+
+		if logoutW.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", logoutW.Code)
+		}
+		if ct := logoutW.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("expected Content-Type application/json, got %q", ct)
+		}
+
+		var body map[string]string
+		if err := json.NewDecoder(logoutW.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		redirectURL := body["redirect_url"]
+		parsed, err := neturl.Parse(redirectURL)
+		if err != nil {
+			t.Fatalf("parsing redirect_url: %v", err)
+		}
+
+		// Should point to the provider's end-session endpoint.
+		if !strings.HasSuffix(parsed.Path, "/end-session") {
+			t.Errorf("expected end-session path, got %q", parsed.Path)
+		}
+		if hint := parsed.Query().Get("id_token_hint"); hint == "" {
+			t.Error("expected id_token_hint in redirect URL")
+		}
+		if postLogout := parsed.Query().Get("post_logout_redirect_uri"); postLogout != "http://localhost:8080" {
+			t.Errorf("expected post_logout_redirect_uri=http://localhost:8080, got %q", postLogout)
 		}
 
 		// Verify session cookie has MaxAge=-1 (expired).
-		for _, c := range w.Result().Cookies() {
+		for _, c := range logoutW.Result().Cookies() {
 			if c.Name == sessionName {
 				if c.MaxAge >= 0 {
 					t.Errorf("expected MaxAge < 0 (session invalidated), got %d", c.MaxAge)
 				}
 			}
+		}
+	})
+
+	t.Run("falls back to root when no end_session_endpoint", func(t *testing.T) {
+		repo := &mockUserRepo{}
+		h, server, _ := newTestHandler(t, repo)
+		defer server.Close()
+
+		// Clear end_session_endpoint to simulate a provider that doesn't support it.
+		h.endSessionEndpoint = ""
+
+		req := httptest.NewRequest(http.MethodPost, "/auth/logout", http.NoBody)
+		w := httptest.NewRecorder()
+		h.Logout(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+
+		var body map[string]string
+		if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if body["redirect_url"] != "/" {
+			t.Errorf("expected redirect_url=/, got %q", body["redirect_url"])
+		}
+	})
+
+	t.Run("returns end_session URL without id_token_hint for stale session", func(t *testing.T) {
+		repo := &mockUserRepo{}
+		h, server, _ := newTestHandler(t, repo)
+		defer server.Close()
+
+		// No login — session has no id_token.
+		req := httptest.NewRequest(http.MethodPost, "/auth/logout", http.NoBody)
+		w := httptest.NewRecorder()
+		h.Logout(w, req)
+
+		var body map[string]string
+		if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		parsed, err := neturl.Parse(body["redirect_url"])
+		if err != nil {
+			t.Fatalf("parsing redirect_url: %v", err)
+		}
+		if !strings.HasSuffix(parsed.Path, "/end-session") {
+			t.Errorf("expected end-session path, got %q", parsed.Path)
+		}
+		if hint := parsed.Query().Get("id_token_hint"); hint != "" {
+			t.Error("expected no id_token_hint for stale session")
 		}
 	})
 }

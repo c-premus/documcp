@@ -207,7 +207,11 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 	}
 
 	// Dispatch background extraction job.
-	if dispatchErr := p.dispatchExtraction(ctx, doc.ID, docUUID); dispatchErr != nil {
+	var userID int64
+	if params.UserID != nil {
+		userID = *params.UserID
+	}
+	if dispatchErr := p.dispatchExtraction(ctx, doc.ID, docUUID, userID); dispatchErr != nil {
 		return nil, fmt.Errorf("uploading document: %w", dispatchErr)
 	}
 
@@ -291,7 +295,7 @@ func (p *DocumentPipeline) ReplaceContent(ctx context.Context, docUUID string, p
 		return nil, fmt.Errorf("updating document after content replacement: %w", err)
 	}
 
-	if dispatchErr := p.dispatchExtraction(ctx, doc.ID, doc.UUID); dispatchErr != nil {
+	if dispatchErr := p.dispatchExtraction(ctx, doc.ID, doc.UUID, doc.UserID.Int64); dispatchErr != nil {
 		return nil, fmt.Errorf("replacing document content: %w", dispatchErr)
 	}
 
@@ -357,7 +361,7 @@ func (p *DocumentPipeline) ProcessDocument(ctx context.Context, docID int64) err
 }
 
 // dispatchExtraction enqueues a document extraction job via River.
-func (p *DocumentPipeline) dispatchExtraction(ctx context.Context, docID int64, docUUID string) error {
+func (p *DocumentPipeline) dispatchExtraction(ctx context.Context, docID int64, docUUID string, userID int64) error {
 	if p.inserter == nil {
 		return nil
 	}
@@ -365,6 +369,7 @@ func (p *DocumentPipeline) dispatchExtraction(ctx context.Context, docID int64, 
 	if _, err := p.inserter.Insert(ctx, queue.DocumentExtractArgs{
 		DocumentID: docID,
 		DocUUID:    docUUID,
+		UserID:     userID,
 	}, nil); err != nil {
 		return fmt.Errorf("dispatching extraction job for document %s: %w", docUUID, err)
 	}

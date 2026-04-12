@@ -15,10 +15,10 @@ export const useSSEStore = defineStore('sse', () => {
   let eventSource: EventSource | null = null
   let reconnectDelay = 1000
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  let currentUrl = '/api/admin/events/stream'
+  let currentUrl = '/api/events/stream'
   const listeners = new Map<string, Set<(event: SSEEvent) => void>>()
 
-  function connect(url = '/api/admin/events/stream') {
+  function connect(url = '/api/events/stream') {
     if (eventSource !== null) return // already connected
     currentUrl = url
 

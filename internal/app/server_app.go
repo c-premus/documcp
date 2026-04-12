@@ -137,6 +137,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		SessionStore: sessionStore,
 		Repo:         f.OAuthRepo,
 		Logger:       logger,
+		AppURL:       cfg.App.URL,
 	})
 	if err != nil {
 		logger.Warn("OIDC provider discovery failed, OIDC login disabled", "error", err)
@@ -301,7 +302,7 @@ func (s *ServerApp) Start(ctx context.Context) error {
 		return fmt.Errorf("starting river client: %w", err)
 	}
 
-	// Start River UI background services (auto-stops when ctx is cancelled).
+	// Start River UI background services (auto-stops when ctx is canceled).
 	if s.RiverUIHandler != nil {
 		if err := s.RiverUIHandler.Start(ctx); err != nil {
 			s.Foundation.Logger.Warn("river UI handler start failed", "error", err)

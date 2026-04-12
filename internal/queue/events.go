@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"encoding/json"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -36,6 +37,8 @@ type Event struct {
 	Attempt   int       `json:"attempt,omitempty"`
 	Error     string    `json:"error,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
+	UserID    int64     `json:"user_id,omitempty"`
+	DocUUID   string    `json:"doc_uuid,omitempty"`
 }
 
 // EventPublisher publishes events to subscribers across instances.
@@ -131,4 +134,18 @@ func (eb *EventBus) Publish(event Event) {
 // DroppedCount returns the total number of events dropped across all subscribers.
 func (eb *EventBus) DroppedCount() int64 {
 	return eb.dropped.Load()
+}
+
+// extractDocumentUserID extracts the UserID and DocUUID from a document_extract
+// job's encoded args. Returns zero values if the job is not a document_extract
+// or if the args cannot be parsed (graceful degradation for in-flight legacy jobs).
+func extractDocumentUserID(kind string, encodedArgs []byte) (userID int64, docUUID string) {
+	if kind != (DocumentExtractArgs{}).Kind() {
+		return 0, ""
+	}
+	var args DocumentExtractArgs
+	if err := json.Unmarshal(encodedArgs, &args); err != nil {
+		return 0, ""
+	}
+	return args.UserID, args.DocUUID
 }

@@ -1,0 +1,1 @@
+import{Tn as e,kn as t}from"./dist-CzPQNO8w.js";import{I as n}from"./store-C4NWFaW2.js";var r=e({uid:n.brand(),name:t().default(``),value:t().default(``),domain:t().optional(),path:t().optional()});export{r as t};

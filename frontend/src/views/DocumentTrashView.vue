@@ -5,6 +5,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { ArrowPathIcon, TrashIcon } from '@heroicons/vue/24/outline'
 import type { ColumnDef } from '@tanstack/vue-table'
 
+import { useAuthStore } from '@/stores/auth'
 import { useDocumentsStore } from '../stores/documents'
 import type { Document } from '../stores/documents'
 import DataTable from '../components/shared/DataTable.vue'
@@ -12,6 +13,7 @@ import Pagination from '../components/shared/Pagination.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
 
+const auth = useAuthStore()
 const store = useDocumentsStore()
 
 const page = ref(1)
@@ -23,69 +25,79 @@ const showPurgeDialog = computed(() => purgeTarget.value !== null)
 const showBulkPurgeDialog = ref(false)
 const bulkPurgeDays = ref(30)
 
-const columns: ColumnDef<Document, unknown>[] = [
-  {
-    accessorKey: 'title',
-    header: 'Title',
-    enableSorting: true,
-  },
-  {
-    accessorKey: 'file_type',
-    header: 'File Type',
-    size: 100,
-    enableSorting: true,
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      return value.toUpperCase()
+const columns = computed<ColumnDef<Document, unknown>[]>(() => {
+  const base: ColumnDef<Document, unknown>[] = [
+    {
+      accessorKey: 'title',
+      header: 'Title',
+      enableSorting: true,
     },
-  },
-  {
-    accessorKey: 'updated_at',
-    header: 'Deleted At',
-    enableSorting: true,
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      return formatDistanceToNow(new Date(value), { addSuffix: true })
+    {
+      accessorKey: 'file_type',
+      header: 'File Type',
+      size: 100,
+      enableSorting: true,
+      cell: ({ getValue }) => {
+        const value = getValue<string>()
+        return value.toUpperCase()
+      },
     },
-  },
-  {
-    id: 'actions',
-    header: 'Actions',
-    enableSorting: false,
-    cell: ({ row }) => {
-      return h('div', { class: 'flex items-center gap-2' }, [
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'text-text-muted hover:text-green-600 dark:hover:text-green-400',
-            title: 'Restore document',
-            'aria-label': 'Restore document',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              handleRestore(row.original)
+    {
+      accessorKey: 'updated_at',
+      header: 'Deleted At',
+      enableSorting: true,
+      cell: ({ getValue }) => {
+        const value = getValue<string>()
+        return formatDistanceToNow(new Date(value), { addSuffix: true })
+      },
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      enableSorting: false,
+      cell: ({ row }) => {
+        const buttons = [
+          h(
+            'button',
+            {
+              type: 'button',
+              class: 'text-text-muted hover:text-green-600 dark:hover:text-green-400',
+              title: 'Restore document',
+              'aria-label': 'Restore document',
+              onClick: (event: MouseEvent) => {
+                event.stopPropagation()
+                handleRestore(row.original)
+              },
             },
-          },
-          [h(ArrowPathIcon, { class: 'h-5 w-5' })],
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
-            title: 'Permanently delete',
-            'aria-label': 'Permanently delete',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              purgeTarget.value = row.original
-            },
-          },
-          [h(TrashIcon, { class: 'h-5 w-5' })],
-        ),
-      ])
+            [h(ArrowPathIcon, { class: 'h-5 w-5' })],
+          ),
+        ]
+
+        if (auth.isAdmin) {
+          buttons.push(
+            h(
+              'button',
+              {
+                type: 'button',
+                class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
+                title: 'Permanently delete',
+                'aria-label': 'Permanently delete',
+                onClick: (event: MouseEvent) => {
+                  event.stopPropagation()
+                  purgeTarget.value = row.original
+                },
+              },
+              [h(TrashIcon, { class: 'h-5 w-5' })],
+            ),
+          )
+        }
+
+        return h('div', { class: 'flex items-center gap-2' }, buttons)
+      },
     },
-  },
-]
+  ]
+  return base
+})
 
 function fetchData(): void {
   const offset = (page.value - 1) * perPage.value
@@ -167,6 +179,7 @@ function handleBulkPurgeCancel(): void {
         </div>
 
         <button
+          v-if="auth.isAdmin"
           type="button"
           class="rounded-md border border-red-300 dark:border-red-700 px-4 py-2 text-sm font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
           @click="showBulkPurgeDialog = true"

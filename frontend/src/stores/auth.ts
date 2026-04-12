@@ -31,11 +31,21 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  function logout() {
-    fetch('/auth/logout', { method: 'POST' }).finally(() => {
-      user.value = null
-      window.location.href = '/'
-    })
+  async function logout() {
+    user.value = null
+    try {
+      const response = await fetch('/auth/logout', { method: 'POST' })
+      if (response.ok) {
+        const body = await response.json()
+        if (body.redirect_url) {
+          window.location.href = body.redirect_url
+          return
+        }
+      }
+    } catch {
+      // Fall through to default redirect.
+    }
+    window.location.href = '/'
   }
 
   return { user, loading, isAuthenticated, isAdmin, fetchUser, logout }

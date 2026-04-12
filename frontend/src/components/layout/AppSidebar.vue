@@ -349,7 +349,7 @@ watch(
     <div
       class="border-t border-border-default px-4 py-3 flex items-center justify-between text-xs text-text-muted"
     >
-      <div class="flex items-center gap-2">
+      <div v-if="auth.isAdmin" class="flex items-center gap-2">
         <span
           class="inline-block h-2 w-2 rounded-full shrink-0"
           :class="sse.connected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"

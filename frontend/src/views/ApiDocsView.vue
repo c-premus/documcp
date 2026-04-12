@@ -8,7 +8,7 @@ import spec from '@docs/contracts/openapi.yaml?raw'
 const { resolved } = useTheme()
 
 const configuration = computed(() => ({
-  spec: { content: spec },
+  content: spec,
   darkMode: resolved.value === 'dark',
   hideDownloadButton: false,
   hideModels: false,

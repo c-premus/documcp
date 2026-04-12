@@ -447,7 +447,7 @@ func TestSecurityHeaders_SetsAllHeaders(t *testing.T) {
 		"X-XSS-Protection":        "0",
 		"Referrer-Policy":         "strict-origin-when-cross-origin",
 		"Permissions-Policy":      "camera=(), microphone=(), geolocation=()",
-		"Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'",
+		"Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' https://fonts.scalar.com; connect-src 'self' https://api.scalar.com; form-action 'self'; frame-ancestors 'none'",
 	}
 
 	for header, expected := range want {
@@ -1161,6 +1161,30 @@ func TestTimeoutExcept_SecondExcludedPrefix(t *testing.T) {
 
 	if !called {
 		t.Error("inner handler was not called for second excluded prefix")
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestTimeoutExcept_ThirdExcludedPrefix(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	h := TimeoutExcept(1*time.Second, "/documcp", "/api/admin/events/stream", "/api/events/stream")(inner)
+
+	r := httptest.NewRequest("GET", "/api/events/stream", http.NoBody)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, r)
+
+	if !called {
+		t.Error("inner handler was not called for third excluded prefix")
 	}
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)

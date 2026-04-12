@@ -1,4 +1,5 @@
 import { onUnmounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 import { useSSEStore } from '@/stores/sse'
 import { useDocumentsStore } from '@/stores/documents'
 import { useZimArchivesStore } from '@/stores/zimArchives'
@@ -18,6 +19,7 @@ const schedulerMessages: Record<string, string> = {
 }
 
 export function useDocumentEvents() {
+  const auth = useAuthStore()
   const sseStore = useSSEStore()
   const documents = useDocumentsStore()
   const zimArchives = useZimArchivesStore()
@@ -59,7 +61,7 @@ export function useDocumentEvents() {
           externalServices.fetchServices()
         }
 
-        if (queue.stats !== null) {
+        if (auth.isAdmin && queue.stats !== null) {
           queue.fetchStats()
         }
 
@@ -81,7 +83,7 @@ export function useDocumentEvents() {
           }
         }
 
-        if (queue.stats !== null) {
+        if (auth.isAdmin && queue.stats !== null) {
           queue.fetchStats()
           queue.fetchFailedJobs()
         }

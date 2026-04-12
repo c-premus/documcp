@@ -11,7 +11,11 @@ import {
   ClockIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
+  MagnifyingGlassIcon,
 } from '@heroicons/vue/24/outline'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
 
 interface QueueStats {
   readonly pending: number
@@ -32,6 +36,14 @@ interface DashboardStats {
 interface StatCard {
   readonly label: string
   readonly key: keyof Omit<DashboardStats, 'queue'>
+  readonly icon: typeof DocumentTextIcon
+  readonly color: string
+  readonly route: string
+}
+
+interface QuickLink {
+  readonly label: string
+  readonly description: string
   readonly icon: typeof DocumentTextIcon
   readonly color: string
   readonly route: string
@@ -86,6 +98,44 @@ const cards: readonly StatCard[] = [
   },
 ] as const
 
+const quickLinks: readonly QuickLink[] = [
+  {
+    label: 'Documents',
+    description: 'Browse and search available documents',
+    icon: DocumentTextIcon,
+    color: 'text-indigo-600 dark:text-indigo-400',
+    route: '/documents',
+  },
+  {
+    label: 'Search',
+    description: 'Search across all content sources',
+    icon: MagnifyingGlassIcon,
+    color: 'text-blue-600 dark:text-blue-400',
+    route: '/documents',
+  },
+  {
+    label: 'ZIM Archives',
+    description: 'Browse offline knowledge bases',
+    icon: BookOpenIcon,
+    color: 'text-amber-600 dark:text-amber-400',
+    route: '/zim-archives',
+  },
+  {
+    label: 'Git Templates',
+    description: 'Explore project templates',
+    icon: CodeBracketIcon,
+    color: 'text-emerald-600 dark:text-emerald-400',
+    route: '/git-templates',
+  },
+  {
+    label: 'API Docs',
+    description: 'REST API reference',
+    icon: BookOpenIcon,
+    color: 'text-purple-600 dark:text-purple-400',
+    route: '/api-docs',
+  },
+] as const
+
 async function fetchStats(): Promise<void> {
   loading.value = true
   error.value = null
@@ -104,14 +154,22 @@ async function fetchStats(): Promise<void> {
   }
 }
 
-onMounted(fetchStats)
+onMounted(() => {
+  if (auth.isAdmin) {
+    fetchStats()
+  } else {
+    loading.value = false
+  }
+})
 </script>
 
 <template>
   <div>
     <div class="mb-8">
       <h1 class="text-2xl font-bold text-text-primary">Dashboard</h1>
-      <p class="mt-1 text-sm text-text-muted">System overview</p>
+      <p class="mt-1 text-sm text-text-muted">
+        {{ auth.isAdmin ? 'System overview' : `Welcome, ${auth.user?.name ?? 'User'}` }}
+      </p>
     </div>
 
     <!-- Loading spinner -->
@@ -131,7 +189,23 @@ onMounted(fetchStats)
       </svg>
     </div>
 
-    <!-- Error state -->
+    <!-- Non-admin: quick links -->
+    <template v-else-if="!auth.isAdmin">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <RouterLink
+          v-for="link in quickLinks"
+          :key="link.route"
+          :to="link.route"
+          class="rounded-lg border border-border-default bg-bg-surface p-5 shadow-sm transition hover:shadow-md"
+        >
+          <component :is="link.icon" class="h-6 w-6" :class="link.color" />
+          <p class="mt-3 text-sm font-medium text-text-primary">{{ link.label }}</p>
+          <p class="mt-1 text-xs text-text-muted">{{ link.description }}</p>
+        </RouterLink>
+      </div>
+    </template>
+
+    <!-- Admin: Error state -->
     <div
       v-else-if="error !== null"
       class="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-5 text-sm text-red-700 dark:text-red-300"
@@ -139,7 +213,7 @@ onMounted(fetchStats)
       {{ error }}
     </div>
 
-    <!-- Stats grid -->
+    <!-- Admin: Stats grid -->
     <template v-else-if="stats !== null">
       <div class="grid grid-cols-3 gap-4">
         <RouterLink

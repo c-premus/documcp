@@ -8,10 +8,12 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/gob"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -36,15 +38,17 @@ type UserRepo interface {
 
 // Handler provides HTTP handlers for OIDC login/callback/logout.
 type Handler struct {
-	provider     *gooidc.Provider // nil in manual-endpoint mode
-	oauth2Config oauth2.Config
-	verifier     *gooidc.IDTokenVerifier
-	httpClient   *http.Client // instrumented with otelhttp for tracing
-	store        sessions.Store
-	repo         UserRepo
-	logger       *slog.Logger
-	adminGroups  []string
-	providerURL  string // stored for OIDCProvider field in user records
+	provider           *gooidc.Provider // nil in manual-endpoint mode
+	oauth2Config       oauth2.Config
+	verifier           *gooidc.IDTokenVerifier
+	httpClient         *http.Client // instrumented with otelhttp for tracing
+	store              sessions.Store
+	repo               UserRepo
+	logger             *slog.Logger
+	adminGroups        []string
+	providerURL        string // stored for OIDCProvider field in user records
+	endSessionEndpoint string // RP-Initiated Logout endpoint (from discovery or manual config)
+	appURL             string // post_logout_redirect_uri target
 }
 
 // Config holds the dependencies for creating a new OIDC Handler.
@@ -53,6 +57,7 @@ type Config struct {
 	SessionStore sessions.Store
 	Repo         UserRepo
 	Logger       *slog.Logger
+	AppURL       string // used as post_logout_redirect_uri
 }
 
 // New creates a new OIDC Handler. It discovers the provider configuration
@@ -100,9 +105,10 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 	ctx = context.WithValue(ctx, oauth2.HTTPClient, httpClient)
 
 	var (
-		provider *gooidc.Provider
-		verifier *gooidc.IDTokenVerifier
-		endpoint oauth2.Endpoint
+		provider           *gooidc.Provider
+		verifier           *gooidc.IDTokenVerifier
+		endpoint           oauth2.Endpoint
+		endSessionEndpoint string
 	)
 
 	if cfg.OIDCCfg.ManualEndpoints() {
@@ -111,6 +117,7 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 			AuthURL:  cfg.OIDCCfg.AuthorizationURL,
 			TokenURL: cfg.OIDCCfg.TokenURL,
 		}
+		endSessionEndpoint = cfg.OIDCCfg.EndSessionURL
 
 		// JWKS URL is required for token verification in manual mode.
 		if cfg.OIDCCfg.JWKSURL == "" {
@@ -146,6 +153,19 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 		}
 		endpoint = provider.Endpoint()
 		verifier = provider.Verifier(&gooidc.Config{ClientID: cfg.OIDCCfg.ClientID})
+
+		// Extract end_session_endpoint from discovery document for RP-Initiated Logout.
+		// Manual config override takes precedence if set.
+		if cfg.OIDCCfg.EndSessionURL != "" {
+			endSessionEndpoint = cfg.OIDCCfg.EndSessionURL
+		} else {
+			var discoveryClaims struct {
+				EndSessionEndpoint string `json:"end_session_endpoint"`
+			}
+			if err := provider.Claims(&discoveryClaims); err == nil && discoveryClaims.EndSessionEndpoint != "" {
+				endSessionEndpoint = discoveryClaims.EndSessionEndpoint
+			}
+		}
 	}
 
 	oauth2Config := oauth2.Config{
@@ -156,16 +176,22 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 		Scopes:       scopes,
 	}
 
+	if endSessionEndpoint != "" {
+		cfg.Logger.Info("OIDC RP-Initiated Logout enabled", "end_session_endpoint", endSessionEndpoint)
+	}
+
 	return &Handler{
-		provider:     provider,
-		oauth2Config: oauth2Config,
-		verifier:     verifier,
-		httpClient:   httpClient,
-		store:        cfg.SessionStore,
-		repo:         cfg.Repo,
-		logger:       cfg.Logger,
-		adminGroups:  cfg.OIDCCfg.AdminGroups,
-		providerURL:  cfg.OIDCCfg.ProviderURL,
+		provider:           provider,
+		oauth2Config:       oauth2Config,
+		verifier:           verifier,
+		httpClient:         httpClient,
+		store:              cfg.SessionStore,
+		repo:               cfg.Repo,
+		logger:             cfg.Logger,
+		adminGroups:        cfg.OIDCCfg.AdminGroups,
+		providerURL:        cfg.OIDCCfg.ProviderURL,
+		endSessionEndpoint: endSessionEndpoint,
+		appURL:             cfg.AppURL,
 	}, nil
 }
 
@@ -335,6 +361,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	session.Values["user_id"] = user.ID
 	session.Values["is_admin"] = user.IsAdmin
 	session.Values["user_email"] = user.Email
+	session.Values["id_token"] = rawIDToken
 
 	if err := session.Save(r, w); err != nil {
 		h.logger.Error("saving session", "error", err)
@@ -348,16 +375,50 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, redirect, http.StatusFound)
 }
 
-// Logout handles POST /auth/logout — clears the session.
+// Logout handles POST /auth/logout — clears the local session and returns
+// JSON with a redirect URL. When RP-Initiated Logout is configured (the OIDC
+// provider exposes end_session_endpoint), the redirect URL points to the
+// provider's logout endpoint with id_token_hint and post_logout_redirect_uri
+// so the provider session is also terminated. Otherwise falls back to "/".
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	session, err := h.store.Get(r, sessionName)
 	if err != nil {
-		// Stale cookie — expire it and redirect.
 		h.logger.Warn("session decode error in logout, clearing cookie", "error", err)
 	}
+
+	// Retrieve the ID token before clearing the session — needed for id_token_hint.
+	rawIDToken, _ := session.Values["id_token"].(string)
+
 	session.Options.MaxAge = -1
 	_ = session.Save(r, w)
-	http.Redirect(w, r, "/", http.StatusFound)
+
+	redirectURL := "/"
+	if h.endSessionEndpoint != "" {
+		redirectURL = h.buildEndSessionURL(rawIDToken)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"redirect_url": redirectURL})
+}
+
+// buildEndSessionURL constructs the RP-Initiated Logout URL per
+// OpenID Connect RP-Initiated Logout 1.0.
+func (h *Handler) buildEndSessionURL(idTokenHint string) string {
+	u, err := url.Parse(h.endSessionEndpoint)
+	if err != nil {
+		h.logger.Error("parsing end_session_endpoint", "error", err)
+		return "/"
+	}
+
+	q := u.Query()
+	if idTokenHint != "" {
+		q.Set("id_token_hint", idTokenHint)
+	}
+	if h.appURL != "" {
+		q.Set("post_logout_redirect_uri", h.appURL)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // findOrCreateUser finds a user by OIDC sub or email, or creates a new one.

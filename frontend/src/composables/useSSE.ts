@@ -8,9 +8,11 @@ export interface SSEEvent {
   readonly attempt?: number
   readonly error?: string
   readonly timestamp: string
+  readonly user_id?: number
+  readonly doc_uuid?: string
 }
 
-export function useSSE(url = '/api/admin/events/stream') {
+export function useSSE(url = '/api/events/stream') {
   const connected = ref(false)
   const lastEvent = ref<SSEEvent | null>(null)
   let eventSource: EventSource | null = null
