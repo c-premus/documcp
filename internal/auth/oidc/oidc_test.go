@@ -950,16 +950,18 @@ func TestLogout(t *testing.T) {
 			t.Fatalf("callback: expected 302, got %d", callbackW.Code)
 		}
 
-		// Now call logout with the session cookie from callback.
-		// The callback response contains two Set-Cookie headers for the same
-		// name (one expiring the old session, one setting the new one). Use
-		// only the last one — browsers replace by name, but AddCookie appends.
+		// Now call logout with both session cookies from callback.
+		// The callback response contains multiple Set-Cookie headers for the
+		// same name (one expiring the old session, one setting the new one).
+		// Use only the last of each name — browsers replace by name.
 		logoutReq := httptest.NewRequest(http.MethodPost, "/auth/logout", http.NoBody)
 		callbackCookies := callbackW.Result().Cookies()
+		added := make(map[string]bool)
 		for i := len(callbackCookies) - 1; i >= 0; i-- {
-			if callbackCookies[i].Name == sessionName {
+			name := callbackCookies[i].Name
+			if !added[name] && (name == sessionName || name == idTokenSessionName) {
 				logoutReq.AddCookie(callbackCookies[i])
-				break
+				added[name] = true
 			}
 		}
 		logoutW := httptest.NewRecorder()

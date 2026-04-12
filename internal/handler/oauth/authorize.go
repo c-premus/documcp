@@ -149,6 +149,11 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	delete(session.Values, "oauth_completed_redirect")
 	delete(session.Values, "oauth_completed_nonce")
 
+	// Remove legacy id_token from pre-v0.18 sessions that stored it in the
+	// main cookie. It now lives in a separate cookie (documcp_idt). Without
+	// this, the combined size exceeds the browser's ~4096-byte cookie limit.
+	delete(session.Values, "id_token")
+
 	// Store pending request in session
 	session.Values["oauth_pending_request"] = map[string]any{
 		"nonce":                 nonce,
