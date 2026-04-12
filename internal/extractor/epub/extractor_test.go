@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -622,5 +623,63 @@ func TestEPUBExtractor_Supports(t *testing.T) {
 				t.Errorf("Supports(%q) = %v, want %v", tt.mimeType, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestEPUBExtractor_Extract_SampleEPUB(t *testing.T) {
+	t.Parallel()
+
+	_, thisFile, _, _ := runtime.Caller(0)
+	fixturePath := filepath.Join(filepath.Dir(thisFile), "..", "..", "testutil", "testdata", "sample.epub")
+
+	ext := epub.New()
+	result, err := ext.Extract(context.Background(), fixturePath)
+	if err != nil {
+		t.Fatalf("Extract() unexpected error: %v", err)
+	}
+
+	if result.Content == "" {
+		t.Fatal("Extract() Content is empty, want non-empty")
+	}
+
+	if result.WordCount <= 0 {
+		t.Errorf("Extract() WordCount = %d, want > 0", result.WordCount)
+	}
+
+	// Verify metadata was extracted from OPF Dublin Core.
+	if result.Metadata == nil {
+		t.Fatal("Extract() Metadata is nil, want non-nil map")
+	}
+
+	if title, ok := result.Metadata["title"].(string); !ok || title == "" {
+		t.Errorf("Metadata[\"title\"] = %v, want non-empty string", result.Metadata["title"])
+	} else if title != "EPUB 3.0 Specification" {
+		t.Errorf("Metadata[\"title\"] = %q, want %q", title, "EPUB 3.0 Specification")
+	}
+
+	if creator, ok := result.Metadata["creator"].(string); !ok || creator == "" {
+		t.Errorf("Metadata[\"creator\"] = %v, want non-empty string", result.Metadata["creator"])
+	}
+
+	if lang, ok := result.Metadata["language"].(string); !ok || lang != "en" {
+		t.Errorf("Metadata[\"language\"] = %v, want \"en\"", result.Metadata["language"])
+	}
+
+	// Verify metadata is baked into content header for FTS.
+	if !strings.Contains(result.Content, "EPUB 3.0 Specification") {
+		t.Error("Content should contain title in metadata header")
+	}
+	if !strings.Contains(result.Content, "EPUB 3 Working Group") {
+		t.Error("Content should contain author in metadata header")
+	}
+
+	// Verify chapter text was extracted (not just metadata).
+	if !strings.Contains(result.Content, "Open Container Format") {
+		t.Error("Content should contain chapter text about Open Container Format")
+	}
+
+	// Sanity check: real EPUB should produce substantial content.
+	if result.WordCount < 1000 {
+		t.Errorf("WordCount = %d, want > 1000 for EPUB 3.0 spec", result.WordCount)
 	}
 }
