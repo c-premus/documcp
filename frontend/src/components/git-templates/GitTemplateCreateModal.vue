@@ -147,6 +147,12 @@ async function handleSubmit(): Promise<void> {
             Add Git Template
           </DialogTitle>
 
+          <p class="text-sm text-text-secondary mb-4">
+            Only text files are synced from the repository (e.g. Markdown, YAML,
+            code). Binary files such as PDFs and images are excluded. Per-file
+            limit: 1 MB, total limit: 10 MB.
+          </p>
+
           <form @submit.prevent="handleSubmit">
             <div class="space-y-4">
               <div>

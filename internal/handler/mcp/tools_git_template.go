@@ -152,6 +152,8 @@ func (h *Handler) registerListGitTemplates() {
 			"- `project`: Full project scaffolding templates\n\n" +
 			"Returns template name, description, category, file count, and sync status.\n" +
 			"Use `get_template_structure` for detailed file listing.\n\n" +
+			"**Note:** Only text files are synced from repositories. Binary files (PDFs, " +
+			"images, compiled artifacts) are excluded. Per-file limit: 1 MB, total: 10 MB.\n\n" +
 			"**Workflow:** Use the `uuid` field with `get_template_structure` to see files " +
 			"and variables, or `get_deployment_guide` to get all essential files at once.",
 		Annotations: &mcp.ToolAnnotations{
@@ -190,6 +192,8 @@ func (h *Handler) registerGetTemplateStructure() {
 			"- List of essential files (CLAUDE.md, memory-bank/*, etc.)\n" +
 			"- Required variables ({{project_name}}, etc.)\n" +
 			"- Template manifest if available\n\n" +
+			"File count reflects text files only — binary files (PDFs, images) are " +
+			"excluded during sync.\n\n" +
 			"Use this before `get_template_file` to understand the template contents.\n\n" +
 			"**Workflow:** Use file paths with `get_template_file` to read individual files, " +
 			"or `get_deployment_guide` to get all essential files with variable substitution.",
@@ -241,7 +245,8 @@ func (h *Handler) registerDownloadTemplate() {
 		Name: "download_template",
 		Description: "Download a complete Git template as a base64-encoded archive (zip or tar.gz).\n\n" +
 			"Returns the entire template in a single response, reducing deployment from " +
-			"~45 API calls to 1.\n\n" +
+			"~45 API calls to 1. Contains text files only — binary files (PDFs, images) " +
+			"are excluded during sync.\n\n" +
 			"**Formats:** zip (default), tar.gz\n\n" +
 			"Optionally apply variable substitutions ({{KEY}} placeholders) to all files. " +
 			"Decode the base64 `archive_base64` field and save as the indicated filename.",

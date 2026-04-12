@@ -526,7 +526,7 @@
     {
       "name": "list_git_templates",
       "title": "List Git Templates",
-      "description": "List available Git templates for project bootstrapping.\n\n**Template Categories:**\n- `claude`: CLAUDE.md templates with AI assistant instructions\n- `memory-bank`: Memory Bank documentation structures\n- `project`: Full project scaffolding templates\n\nReturns template name, description, category, file count, and sync status.\nUse `get_template_structure` for detailed file listing.\n\n**Workflow:** Use the `uuid` field with `get_template_structure` to see files and variables, or `get_deployment_guide` to get all essential files at once.",
+      "description": "List available Git templates for project bootstrapping.\n\n**Template Categories:**\n- `claude`: CLAUDE.md templates with AI assistant instructions\n- `memory-bank`: Memory Bank documentation structures\n- `project`: Full project scaffolding templates\n\nReturns template name, description, category, file count, and sync status.\nUse `get_template_structure` for detailed file listing.\n\n**Note:** Only text files are synced from repositories. Binary files (PDFs, images, compiled artifacts) are excluded. Per-file limit: 1 MB, total: 10 MB.\n\n**Workflow:** Use the `uuid` field with `get_template_structure` to see files and variables, or `get_deployment_guide` to get all essential files at once.",
       "annotations": {
         "readOnlyHint": true,
         "idempotentHint": true
@@ -616,7 +616,7 @@
     {
       "name": "get_template_structure",
       "title": "Get Template Structure",
-      "description": "Get the structure and metadata of a Git template.\n\nReturns:\n- File tree showing all template files\n- List of essential files (CLAUDE.md, memory-bank/*, etc.)\n- Required variables ({{project_name}}, etc.)\n- Template manifest if available\n\nUse this before `get_template_file` to understand the template contents.\n\n**Workflow:** Use file paths with `get_template_file` to read individual files, or `get_deployment_guide` to get all essential files with variable substitution.",
+      "description": "Get the structure and metadata of a Git template.\n\nReturns:\n- File tree showing all template files\n- List of essential files (CLAUDE.md, memory-bank/*, etc.)\n- Required variables ({{project_name}}, etc.)\n- Template manifest if available\n\nFile count reflects text files only — binary files (PDFs, images) are excluded during sync.\n\nUse this before `get_template_file` to understand the template contents.\n\n**Workflow:** Use file paths with `get_template_file` to read individual files, or `get_deployment_guide` to get all essential files with variable substitution.",
       "annotations": {
         "readOnlyHint": true,
         "idempotentHint": true
@@ -730,7 +730,7 @@
     {
       "name": "download_template",
       "title": "Download Template",
-      "description": "Download a complete Git template as a base64-encoded archive (zip or tar.gz).\n\nReturns the entire template in a single response, reducing deployment from ~45 API calls to 1.\n\n**Formats:** zip (default), tar.gz\n\nOptionally apply variable substitutions ({{KEY}} placeholders) to all files. Decode the base64 `archive_base64` field and save as the indicated filename.",
+      "description": "Download a complete Git template as a base64-encoded archive (zip or tar.gz).\n\nReturns the entire template in a single response, reducing deployment from ~45 API calls to 1. Contains text files only — binary files (PDFs, images) are excluded during sync.\n\n**Formats:** zip (default), tar.gz\n\nOptionally apply variable substitutions ({{KEY}} placeholders) to all files. Decode the base64 `archive_base64` field and save as the indicated filename.",
       "annotations": {
         "readOnlyHint": true,
         "idempotentHint": true

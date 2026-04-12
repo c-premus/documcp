@@ -26,7 +26,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Default size limits for file extraction.
+// Default size limits for file extraction. Only text files are extracted from
+// template repositories — binary files (PDFs, images, compiled artifacts) are
+// silently skipped. Binary detection checks for null bytes in the first 8 KB.
 const (
 	DefaultMaxFileSize  int64 = 1 * 1024 * 1024  // 1 MB per file
 	DefaultMaxTotalSize int64 = 10 * 1024 * 1024 // 10 MB total
@@ -182,8 +184,11 @@ func (c *Client) Pull(ctx context.Context, repoDir, token string) error {
 }
 
 // ExtractFiles walks a cloned repository directory and returns all non-binary,
-// non-symlink files. The .git directory is skipped. Files exceeding maxFileSize
-// are skipped, and extraction stops if maxTotalSize is exceeded.
+// non-symlink text files. The .git directory is skipped. Binary files (detected
+// by null bytes in the first 8 KB) are silently excluded — this means PDFs,
+// images, and other non-text content will not appear in synced templates.
+// Individual files exceeding maxFileSize (default 1 MB) are skipped, and
+// extraction stops if cumulative size exceeds maxTotalSize (default 10 MB).
 func (c *Client) ExtractFiles(repoDir string, maxFileSize, maxTotalSize int64) ([]TemplateFile, error) {
 	if maxFileSize <= 0 {
 		maxFileSize = c.maxFileSize
