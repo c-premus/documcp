@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed, h } from 'vue'
+import { RouterLink } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { formatDistanceToNow } from 'date-fns'
 import { TrashIcon } from '@heroicons/vue/24/outline'
@@ -133,6 +134,17 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     accessorKey: 'client_name',
     header: 'Client Name',
     enableSorting: true,
+    cell: ({ row }) => {
+      const client = row.original
+      return h(
+        RouterLink,
+        {
+          to: `/oauth-clients/${client.id}`,
+          class: 'font-medium text-indigo-600 dark:text-indigo-400 hover:underline',
+        },
+        () => client.client_name,
+      )
+    },
   },
   {
     accessorKey: 'client_id',

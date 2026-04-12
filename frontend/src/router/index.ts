@@ -46,6 +46,13 @@ const router = createRouter({
       meta: { title: 'OAuth Clients', requiresAdmin: true },
     },
     {
+      path: '/oauth-clients/:id',
+      name: 'oauth-client-detail',
+      component: () => import('@/views/OAuthClientDetailView.vue'),
+      props: (route) => ({ id: Number(route.params.id) }),
+      meta: { title: 'OAuth Client', requiresAdmin: true },
+    },
+    {
       path: '/external-services',
       name: 'external-services',
       component: () => import('@/views/ExternalServiceListView.vue'),

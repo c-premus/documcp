@@ -53,6 +53,9 @@ type Deps struct {
 	// Phase 9: Dashboard
 	DashboardHandler *apihandler.DashboardHandler // nil if not configured
 
+	// River UI (nil disables the embedded queue dashboard)
+	RiverUIHandler http.Handler
+
 	// Vue SPA
 	AuthHandler      *apihandler.AuthHandler // nil if not configured
 	SPAHandler       http.Handler            // nil if not configured
@@ -445,11 +448,39 @@ func (s *Server) registerSPARoutes(deps Deps) {
 		http.Redirect(w, r, "/admin/", http.StatusFound)
 	})
 
+	// River UI — must be registered before the SPA catch-all so chi matches it first.
+	if deps.RiverUIHandler != nil {
+		r.Route("/admin/river", func(r chi.Router) {
+			r.Use(authmiddleware.BearerOrSession(deps.OAuthService, deps.SessionStore, s.logger))
+			r.Use(authmiddleware.RequireScope(authscope.Admin, s.logger))
+			r.Use(authmiddleware.RequireAdmin)
+			r.Use(riverUICSP)
+			r.Handle("/*", deps.RiverUIHandler)
+		})
+		s.logger.Info("River UI mounted", "path", "/admin/river/*")
+	}
+
 	if deps.SPAHandler != nil {
 		r.Get("/admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently).ServeHTTP)
 		r.Mount("/admin/", http.StripPrefix("/admin", deps.SPAHandler))
 		s.logger.Info("SPA handler registered", "path", "/admin/*")
 	}
+}
+
+// riverUICSP applies a relaxed Content-Security-Policy for the River UI React app,
+// which requires inline scripts and styles. This overrides the stricter default CSP
+// set by the SecurityHeaders middleware.
+func riverUICSP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy",
+			"default-src 'self'; "+
+				"script-src 'self' 'unsafe-inline' 'unsafe-eval'; "+
+				"style-src 'self' 'unsafe-inline'; "+
+				"img-src 'self' data:; "+
+				"connect-src 'self'; "+
+				"font-src 'self' data:")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // rateLimitByIP creates an IP-based rate limiter. When a Redis client is

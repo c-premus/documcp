@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted, h, computed } from 'vue'
 import { toast } from 'vue-sonner'
 import { formatDistanceToNow } from 'date-fns'
-import { ArrowPathIcon, TrashIcon } from '@heroicons/vue/24/outline'
+import { ArrowPathIcon, ArrowTopRightOnSquareIcon, TrashIcon } from '@heroicons/vue/24/outline'
 import { TabGroup, TabList, Tab, TabPanels, TabPanel } from '@headlessui/vue'
 import type { ColumnDef } from '@tanstack/vue-table'
 
@@ -169,7 +169,18 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
 
 <template>
   <div>
-    <h1 class="text-2xl font-bold text-text-primary mb-6">Queue Management</h1>
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-bold text-text-primary">Queue Management</h1>
+      <a
+        href="/admin/river/"
+        target="_blank"
+        rel="noopener"
+        class="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+      >
+        <ArrowTopRightOnSquareIcon class="h-4 w-4" />
+        River UI
+      </a>
+    </div>
 
     <TabGroup>
       <TabList class="flex space-x-1 rounded-xl bg-bg-active p-1 mb-6">

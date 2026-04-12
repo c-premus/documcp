@@ -15,6 +15,8 @@ import (
 	"github.com/gorilla/sessions"
 	"github.com/riverqueue/river"
 
+	"riverqueue.com/riverui"
+
 	"github.com/c-premus/documcp/internal/auth/oauth"
 	"github.com/c-premus/documcp/internal/auth/oidc"
 	"github.com/c-premus/documcp/internal/client/kiwix"
@@ -33,12 +35,13 @@ import (
 //   - serve-only: River client is insert-only (enqueues jobs but does not process them)
 //   - combined: River client processes jobs and serves HTTP (equivalent to the old monolith)
 type ServerApp struct {
-	Foundation  *Foundation
-	Server      *server.Server
-	RiverClient *queue.RiverClient
-	EventBus    queue.EventSubscriber
-	MCPHandler  *mcphandler.Handler
-	WithWorker  bool
+	Foundation     *Foundation
+	Server         *server.Server
+	RiverClient    *queue.RiverClient
+	RiverUIHandler *riverui.Handler
+	EventBus       queue.EventSubscriber
+	MCPHandler     *mcphandler.Handler
+	WithWorker     bool
 }
 
 // NewServerApp creates a ServerApp with HTTP handlers and routes.
@@ -171,6 +174,16 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	sseH := apihandler.NewSSEHandler(eventBus, cfg.Server.SSEHeartbeatInterval)
 	queueH := apihandler.NewQueueHandler(riverClient, logger)
 
+	// --- River UI Handler ---
+	var riverUIHandler *riverui.Handler
+	riverUIH, riverUIErr := queue.NewRiverUIHandler(riverClient.Client(), logger, "/admin/river")
+	if riverUIErr != nil {
+		logger.Warn("river UI handler creation failed, river UI disabled", "error", riverUIErr)
+	} else {
+		riverUIHandler = riverUIH
+		logger.Info("river UI handler configured", "prefix", "/admin/river")
+	}
+
 	// --- MCP Handler ---
 	mcpCfg := mcphandler.Config{
 		ServerName:          cfg.DocuMCP.ServerName,
@@ -249,6 +262,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		DashboardHandler:       dashboardH,
 		SSEHandler:             sseH,
 		QueueHandler:           queueH,
+		RiverUIHandler:         riverUIHandler,
 		Metrics:                f.Metrics,
 		OTELEnabled:            cfg.OTEL.Enabled,
 		IsSecure:               cfg.App.Env == "production" || cfg.Server.TLSEnabled,
@@ -267,12 +281,13 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 
 	eventBusOK = true
 	return &ServerApp{
-		Foundation:  f,
-		Server:      srv,
-		RiverClient: riverClient,
-		EventBus:    eventBus,
-		MCPHandler:  mcpH,
-		WithWorker:  withWorker,
+		Foundation:     f,
+		Server:         srv,
+		RiverClient:    riverClient,
+		RiverUIHandler: riverUIHandler,
+		EventBus:       eventBus,
+		MCPHandler:     mcpH,
+		WithWorker:     withWorker,
 	}, nil
 }
 
@@ -284,6 +299,13 @@ func (s *ServerApp) Start(ctx context.Context) error {
 	// Start River client (no-op in insert-only mode).
 	if err := s.RiverClient.Start(ctx); err != nil {
 		return fmt.Errorf("starting river client: %w", err)
+	}
+
+	// Start River UI background services (auto-stops when ctx is cancelled).
+	if s.RiverUIHandler != nil {
+		if err := s.RiverUIHandler.Start(ctx); err != nil {
+			s.Foundation.Logger.Warn("river UI handler start failed", "error", err)
+		}
 	}
 	if s.WithWorker {
 		s.Foundation.Logger.Info("river queue started (combined mode)")
