@@ -64,7 +64,10 @@ tags:
   - name: ZIM Archives
     description: Access ZIM archive documentation (DevDocs, Wikipedia, Stack Exchange)
   - name: Git Templates
-    description: Manage Git-based project templates
+    description: |
+      Manage Git-based project templates. Only text files are synced from
+      repositories — binary files (PDFs, images, compiled artifacts) are
+      automatically excluded. Per-file limit: 1 MB, total: 10 MB.
   - name: OAuth
     description: OAuth 2.1 authorization server endpoints
   - name: Admin
@@ -1317,7 +1320,9 @@ paths:
       summary: Register a new Git template
       description: |
         Register a Git repository as a template source. A sync job is dispatched
-        automatically. Requires authentication and admin role.
+        automatically. Only text files are extracted — binary files (PDFs, images,
+        compiled artifacts) are excluded. Per-file limit: 1 MB, total: 10 MB.
+        Requires authentication and admin role.
         Rate limit: `api-write` (30/min).
 
         **Required scope:** `templates:write` + admin role
@@ -1617,6 +1622,7 @@ paths:
       summary: Trigger template sync
       description: |
         Re-sync the template from its Git repository to fetch latest changes.
+        Only text files are extracted — binary files are excluded.
         Requires authentication. Rate limit: `api-write` (30/min).
 
         **Required scope:** `templates:write` + admin role
@@ -1818,7 +1824,8 @@ paths:
       summary: Download template archive
       description: |
         Download a complete template as a zip or tar.gz archive with optional variable
-        substitution. Returns the archive as base64-encoded content.
+        substitution. Returns the archive as base64-encoded content. Contains text
+        files only — binary files are excluded during sync.
         Requires authentication. Rate limit: `api-write` (30/min).
 
         **Required scope:** `templates:write` + admin role
