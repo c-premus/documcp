@@ -395,13 +395,22 @@ func (r *DocumentRepository) ListDeleted(ctx context.Context, limit, offset int,
 }
 
 // ListDistinctTags returns distinct tags matching a prefix, excluding soft-deleted documents.
-func (r *DocumentRepository) ListDistinctTags(ctx context.Context, prefix string, limit int) ([]string, error) {
+// When userID is non-nil, only tags from public documents or documents owned by that user are returned.
+func (r *DocumentRepository) ListDistinctTags(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error) {
 	query := `SELECT DISTINCT dt.tag FROM document_tags dt
 		JOIN documents d ON d.id = dt.document_id
-		WHERE d.deleted_at IS NULL AND dt.tag ILIKE $1
-		ORDER BY dt.tag LIMIT $2`
+		WHERE d.deleted_at IS NULL AND dt.tag ILIKE $1`
+	args := []any{escapeLike(prefix) + "%"}
 
-	rows, err := r.db.Query(ctx, query, escapeLike(prefix)+"%", limit)
+	if userID != nil {
+		query += ` AND (d.is_public = true OR d.user_id = $3)`
+		args = append(args, limit, *userID)
+	} else {
+		args = append(args, limit)
+	}
+	query += ` ORDER BY dt.tag LIMIT $2`
+
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing distinct tags: %w", err)
 	}

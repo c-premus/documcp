@@ -485,6 +485,8 @@ func Load() (*Config, error) {
 		ReadTimeout:     v.GetDuration("redis_read_timeout"),
 		WriteTimeout:    v.GetDuration("redis_write_timeout"),
 		MaxRetries:      v.GetInt("redis_max_retries"),
+		TLSEnabled:      v.GetBool("redis_tls_enabled"),
+		TLSCAFile:       v.GetString("redis_tls_ca_file"),
 	}
 
 	cfg.Database = DatabaseConfig{

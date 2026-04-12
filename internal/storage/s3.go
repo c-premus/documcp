@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -62,6 +63,9 @@ func NewS3Blob(ctx context.Context, cfg S3Config) (*S3Blob, error) {
 	}
 	if cfg.AccessKeyID == "" || cfg.SecretAccessKey == "" {
 		return nil, errors.New("s3blob: AccessKeyID and SecretAccessKey are required")
+	}
+	if cfg.ForceSSL && cfg.Endpoint != "" && !strings.HasPrefix(cfg.Endpoint, "https://") {
+		return nil, errors.New("s3blob: Endpoint must use https:// when ForceSSL is true")
 	}
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx,

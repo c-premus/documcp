@@ -167,7 +167,7 @@ type mockHandlerRepo struct {
 	purgeSingleFn                func(ctx context.Context, id int64) (string, error)
 	purgeSoftDeletedFn           func(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
 	listDeletedFn                func(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
-	listDistinctTagsFn           func(ctx context.Context, prefix string, limit int) ([]string, error)
+	listDistinctTagsFn           func(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error)
 }
 
 func (m *mockHandlerRepo) List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
@@ -233,9 +233,9 @@ func (m *mockHandlerRepo) ListDeleted(ctx context.Context, limit, offset int, us
 	return nil, 0, nil
 }
 
-func (m *mockHandlerRepo) ListDistinctTags(ctx context.Context, prefix string, limit int) ([]string, error) {
+func (m *mockHandlerRepo) ListDistinctTags(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error) {
 	if m.listDistinctTagsFn != nil {
-		return m.listDistinctTagsFn(ctx, prefix, limit)
+		return m.listDistinctTagsFn(ctx, prefix, limit, userID)
 	}
 	return []string{}, nil
 }
@@ -1255,7 +1255,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 		assert.Equal(t, "failed to find document", body["message"])
 	})
 
-	t.Run("returns 403 for private document without authenticated user", func(t *testing.T) {
+	t.Run("returns 404 for private document without authenticated user", func(t *testing.T) {
 		t.Parallel()
 
 		doc := newTestDocument("priv-uuid")
@@ -1275,12 +1275,12 @@ func TestDocumentHandler_Download(t *testing.T) {
 
 		h.Download(rr, req)
 
-		assert.Equal(t, http.StatusForbidden, rr.Code)
+		assert.Equal(t, http.StatusNotFound, rr.Code)
 		body := decodeJSONBody(t, rr.Body)
-		assert.Equal(t, "access denied", body["message"])
+		assert.Equal(t, "document not found", body["message"])
 	})
 
-	t.Run("returns 403 for private document when non-owner is authenticated", func(t *testing.T) {
+	t.Run("returns 404 for private document when non-owner is authenticated", func(t *testing.T) {
 		t.Parallel()
 
 		doc := newTestDocument("priv-uuid-2")
@@ -1303,7 +1303,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 
 		h.Download(rr, req)
 
-		assert.Equal(t, http.StatusForbidden, rr.Code)
+		assert.Equal(t, http.StatusNotFound, rr.Code)
 	})
 
 	t.Run("returns 404 when document has no associated file", func(t *testing.T) {
@@ -3201,7 +3201,7 @@ func TestDocumentHandler_ListTags(t *testing.T) {
 
 		var capturedLimit int
 		repo := &mockHandlerRepo{
-			listDistinctTagsFn: func(_ context.Context, _ string, limit int) ([]string, error) {
+			listDistinctTagsFn: func(_ context.Context, _ string, limit int, _ *int64) ([]string, error) {
 				capturedLimit = limit
 				return []string{"go", "rust", "python"}, nil
 			},
@@ -3226,7 +3226,7 @@ func TestDocumentHandler_ListTags(t *testing.T) {
 
 		var capturedLimit int
 		repo := &mockHandlerRepo{
-			listDistinctTagsFn: func(_ context.Context, _ string, limit int) ([]string, error) {
+			listDistinctTagsFn: func(_ context.Context, _ string, limit int, _ *int64) ([]string, error) {
 				capturedLimit = limit
 				return []string{"go"}, nil
 			},
@@ -3247,7 +3247,7 @@ func TestDocumentHandler_ListTags(t *testing.T) {
 
 		var capturedLimit int
 		repo := &mockHandlerRepo{
-			listDistinctTagsFn: func(_ context.Context, _ string, limit int) ([]string, error) {
+			listDistinctTagsFn: func(_ context.Context, _ string, limit int, _ *int64) ([]string, error) {
 				capturedLimit = limit
 				return []string{}, nil
 			},
@@ -3268,7 +3268,7 @@ func TestDocumentHandler_ListTags(t *testing.T) {
 
 		var capturedLimit int
 		repo := &mockHandlerRepo{
-			listDistinctTagsFn: func(_ context.Context, _ string, limit int) ([]string, error) {
+			listDistinctTagsFn: func(_ context.Context, _ string, limit int, _ *int64) ([]string, error) {
 				capturedLimit = limit
 				return []string{}, nil
 			},
@@ -3288,7 +3288,7 @@ func TestDocumentHandler_ListTags(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockHandlerRepo{
-			listDistinctTagsFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+			listDistinctTagsFn: func(_ context.Context, _ string, _ int, _ *int64) ([]string, error) {
 				return []string{}, nil
 			},
 		}
@@ -3310,7 +3310,7 @@ func TestDocumentHandler_ListTags(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockHandlerRepo{
-			listDistinctTagsFn: func(_ context.Context, _ string, _ int) ([]string, error) {
+			listDistinctTagsFn: func(_ context.Context, _ string, _ int, _ *int64) ([]string, error) {
 				return nil, errors.New("database error")
 			},
 		}
@@ -3331,7 +3331,7 @@ func TestDocumentHandler_ListTags(t *testing.T) {
 
 		var capturedPrefix string
 		repo := &mockHandlerRepo{
-			listDistinctTagsFn: func(_ context.Context, prefix string, _ int) ([]string, error) {
+			listDistinctTagsFn: func(_ context.Context, prefix string, _ int, _ *int64) ([]string, error) {
 				capturedPrefix = prefix
 				return []string{"golang", "goroutines"}, nil
 			},
