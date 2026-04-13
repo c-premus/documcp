@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/c-premus/documcp/internal/testutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -22,14 +23,6 @@ type mockCounter struct {
 func (m *mockCounter) Count(ctx context.Context) (int, error)        { return m.count, m.err }
 func (m *mockCounter) CountUsers(ctx context.Context) (int, error)   { return m.count, m.err }
 func (m *mockCounter) CountClients(ctx context.Context) (int, error) { return m.count, m.err }
-
-func discardLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(nopWriter{}, nil))
-}
-
-type nopWriter struct{}
-
-func (nopWriter) Write(p []byte) (int, error) { return len(p), nil }
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -46,7 +39,7 @@ func TestDashboardHandler_Stats_AllCounters(t *testing.T) {
 		&mockCounter{count: 7},
 		&mockCounter{count: 6},
 		nil, // no river client
-		discardLogger(),
+		testutil.DiscardLogger(),
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", http.NoBody)
@@ -74,7 +67,7 @@ func TestDashboardHandler_Stats_AllCounters(t *testing.T) {
 		"oauth_clients":     3,
 		"external_services": 2,
 		"zim_archives":      7,
-		"git_templates": 6,
+		"git_templates":     6,
 	}
 
 	for key, want := range expected {
@@ -97,7 +90,7 @@ func TestDashboardHandler_Stats_AllCounters(t *testing.T) {
 func TestDashboardHandler_Stats_NilCounters(t *testing.T) {
 	t.Parallel()
 
-	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil, nil, discardLogger())
+	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil, nil, testutil.DiscardLogger())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -133,7 +126,7 @@ func TestDashboardHandler_Stats_CounterError(t *testing.T) {
 		&mockCounter{count: 5},
 		nil, nil, nil, nil,
 		nil, // no river client
-		discardLogger(),
+		testutil.DiscardLogger(),
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", http.NoBody)
@@ -169,7 +162,7 @@ func TestDashboardHandler_Stats_CounterError(t *testing.T) {
 func TestDashboardHandler_Stats_ContentType(t *testing.T) {
 	t.Parallel()
 
-	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil, nil, discardLogger())
+	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil, nil, testutil.DiscardLogger())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -185,7 +178,7 @@ func TestDashboardHandler_Stats_ContentType(t *testing.T) {
 func TestNewDashboardHandler(t *testing.T) {
 	t.Parallel()
 
-	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil, nil, discardLogger())
+	h := NewDashboardHandler(nil, nil, nil, nil, nil, nil, nil, testutil.DiscardLogger())
 	if h == nil {
 		t.Fatal("expected non-nil handler")
 	}

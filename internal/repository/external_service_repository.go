@@ -59,17 +59,6 @@ func (r *ExternalServiceRepository) FindByUUID(ctx context.Context, uuid string)
 	return &svc, nil
 }
 
-// FindBySlug returns an external service by its slug.
-func (r *ExternalServiceRepository) FindBySlug(ctx context.Context, slug string) (*model.ExternalService, error) {
-	svc, err := database.Get[model.ExternalService](ctx, r.db,
-		`SELECT * FROM external_services WHERE slug = $1`, slug)
-	if err != nil {
-		return nil, fmt.Errorf("finding external service by slug %s: %w", slug, err)
-	}
-	r.decryptAPIKey(&svc)
-	return &svc, nil
-}
-
 // List returns external services with optional type/status filters and pagination.
 // Returns the matching services and the total count (before LIMIT/OFFSET).
 func (r *ExternalServiceRepository) List(ctx context.Context, serviceType, status string, limit, offset int) ([]model.ExternalService, int, error) {
@@ -216,14 +205,7 @@ func (r *ExternalServiceRepository) ReorderPriorities(ctx context.Context, servi
 
 // encryptAPIKey encrypts an API key for storage.
 func (r *ExternalServiceRepository) encryptAPIKey(apiKey sql.NullString) (sql.NullString, error) {
-	if !apiKey.Valid || apiKey.String == "" {
-		return apiKey, nil
-	}
-	enc, err := r.encryptor.Encrypt(apiKey.String)
-	if err != nil {
-		return sql.NullString{}, fmt.Errorf("encrypting api key: %w", err)
-	}
-	return sql.NullString{String: enc, Valid: true}, nil
+	return crypto.EncryptNullString(r.encryptor, apiKey, "api key")
 }
 
 // decryptAPIKey decrypts an API key after loading from the database.

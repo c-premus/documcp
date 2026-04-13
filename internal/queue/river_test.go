@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/c-premus/documcp/internal/observability"
+	"github.com/c-premus/documcp/internal/testutil"
 )
 
 // newTestMetrics creates a Metrics instance with isolated Prometheus registerer
@@ -58,7 +59,7 @@ func TestRiverClient_StartEventForwarding_nilEventBus(t *testing.T) {
 
 	rc := &RiverClient{
 		eventBus: nil,
-		logger:   discardLogger(),
+		logger:   testutil.DiscardLogger(),
 	}
 
 	// Should return immediately without panic when eventBus is nil.
@@ -100,14 +101,14 @@ func TestRiverErrorHandler_HandleError(t *testing.T) {
 	t.Run("publishes event and increments metrics", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus(discardLogger())
+		eb := NewEventBus(testutil.DiscardLogger())
 		ch := eb.Subscribe("test")
 		metrics := newTestMetrics()
 
 		handler := &riverErrorHandler{
 			eventBus: eb,
 			metrics:  metrics,
-			logger:   discardLogger(),
+			logger:   testutil.DiscardLogger(),
 		}
 
 		job := makeJobRow(42, "document_extract", "high", 2)
@@ -146,7 +147,7 @@ func TestRiverErrorHandler_HandleError(t *testing.T) {
 		handler := &riverErrorHandler{
 			eventBus: nil,
 			metrics:  nil,
-			logger:   discardLogger(),
+			logger:   testutil.DiscardLogger(),
 		}
 
 		job := makeJobRow(1, "test_kind", "default", 1)
@@ -159,12 +160,12 @@ func TestRiverErrorHandler_HandleError(t *testing.T) {
 	t.Run("nil metrics does not panic", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus(discardLogger())
+		eb := NewEventBus(testutil.DiscardLogger())
 
 		handler := &riverErrorHandler{
 			eventBus: eb,
 			metrics:  nil,
-			logger:   discardLogger(),
+			logger:   testutil.DiscardLogger(),
 		}
 
 		job := makeJobRow(2, "test_kind", "default", 1)
@@ -185,13 +186,13 @@ func TestRiverErrorHandler_HandlePanic(t *testing.T) {
 	t.Run("publishes event with panic info", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus(discardLogger())
+		eb := NewEventBus(testutil.DiscardLogger())
 		ch := eb.Subscribe("test")
 
 		handler := &riverErrorHandler{
 			eventBus: eb,
 			metrics:  nil,
-			logger:   discardLogger(),
+			logger:   testutil.DiscardLogger(),
 		}
 
 		job := makeJobRow(99, "sync_kiwix", "low", 1)
@@ -221,7 +222,7 @@ func TestRiverErrorHandler_HandlePanic(t *testing.T) {
 		handler := &riverErrorHandler{
 			eventBus: nil,
 			metrics:  nil,
-			logger:   discardLogger(),
+			logger:   testutil.DiscardLogger(),
 		}
 
 		job := makeJobRow(3, "test_kind", "default", 1)
@@ -234,13 +235,13 @@ func TestRiverErrorHandler_HandlePanic(t *testing.T) {
 	t.Run("integer panic value is handled", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus(discardLogger())
+		eb := NewEventBus(testutil.DiscardLogger())
 		ch := eb.Subscribe("int-panic")
 
 		handler := &riverErrorHandler{
 			eventBus: eb,
 			metrics:  nil,
-			logger:   discardLogger(),
+			logger:   testutil.DiscardLogger(),
 		}
 
 		job := makeJobRow(10, "test_kind", "high", 3)
@@ -333,28 +334,6 @@ func TestBuildQueueConfig(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// InsertOnly accessor
-// ---------------------------------------------------------------------------
-
-func TestRiverClient_InsertOnly(t *testing.T) {
-	t.Parallel()
-
-	t.Run("returns true when insertOnly is set", func(t *testing.T) {
-		t.Parallel()
-
-		rc := &RiverClient{insertOnly: true}
-		assert.True(t, rc.InsertOnly())
-	})
-
-	t.Run("returns false when insertOnly is not set", func(t *testing.T) {
-		t.Parallel()
-
-		rc := &RiverClient{insertOnly: false}
-		assert.False(t, rc.InsertOnly())
-	})
-}
-
-// ---------------------------------------------------------------------------
 // Insert-only mode: Start, Stop, StartEventForwarding
 // ---------------------------------------------------------------------------
 
@@ -363,7 +342,7 @@ func TestRiverClient_InsertOnlyMode_Start(t *testing.T) {
 
 	rc := &RiverClient{
 		insertOnly: true,
-		logger:     discardLogger(),
+		logger:     testutil.DiscardLogger(),
 	}
 
 	err := rc.Start(context.Background())
@@ -375,7 +354,7 @@ func TestRiverClient_InsertOnlyMode_Stop(t *testing.T) {
 
 	rc := &RiverClient{
 		insertOnly: true,
-		logger:     discardLogger(),
+		logger:     testutil.DiscardLogger(),
 	}
 
 	err := rc.Stop(context.Background())
@@ -385,11 +364,11 @@ func TestRiverClient_InsertOnlyMode_Stop(t *testing.T) {
 func TestRiverClient_InsertOnlyMode_StartEventForwarding(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	rc := &RiverClient{
 		insertOnly: true,
 		eventBus:   eb,
-		logger:     discardLogger(),
+		logger:     testutil.DiscardLogger(),
 	}
 
 	assert.NotPanics(t, func() {

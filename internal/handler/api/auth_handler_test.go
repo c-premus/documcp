@@ -9,6 +9,7 @@ import (
 
 	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/testutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -18,7 +19,7 @@ import (
 func TestAuthHandler_Me_ValidUser(t *testing.T) {
 	t.Parallel()
 
-	h := NewAuthHandler(discardLogger())
+	h := NewAuthHandler(testutil.DiscardLogger())
 
 	user := &model.User{ID: 42, Email: "test@example.com", Name: "Test User", IsAdmin: true}
 	ctx := context.WithValue(context.Background(), authmiddleware.UserContextKey, user)
@@ -55,7 +56,7 @@ func TestAuthHandler_Me_ValidUser(t *testing.T) {
 func TestAuthHandler_Me_NoUser(t *testing.T) {
 	t.Parallel()
 
-	h := NewAuthHandler(discardLogger())
+	h := NewAuthHandler(testutil.DiscardLogger())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -70,7 +71,7 @@ func TestAuthHandler_Me_NoUser(t *testing.T) {
 func TestNewAuthHandler(t *testing.T) {
 	t.Parallel()
 
-	h := NewAuthHandler(discardLogger())
+	h := NewAuthHandler(testutil.DiscardLogger())
 	if h == nil {
 		t.Fatal("expected non-nil handler")
 	}

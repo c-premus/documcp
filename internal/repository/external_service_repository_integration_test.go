@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"testing"
 
+	"github.com/c-premus/documcp/internal/testutil"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -16,7 +18,7 @@ import (
 func TestExternalServiceRepository_CreateAndFind(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
+	repo := NewExternalServiceRepository(testPool, testutil.DiscardLogger(), nil)
 
 	svc := &model.ExternalService{
 		UUID:         testUUID("create-find-001"),
@@ -62,30 +64,17 @@ func TestExternalServiceRepository_CreateAndFind(t *testing.T) {
 		assert.True(t, found.UpdatedAt.Valid)
 	})
 
-	t.Run("FindBySlug", func(t *testing.T) {
-		found, err := repo.FindBySlug(ctx, "test-service")
-		require.NoError(t, err)
-
-		assert.Equal(t, svc.ID, found.ID)
-		assert.Equal(t, testUUID("create-find-001"), found.UUID)
-		assert.Equal(t, "test-service", found.Slug)
-	})
-
 	t.Run("FindByUUID_NotFound", func(t *testing.T) {
 		_, err := repo.FindByUUID(ctx, "nonexistent-uuid")
 		assert.Error(t, err)
 	})
 
-	t.Run("FindBySlug_NotFound", func(t *testing.T) {
-		_, err := repo.FindBySlug(ctx, "nonexistent-slug")
-		assert.Error(t, err)
-	})
 }
 
 func TestExternalServiceRepository_FindEnabledByType(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
+	repo := NewExternalServiceRepository(testPool, testutil.DiscardLogger(), nil)
 
 	services := []model.ExternalService{
 		{
@@ -180,7 +169,7 @@ func TestExternalServiceRepository_FindEnabledByType(t *testing.T) {
 func TestExternalServiceRepository_List(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
+	repo := NewExternalServiceRepository(testPool, testutil.DiscardLogger(), nil)
 
 	services := []model.ExternalService{
 		{
@@ -309,7 +298,7 @@ func TestExternalServiceRepository_List(t *testing.T) {
 func TestExternalServiceRepository_Update(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
+	repo := NewExternalServiceRepository(testPool, testutil.DiscardLogger(), nil)
 
 	svc := &model.ExternalService{
 		UUID:      testUUID("update-001"),
@@ -349,7 +338,7 @@ func TestExternalServiceRepository_Update(t *testing.T) {
 func TestExternalServiceRepository_Delete(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
+	repo := NewExternalServiceRepository(testPool, testutil.DiscardLogger(), nil)
 
 	svc := &model.ExternalService{
 		UUID:      testUUID("delete-001"),
@@ -378,7 +367,7 @@ func TestExternalServiceRepository_Delete(t *testing.T) {
 func TestExternalServiceRepository_FindAllEnabled(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
+	repo := NewExternalServiceRepository(testPool, testutil.DiscardLogger(), nil)
 
 	// Insert services: 2 enabled (different types), 1 disabled.
 	enabledKiwix := &model.ExternalService{
@@ -460,7 +449,7 @@ func TestExternalServiceRepository_FindAllEnabled(t *testing.T) {
 func TestExternalServiceRepository_UpdateHealthStatus(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
+	repo := NewExternalServiceRepository(testPool, testutil.DiscardLogger(), nil)
 
 	svc := &model.ExternalService{
 		UUID:      testUUID("health-001"),
@@ -537,7 +526,7 @@ func TestExternalServiceRepository_UpdateHealthStatus(t *testing.T) {
 func TestExternalServiceRepository_Count(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
+	repo := NewExternalServiceRepository(testPool, testutil.DiscardLogger(), nil)
 
 	t.Run("empty table", func(t *testing.T) {
 		count, err := repo.Count(ctx)
@@ -596,7 +585,7 @@ func TestExternalServiceRepository_Count(t *testing.T) {
 func TestExternalServiceRepository_ReorderPriorities(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewExternalServiceRepository(testPool, discardLogger(), nil)
+	repo := NewExternalServiceRepository(testPool, testutil.DiscardLogger(), nil)
 
 	// Create 3 services with default priority 0.
 	svc1 := &model.ExternalService{

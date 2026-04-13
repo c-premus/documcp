@@ -549,57 +549,6 @@ func TestNewGitTemplate(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// SearchQuery
-// ---------------------------------------------------------------------------
-
-func TestNewSearchQuery(t *testing.T) {
-	t.Parallel()
-
-	t.Run("defaults", func(t *testing.T) {
-		t.Parallel()
-		sq := NewSearchQuery()
-		if sq == nil {
-			t.Fatal("expected non-nil SearchQuery")
-		}
-		if sq.Query != "test search" {
-			t.Errorf("Query = %q, want %q", sq.Query, "test search")
-		}
-		if sq.ResultsCount != 10 {
-			t.Errorf("ResultsCount = %d, want 10", sq.ResultsCount)
-		}
-		// SearchQuery defaults do not set timestamps or UserID.
-		if sq.UserID.Valid {
-			t.Error("UserID should not be valid by default")
-		}
-		if sq.Filters.Valid {
-			t.Error("Filters should not be valid by default")
-		}
-	})
-
-	t.Run("with all options", func(t *testing.T) {
-		t.Parallel()
-		sq := NewSearchQuery(
-			WithSearchQueryUserID(12),
-			WithSearchQueryQuery("golang testing"),
-			WithSearchQueryResultsCount(25),
-			WithSearchQueryFilters(`{"type":"pdf"}`),
-		)
-		if sq.Query != "golang testing" {
-			t.Errorf("Query = %q, want %q", sq.Query, "golang testing")
-		}
-		if sq.ResultsCount != 25 {
-			t.Errorf("ResultsCount = %d, want 25", sq.ResultsCount)
-		}
-		if !sq.UserID.Valid || sq.UserID.Int64 != 12 {
-			t.Errorf("UserID = %v, want valid 12", sq.UserID)
-		}
-		if !sq.Filters.Valid || sq.Filters.String != `{"type":"pdf"}` {
-			t.Errorf("Filters = %v, want valid %q", sq.Filters, `{"type":"pdf"}`)
-		}
-	})
-}
-
-// ---------------------------------------------------------------------------
 // Isolation: each call returns an independent instance.
 // ---------------------------------------------------------------------------
 

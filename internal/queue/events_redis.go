@@ -148,7 +148,3 @@ func (reb *RedisEventBus) Close() {
 	})
 }
 
-// DroppedCount returns the total number of events dropped across all subscribers.
-func (reb *RedisEventBus) DroppedCount() int64 {
-	return reb.dropped.Load()
-}

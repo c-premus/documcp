@@ -69,9 +69,7 @@ type SchedulerConfig struct {
 	GitSchedule             string `mapstructure:"scheduler_git_schedule"`
 	OAuthCleanupSchedule    string `mapstructure:"scheduler_oauth_cleanup_schedule"`
 	OrphanedFilesSchedule   string `mapstructure:"scheduler_orphaned_files_schedule"`
-	SearchVerifySchedule    string `mapstructure:"scheduler_search_verify_schedule"`
 	SoftDeletePurgeSchedule string `mapstructure:"scheduler_soft_delete_purge_schedule"`
-	ZimCleanupSchedule      string `mapstructure:"scheduler_zim_cleanup_schedule"`
 	HealthCheckSchedule     string `mapstructure:"scheduler_health_check_schedule"`
 }
 
@@ -397,9 +395,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("scheduler_git_schedule", "0 * * * *")               // every hour
 	v.SetDefault("scheduler_oauth_cleanup_schedule", "0 * * * *")     // hourly
 	v.SetDefault("scheduler_orphaned_files_schedule", "0 2 * * *")    // daily 2 AM
-	v.SetDefault("scheduler_search_verify_schedule", "0 3 * * *")     // daily 3 AM
 	v.SetDefault("scheduler_soft_delete_purge_schedule", "0 4 * * *") // daily 4 AM
-	v.SetDefault("scheduler_zim_cleanup_schedule", "0 5 * * *")       // daily 5 AM
 	v.SetDefault("scheduler_health_check_schedule", "*/15 * * * *")   // every 15 min
 }
 
@@ -602,9 +598,7 @@ func Load() (*Config, error) {
 		GitSchedule:             v.GetString("scheduler_git_schedule"),
 		OAuthCleanupSchedule:    v.GetString("scheduler_oauth_cleanup_schedule"),
 		OrphanedFilesSchedule:   v.GetString("scheduler_orphaned_files_schedule"),
-		SearchVerifySchedule:    v.GetString("scheduler_search_verify_schedule"),
 		SoftDeletePurgeSchedule: v.GetString("scheduler_soft_delete_purge_schedule"),
-		ZimCleanupSchedule:      v.GetString("scheduler_zim_cleanup_schedule"),
 		HealthCheckSchedule:     v.GetString("scheduler_health_check_schedule"),
 	}
 

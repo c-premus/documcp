@@ -3,7 +3,6 @@ package queue
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"testing"
 
 	"github.com/riverqueue/river"
@@ -12,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/testutil"
 )
 
 // --- Mock implementations for recovery ---
@@ -48,10 +48,6 @@ func (m *mockDocumentStatusFinder) FindByStatus(_ context.Context, status model.
 	return m.results[status], nil
 }
 
-func discardLogger() *slog.Logger {
-	return slog.New(slog.DiscardHandler)
-}
-
 // --- RecoverStuckDocuments tests ---
 
 func TestRecoverStuckDocuments_uploatedDispatchtesExtract(t *testing.T) {
@@ -68,7 +64,7 @@ func TestRecoverStuckDocuments_uploatedDispatchtesExtract(t *testing.T) {
 		},
 	}
 
-	RecoverStuckDocuments(context.Background(), inserter, finder, discardLogger())
+	RecoverStuckDocuments(context.Background(), inserter, finder, testutil.DiscardLogger())
 
 	require.Len(t, inserter.inserted, 2)
 
@@ -97,7 +93,7 @@ func TestRecoverStuckDocuments_extractedDispatchesExtract(t *testing.T) {
 		},
 	}
 
-	RecoverStuckDocuments(context.Background(), inserter, finder, discardLogger())
+	RecoverStuckDocuments(context.Background(), inserter, finder, testutil.DiscardLogger())
 
 	require.Len(t, inserter.inserted, 1)
 
@@ -113,12 +109,12 @@ func TestRecoverStuckDocuments_bothStatuses(t *testing.T) {
 	inserter := &mockJobInserter{}
 	finder := &mockDocumentStatusFinder{
 		results: map[model.DocumentStatus][]StuckDocument{
-			model.DocumentStatusUploaded:  {{ID: 1, UUID: "u1"}},
+			model.DocumentStatusUploaded:      {{ID: 1, UUID: "u1"}},
 			model.DocumentStatus("extracted"): {{ID: 2, UUID: "u2"}},
 		},
 	}
 
-	RecoverStuckDocuments(context.Background(), inserter, finder, discardLogger())
+	RecoverStuckDocuments(context.Background(), inserter, finder, testutil.DiscardLogger())
 
 	require.Len(t, inserter.inserted, 2)
 
@@ -142,7 +138,7 @@ func TestRecoverStuckDocuments_nilInserter(t *testing.T) {
 
 	// Should return immediately without panicking.
 	assert.NotPanics(t, func() {
-		RecoverStuckDocuments(context.Background(), nil, finder, discardLogger())
+		RecoverStuckDocuments(context.Background(), nil, finder, testutil.DiscardLogger())
 	})
 }
 
@@ -153,7 +149,7 @@ func TestRecoverStuckDocuments_nilFinder(t *testing.T) {
 
 	// Should return immediately without panicking.
 	assert.NotPanics(t, func() {
-		RecoverStuckDocuments(context.Background(), inserter, nil, discardLogger())
+		RecoverStuckDocuments(context.Background(), inserter, nil, testutil.DiscardLogger())
 	})
 
 	assert.Empty(t, inserter.inserted)
@@ -163,7 +159,7 @@ func TestRecoverStuckDocuments_bothNil(t *testing.T) {
 	t.Parallel()
 
 	assert.NotPanics(t, func() {
-		RecoverStuckDocuments(context.Background(), nil, nil, discardLogger())
+		RecoverStuckDocuments(context.Background(), nil, nil, testutil.DiscardLogger())
 	})
 }
 
@@ -177,7 +173,7 @@ func TestRecoverStuckDocuments_finderError(t *testing.T) {
 
 	// Should not panic; errors are logged, not returned.
 	assert.NotPanics(t, func() {
-		RecoverStuckDocuments(context.Background(), inserter, finder, discardLogger())
+		RecoverStuckDocuments(context.Background(), inserter, finder, testutil.DiscardLogger())
 	})
 
 	assert.Empty(t, inserter.inserted, "no jobs should be inserted when finder errors")
@@ -189,14 +185,14 @@ func TestRecoverStuckDocuments_insertError(t *testing.T) {
 	inserter := &mockJobInserter{err: errors.New("insert failed")}
 	finder := &mockDocumentStatusFinder{
 		results: map[model.DocumentStatus][]StuckDocument{
-			model.DocumentStatusUploaded:  {{ID: 1, UUID: "u1"}},
+			model.DocumentStatusUploaded:      {{ID: 1, UUID: "u1"}},
 			model.DocumentStatus("extracted"): {{ID: 2, UUID: "u2"}},
 		},
 	}
 
 	// Should not panic; insert errors are logged individually.
 	assert.NotPanics(t, func() {
-		RecoverStuckDocuments(context.Background(), inserter, finder, discardLogger())
+		RecoverStuckDocuments(context.Background(), inserter, finder, testutil.DiscardLogger())
 	})
 
 	// Insert was attempted for both, even though it failed.
@@ -209,12 +205,12 @@ func TestRecoverStuckDocuments_noStuckDocuments(t *testing.T) {
 	inserter := &mockJobInserter{}
 	finder := &mockDocumentStatusFinder{
 		results: map[model.DocumentStatus][]StuckDocument{
-			model.DocumentStatusUploaded:  {},
+			model.DocumentStatusUploaded:      {},
 			model.DocumentStatus("extracted"): {},
 		},
 	}
 
-	RecoverStuckDocuments(context.Background(), inserter, finder, discardLogger())
+	RecoverStuckDocuments(context.Background(), inserter, finder, testutil.DiscardLogger())
 
 	assert.Empty(t, inserter.inserted)
 }
@@ -225,12 +221,12 @@ func TestRecoverStuckDocuments_nilOptsPassedToInsert(t *testing.T) {
 	inserter := &mockJobInserter{}
 	finder := &mockDocumentStatusFinder{
 		results: map[model.DocumentStatus][]StuckDocument{
-			model.DocumentStatusUploaded:  {{ID: 5, UUID: "u5"}},
+			model.DocumentStatusUploaded:      {{ID: 5, UUID: "u5"}},
 			model.DocumentStatus("extracted"): {{ID: 6, UUID: "u6"}},
 		},
 	}
 
-	RecoverStuckDocuments(context.Background(), inserter, finder, discardLogger())
+	RecoverStuckDocuments(context.Background(), inserter, finder, testutil.DiscardLogger())
 
 	for _, ij := range inserter.inserted {
 		assert.Nil(t, ij.opts, "InsertOpts should be nil (uses job defaults)")

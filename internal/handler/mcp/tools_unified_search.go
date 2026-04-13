@@ -75,8 +75,8 @@ func (h *Handler) handleUnifiedSearch(
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, unifiedSearchResponse{}, errors.New("mcp:read scope required")
 	}
-	if len(input.Query) > 500 {
-		return nil, unifiedSearchResponse{}, errors.New("query must be at most 500 characters")
+	if len(input.Query) > search.MaxQueryLength {
+		return nil, unifiedSearchResponse{}, fmt.Errorf("query must be at most %d characters", search.MaxQueryLength)
 	}
 	if h.searcher == nil {
 		return nil, unifiedSearchResponse{

@@ -18,6 +18,7 @@ import (
 	"github.com/c-premus/documcp/internal/extractor"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/storage"
+	"github.com/c-premus/documcp/internal/testutil"
 )
 
 // newPipelineAt builds a DocumentPipeline backed by an FSBlob rooted at
@@ -123,7 +124,7 @@ func TestDocumentPipeline_Upload(t *testing.T) {
 				return createdDoc, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, storagePath)
 
 		content := "hello pipeline"
@@ -169,7 +170,7 @@ func TestDocumentPipeline_Upload(t *testing.T) {
 	t.Run("file exceeds maximum size", func(t *testing.T) {
 		t.Parallel()
 
-		svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+		svc := NewDocumentService(&mockDocumentRepo{}, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := UploadDocumentParams{
@@ -191,7 +192,7 @@ func TestDocumentPipeline_Upload(t *testing.T) {
 	t.Run("unsupported file type", func(t *testing.T) {
 		t.Parallel()
 
-		svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+		svc := NewDocumentService(&mockDocumentRepo{}, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := UploadDocumentParams{
@@ -218,7 +219,7 @@ func TestDocumentPipeline_Upload(t *testing.T) {
 				return errors.New("insert failed")
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := UploadDocumentParams{
@@ -261,7 +262,7 @@ func TestDocumentPipeline_Upload(t *testing.T) {
 				return createdDoc, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := UploadDocumentParams{
@@ -296,7 +297,7 @@ func TestDocumentPipeline_Upload(t *testing.T) {
 				return errors.New("tag insert failed")
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := UploadDocumentParams{
@@ -328,7 +329,7 @@ func TestDocumentPipeline_Upload(t *testing.T) {
 				return nil, errors.New("refetch boom")
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := UploadDocumentParams{
@@ -361,7 +362,7 @@ func TestDocumentPipeline_Upload(t *testing.T) {
 				return createdDoc, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		uid := int64(77)
@@ -399,7 +400,7 @@ func TestDocumentPipeline_Upload(t *testing.T) {
 				return createdDoc, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := UploadDocumentParams{
@@ -433,7 +434,7 @@ func TestDocumentPipeline_Upload(t *testing.T) {
 				return createdDoc, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := UploadDocumentParams{
@@ -456,7 +457,7 @@ func TestDocumentPipeline_Upload(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockDocumentRepo{}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := UploadDocumentParams{
@@ -554,7 +555,7 @@ func TestDocumentPipeline_Upload_FileTypeMapping(t *testing.T) {
 					return createdDoc, nil
 				},
 			}
-			svc := NewDocumentService(repo, discardLogger())
+			svc := NewDocumentService(repo, testutil.DiscardLogger())
 			pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 			params := UploadDocumentParams{
@@ -599,7 +600,7 @@ func TestDocumentPipeline_Upload_MaxUploadSizeBoundary(t *testing.T) {
 				return createdDoc, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := UploadDocumentParams{
@@ -618,7 +619,7 @@ func TestDocumentPipeline_Upload_MaxUploadSizeBoundary(t *testing.T) {
 	t.Run("one byte over limit fails", func(t *testing.T) {
 		t.Parallel()
 
-		svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+		svc := NewDocumentService(&mockDocumentRepo{}, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := UploadDocumentParams{
@@ -650,7 +651,7 @@ func TestDocumentPipeline_ProcessDocument(t *testing.T) {
 				return nil, errors.New("not found")
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		err := pipeline.ProcessDocument(context.Background(), 999)
@@ -688,7 +689,7 @@ func TestDocumentPipeline_ProcessDocument_NoExtractor(t *testing.T) {
 
 	// Empty registry — no extractor for any MIME type.
 	registry := extractor.NewRegistry()
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 	pipeline := newPipelineAt(t, svc, registry, nil, storagePath)
 
 	err := pipeline.ProcessDocument(context.Background(), 1)
@@ -728,7 +729,7 @@ func TestDocumentPipeline_ProcessDocument_ExtractorError(t *testing.T) {
 	}
 	registry := extractor.NewRegistry(ext)
 
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 	pipeline := newPipelineAt(t, svc, registry, nil, storagePath)
 
 	err := pipeline.ProcessDocument(context.Background(), 2)
@@ -773,7 +774,7 @@ func TestDocumentPipeline_ProcessDocument_Success(t *testing.T) {
 	}
 	registry := extractor.NewRegistry(ext)
 
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 	pipeline := newPipelineAt(t, svc, registry, nil, storagePath)
 
 	err := pipeline.ProcessDocument(context.Background(), 3)
@@ -829,7 +830,7 @@ func TestDocumentPipeline_ProcessDocument_UpdateError(t *testing.T) {
 	}
 	registry := extractor.NewRegistry(ext)
 
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 	pipeline := newPipelineAt(t, svc, registry, nil, storagePath)
 
 	err := pipeline.ProcessDocument(context.Background(), 4)
@@ -869,7 +870,7 @@ func TestDocumentPipeline_ProcessDocument_MarkFailedUpdateError(t *testing.T) {
 	}
 	registry := extractor.NewRegistry(ext)
 
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 	pipeline := newPipelineAt(t, svc, registry, nil, storagePath)
 
 	err := pipeline.ProcessDocument(context.Background(), 5)
@@ -888,7 +889,7 @@ func TestDocumentPipeline_ProcessDocument_MarkFailedUpdateError(t *testing.T) {
 func TestDocumentPipeline_DispatchExtraction_NilInserter(t *testing.T) {
 	t.Parallel()
 
-	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+	svc := NewDocumentService(&mockDocumentRepo{}, testutil.DiscardLogger())
 	pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 	// Should not panic with nil inserter.
@@ -907,7 +908,7 @@ func TestDocumentPipeline_DispatchExtraction_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+	svc := NewDocumentService(&mockDocumentRepo{}, testutil.DiscardLogger())
 	pipeline := newPipelineAt(t, svc, nil, inserter, t.TempDir())
 
 	err := pipeline.dispatchExtraction(context.Background(), 42, "doc-uuid", 5)
@@ -927,7 +928,7 @@ func TestDocumentPipeline_DispatchExtraction_Error(t *testing.T) {
 		},
 	}
 
-	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+	svc := NewDocumentService(&mockDocumentRepo{}, testutil.DiscardLogger())
 	pipeline := newPipelineAt(t, svc, nil, inserter, t.TempDir())
 
 	// Should return error.
@@ -997,7 +998,7 @@ func TestDocumentPipeline_ReplaceContent(t *testing.T) {
 			},
 		}
 
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, storagePath)
 
 		newContent := "new replacement content"
@@ -1069,7 +1070,7 @@ func TestDocumentPipeline_ReplaceContent(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := ReplaceContentParams{
@@ -1095,7 +1096,7 @@ func TestDocumentPipeline_ReplaceContent(t *testing.T) {
 				return &model.Document{ID: 1, UUID: "some-uuid"}, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := ReplaceContentParams{
@@ -1121,7 +1122,7 @@ func TestDocumentPipeline_ReplaceContent(t *testing.T) {
 				return &model.Document{ID: 1, UUID: "some-uuid"}, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := ReplaceContentParams{
@@ -1158,7 +1159,7 @@ func TestDocumentPipeline_ReplaceContent(t *testing.T) {
 				return updatedDoc, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, storagePath)
 
 		params := ReplaceContentParams{
@@ -1198,7 +1199,7 @@ func TestDocumentPipeline_ReplaceContent(t *testing.T) {
 				return updatedDoc, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, storagePath)
 
 		params := ReplaceContentParams{
@@ -1230,7 +1231,7 @@ func TestDocumentPipeline_ReplaceContent(t *testing.T) {
 				return errors.New("db update failed")
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := ReplaceContentParams{
@@ -1262,7 +1263,7 @@ func TestDocumentPipeline_ReplaceContent(t *testing.T) {
 				return nil, errors.New("db read failed")
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 		params := ReplaceContentParams{
@@ -1291,7 +1292,7 @@ func TestDocumentPipeline_ReplaceContent(t *testing.T) {
 				return &model.Document{ID: 1, UUID: docUUID}, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 		pipeline := newPipelineAt(t, svc, nil, nil, storagePath)
 
 		params := ReplaceContentParams{
@@ -1323,7 +1324,7 @@ func TestDocumentPipeline_ReplaceContent(t *testing.T) {
 func TestDocumentPipeline_Blob(t *testing.T) {
 	t.Parallel()
 
-	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+	svc := NewDocumentService(&mockDocumentRepo{}, testutil.DiscardLogger())
 	blob, err := storage.NewFSBlob(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewFSBlob: %v", err)
@@ -1341,7 +1342,7 @@ func TestDocumentPipeline_ExtractorRegistry(t *testing.T) {
 	t.Parallel()
 
 	registry := extractor.NewRegistry()
-	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+	svc := NewDocumentService(&mockDocumentRepo{}, testutil.DiscardLogger())
 	pipeline := newPipelineAt(t, svc, registry, nil, t.TempDir())
 
 	if pipeline.ExtractorRegistry() != registry {
@@ -1352,7 +1353,7 @@ func TestDocumentPipeline_ExtractorRegistry(t *testing.T) {
 func TestDocumentPipeline_ExtractorRegistry_Nil(t *testing.T) {
 	t.Parallel()
 
-	svc := NewDocumentService(&mockDocumentRepo{}, discardLogger())
+	svc := NewDocumentService(&mockDocumentRepo{}, testutil.DiscardLogger())
 	pipeline := newPipelineAt(t, svc, nil, nil, t.TempDir())
 
 	if pipeline.ExtractorRegistry() != nil {

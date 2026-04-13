@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/c-premus/documcp/internal/crypto"
@@ -122,61 +121,6 @@ func (r *GitTemplateRepository) FindFileByPath(ctx context.Context, templateID i
 	return &file, nil
 }
 
-// ListAll returns all non-deleted git templates (including disabled) with optional search query.
-func (r *GitTemplateRepository) ListAll(ctx context.Context, query string, limit int) ([]model.GitTemplate, error) {
-	q := `SELECT * FROM git_templates WHERE deleted_at IS NULL`
-	args := []any{}
-	argIdx := 1
-
-	if query != "" {
-		q += fmt.Sprintf(` AND (name ILIKE $%d OR description ILIKE $%d)`, argIdx, argIdx+1)
-		likeQuery := "%" + escapeLike(query) + "%"
-		args = append(args, likeQuery, likeQuery)
-		argIdx += 2
-	}
-
-	q += ` ORDER BY name`
-	if limit > 0 {
-		q += fmt.Sprintf(` LIMIT $%d`, argIdx)
-		args = append(args, limit)
-	}
-
-	templates, err := database.Select[model.GitTemplate](ctx, r.db, q, args...)
-	if err != nil {
-		return nil, fmt.Errorf("listing all git templates: %w", err)
-	}
-	r.decryptTokens(templates)
-	return templates, nil
-}
-
-// ListAllUUIDs returns all non-deleted git template UUIDs.
-func (r *GitTemplateRepository) ListAllUUIDs(ctx context.Context) ([]string, error) {
-	rows, err := r.db.Query(ctx, `SELECT uuid FROM git_templates WHERE deleted_at IS NULL`)
-	if err != nil {
-		return nil, fmt.Errorf("listing all git template uuids: %w", err)
-	}
-	uuids, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil {
-		return nil, fmt.Errorf("listing all git template uuids: %w", err)
-	}
-	return uuids, nil
-}
-
-// FindByUUIDs returns non-deleted git templates matching the given UUIDs.
-// Used by search index reconciliation to re-index missing entries.
-func (r *GitTemplateRepository) FindByUUIDs(ctx context.Context, uuids []string) ([]model.GitTemplate, error) {
-	if len(uuids) == 0 {
-		return nil, nil
-	}
-	templates, err := database.Select[model.GitTemplate](ctx, r.db,
-		`SELECT * FROM git_templates WHERE uuid = ANY($1) AND deleted_at IS NULL`, uuids)
-	if err != nil {
-		return nil, fmt.Errorf("finding git templates by uuids: %w", err)
-	}
-	r.decryptTokens(templates)
-	return templates, nil
-}
-
 // Count returns the total number of non-deleted git templates.
 func (r *GitTemplateRepository) Count(ctx context.Context) (int, error) {
 	var count int
@@ -185,17 +129,6 @@ func (r *GitTemplateRepository) Count(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("counting git templates: %w", err)
 	}
 	return count, nil
-}
-
-// FindBySlug returns a git template by its slug, if enabled and not soft-deleted.
-func (r *GitTemplateRepository) FindBySlug(ctx context.Context, slug string) (*model.GitTemplate, error) {
-	tmpl, err := database.Get[model.GitTemplate](ctx, r.db,
-		`SELECT * FROM git_templates WHERE slug = $1 AND deleted_at IS NULL AND is_enabled = true`, slug)
-	if err != nil {
-		return nil, fmt.Errorf("finding git template by slug %s: %w", slug, err)
-	}
-	r.decryptToken(&tmpl)
-	return &tmpl, nil
 }
 
 // Create inserts a new git template and sets the generated ID, UUID, and timestamps.
@@ -398,14 +331,7 @@ func (r *GitTemplateRepository) Search(ctx context.Context, query, category stri
 
 // encryptToken encrypts a git token for storage.
 func (r *GitTemplateRepository) encryptToken(token sql.NullString) (sql.NullString, error) {
-	if !token.Valid || token.String == "" {
-		return token, nil
-	}
-	enc, err := r.encryptor.Encrypt(token.String)
-	if err != nil {
-		return sql.NullString{}, fmt.Errorf("encrypting git token: %w", err)
-	}
-	return sql.NullString{String: enc, Valid: true}, nil
+	return crypto.EncryptNullString(r.encryptor, token, "git token")
 }
 
 // decryptToken decrypts a git token after loading from the database.

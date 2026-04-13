@@ -131,11 +131,6 @@ func (eb *EventBus) Publish(event Event) {
 	}
 }
 
-// DroppedCount returns the total number of events dropped across all subscribers.
-func (eb *EventBus) DroppedCount() int64 {
-	return eb.dropped.Load()
-}
-
 // extractDocumentUserID extracts the UserID and DocUUID from a document_extract
 // job's encoded args. Returns zero values if the job is not a document_extract
 // or if the args cannot be parsed (graceful degradation for in-flight legacy jobs).

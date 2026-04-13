@@ -25,7 +25,6 @@ type DocumentRepo interface {
 	SoftDelete(ctx context.Context, id int64) error
 	TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
 	ReplaceTags(ctx context.Context, documentID int64, tags []string) error
-	CreateVersion(ctx context.Context, version *model.DocumentVersion) error
 }
 
 // CreateDocumentParams holds the input for creating a document.

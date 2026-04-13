@@ -101,18 +101,11 @@ func ValidateExternalURL(rawURL string, allowPrivate ...bool) error {
 	return nil
 }
 
-// SafeTransport returns an *http.Transport whose DialContext hook re-validates
-// every resolved IP against the SSRF block-list at connection time, preventing
-// DNS rebinding attacks. Private RFC-1918 ranges are blocked.
-// The dialerTimeout controls the TCP connection timeout.
-func SafeTransport(dialerTimeout time.Duration) *http.Transport {
-	return newSafeTransport(false, dialerTimeout)
-}
-
-// SafeTransportAllowPrivate is like SafeTransport but permits connections to
-// private RFC-1918 addresses. Use for admin-configured services on internal
-// networks (e.g. self-hosted Kiwix). Loopback and link-local
-// addresses remain blocked.
+// SafeTransportAllowPrivate returns an *http.Transport whose DialContext hook
+// re-validates every resolved IP against the SSRF block-list at connection
+// time, preventing DNS rebinding attacks. Private RFC-1918 addresses are
+// permitted for admin-configured services on internal networks (e.g.
+// self-hosted Kiwix). Loopback and link-local addresses remain blocked.
 // The dialerTimeout controls the TCP connection timeout.
 func SafeTransportAllowPrivate(dialerTimeout time.Duration) *http.Transport {
 	return newSafeTransport(true, dialerTimeout)

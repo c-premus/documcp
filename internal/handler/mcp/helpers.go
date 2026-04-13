@@ -1,11 +1,7 @@
 package mcphandler
 
 import (
-	"database/sql"
 	"strings"
-	"time"
-
-	"github.com/c-premus/documcp/internal/model"
 )
 
 // clampPagination enforces a default and maximum limit on a pagination value.
@@ -22,24 +18,6 @@ func clampPagination(limit, defaultLimit, maxLimit int) int {
 // clampOffset returns offset clamped to a minimum of 0.
 func clampOffset(offset int) int {
 	return max(offset, 0)
-}
-
-// formatNullTime formats a sql.NullTime as RFC3339.
-// Returns an empty string when the time is not valid (NULL).
-func formatNullTime(t sql.NullTime) string {
-	if !t.Valid {
-		return ""
-	}
-	return t.Time.Format(time.RFC3339)
-}
-
-// tagNames extracts tag name strings from a slice of DocumentTag models.
-func tagNames(tags []model.DocumentTag) []string {
-	names := make([]string, len(tags))
-	for i, t := range tags {
-		names[i] = t.Tag
-	}
-	return names
 }
 
 // truncateContent applies summary_only or max_paragraphs truncation to content.

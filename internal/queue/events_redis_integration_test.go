@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/c-premus/documcp/internal/testutil"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,7 +62,7 @@ func TestMain(m *testing.M) {
 func newTestBus(t *testing.T) *RedisEventBus {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	bus := NewRedisEventBus(ctx, testRedisClient, discardLogger())
+	bus := NewRedisEventBus(ctx, testRedisClient, testutil.DiscardLogger())
 	t.Cleanup(func() {
 		bus.Close()
 		cancel()
@@ -162,7 +163,7 @@ func TestRedisEventBus_Unsubscribe(t *testing.T) {
 }
 
 func TestRedisEventBus_Close(t *testing.T) {
-	bus := NewRedisEventBus(t.Context(), testRedisClient, discardLogger())
+	bus := NewRedisEventBus(t.Context(), testRedisClient, testutil.DiscardLogger())
 	time.Sleep(100 * time.Millisecond)
 
 	ch1 := bus.Subscribe("sub-1")
@@ -192,7 +193,7 @@ func TestRedisEventBus_DropsSlowSubscriber(t *testing.T) {
 	bus.Publish(Event{Type: EventJobFailed, JobID: 999})
 	time.Sleep(500 * time.Millisecond)
 
-	assert.GreaterOrEqual(t, bus.DroppedCount(), int64(1),
+	assert.GreaterOrEqual(t, bus.dropped.Load(), int64(1),
 		"at least one event should have been dropped for the slow subscriber")
 }
 

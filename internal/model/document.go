@@ -17,6 +17,18 @@ const (
 	DocumentStatusFailed   DocumentStatus = "failed"
 )
 
+// ValidFileTypes is the canonical set of document file types accepted by the
+// system. Both REST and MCP handlers reference this set for search-filter
+// validation and write-path whitelisting.
+var ValidFileTypes = map[string]bool{
+	"markdown": true,
+	"pdf":      true,
+	"docx":     true,
+	"xlsx":     true,
+	"html":     true,
+	"epub":     true,
+}
+
 // Document represents a row in the "documents" table.
 type Document struct {
 	ID                   int64          `db:"id" json:"id"`
