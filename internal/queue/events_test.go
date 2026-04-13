@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/c-premus/documcp/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -13,7 +14,7 @@ import (
 func TestNewEventBus(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	require.NotNil(t, eb)
 	assert.NotNil(t, eb.subscribers)
 	assert.Empty(t, eb.subscribers)
@@ -22,7 +23,7 @@ func TestNewEventBus(t *testing.T) {
 func TestEventBus_Subscribe(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	ch := eb.Subscribe("sub-1")
 
 	require.NotNil(t, ch)
@@ -32,7 +33,7 @@ func TestEventBus_Subscribe(t *testing.T) {
 func TestEventBus_Subscribe_multipleSubscribers(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	ch1 := eb.Subscribe("sub-1")
 	ch2 := eb.Subscribe("sub-2")
 
@@ -44,7 +45,7 @@ func TestEventBus_Subscribe_multipleSubscribers(t *testing.T) {
 func TestEventBus_Publish_deliversToSubscriber(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	ch := eb.Subscribe("sub-1")
 
 	event := Event{
@@ -71,7 +72,7 @@ func TestEventBus_Publish_deliversToSubscriber(t *testing.T) {
 func TestEventBus_Publish_deliversToMultipleSubscribers(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	ch1 := eb.Subscribe("sub-1")
 	ch2 := eb.Subscribe("sub-2")
 	ch3 := eb.Subscribe("sub-3")
@@ -99,7 +100,7 @@ func TestEventBus_Publish_deliversToMultipleSubscribers(t *testing.T) {
 func TestEventBus_Unsubscribe(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	ch := eb.Subscribe("sub-1")
 
 	eb.Unsubscribe("sub-1")
@@ -117,7 +118,7 @@ func TestEventBus_Unsubscribe(t *testing.T) {
 func TestEventBus_Unsubscribe_nonexistent(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	// Should not panic when unsubscribing a non-existent ID.
 	assert.NotPanics(t, func() {
 		eb.Unsubscribe("does-not-exist")
@@ -127,7 +128,7 @@ func TestEventBus_Unsubscribe_nonexistent(t *testing.T) {
 func TestEventBus_Unsubscribe_removesFromMap(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	eb.Subscribe("sub-1")
 	eb.Subscribe("sub-2")
 
@@ -143,7 +144,7 @@ func TestEventBus_Unsubscribe_removesFromMap(t *testing.T) {
 func TestEventBus_Publish_dropsEventForSlowSubscriber(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	ch := eb.Subscribe("slow")
 
 	// Fill the channel buffer (capacity is 64).
@@ -179,7 +180,7 @@ func TestEventBus_Publish_dropsEventForSlowSubscriber(t *testing.T) {
 func TestEventBus_Publish_noSubscribersDoesNotPanic(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	assert.NotPanics(t, func() {
 		eb.Publish(Event{Type: EventJobCompleted, JobID: 1})
 	})
@@ -188,7 +189,7 @@ func TestEventBus_Publish_noSubscribersDoesNotPanic(t *testing.T) {
 func TestEventBus_ConcurrentPublishSubscribe(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	const numGoroutines = 20
 	const numEvents = 50
 
@@ -235,7 +236,7 @@ func TestEventBus_Close(t *testing.T) {
 	t.Run("closes all subscriber channels", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus(discardLogger())
+		eb := NewEventBus(testutil.DiscardLogger())
 		ch1 := eb.Subscribe("sub-1")
 		ch2 := eb.Subscribe("sub-2")
 		ch3 := eb.Subscribe("sub-3")
@@ -258,7 +259,7 @@ func TestEventBus_Close(t *testing.T) {
 	t.Run("empties the subscriber map", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus(discardLogger())
+		eb := NewEventBus(testutil.DiscardLogger())
 		eb.Subscribe("sub-a")
 		eb.Subscribe("sub-b")
 
@@ -272,14 +273,14 @@ func TestEventBus_Close(t *testing.T) {
 	t.Run("close on empty bus does not panic", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus(discardLogger())
+		eb := NewEventBus(testutil.DiscardLogger())
 		assert.NotPanics(t, func() { eb.Close() })
 	})
 
 	t.Run("publish after close does not panic or block", func(t *testing.T) {
 		t.Parallel()
 
-		eb := NewEventBus(discardLogger())
+		eb := NewEventBus(testutil.DiscardLogger())
 		eb.Subscribe("sub-1")
 		eb.Close()
 
@@ -312,50 +313,10 @@ func TestEventType_constants(t *testing.T) {
 	}
 }
 
-func TestEventBus_DroppedCount(t *testing.T) {
-	t.Parallel()
-
-	t.Run("zero when no events dropped", func(t *testing.T) {
-		t.Parallel()
-
-		eb := NewEventBus(discardLogger())
-		ch := eb.Subscribe("sub-1")
-
-		eb.Publish(Event{Type: EventJobCompleted, JobID: 1})
-
-		// Drain the event so the channel is not full.
-		<-ch
-
-		assert.Equal(t, int64(0), eb.DroppedCount())
-	})
-
-	t.Run("increments for each dropped event per subscriber", func(t *testing.T) {
-		t.Parallel()
-
-		eb := NewEventBus(discardLogger())
-		eb.Subscribe("slow-1")
-		eb.Subscribe("slow-2")
-
-		// Fill both subscriber buffers.
-		for i := range eventBusBufferSize {
-			eb.Publish(Event{JobID: int64(i), Type: EventJobDispatched})
-		}
-		assert.Equal(t, int64(0), eb.DroppedCount(), "no drops while buffers have capacity")
-
-		// One more publish should drop for both subscribers.
-		eb.Publish(Event{JobID: 999, Type: EventJobFailed})
-		assert.Equal(t, int64(2), eb.DroppedCount(), "one drop per slow subscriber")
-
-		// Another publish drops two more.
-		eb.Publish(Event{JobID: 1000, Type: EventJobFailed})
-		assert.Equal(t, int64(4), eb.DroppedCount(), "cumulative drops across publishes")
-	})
-}
-
 func TestEventBus_Subscribe_duplicateID(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	ch1 := eb.Subscribe("dup")
 	ch2 := eb.Subscribe("dup")
 
@@ -387,7 +348,7 @@ func TestEventBus_Subscribe_duplicateID(t *testing.T) {
 func TestEventBus_Unsubscribe_thenPublish(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	ch := eb.Subscribe("sub-1")
 	eb.Subscribe("sub-2")
 
@@ -409,7 +370,7 @@ func TestEventBus_Unsubscribe_thenPublish(t *testing.T) {
 func TestEventBus_ResubscribeAfterUnsubscribe(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	ch1 := eb.Subscribe("sub-1")
 	eb.Unsubscribe("sub-1")
 
@@ -434,7 +395,7 @@ func TestEventBus_ResubscribeAfterUnsubscribe(t *testing.T) {
 func TestEventBus_Close_idempotent(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	eb.Subscribe("sub-1")
 	eb.Subscribe("sub-2")
 
@@ -453,7 +414,7 @@ func TestEventBus_Close_idempotent(t *testing.T) {
 func TestEventBus_ConcurrentSubscribeUnsubscribe(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	const iterations = 100
 
 	var wg sync.WaitGroup
@@ -578,7 +539,7 @@ func TestExtractDocumentUserID(t *testing.T) {
 func TestEventBus_Publish_eventFieldsPreserved(t *testing.T) {
 	t.Parallel()
 
-	eb := NewEventBus(discardLogger())
+	eb := NewEventBus(testutil.DiscardLogger())
 	ch := eb.Subscribe("sub-1")
 
 	now := time.Now()

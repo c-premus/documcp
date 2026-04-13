@@ -33,18 +33,7 @@ func requireMCPScope(ctx context.Context, scope string) error {
 	return errInsufficientScope
 }
 
-// validFileTypes is the whitelist of allowed document file types.
-var validFileTypes = map[string]bool{
-	"markdown": true,
-	"pdf":      true,
-	"docx":     true,
-	"xlsx":     true,
-	"html":     true,
-	"epub":     true,
-}
-
 // isValidFileType returns true if the file type is in the whitelist.
 func isValidFileType(ft string) bool {
-	return validFileTypes[strings.ToLower(ft)]
+	return model.ValidFileTypes[strings.ToLower(ft)]
 }
-

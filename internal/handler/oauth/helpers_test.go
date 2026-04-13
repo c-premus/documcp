@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"log/slog"
 	"net/http"
 	"testing"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/c-premus/documcp/internal/auth/oauth"
 	"github.com/c-premus/documcp/internal/config"
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/testutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -269,10 +269,6 @@ func (m *mockSessionStore) Save(_ *http.Request, _ http.ResponseWriter, _ *sessi
 // Test fixture helpers
 // ---------------------------------------------------------------------------
 
-func discardLogger() *slog.Logger {
-	return slog.New(slog.DiscardHandler)
-}
-
 func defaultOAuthConfig() config.OAuthConfig {
 	return config.OAuthConfig{
 		AuthCodeLifetime:        10 * time.Minute,
@@ -291,13 +287,13 @@ func newHandlerWithRepo(repo *mockOAuthRepo) (*Handler, *mockSessionStore) {
 
 func newHandlerWithRepoAndConfig(repo *mockOAuthRepo, oauthCfg config.OAuthConfig) (*Handler, *mockSessionStore) {
 	store := newMockSessionStore()
-	svc := oauth.NewService(repo, oauthCfg, "https://example.com", discardLogger())
+	svc := oauth.NewService(repo, oauthCfg, "https://example.com", testutil.DiscardLogger())
 	h := New(Config{
 		Service:      svc,
 		SessionStore: store,
 		OAuthCfg:     oauthCfg,
 		AppURL:       "https://example.com",
-		Logger:       discardLogger(),
+		Logger:       testutil.DiscardLogger(),
 	})
 	return h, store
 }

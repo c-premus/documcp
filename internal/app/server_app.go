@@ -149,10 +149,12 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	documentH := apihandler.NewDocumentHandler(documentPipeline, f.DocumentRepo, f.BlobStore, f.WorkerTempDir, logger)
 	searchH := apihandler.NewSearchHandler(f.Searcher, f.SearchQueryRepo, f.DocumentRepo, logger)
 	zimH := apihandler.NewZimHandler(f.ZimArchiveRepo, &apihandler.KiwixFactoryAdapter{Factory: f.KiwixFactory}, logger)
-	gitTemplateH := apihandler.NewGitTemplateHandler(f.GitTemplateRepo, riverClient, logger, f.Encryptor != nil)
+	gitTemplateSvc := service.NewGitTemplateService(f.GitTemplateRepo, riverClient, f.Encryptor, logger)
+	gitTemplateH := apihandler.NewGitTemplateHandler(gitTemplateSvc, f.GitTemplateRepo, logger)
 	externalServiceH := apihandler.NewExternalServiceHandler(externalServiceSvc, f.ExternalServiceRepo, riverClient, f.KiwixFactory, f.ControlBus, logger)
 	userH := apihandler.NewUserHandler(f.OAuthRepo, logger)
-	oauthClientH := apihandler.NewOAuthClientHandler(f.OAuthRepo, logger)
+	oauthClientSvc := service.NewOAuthClientService(f.OAuthRepo, logger)
+	oauthClientH := apihandler.NewOAuthClientHandler(f.OAuthRepo, oauthClientSvc, logger)
 
 	// --- Auth & SPA Handlers ---
 	authH := apihandler.NewAuthHandler(logger)
@@ -193,10 +195,10 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		Logger:              logger,
 		DocumentService:     documentService,
 		DocumentRepo:        f.DocumentRepo,
-		SearchQueryRepo:     f.SearchQueryRepo,
 		ExternalServiceRepo: f.ExternalServiceRepo,
 		ZimArchiveRepo:      f.ZimArchiveRepo,
 		GitTemplateRepo:     f.GitTemplateRepo,
+		GitTemplateService:  gitTemplateSvc,
 		ZimEnabled:          true,
 		GitTemplatesEnabled: true,
 

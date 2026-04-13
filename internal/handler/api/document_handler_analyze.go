@@ -278,7 +278,7 @@ func metadataSubjects(metadata map[string]any) []string {
 	return tags
 }
 
-// detectLanguage is a placeholder that returns "en".
+// TODO: implement language detection (currently hardcoded to "en").
 func detectLanguage(_ string) string {
 	return "en"
 }

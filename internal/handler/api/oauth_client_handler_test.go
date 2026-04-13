@@ -14,6 +14,8 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/service"
+	"github.com/c-premus/documcp/internal/testutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -71,6 +73,15 @@ func (m *mockOAuthClientRepo) DeleteScopeGrant(ctx context.Context, id int64) er
 	return nil
 }
 
+// newTestOAuthClientHandler creates an OAuthClientHandler with the mock repo
+// wired into both the handler (for List/Delete/Show/ScopeGrants) and the
+// service (for Create/RegisterClient).
+func newTestOAuthClientHandler(repo *mockOAuthClientRepo) *OAuthClientHandler {
+	logger := testutil.DiscardLogger()
+	svc := service.NewOAuthClientService(repo, logger)
+	return NewOAuthClientHandler(repo, svc, logger)
+}
+
 // ---------------------------------------------------------------------------
 // Tests: List
 // ---------------------------------------------------------------------------
@@ -94,7 +105,7 @@ func TestOAuthClientHandler_List_Success(t *testing.T) {
 		},
 	}
 
-	h := NewOAuthClientHandler(repo, discardLogger())
+	h := newTestOAuthClientHandler(repo)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -130,7 +141,7 @@ func TestOAuthClientHandler_List_Error(t *testing.T) {
 		},
 	}
 
-	h := NewOAuthClientHandler(repo, discardLogger())
+	h := newTestOAuthClientHandler(repo)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -156,7 +167,7 @@ func TestOAuthClientHandler_Create_Success(t *testing.T) {
 		},
 	}
 
-	h := NewOAuthClientHandler(repo, discardLogger())
+	h := newTestOAuthClientHandler(repo)
 
 	body := `{"client_name":"My App","redirect_uris":["https://example.com/cb"]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/admin/oauth-clients", bytes.NewBufferString(body))
@@ -185,7 +196,7 @@ func TestOAuthClientHandler_Create_Success(t *testing.T) {
 func TestOAuthClientHandler_Create_MissingName(t *testing.T) {
 	t.Parallel()
 
-	h := NewOAuthClientHandler(&mockOAuthClientRepo{}, discardLogger())
+	h := newTestOAuthClientHandler(&mockOAuthClientRepo{})
 
 	body := `{"redirect_uris":["https://example.com/cb"]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/admin/oauth-clients", bytes.NewBufferString(body))
@@ -201,7 +212,7 @@ func TestOAuthClientHandler_Create_MissingName(t *testing.T) {
 func TestOAuthClientHandler_Create_InvalidJSON(t *testing.T) {
 	t.Parallel()
 
-	h := NewOAuthClientHandler(&mockOAuthClientRepo{}, discardLogger())
+	h := newTestOAuthClientHandler(&mockOAuthClientRepo{})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/admin/oauth-clients", bytes.NewBufferString("{bad"))
 	rec := httptest.NewRecorder()
@@ -222,7 +233,7 @@ func TestOAuthClientHandler_Create_RepoError(t *testing.T) {
 		},
 	}
 
-	h := NewOAuthClientHandler(repo, discardLogger())
+	h := newTestOAuthClientHandler(repo)
 
 	body := `{"client_name":"Fail App"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/admin/oauth-clients", bytes.NewBufferString(body))
@@ -242,7 +253,7 @@ func TestOAuthClientHandler_Create_RepoError(t *testing.T) {
 func TestOAuthClientHandler_Delete_Success(t *testing.T) {
 	t.Parallel()
 
-	h := NewOAuthClientHandler(&mockOAuthClientRepo{}, discardLogger())
+	h := newTestOAuthClientHandler(&mockOAuthClientRepo{})
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "1")
@@ -260,7 +271,7 @@ func TestOAuthClientHandler_Delete_Success(t *testing.T) {
 func TestOAuthClientHandler_Delete_InvalidID(t *testing.T) {
 	t.Parallel()
 
-	h := NewOAuthClientHandler(&mockOAuthClientRepo{}, discardLogger())
+	h := newTestOAuthClientHandler(&mockOAuthClientRepo{})
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "abc")
@@ -284,7 +295,7 @@ func TestOAuthClientHandler_Delete_Error(t *testing.T) {
 		},
 	}
 
-	h := NewOAuthClientHandler(repo, discardLogger())
+	h := newTestOAuthClientHandler(repo)
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "1")
@@ -308,7 +319,7 @@ func TestOAuthClientHandler_Delete_NotFound(t *testing.T) {
 		},
 	}
 
-	h := NewOAuthClientHandler(repo, discardLogger())
+	h := newTestOAuthClientHandler(repo)
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "999")
@@ -351,7 +362,7 @@ func TestOAuthClientHandler_Show_Success(t *testing.T) {
 		},
 	}
 
-	h := NewOAuthClientHandler(repo, discardLogger())
+	h := newTestOAuthClientHandler(repo)
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "1")
@@ -382,7 +393,7 @@ func TestOAuthClientHandler_Show_Success(t *testing.T) {
 func TestOAuthClientHandler_Show_InvalidID(t *testing.T) {
 	t.Parallel()
 
-	h := NewOAuthClientHandler(&mockOAuthClientRepo{}, discardLogger())
+	h := newTestOAuthClientHandler(&mockOAuthClientRepo{})
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "abc")
@@ -406,7 +417,7 @@ func TestOAuthClientHandler_Show_NotFound(t *testing.T) {
 		},
 	}
 
-	h := NewOAuthClientHandler(repo, discardLogger())
+	h := newTestOAuthClientHandler(repo)
 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "999")

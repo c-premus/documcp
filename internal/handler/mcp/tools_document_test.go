@@ -160,7 +160,7 @@ func TestTagNames(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tagNames(tt.tags)
+			got := dto.TagNames(tt.tags)
 
 			if len(got) != len(tt.want) {
 				t.Fatalf("len = %d, want %d", len(got), len(tt.want))
@@ -209,9 +209,9 @@ func TestFormatNullTime(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := formatNullTime(tt.t)
+			got := dto.FormatNullTime(tt.t)
 			if got != tt.want {
-				t.Errorf("formatNullTime() = %q, want %q", got, tt.want)
+				t.Errorf("dto.FormatNullTime() = %q, want %q", got, tt.want)
 			}
 		})
 	}

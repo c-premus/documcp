@@ -2,12 +2,14 @@ package api //nolint:revive // package name matches REST API handler directory c
 
 import (
 	"context"
+	"fmt"
 	"html"
 	"log/slog"
 	"net/http"
 	"strings"
 
 	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
+	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/search"
 )
@@ -53,8 +55,8 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusBadRequest, "query parameter 'q' is required")
 		return
 	}
-	if len(query) > 500 {
-		errorResponse(w, http.StatusBadRequest, "query must be at most 500 characters")
+	if len(query) > search.MaxQueryLength {
+		errorResponse(w, http.StatusBadRequest, fmt.Sprintf("query must be at most %d characters", search.MaxQueryLength))
 		return
 	}
 
@@ -76,13 +78,11 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if ft := r.URL.Query().Get("file_type"); ft != "" {
-		switch ft {
-		case "pdf", "docx", "xlsx", "html", "markdown":
-			params.FileType = ft
-		default:
+		if !model.ValidFileTypes[ft] {
 			errorResponse(w, http.StatusBadRequest, "invalid file_type filter")
 			return
 		}
+		params.FileType = ft
 	}
 
 	resp, err := h.searcher.Search(r.Context(), params)
@@ -111,8 +111,8 @@ func (h *SearchHandler) FederatedSearch(w http.ResponseWriter, r *http.Request) 
 		errorResponse(w, http.StatusBadRequest, "query parameter 'q' is required")
 		return
 	}
-	if len(query) > 500 {
-		errorResponse(w, http.StatusBadRequest, "query must be at most 500 characters")
+	if len(query) > search.MaxQueryLength {
+		errorResponse(w, http.StatusBadRequest, fmt.Sprintf("query must be at most %d characters", search.MaxQueryLength))
 		return
 	}
 

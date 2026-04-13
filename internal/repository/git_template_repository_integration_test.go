@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"testing"
 
+	"github.com/c-premus/documcp/internal/testutil"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -16,7 +18,7 @@ import (
 func TestGitTemplateRepository_Create(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewGitTemplateRepository(testPool, discardLogger(), nil)
+	repo := NewGitTemplateRepository(testPool, testutil.DiscardLogger(), nil)
 
 	tmpl := &model.GitTemplate{
 		UUID:          testUUID("git-tmpl-create-001"),
@@ -36,7 +38,7 @@ func TestGitTemplateRepository_Create(t *testing.T) {
 	assert.True(t, tmpl.UpdatedAt.Valid, "UpdatedAt should be set")
 
 	t.Run("with user_id", func(t *testing.T) {
-		oauthRepo := NewOAuthRepository(testPool, discardLogger())
+		oauthRepo := NewOAuthRepository(testPool, testutil.DiscardLogger())
 		user := &model.User{Name: "Template Owner", Email: "owner@example.com"}
 		require.NoError(t, oauthRepo.CreateUser(ctx, user))
 
@@ -95,7 +97,7 @@ func TestGitTemplateRepository_Create(t *testing.T) {
 func TestGitTemplateRepository_FindByUUID(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewGitTemplateRepository(testPool, discardLogger(), nil)
+	repo := NewGitTemplateRepository(testPool, testutil.DiscardLogger(), nil)
 
 	tmpl := &model.GitTemplate{
 		UUID:          testUUID("git-tmpl-find-uuid"),
@@ -153,38 +155,10 @@ func TestGitTemplateRepository_FindByUUID(t *testing.T) {
 	})
 }
 
-func TestGitTemplateRepository_FindBySlug(t *testing.T) {
-	truncateAll(t)
-	ctx := context.Background()
-	repo := NewGitTemplateRepository(testPool, discardLogger(), nil)
-
-	tmpl := &model.GitTemplate{
-		UUID:          testUUID("git-tmpl-find-slug"),
-		Name:          "Find By Slug Template",
-		Slug:          "find-by-slug-template",
-		RepositoryURL: "https://github.com/example/find-slug",
-		Branch:        "main",
-		Status:        model.GitTemplateStatusSynced,
-		IsPublic:      true,
-		IsEnabled:     true,
-	}
-	require.NoError(t, repo.Create(ctx, tmpl))
-
-	found, err := repo.FindBySlug(ctx, "find-by-slug-template")
-	require.NoError(t, err)
-	assert.Equal(t, tmpl.ID, found.ID)
-	assert.Equal(t, "find-by-slug-template", found.Slug)
-
-	t.Run("not found", func(t *testing.T) {
-		_, err := repo.FindBySlug(ctx, "nonexistent-slug")
-		assert.Error(t, err)
-	})
-}
-
 func TestGitTemplateRepository_List(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewGitTemplateRepository(testPool, discardLogger(), nil)
+	repo := NewGitTemplateRepository(testPool, testutil.DiscardLogger(), nil)
 
 	// Create 3 enabled templates: 2 backend, 1 frontend.
 	templates := []model.GitTemplate{
@@ -277,94 +251,10 @@ func TestGitTemplateRepository_List(t *testing.T) {
 	})
 }
 
-func TestGitTemplateRepository_ListAll(t *testing.T) {
-	truncateAll(t)
-	ctx := context.Background()
-	repo := NewGitTemplateRepository(testPool, discardLogger(), nil)
-
-	// Create 3 enabled templates.
-	templates := []model.GitTemplate{
-		{
-			UUID:          testUUID("git-tmpl-listall-1"),
-			Name:          "Backend Service",
-			Slug:          "backend-service",
-			RepositoryURL: "https://github.com/example/be-svc",
-			Branch:        "main",
-			Status:        model.GitTemplateStatusSynced,
-			IsPublic:      true,
-			IsEnabled:     true,
-			Description:   sql.NullString{String: "A backend microservice template", Valid: true},
-		},
-		{
-			UUID:          testUUID("git-tmpl-listall-2"),
-			Name:          "Frontend App",
-			Slug:          "frontend-app",
-			RepositoryURL: "https://github.com/example/fe-app",
-			Branch:        "main",
-			Status:        model.GitTemplateStatusSynced,
-			IsPublic:      true,
-			IsEnabled:     true,
-		},
-		{
-			UUID:          testUUID("git-tmpl-listall-3"),
-			Name:          "CLI Tool",
-			Slug:          "cli-tool",
-			RepositoryURL: "https://github.com/example/cli",
-			Branch:        "main",
-			Status:        model.GitTemplateStatusSynced,
-			IsPublic:      true,
-			IsEnabled:     true,
-		},
-	}
-	for i := range templates {
-		require.NoError(t, repo.Create(ctx, &templates[i]))
-	}
-
-	// Create a disabled template (should be included in ListAll).
-	disabledTmpl := &model.GitTemplate{
-		UUID:          testUUID("git-tmpl-listall-disabled"),
-		Name:          "Disabled Backend",
-		Slug:          "disabled-backend",
-		RepositoryURL: "https://github.com/example/disabled-be",
-		Branch:        "main",
-		Status:        model.GitTemplateStatusPending,
-		IsPublic:      true,
-		IsEnabled:     false,
-		Description:   sql.NullString{String: "A disabled backend template", Valid: true},
-	}
-	require.NoError(t, repo.Create(ctx, disabledTmpl))
-
-	// Create a soft-deleted template (should be excluded from ListAll).
-	deletedTmpl := &model.GitTemplate{
-		UUID:          testUUID("git-tmpl-listall-deleted"),
-		Name:          "Deleted Template",
-		Slug:          "deleted-listall",
-		RepositoryURL: "https://github.com/example/deleted-listall",
-		Branch:        "main",
-		Status:        model.GitTemplateStatusSynced,
-		IsPublic:      true,
-		IsEnabled:     true,
-	}
-	require.NoError(t, repo.Create(ctx, deletedTmpl))
-	require.NoError(t, repo.SoftDelete(ctx, deletedTmpl.ID))
-
-	t.Run("includes disabled excludes soft-deleted", func(t *testing.T) {
-		results, err := repo.ListAll(ctx, "", 0)
-		require.NoError(t, err)
-		assert.Len(t, results, 4, "should include disabled, exclude soft-deleted")
-	})
-
-	t.Run("search by query", func(t *testing.T) {
-		results, err := repo.ListAll(ctx, "backend", 0)
-		require.NoError(t, err)
-		assert.Len(t, results, 2, "should match name and description containing 'backend'")
-	})
-}
-
 func TestGitTemplateRepository_Count(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewGitTemplateRepository(testPool, discardLogger(), nil)
+	repo := NewGitTemplateRepository(testPool, testutil.DiscardLogger(), nil)
 
 	// Create 3 templates.
 	for i := range 3 {
@@ -394,7 +284,7 @@ func TestGitTemplateRepository_Count(t *testing.T) {
 func TestGitTemplateRepository_Update(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewGitTemplateRepository(testPool, discardLogger(), nil)
+	repo := NewGitTemplateRepository(testPool, testutil.DiscardLogger(), nil)
 
 	tmpl := &model.GitTemplate{
 		UUID:          testUUID("git-tmpl-update"),
@@ -440,7 +330,7 @@ func TestGitTemplateRepository_Update(t *testing.T) {
 func TestGitTemplateRepository_SoftDelete(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewGitTemplateRepository(testPool, discardLogger(), nil)
+	repo := NewGitTemplateRepository(testPool, testutil.DiscardLogger(), nil)
 
 	tmpl := &model.GitTemplate{
 		UUID:          testUUID("git-tmpl-softdelete"),
@@ -471,7 +361,7 @@ func TestGitTemplateRepository_SoftDelete(t *testing.T) {
 func TestGitTemplateRepository_UpdateSyncStatus(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewGitTemplateRepository(testPool, discardLogger(), nil)
+	repo := NewGitTemplateRepository(testPool, testutil.DiscardLogger(), nil)
 
 	tmpl := &model.GitTemplate{
 		UUID:          testUUID("git-tmpl-sync"),
@@ -518,7 +408,7 @@ func TestGitTemplateRepository_UpdateSyncStatus(t *testing.T) {
 func TestGitTemplateRepository_ReplaceFiles(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewGitTemplateRepository(testPool, discardLogger(), nil)
+	repo := NewGitTemplateRepository(testPool, testutil.DiscardLogger(), nil)
 
 	tmpl := &model.GitTemplate{
 		UUID:          testUUID("git-tmpl-replacefiles"),
@@ -591,7 +481,7 @@ func TestGitTemplateRepository_ReplaceFiles(t *testing.T) {
 func TestGitTemplateRepository_FilesForTemplate(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewGitTemplateRepository(testPool, discardLogger(), nil)
+	repo := NewGitTemplateRepository(testPool, testutil.DiscardLogger(), nil)
 
 	tmpl := &model.GitTemplate{
 		UUID:          testUUID("git-tmpl-files"),
@@ -665,7 +555,7 @@ func TestGitTemplateRepository_FilesForTemplate(t *testing.T) {
 func TestGitTemplateRepository_FindFileByPath(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewGitTemplateRepository(testPool, discardLogger(), nil)
+	repo := NewGitTemplateRepository(testPool, testutil.DiscardLogger(), nil)
 
 	tmpl := &model.GitTemplate{
 		UUID:          testUUID("git-tmpl-findfile"),
@@ -718,7 +608,7 @@ func TestGitTemplateRepository_FindFileByPath(t *testing.T) {
 func TestGitTemplateRepository_Search(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewGitTemplateRepository(testPool, discardLogger(), nil)
+	repo := NewGitTemplateRepository(testPool, testutil.DiscardLogger(), nil)
 
 	templates := []model.GitTemplate{
 		{

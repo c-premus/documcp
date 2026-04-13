@@ -1,68 +1,42 @@
 package api
 
 import (
-	"bytes"
 	"context"
-	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
-	"github.com/riverqueue/river"
-	"github.com/riverqueue/river/rivertype"
 
-	"github.com/c-premus/documcp/internal/archive"
 	gitclient "github.com/c-premus/documcp/internal/client/git"
 	"github.com/c-premus/documcp/internal/model"
-	"github.com/c-premus/documcp/internal/queue"
-	"github.com/c-premus/documcp/internal/security"
-	"github.com/c-premus/documcp/internal/stringutil"
+	"github.com/c-premus/documcp/internal/service"
 )
 
-// gitTemplateRepo defines the methods used by GitTemplateHandler -- defined where consumed.
-type gitTemplateRepo interface {
-	List(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error)
-	CountFiltered(ctx context.Context, category string) (int, error)
+// gitTemplateSearchRepo defines the search method the handler still needs directly.
+type gitTemplateSearchRepo interface {
 	Search(ctx context.Context, query, category string, limit int) ([]model.GitTemplate, error)
-	FindByUUID(ctx context.Context, uuid string) (*model.GitTemplate, error)
-	Create(ctx context.Context, tmpl *model.GitTemplate) error
-	Update(ctx context.Context, tmpl *model.GitTemplate) error
-	SoftDelete(ctx context.Context, id int64) error
-	FilesForTemplate(ctx context.Context, templateID int64) ([]model.GitTemplateFile, error)
-	FindFileByPath(ctx context.Context, templateID int64, path string) (*model.GitTemplateFile, error)
-}
-
-// gitTemplateJobInserter enqueues background jobs. Defined where consumed.
-type gitTemplateJobInserter interface {
-	Insert(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
 }
 
 // GitTemplateHandler handles REST API endpoints for git templates.
 type GitTemplateHandler struct {
-	repo              gitTemplateRepo
-	inserter          gitTemplateJobInserter
-	logger            *slog.Logger
-	encryptionEnabled bool
+	service *service.GitTemplateService
+	repo    gitTemplateSearchRepo
+	logger  *slog.Logger
 }
 
 // NewGitTemplateHandler creates a new GitTemplateHandler.
 func NewGitTemplateHandler(
-	repo gitTemplateRepo,
-	inserter gitTemplateJobInserter,
+	svc *service.GitTemplateService,
+	repo gitTemplateSearchRepo,
 	logger *slog.Logger,
-	encryptionEnabled bool,
 ) *GitTemplateHandler {
 	return &GitTemplateHandler{
-		repo:              repo,
-		inserter:          inserter,
-		logger:            logger,
-		encryptionEnabled: encryptionEnabled,
+		service: svc,
+		repo:    repo,
+		logger:  logger,
 	}
 }
 
@@ -97,21 +71,12 @@ type gitTemplateFileResponse struct {
 	ContentHash string `json:"content_hash,omitempty"`
 }
 
-
 // List handles GET /api/git-templates -- list git templates with optional filters.
 func (h *GitTemplateHandler) List(w http.ResponseWriter, r *http.Request) {
 	category := r.URL.Query().Get("category")
-
 	perPage, offset := parsePaginationParam(r, "per_page", 50, 100)
 
-	total, err := h.repo.CountFiltered(r.Context(), category)
-	if err != nil {
-		h.logger.Error("counting git templates", "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to count git templates")
-		return
-	}
-
-	templates, err := h.repo.List(r.Context(), category, perPage, offset)
+	templates, total, err := h.service.List(r.Context(), category, perPage, offset)
 	if err != nil {
 		h.logger.Error("listing git templates", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to list git templates")
@@ -158,14 +123,9 @@ func (h *GitTemplateHandler) Search(w http.ResponseWriter, r *http.Request) {
 func (h *GitTemplateHandler) Show(w http.ResponseWriter, r *http.Request) {
 	tmplUUID := chi.URLParam(r, "uuid")
 
-	tmpl, err := h.repo.FindByUUID(r.Context(), tmplUUID)
+	tmpl, err := h.service.FindByUUID(r.Context(), tmplUUID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			errorResponse(w, http.StatusNotFound, "git template not found")
-			return
-		}
-		h.logger.Error("finding git template", "uuid", tmplUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to find git template")
+		h.handleServiceError(w, err, "finding git template", "uuid", tmplUUID)
 		return
 	}
 
@@ -200,61 +160,22 @@ func (h *GitTemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusBadRequest, "repository_url is required")
 		return
 	}
-	if err := security.ValidateExternalURL(body.RepositoryURL, true); err != nil {
-		h.logger.Warn("SSRF validation rejected URL", "url", body.RepositoryURL, "error", err)
-		errorResponse(w, http.StatusBadRequest, "Invalid repository URL")
-		return
-	}
 
-	branch := body.Branch
-	if branch == "" {
-		branch = "main"
-	}
-
-	tmpl := &model.GitTemplate{
-		UUID:          uuid.New().String(),
+	input := service.CreateGitTemplateInput{
 		Name:          body.Name,
-		Slug:          stringutil.Slugify(body.Name),
+		Description:   body.Description,
 		RepositoryURL: body.RepositoryURL,
-		Branch:        branch,
+		Branch:        body.Branch,
+		GitToken:      body.GitToken,
+		Category:      body.Category,
+		Tags:          body.Tags,
 		IsPublic:      body.IsPublic,
-		IsEnabled:     true,
-		Status:        model.GitTemplateStatusPending,
 	}
 
-	if body.Description != "" {
-		tmpl.Description = sql.NullString{String: body.Description, Valid: true}
-	}
-	if body.GitToken != "" {
-		if !h.encryptionEnabled {
-			errorResponse(w, http.StatusUnprocessableEntity, "git tokens require encryption; set ENCRYPTION_KEY")
-			return
-		}
-		tmpl.GitToken = sql.NullString{String: body.GitToken, Valid: true}
-	}
-	if body.Category != "" {
-		tmpl.Category = sql.NullString{String: body.Category, Valid: true}
-	}
-	if len(body.Tags) > 0 {
-		tagsJSON, err := json.Marshal(body.Tags)
-		if err != nil {
-			h.logger.Error("marshaling tags", "error", err)
-			errorResponse(w, http.StatusInternalServerError, "failed to process tags")
-			return
-		}
-		tmpl.Tags = sql.NullString{String: string(tagsJSON), Valid: true}
-	}
-
-	if err := h.repo.Create(r.Context(), tmpl); err != nil {
-		h.logger.Error("creating git template", "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to create git template")
+	tmpl, err := h.service.Create(r.Context(), input)
+	if err != nil {
+		h.handleServiceError(w, err, "creating git template")
 		return
-	}
-
-	if h.inserter != nil {
-		if _, err := h.inserter.Insert(r.Context(), queue.SyncGitTemplatesArgs{}, nil); err != nil {
-			h.logger.Warn("failed to enqueue git template sync after create", "error", err)
-		}
 	}
 
 	jsonResponse(w, http.StatusCreated, map[string]any{
@@ -266,17 +187,6 @@ func (h *GitTemplateHandler) Create(w http.ResponseWriter, r *http.Request) {
 // Update handles PUT /api/git-templates/{uuid} -- partial update of a git template.
 func (h *GitTemplateHandler) Update(w http.ResponseWriter, r *http.Request) {
 	tmplUUID := chi.URLParam(r, "uuid")
-
-	tmpl, err := h.repo.FindByUUID(r.Context(), tmplUUID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			errorResponse(w, http.StatusNotFound, "git template not found")
-			return
-		}
-		h.logger.Error("finding git template for update", "uuid", tmplUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to find git template")
-		return
-	}
 
 	var body struct {
 		Name          string   `json:"name"`
@@ -294,50 +204,35 @@ func (h *GitTemplateHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	input := service.UpdateGitTemplateInput{}
 	if body.Name != "" {
-		tmpl.Name = body.Name
-		tmpl.Slug = stringutil.Slugify(body.Name)
+		input.Name = &body.Name
 	}
 	if body.RepositoryURL != "" {
-		if err := security.ValidateExternalURL(body.RepositoryURL, true); err != nil {
-			h.logger.Warn("SSRF validation rejected URL", "url", body.RepositoryURL, "error", err)
-			errorResponse(w, http.StatusBadRequest, "Invalid repository URL")
-			return
-		}
-		tmpl.RepositoryURL = body.RepositoryURL
+		input.RepositoryURL = &body.RepositoryURL
 	}
 	if body.Description != "" {
-		tmpl.Description = sql.NullString{String: body.Description, Valid: true}
+		input.Description = &body.Description
 	}
 	if body.Branch != "" {
-		tmpl.Branch = body.Branch
+		input.Branch = &body.Branch
 	}
 	if body.GitToken != "" {
-		if !h.encryptionEnabled {
-			errorResponse(w, http.StatusUnprocessableEntity, "git tokens require encryption; set ENCRYPTION_KEY")
-			return
-		}
-		tmpl.GitToken = sql.NullString{String: body.GitToken, Valid: true}
+		input.GitToken = &body.GitToken
 	}
 	if body.Category != "" {
-		tmpl.Category = sql.NullString{String: body.Category, Valid: true}
+		input.Category = &body.Category
 	}
 	if body.Tags != nil {
-		tagsJSON, jsonErr := json.Marshal(body.Tags)
-		if jsonErr != nil {
-			h.logger.Error("marshaling tags for update", "error", jsonErr)
-			errorResponse(w, http.StatusInternalServerError, "failed to process tags")
-			return
-		}
-		tmpl.Tags = sql.NullString{String: string(tagsJSON), Valid: true}
+		input.Tags = &body.Tags
 	}
 	if body.IsPublic != nil {
-		tmpl.IsPublic = *body.IsPublic
+		input.IsPublic = body.IsPublic
 	}
 
-	if err := h.repo.Update(r.Context(), tmpl); err != nil {
-		h.logger.Error("updating git template", "uuid", tmplUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to update git template")
+	tmpl, err := h.service.Update(r.Context(), tmplUUID, input)
+	if err != nil {
+		h.handleServiceError(w, err, "updating git template", "uuid", tmplUUID)
 		return
 	}
 
@@ -351,20 +246,8 @@ func (h *GitTemplateHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *GitTemplateHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	tmplUUID := chi.URLParam(r, "uuid")
 
-	tmpl, err := h.repo.FindByUUID(r.Context(), tmplUUID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			errorResponse(w, http.StatusNotFound, "git template not found")
-			return
-		}
-		h.logger.Error("finding git template for delete", "uuid", tmplUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to find git template")
-		return
-	}
-
-	if err := h.repo.SoftDelete(r.Context(), tmpl.ID); err != nil {
-		h.logger.Error("deleting git template", "uuid", tmplUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to delete git template")
+	if err := h.service.Delete(r.Context(), tmplUUID); err != nil {
+		h.handleServiceError(w, err, "deleting git template", "uuid", tmplUUID)
 		return
 	}
 
@@ -377,26 +260,11 @@ func (h *GitTemplateHandler) Delete(w http.ResponseWriter, r *http.Request) {
 func (h *GitTemplateHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	tmplUUID := chi.URLParam(r, "uuid")
 
-	_, err := h.repo.FindByUUID(r.Context(), tmplUUID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			errorResponse(w, http.StatusNotFound, "git template not found")
-			return
-		}
-		h.logger.Error("finding git template for sync", "uuid", tmplUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to find git template")
+	if err := h.service.EnqueueSync(r.Context(), tmplUUID); err != nil {
+		h.handleServiceError(w, err, "enqueuing git template sync", "uuid", tmplUUID)
 		return
 	}
 
-	if h.inserter == nil {
-		errorResponse(w, http.StatusServiceUnavailable, "job queue not available")
-		return
-	}
-	if _, err := h.inserter.Insert(r.Context(), queue.SyncGitTemplatesArgs{}, nil); err != nil {
-		h.logger.Error("failed to enqueue git template sync", "uuid", tmplUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to enqueue sync job")
-		return
-	}
 	jsonResponse(w, http.StatusAccepted, map[string]any{
 		"message": "Sync queued",
 	})
@@ -406,71 +274,35 @@ func (h *GitTemplateHandler) Sync(w http.ResponseWriter, r *http.Request) {
 func (h *GitTemplateHandler) Structure(w http.ResponseWriter, r *http.Request) {
 	tmplUUID := chi.URLParam(r, "uuid")
 
-	tmpl, err := h.repo.FindByUUID(r.Context(), tmplUUID)
+	structure, err := h.service.GetStructure(r.Context(), tmplUUID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			errorResponse(w, http.StatusNotFound, "git template not found")
-			return
-		}
-		h.logger.Error("finding git template for structure", "uuid", tmplUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to find git template")
+		h.handleServiceError(w, err, "getting template structure", "uuid", tmplUUID)
 		return
 	}
 
-	files, err := h.repo.FilesForTemplate(r.Context(), tmpl.ID)
-	if err != nil {
-		h.logger.Error("listing template files", "uuid", tmplUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to list template files")
-		return
-	}
-
-	fileTree := make([]string, 0, len(files))
-	essentialFiles := make([]string, 0)
-	variableSet := make(map[string]bool)
-
-	fileItems := make([]gitTemplateFileResponse, 0, len(files))
-	for i := range files {
-		f := &files[i]
-		fileTree = append(fileTree, f.Path)
-
-		if f.IsEssential {
-			essentialFiles = append(essentialFiles, f.Path)
-		}
-
-		// Extract {{variables}} from file content.
-		if f.Content.Valid {
-			matches := gitclient.VariablePattern.FindAllStringSubmatch(f.Content.String, -1)
-			for _, match := range matches {
-				variableSet[match[1]] = true
-			}
-		}
-
-		item := gitTemplateFileResponse{
+	fileItems := make([]gitTemplateFileResponse, 0, len(structure.Files))
+	for i := range structure.Files {
+		f := &structure.Files[i]
+		fileItems = append(fileItems, gitTemplateFileResponse{
 			Path:        f.Path,
 			Filename:    f.Filename,
 			SizeBytes:   f.SizeBytes,
 			IsEssential: f.IsEssential,
 			Extension:   nullStringValue(f.Extension),
 			ContentHash: nullStringValue(f.ContentHash),
-		}
-		fileItems = append(fileItems, item)
-	}
-
-	variables := make([]string, 0, len(variableSet))
-	for v := range variableSet {
-		variables = append(variables, v)
+		})
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"data": map[string]any{
-			"uuid":            tmpl.UUID,
-			"name":            tmpl.Name,
-			"file_tree":       fileTree,
-			"essential_files": essentialFiles,
-			"variables":       variables,
+			"uuid":            structure.Template.UUID,
+			"name":            structure.Template.Name,
+			"file_tree":       structure.FileTree,
+			"essential_files": structure.EssentialFiles,
+			"variables":       structure.Variables,
 			"files":           fileItems,
-			"file_count":      tmpl.FileCount,
-			"total_size":      tmpl.TotalSizeBytes,
+			"file_count":      structure.FileCount,
+			"total_size":      structure.TotalSize,
 		},
 	})
 }
@@ -490,55 +322,36 @@ func (h *GitTemplateHandler) ReadFile(w http.ResponseWriter, r *http.Request) {
 		filePath = decoded
 	}
 
-	tmpl, err := h.repo.FindByUUID(r.Context(), tmplUUID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			errorResponse(w, http.StatusNotFound, "git template not found")
-			return
-		}
-		h.logger.Error("finding git template for file read", "uuid", tmplUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to find git template")
-		return
-	}
-
-	file, err := h.repo.FindFileByPath(r.Context(), tmpl.ID, filePath)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			errorResponse(w, http.StatusNotFound, fmt.Sprintf("file %q not found in template", filePath))
-			return
-		}
-		h.logger.Error("finding template file", "uuid", tmplUUID, "path", filePath, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to find template file")
-		return
-	}
-
 	// Parse optional variables from query parameter.
 	variablesJSON := r.URL.Query().Get("variables")
-	content := file.Content.String
-	var unresolved []string
+	var variables map[string]string
 
 	if variablesJSON != "" {
-		vars, parseErr := gitclient.ParseVariablesJSON(variablesJSON)
+		var parseErr error
+		variables, parseErr = gitclient.ParseVariablesJSON(variablesJSON)
 		if parseErr != nil {
 			errorResponse(w, http.StatusBadRequest, "invalid variables JSON")
 			return
 		}
-		if len(vars) > 0 {
-			content, unresolved = gitclient.SubstituteVariables(content, vars)
-		}
+	}
+
+	result, err := h.service.GetFile(r.Context(), tmplUUID, filePath, variables)
+	if err != nil {
+		h.handleServiceError(w, err, "reading template file", "uuid", tmplUUID, "path", filePath)
+		return
 	}
 
 	resp := map[string]any{
 		"data": map[string]any{
-			"path":         file.Path,
-			"filename":     file.Filename,
-			"size_bytes":   file.SizeBytes,
-			"is_essential": file.IsEssential,
-			"content":      content,
+			"path":         result.File.Path,
+			"filename":     result.File.Filename,
+			"size_bytes":   result.File.SizeBytes,
+			"is_essential": result.File.IsEssential,
+			"content":      result.Content,
 		},
 	}
-	if len(unresolved) > 0 {
-		resp["unresolved_variables"] = unresolved
+	if len(result.Unresolved) > 0 {
+		resp["unresolved_variables"] = result.Unresolved
 	}
 
 	jsonResponse(w, http.StatusOK, resp)
@@ -548,68 +361,36 @@ func (h *GitTemplateHandler) ReadFile(w http.ResponseWriter, r *http.Request) {
 func (h *GitTemplateHandler) DeploymentGuide(w http.ResponseWriter, r *http.Request) {
 	tmplUUID := chi.URLParam(r, "uuid")
 
-	tmpl, err := h.repo.FindByUUID(r.Context(), tmplUUID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			errorResponse(w, http.StatusNotFound, "git template not found")
-			return
-		}
-		h.logger.Error("finding git template for deployment guide", "uuid", tmplUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to find git template")
-		return
-	}
-
-	files, err := h.repo.FilesForTemplate(r.Context(), tmpl.ID)
-	if err != nil {
-		h.logger.Error("listing template files for deployment guide", "uuid", tmplUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to list template files")
-		return
-	}
-
 	// Parse optional variables from query parameter.
 	variablesJSON := r.URL.Query().Get("variables")
 	variables, _ := gitclient.ParseVariablesJSON(variablesJSON)
 
-	allUnresolved := make(map[string]bool)
+	guide, err := h.service.GetDeploymentGuide(r.Context(), tmplUUID, variables)
+	if err != nil {
+		h.handleServiceError(w, err, "generating deployment guide", "uuid", tmplUUID)
+		return
+	}
 
 	type deploymentFileResp struct {
 		Path    string `json:"path"`
 		Content string `json:"content"`
 	}
 
-	deploymentFiles := make([]deploymentFileResp, 0)
-	for i := range files {
-		if !files[i].IsEssential {
-			continue
-		}
-		content := files[i].Content.String
-		if len(variables) > 0 {
-			var unresolved []string
-			content, unresolved = gitclient.SubstituteVariables(content, variables)
-			for _, u := range unresolved {
-				allUnresolved[u] = true
-			}
-		}
-		deploymentFiles = append(deploymentFiles, deploymentFileResp{
-			Path:    files[i].Path,
-			Content: content,
+	files := make([]deploymentFileResp, 0, len(guide.Files))
+	for _, f := range guide.Files {
+		files = append(files, deploymentFileResp{
+			Path:    f.Path,
+			Content: f.Content,
 		})
 	}
 
-	unresolvedList := make([]string, 0, len(allUnresolved))
-	for v := range allUnresolved {
-		unresolvedList = append(unresolvedList, v)
-	}
-
-	description := nullStringValue(tmpl.Description)
-
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"data": map[string]any{
-			"template_name":        tmpl.Name,
-			"description":          description,
-			"steps":                []string{"Create the following files in your project directory."},
-			"files":                deploymentFiles,
-			"unresolved_variables": unresolvedList,
+			"template_name":        guide.Template.Name,
+			"description":          nullStringValue(guide.Template.Description),
+			"steps":                guide.Steps,
+			"files":                files,
+			"unresolved_variables": guide.Unresolved,
 		},
 	})
 }
@@ -618,23 +399,12 @@ func (h *GitTemplateHandler) DeploymentGuide(w http.ResponseWriter, r *http.Requ
 func (h *GitTemplateHandler) Download(w http.ResponseWriter, r *http.Request) {
 	tmplUUID := chi.URLParam(r, "uuid")
 
-	tmpl, err := h.repo.FindByUUID(r.Context(), tmplUUID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			errorResponse(w, http.StatusNotFound, "git template not found")
-			return
-		}
-		h.logger.Error("finding git template for download", "uuid", tmplUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to find git template")
-		return
-	}
-
 	var body struct {
 		Format    string            `json:"format"`
 		Variables map[string]string `json:"variables"`
 	}
 
-	if err = json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errorResponse(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
@@ -648,65 +418,52 @@ func (h *GitTemplateHandler) Download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	files, err := h.repo.FilesForTemplate(r.Context(), tmpl.ID)
+	result, err := h.service.BuildArchive(r.Context(), tmplUUID, format, body.Variables)
 	if err != nil {
-		h.logger.Error("listing template files for download", "uuid", tmplUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to list template files")
+		h.handleServiceError(w, err, "building template archive", "uuid", tmplUUID)
 		return
-	}
-
-	allUnresolved := make(map[string]bool)
-
-	entries := make([]archive.Entry, 0, len(files))
-	for i := range files {
-		content := files[i].Content.String
-		if len(body.Variables) > 0 {
-			var unresolved []string
-			content, unresolved = gitclient.SubstituteVariables(content, body.Variables)
-			for _, u := range unresolved {
-				allUnresolved[u] = true
-			}
-		}
-		entries = append(entries, archive.Entry{Path: files[i].Path, Content: content})
-	}
-
-	var buf bytes.Buffer
-	var filename string
-
-	switch format {
-	case "tar.gz":
-		if err := archive.BuildTarGz(&buf, entries); err != nil {
-			h.logger.Error("creating tar.gz archive", "error", err)
-			errorResponse(w, http.StatusInternalServerError, "failed to create archive")
-			return
-		}
-		filename = tmpl.Slug + ".tar.gz"
-	default:
-		if err := archive.BuildZip(&buf, entries); err != nil {
-			h.logger.Error("creating zip archive", "error", err)
-			errorResponse(w, http.StatusInternalServerError, "failed to create archive")
-			return
-		}
-		filename = tmpl.Slug + ".zip"
-	}
-
-	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
-
-	unresolvedList := make([]string, 0, len(allUnresolved))
-	for v := range allUnresolved {
-		unresolvedList = append(unresolvedList, v)
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"data": map[string]any{
-			"template":             tmpl.Name,
-			"filename":             filename,
-			"format":               format,
-			"size_bytes":           buf.Len(),
-			"file_count":           len(entries),
-			"archive_base64":       encoded,
-			"unresolved_variables": unresolvedList,
+			"template":             tmplUUID,
+			"filename":             result.Filename,
+			"format":               result.Format,
+			"size_bytes":           len(result.Data),
+			"file_count":           result.FileCount,
+			"archive_base64":       string(result.Data),
+			"unresolved_variables": result.Unresolved,
 		},
+	})
+}
+
+// ValidateURL handles POST /api/admin/git-templates/validate-url -- SSRF validation.
+func (h *GitTemplateHandler) ValidateURL(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		URL string `json:"url"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errorResponse(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if body.URL == "" {
+		errorResponse(w, http.StatusBadRequest, "url is required")
+		return
+	}
+
+	if err := h.service.ValidateRepositoryURL(body.URL); err != nil {
+		h.logger.Warn("SSRF validation rejected URL", "url", body.URL, "error", err)
+		jsonResponse(w, http.StatusOK, map[string]any{
+			"valid": false,
+			"error": "URL is not allowed",
+		})
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"valid": true,
 	})
 }
 
@@ -741,32 +498,18 @@ func toGitTemplateResponse(gt *model.GitTemplate) gitTemplateResponse {
 	return resp
 }
 
-// ValidateURL handles POST /api/admin/git-templates/validate-url -- SSRF validation.
-func (h *GitTemplateHandler) ValidateURL(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		URL string `json:"url"`
+// handleServiceError maps service-layer errors to HTTP responses.
+func (h *GitTemplateHandler) handleServiceError(w http.ResponseWriter, err error, msg string, keyvals ...any) {
+	switch {
+	case errors.Is(err, service.ErrGitTemplateNotFound):
+		errorResponse(w, http.StatusNotFound, "git template not found")
+	case errors.Is(err, service.ErrEncryptionDisabled):
+		errorResponse(w, http.StatusUnprocessableEntity, "git tokens require encryption; set ENCRYPTION_KEY")
+	case errors.Is(err, service.ErrInvalidURL):
+		errorResponse(w, http.StatusBadRequest, "Invalid repository URL")
+	default:
+		args := append([]any{"error", err}, keyvals...)
+		h.logger.Error(msg, args...)
+		errorResponse(w, http.StatusInternalServerError, "failed: "+msg)
 	}
-
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		errorResponse(w, http.StatusBadRequest, "invalid JSON body")
-		return
-	}
-
-	if body.URL == "" {
-		errorResponse(w, http.StatusBadRequest, "url is required")
-		return
-	}
-
-	if err := security.ValidateExternalURL(body.URL, true); err != nil {
-		h.logger.Warn("SSRF validation rejected URL", "url", body.URL, "error", err)
-		jsonResponse(w, http.StatusOK, map[string]any{
-			"valid": false,
-			"error": "URL is not allowed",
-		})
-		return
-	}
-
-	jsonResponse(w, http.StatusOK, map[string]any{
-		"valid": true,
-	})
 }

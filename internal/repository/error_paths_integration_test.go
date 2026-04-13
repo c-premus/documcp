@@ -6,6 +6,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/c-premus/documcp/internal/testutil"
+
 	"github.com/stretchr/testify/assert"
 
 	"github.com/c-premus/documcp/internal/model"
@@ -18,7 +20,7 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	logger := discardLogger()
+	logger := testutil.DiscardLogger()
 
 	t.Run("DocumentRepository", func(t *testing.T) {
 		repo := NewDocumentRepository(testPool, logger)
@@ -38,7 +40,6 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 		assert.Error(t, err)
 
 		assert.Error(t, repo.ReplaceTags(ctx, 1, []string{"a"}))
-		assert.Error(t, repo.CreateVersion(ctx, &model.DocumentVersion{DocumentID: 1, Version: 1, FilePath: "/tmp/x"}))
 
 		_, err = repo.List(ctx, DocumentListParams{})
 		assert.Error(t, err)
@@ -57,8 +58,6 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 
 		_, err := repo.FindByUUID(ctx, "x")
 		assert.Error(t, err)
-		_, err = repo.FindBySlug(ctx, "x")
-		assert.Error(t, err)
 		_, err = repo.FindEnabledByType(ctx, "kiwix")
 		assert.Error(t, err)
 		_, _, err = repo.List(ctx, "", "", 10, 0)
@@ -68,16 +67,14 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 	t.Run("SearchQueryRepository", func(t *testing.T) {
 		repo := NewSearchQueryRepository(testPool, logger)
 
-		sq := &model.SearchQuery{Query: "test", ResultsCount: 1}
-		assert.Error(t, repo.Create(ctx, sq))
+		_, err := repo.PopularQueries(ctx, 10)
+		assert.Error(t, err)
 	})
 
 	t.Run("ZimArchiveRepository", func(t *testing.T) {
 		repo := NewZimArchiveRepository(testPool, logger)
 
 		assert.Error(t, repo.UpsertFromCatalog(ctx, 1, ZimArchiveUpsert{Name: "X", Title: "X"}))
-		assert.Error(t, repo.ToggleEnabled(ctx, 1))
-		assert.Error(t, repo.ToggleSearchable(ctx, 1))
 
 		_, err := repo.FindByName(ctx, "x")
 		assert.Error(t, err)
@@ -107,11 +104,7 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 
 		_, err := repo.FindByUUID(ctx, "x")
 		assert.Error(t, err)
-		_, err = repo.FindBySlug(ctx, "x")
-		assert.Error(t, err)
 		_, err = repo.List(ctx, "", 10, 0)
-		assert.Error(t, err)
-		_, err = repo.ListAll(ctx, "", 10)
 		assert.Error(t, err)
 		_, err = repo.Count(ctx)
 		assert.Error(t, err)

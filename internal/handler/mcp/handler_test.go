@@ -200,6 +200,16 @@ func (m *mockGitTemplateRepo) FindFileByPath(ctx context.Context, templateID int
 	return nil, nil
 }
 
+func (m *mockGitTemplateRepo) CountFiltered(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
+func (m *mockGitTemplateRepo) Create(_ context.Context, _ *model.GitTemplate) error { return nil }
+
+func (m *mockGitTemplateRepo) Update(_ context.Context, _ *model.GitTemplate) error { return nil }
+
+func (m *mockGitTemplateRepo) SoftDelete(_ context.Context, _ int64) error { return nil }
+
 type mockKiwixClient struct {
 	searchFn            func(ctx context.Context, archiveName, query, searchType string, limit int) ([]kiwix.SearchResult, error)
 	readArticleFn       func(ctx context.Context, archiveName, articlePath string) (*kiwix.Article, error)
@@ -319,6 +329,7 @@ func newHandlerWithMocks(opts struct {
 	}
 	if opts.gitRepo != nil {
 		h.gitTemplateRepo = opts.gitRepo
+		h.gitTemplateService = service.NewGitTemplateService(opts.gitRepo, nil, nil, slog.Default())
 	}
 	if opts.kiwixC != nil {
 		h.kiwixFactory = &mockKiwixFactory{client: opts.kiwixC}
@@ -710,7 +721,7 @@ func TestHandleUpdateDocument(t *testing.T) {
 	t.Run("returns error when service fails", func(t *testing.T) {
 		docSvc := &mockDocumentService{
 			updateFn: func(_ context.Context, _ string, _ service.UpdateDocumentParams) (*model.Document, error) {
-				return nil, errors.New("not found")
+				return nil, sql.ErrNoRows
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -1211,7 +1222,7 @@ func TestHandleReadZimArticle(t *testing.T) {
 	t.Run("returns error when client fails", func(t *testing.T) {
 		kc := &mockKiwixClient{
 			readArticleFn: func(_ context.Context, _, _ string) (*kiwix.Article, error) {
-				return nil, errors.New("not found")
+				return nil, sql.ErrNoRows
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -1640,7 +1651,7 @@ func TestHandleGetTemplateStructure(t *testing.T) {
 	t.Run("returns not found when template missing", func(t *testing.T) {
 		repo := &mockGitTemplateRepo{
 			findByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
-				return nil, errors.New("not found")
+				return nil, sql.ErrNoRows
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -1802,7 +1813,7 @@ func TestHandleGetTemplateFile(t *testing.T) {
 	t.Run("returns not found when template missing", func(t *testing.T) {
 		repo := &mockGitTemplateRepo{
 			findByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
-				return nil, errors.New("not found")
+				return nil, sql.ErrNoRows
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -1829,7 +1840,7 @@ func TestHandleGetTemplateFile(t *testing.T) {
 				return &model.GitTemplate{ID: 1, UUID: "t1"}, nil
 			},
 			findFileByPathFn: func(_ context.Context, _ int64, _ string) (*model.GitTemplateFile, error) {
-				return nil, errors.New("not found")
+				return nil, sql.ErrNoRows
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -1908,7 +1919,7 @@ func TestHandleGetDeploymentGuide(t *testing.T) {
 	t.Run("returns not found when template missing", func(t *testing.T) {
 		repo := &mockGitTemplateRepo{
 			findByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
-				return nil, errors.New("not found")
+				return nil, sql.ErrNoRows
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -2071,7 +2082,7 @@ func TestHandleDownloadTemplate(t *testing.T) {
 	t.Run("returns not found when template missing", func(t *testing.T) {
 		repo := &mockGitTemplateRepo{
 			findByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
-				return nil, errors.New("not found")
+				return nil, sql.ErrNoRows
 			},
 		}
 		h := newHandlerWithMocks(struct {

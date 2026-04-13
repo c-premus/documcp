@@ -6,6 +6,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/c-premus/documcp/internal/testutil"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -17,7 +19,7 @@ import (
 func createTestExternalService(ctx context.Context, t *testing.T) *model.ExternalService {
 	t.Helper()
 
-	svcRepo := NewExternalServiceRepository(testPool, discardLogger(), nil)
+	svcRepo := NewExternalServiceRepository(testPool, testutil.DiscardLogger(), nil)
 	svc := &model.ExternalService{
 		UUID:      testUUID("zim-svc-001"),
 		Name:      "Test Kiwix",
@@ -36,7 +38,7 @@ func TestZimArchiveRepository_UpsertFromCatalog(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testPool, discardLogger())
+	repo := NewZimArchiveRepository(testPool, testutil.DiscardLogger())
 
 	entry := ZimArchiveUpsert{
 		Name:         "Wikipedia English",
@@ -151,7 +153,7 @@ func TestZimArchiveRepository_List(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testPool, discardLogger())
+	repo := NewZimArchiveRepository(testPool, testutil.DiscardLogger())
 
 	entries := []ZimArchiveUpsert{
 		{Name: "Wikipedia English", Title: "Wikipedia (en)", Language: "en", Category: "wikipedia"},
@@ -215,7 +217,7 @@ func TestZimArchiveRepository_FindByName(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testPool, discardLogger())
+	repo := NewZimArchiveRepository(testPool, testutil.DiscardLogger())
 
 	entry := ZimArchiveUpsert{
 		Name:     "FindMe Archive",
@@ -254,7 +256,7 @@ func TestZimArchiveRepository_FindByUUID(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testPool, discardLogger())
+	repo := NewZimArchiveRepository(testPool, testutil.DiscardLogger())
 
 	entry := ZimArchiveUpsert{
 		Name:     "UUID Archive",
@@ -301,7 +303,7 @@ func TestZimArchiveRepository_FindDisabled(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testPool, discardLogger())
+	repo := NewZimArchiveRepository(testPool, testutil.DiscardLogger())
 
 	// Insert 3 archives: 2 enabled, 1 disabled.
 	entries := []ZimArchiveUpsert{
@@ -365,7 +367,7 @@ func TestZimArchiveRepository_ListAllAndCount(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testPool, discardLogger())
+	repo := NewZimArchiveRepository(testPool, testutil.DiscardLogger())
 
 	entries := []ZimArchiveUpsert{
 		{Name: "Archive Alpha", Title: "Alpha", Language: "en", Category: "wikipedia"},
@@ -413,7 +415,7 @@ func TestZimArchiveRepository_ToggleEnabledAndSearchable(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testPool, discardLogger())
+	repo := NewZimArchiveRepository(testPool, testutil.DiscardLogger())
 
 	entry := ZimArchiveUpsert{
 		Name:     "Toggle Archive",
@@ -472,7 +474,7 @@ func TestZimArchiveRepository_DisableOrphaned(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	svc := createTestExternalService(ctx, t)
-	repo := NewZimArchiveRepository(testPool, discardLogger())
+	repo := NewZimArchiveRepository(testPool, testutil.DiscardLogger())
 
 	entries := []ZimArchiveUpsert{
 		{Name: "Active Archive", Title: "Active", Language: "en", Category: "wikipedia"},
