@@ -148,9 +148,8 @@ async function handleSubmit(): Promise<void> {
           </DialogTitle>
 
           <p class="text-sm text-text-secondary mb-4">
-            Only text files are synced from the repository (e.g. Markdown, YAML,
-            code). Binary files such as PDFs and images are excluded. Per-file
-            limit: 1 MB, total limit: 10 MB.
+            Only text files are synced from the repository (e.g. Markdown, YAML, code). Binary files
+            such as PDFs and images are excluded. Per-file limit: 1 MB, total limit: 10 MB.
           </p>
 
           <form @submit.prevent="handleSubmit">
@@ -181,7 +180,14 @@ async function handleSubmit(): Promise<void> {
                     required
                     placeholder="https://github.com/org/repo.git"
                     :aria-invalid="urlValid === false ? true : undefined"
-                    :aria-describedby="[urlError ? 'template-url-error' : '', error ? 'template-create-form-error' : ''].filter(Boolean).join(' ') || undefined"
+                    :aria-describedby="
+                      [
+                        urlError ? 'template-url-error' : '',
+                        error ? 'template-create-form-error' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ') || undefined
+                    "
                     class="block w-full rounded-md border-border-input bg-bg-surface text-text-primary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm pr-10"
                     @blur="handleUrlBlur"
                   />

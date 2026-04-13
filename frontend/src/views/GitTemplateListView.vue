@@ -240,9 +240,7 @@ const actionsColumn: ColumnDef<GitTemplate, unknown> = {
   },
 }
 
-const columns = computed(() =>
-  auth.isAdmin ? [...baseColumns, actionsColumn] : baseColumns,
-)
+const columns = computed(() => (auth.isAdmin ? [...baseColumns, actionsColumn] : baseColumns))
 </script>
 
 <template>
@@ -267,7 +265,11 @@ const columns = computed(() =>
     <EmptyState
       v-if="!store.loading && store.templates.length === 0"
       :title="auth.isAdmin ? 'No git templates' : 'No git templates available'"
-      :description="auth.isAdmin ? 'Add your first git template to get started.' : 'There are no git templates configured yet.'"
+      :description="
+        auth.isAdmin
+          ? 'Add your first git template to get started.'
+          : 'There are no git templates configured yet.'
+      "
     >
       <template v-if="auth.isAdmin" #action>
         <button

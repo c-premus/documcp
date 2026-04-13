@@ -17,7 +17,16 @@ import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
 import UploadModal from '../components/documents/UploadModal.vue'
 import DocumentEditModal from '../components/documents/DocumentEditModal.vue'
 
-const FILE_TYPE_OPTIONS = ['All', 'PDF', 'DOCX', 'XLSX', 'HTML', 'EPUB', 'Markdown', 'Text'] as const
+const FILE_TYPE_OPTIONS = [
+  'All',
+  'PDF',
+  'DOCX',
+  'XLSX',
+  'HTML',
+  'EPUB',
+  'Markdown',
+  'Text',
+] as const
 const STATUS_OPTIONS = ['All', 'Uploaded', 'Extracted', 'Indexed', 'Failed'] as const
 
 const router = useRouter()
