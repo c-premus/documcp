@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.99.0
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/exaring/otelpgx v0.10.0
-	github.com/getsentry/sentry-go v0.45.0
+	github.com/getsentry/sentry-go v0.45.1
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/httprate v0.15.0
 	github.com/go-chi/httprate-redis v0.7.0
