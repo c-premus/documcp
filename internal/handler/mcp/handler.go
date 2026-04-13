@@ -70,6 +70,11 @@ type contentSearcher interface {
 	SearchGitTemplateFiles(ctx context.Context, query string, limit int64) ([]search.FileSearchResult, error)
 }
 
+// faviconDataURI is the favicon SVG encoded as a data URI for MCP clients that
+// support inline icons (avoids external fetch). Included alongside URL-based
+// icons so clients can choose whichever format they prefer.
+const faviconDataURI = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij48bWV0YWRhdGE+PHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iPjxyZGY6RGVzY3JpcHRpb24+PGRjOmNyZWF0b3I+UmVhbEZhdmljb25HZW5lcmF0b3I8L2RjOmNyZWF0b3I+PGRjOnNvdXJjZT5odHRwczovL3JlYWxmYXZpY29uZ2VuZXJhdG9yLm5ldDwvZGM6c291cmNlPjwvcmRmOkRlc2NyaXB0aW9uPjwvcmRmOlJERj48L21ldGFkYXRhPjxwYXRoIGQ9Ik0xMiA2IEwzOCA2IEw1MCAxOCBMNTAgNTYgTDEyIDU2IFoiIGZpbGw9IiNmOGZhZmMiIHN0cm9rZT0iIzY0NzQ4YiIgc3Ryb2tlLXdpZHRoPSIxLjUiPjwvcGF0aD48cGF0aCBkPSJNMzggNiBMMzggMTggTDUwIDE4IiBmaWxsPSIjZTJlOGYwIiBzdHJva2U9IiM2NDc0OGIiIHN0cm9rZS13aWR0aD0iMS41Ij48L3BhdGg+PGxpbmUgeDE9IjE4IiB5MT0iMjYiIHgyPSI0NCIgeTI9IjI2IiBzdHJva2U9IiM2NDc0OGIiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj48L2xpbmU+PGxpbmUgeDE9IjE4IiB5MT0iMzQiIHgyPSIzOCIgeTI9IjM0IiBzdHJva2U9IiM2NDc0OGIiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj48L2xpbmU+PGxpbmUgeDE9IjE4IiB5MT0iNDIiIHgyPSI0MiIgeTI9IjQyIiBzdHJva2U9IiM2NDc0OGIiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj48L2xpbmU+PGNpcmNsZSBjeD0iNTAiIGN5PSI1MCIgcj0iMTAiIGZpbGw9IiMzYjgyZjYiPjwvY2lyY2xlPjxjaXJjbGUgY3g9IjUwIiBjeT0iNTAiIHI9IjQiIGZpbGw9IiNmZmZmZmYiPjwvY2lyY2xlPjxwYXRoIGQ9Ik01NiA0NCBMNjAgNDAiIHN0cm9rZT0iIzNiODJmNiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiPjwvcGF0aD48cGF0aCBkPSJNNTggNTAgTDYyIDUwIiBzdHJva2U9IiMzYjgyZjYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj48L3BhdGg+PHBhdGggZD0iTTU2IDU2IEw2MCA2MCIgc3Ryb2tlPSIjM2I4MmY2IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCI+PC9wYXRoPjwvc3ZnPg=="
+
 // serverInstructions is the MCP server instructions describing all available
 // tools and prompts. It is sent to clients during initialization.
 const serverInstructions = `Documentation knowledge base with full-text search.
@@ -168,6 +173,7 @@ func New(cfg Config) *Handler {
 		Version: cfg.ServerVersion,
 	}
 	if cfg.AppURL != "" {
+		impl.WebsiteURL = cfg.AppURL
 		impl.Icons = []mcp.Icon{
 			{
 				Source:   cfg.AppURL + "/favicon.svg",
@@ -178,6 +184,11 @@ func New(cfg Config) *Handler {
 				Source:   cfg.AppURL + "/favicon-96x96.png",
 				MIMEType: "image/png",
 				Sizes:    []string{"96x96"},
+			},
+			{
+				Source:   faviconDataURI,
+				MIMEType: "image/svg+xml",
+				Sizes:    []string{"any"},
 			},
 		}
 	}
