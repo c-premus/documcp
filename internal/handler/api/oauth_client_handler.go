@@ -2,22 +2,14 @@ package api
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
-	"net/url"
-	"strings"
 
-	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
-
-	oauth "github.com/c-premus/documcp/internal/auth/oauth"
-	authscope "github.com/c-premus/documcp/internal/auth/scope"
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/service"
 )
 
 // oauthClientRepo defines the methods used by OAuthClientHandler.
@@ -32,18 +24,21 @@ type oauthClientRepo interface {
 
 // OAuthClientHandler handles REST API endpoints for OAuth client administration.
 type OAuthClientHandler struct {
-	repo   oauthClientRepo
-	logger *slog.Logger
+	repo    oauthClientRepo
+	service *service.OAuthClientService
+	logger  *slog.Logger
 }
 
 // NewOAuthClientHandler creates a new OAuthClientHandler.
 func NewOAuthClientHandler(
 	repo oauthClientRepo,
+	svc *service.OAuthClientService,
 	logger *slog.Logger,
 ) *OAuthClientHandler {
 	return &OAuthClientHandler{
-		repo:   repo,
-		logger: logger,
+		repo:    repo,
+		service: svc,
+		logger:  logger,
 	}
 }
 
@@ -98,119 +93,36 @@ func (h *OAuthClientHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if body.ClientName == "" {
-		errorResponse(w, http.StatusBadRequest, "client_name is required")
-		return
-	}
-	if len(body.ClientName) > 255 {
-		errorResponse(w, http.StatusBadRequest, "client_name must not exceed 255 characters")
-		return
-	}
-
-	// Validate scope against canonical list.
-	if body.Scope != "" {
-		if invalid := authscope.ValidateAll(body.Scope); len(invalid) > 0 {
-			errorResponse(w, http.StatusBadRequest, "invalid scopes: "+strings.Join(invalid, ", "))
-			return
-		}
-	}
-
-	// Validate redirect URIs: must use HTTPS for non-loopback hosts.
-	for _, uri := range body.RedirectURIs {
-		parsed, err := url.ParseRequestURI(uri)
-		if err != nil {
-			errorResponse(w, http.StatusBadRequest, "invalid redirect URI: "+uri)
-			return
-		}
-		if parsed.Scheme != "https" && !oauth.IsLoopbackHost(parsed.Hostname()) {
-			errorResponse(w, http.StatusBadRequest, "redirect URIs must use HTTPS for non-loopback hosts")
-			return
-		}
-	}
-
-	// Validate grant types.
-	validGrantTypes := map[string]bool{
-		"authorization_code": true,
-		"refresh_token":      true,
-		"urn:ietf:params:oauth:grant-type:device_code": true,
-	}
-	for _, gt := range body.GrantTypes {
-		if !validGrantTypes[gt] {
-			errorResponse(w, http.StatusBadRequest, "invalid grant type: "+gt)
-			return
-		}
-	}
-
-	// Validate token_endpoint_auth_method.
-	if body.TokenEndpointAuthMethod != "" {
-		validMethods := map[string]bool{"none": true, "client_secret_basic": true, "client_secret_post": true}
-		if !validMethods[body.TokenEndpointAuthMethod] {
-			errorResponse(w, http.StatusBadRequest, "invalid token_endpoint_auth_method")
-			return
-		}
-	}
-
-	// Generate client credentials.
-	clientID := uuid.New().String()
-	secretBytes := make([]byte, 32)
-	if _, err := rand.Read(secretBytes); err != nil {
-		h.logger.Error("generating client secret", "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to generate client secret")
-		return
-	}
-	plaintextSecret := hex.EncodeToString(secretBytes)
-
-	hashedSecret, err := bcrypt.GenerateFromPassword([]byte(plaintextSecret), bcrypt.DefaultCost)
-	if err != nil {
-		h.logger.Error("hashing client secret", "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to hash client secret")
-		return
-	}
-
-	// Default values.
-	redirectURIs := body.RedirectURIs
-	if redirectURIs == nil {
-		redirectURIs = []string{}
-	}
-	grantTypes := body.GrantTypes
-	if grantTypes == nil {
-		grantTypes = []string{"authorization_code"}
-	}
-	responseTypes := []string{"code"}
-	authMethod := body.TokenEndpointAuthMethod
-	if authMethod == "" {
-		authMethod = "client_secret_post"
-	}
-
-	redirectURIsJSON, _ := json.Marshal(redirectURIs)
-	grantTypesJSON, _ := json.Marshal(grantTypes)
-	responseTypesJSON, _ := json.Marshal(responseTypes)
-
-	client := &model.OAuthClient{
-		ClientID:                clientID,
-		ClientSecret:            sql.NullString{String: string(hashedSecret), Valid: true},
+	result, err := h.service.RegisterClient(r.Context(), service.RegisterClientInput{
 		ClientName:              body.ClientName,
-		RedirectURIs:            string(redirectURIsJSON),
-		GrantTypes:              string(grantTypesJSON),
-		ResponseTypes:           string(responseTypesJSON),
-		TokenEndpointAuthMethod: authMethod,
-	}
-	if body.Scope != "" {
-		client.Scope = sql.NullString{String: body.Scope, Valid: true}
-	}
-
-	if err := h.repo.CreateClient(r.Context(), client); err != nil {
-		h.logger.Error("creating oauth client", "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to create oauth client")
+		RedirectURIs:            body.RedirectURIs,
+		GrantTypes:              body.GrantTypes,
+		TokenEndpointAuthMethod: body.TokenEndpointAuthMethod,
+		Scope:                   body.Scope,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrClientNameRequired),
+			errors.Is(err, service.ErrClientNameTooLong),
+			errors.Is(err, service.ErrInvalidRedirectURI),
+			errors.Is(err, service.ErrRedirectURINotHTTPS),
+			errors.Is(err, service.ErrInvalidGrantType),
+			errors.Is(err, service.ErrInvalidAuthMethod),
+			errors.Is(err, service.ErrInvalidScopes):
+			errorResponse(w, http.StatusBadRequest, err.Error())
+		default:
+			h.logger.Error("creating oauth client", "error", err)
+			errorResponse(w, http.StatusInternalServerError, "failed to create oauth client")
+		}
 		return
 	}
 
 	jsonResponse(w, http.StatusCreated, map[string]any{
 		"data": map[string]any{
-			"id":            client.ID,
-			"client_id":     clientID,
-			"client_secret": plaintextSecret,
-			"client_name":   body.ClientName,
+			"id":            result.Client.ID,
+			"client_id":     result.Client.ClientID,
+			"client_secret": result.PlaintextSecret,
+			"client_name":   result.Client.ClientName,
 		},
 		"message": "OAuth client created. Copy the client_secret now — it will not be shown again.",
 	})

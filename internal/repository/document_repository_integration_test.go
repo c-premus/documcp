@@ -17,7 +17,7 @@ import (
 func TestDocumentRepository_CreateAndFind(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	tests := []struct {
 		name     string
@@ -108,7 +108,7 @@ func TestDocumentRepository_CreateAndFind(t *testing.T) {
 func TestDocumentRepository_Update(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	tests := []struct {
 		name      string
@@ -166,7 +166,7 @@ func TestDocumentRepository_Update(t *testing.T) {
 func TestDocumentRepository_SoftDelete(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	doc := testutil.NewDocument(
 		testutil.WithDocumentID(0),
@@ -213,7 +213,7 @@ func TestDocumentRepository_SoftDelete(t *testing.T) {
 func TestDocumentRepository_Count(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	// Count should be zero on a clean database.
 	count, err := repo.Count(ctx)
@@ -262,7 +262,7 @@ func TestDocumentRepository_Count(t *testing.T) {
 func TestDocumentRepository_Tags(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	doc := testutil.NewDocument(
 		testutil.WithDocumentID(0),
@@ -346,7 +346,7 @@ func TestDocumentRepository_Tags(t *testing.T) {
 func TestDocumentRepository_CreateVersion(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	doc := testutil.NewDocument(
 		testutil.WithDocumentID(0),
@@ -428,7 +428,7 @@ func TestDocumentRepository_CreateVersion(t *testing.T) {
 func TestDocumentRepository_ListAllUUIDs(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	t.Run("empty table returns empty slice", func(t *testing.T) {
 		uuids, err := repo.ListAllUUIDs(ctx)
@@ -493,7 +493,7 @@ func TestDocumentRepository_ListAllUUIDs(t *testing.T) {
 func TestDocumentRepository_ListActiveFilePaths(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	// Insert documents with varying file path states.
 	docWithPath := testutil.NewDocument(
@@ -567,7 +567,7 @@ func TestDocumentRepository_ListActiveFilePaths(t *testing.T) {
 func TestDocumentRepository_PurgeSoftDeleted(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	// 1. Create documents: 1 active, 2 soft-deleted (one old, one recent).
 	activeDoc := testutil.NewDocument(
@@ -699,7 +699,7 @@ func TestDocumentRepository_PurgeSoftDeleted(t *testing.T) {
 func TestDocumentRepository_SuggestTitles(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	// Create a mix of public and private documents.
 	docs := []struct {
@@ -805,7 +805,7 @@ func TestDocumentRepository_SuggestTitles(t *testing.T) {
 func TestDocumentRepository_List(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	// Create 4 documents: 3 active, 1 soft-deleted.
 	doc1 := testutil.NewDocument(
@@ -896,7 +896,7 @@ func TestDocumentRepository_List(t *testing.T) {
 
 	t.Run("filter by user_id", func(t *testing.T) {
 		// Create a user and assign doc1 to them.
-		oauthRepo := NewOAuthRepository(testPool, discardLogger())
+		oauthRepo := NewOAuthRepository(testPool, testutil.DiscardLogger())
 		user := testutil.NewUser(
 			testutil.WithUserID(0),
 			testutil.WithUserEmail("list-user@example.com"),
@@ -1030,7 +1030,7 @@ func TestDocumentRepository_List(t *testing.T) {
 func TestDocumentRepository_FindByStatus(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	// Create 4 documents: 2 pending, 1 completed, 1 pending (soft-deleted).
 	pending1 := testutil.NewDocument(
@@ -1112,7 +1112,7 @@ func TestDocumentRepository_FindByStatus(t *testing.T) {
 func TestDocumentRepository_FindByUUIDIncludingDeleted(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	// Create a document and soft-delete it.
 	doc := testutil.NewDocument(
@@ -1167,7 +1167,7 @@ func TestDocumentRepository_FindByUUIDIncludingDeleted(t *testing.T) {
 func TestDocumentRepository_Restore(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	// Create a document and soft-delete it.
 	doc := testutil.NewDocument(
@@ -1220,7 +1220,7 @@ func TestDocumentRepository_Restore(t *testing.T) {
 func TestDocumentRepository_PurgeSingle(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	// Create a document with tags and a version.
 	doc := testutil.NewDocument(
@@ -1298,7 +1298,7 @@ func TestDocumentRepository_PurgeSingle(t *testing.T) {
 func TestDocumentRepository_ListDeleted(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewDocumentRepository(testPool, discardLogger())
+	repo := NewDocumentRepository(testPool, testutil.DiscardLogger())
 
 	// Create 4 docs: 2 active, 2 soft-deleted.
 	active1 := testutil.NewDocument(

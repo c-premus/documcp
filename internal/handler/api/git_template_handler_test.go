@@ -28,6 +28,7 @@ import (
 	"github.com/c-premus/documcp/internal/archive"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/queue"
+	"github.com/c-premus/documcp/internal/service"
 )
 
 // ---------------------------------------------------------------------------
@@ -659,18 +660,22 @@ func (m *mockGitTemplateRepo) FindFileByPath(ctx context.Context, templateID int
 // ---------------------------------------------------------------------------
 
 func newTestGitTemplateHandler() *GitTemplateHandler {
+	logger := slog.New(slog.DiscardHandler)
+	svc := service.NewGitTemplateService(nil, nil, nil, logger)
 	return &GitTemplateHandler{
-		repo:              nil,
-		logger:            slog.New(slog.DiscardHandler),
-		encryptionEnabled: true,
+		service: svc,
+		repo:    nil,
+		logger:  logger,
 	}
 }
 
 func newGitTemplateHandlerWithMock(repo *mockGitTemplateRepo) *GitTemplateHandler {
+	logger := slog.New(slog.DiscardHandler)
+	svc := service.NewGitTemplateService(repo, nil, nil, logger)
 	return &GitTemplateHandler{
-		repo:              repo,
-		logger:            slog.New(slog.DiscardHandler),
-		encryptionEnabled: true,
+		service: svc,
+		repo:    repo,
+		logger:  logger,
 	}
 }
 
@@ -709,13 +714,13 @@ func TestGitTemplateHandler_ReadFile(t *testing.T) {
 
 	// Shared file returned by FindFileByPath in the "success" cases.
 	validFile := &model.GitTemplateFile{
-		ID:          1,
+		ID:            1,
 		GitTemplateID: 42,
-		Path:        "src/main.go",
-		Filename:    "main.go",
-		Content:     sql.NullString{String: "package main", Valid: true},
-		SizeBytes:   12,
-		IsEssential: true,
+		Path:          "src/main.go",
+		Filename:      "main.go",
+		Content:       sql.NullString{String: "package main", Valid: true},
+		SizeBytes:     12,
+		IsEssential:   true,
 	}
 
 	t.Run("returns 404 when template not found", func(t *testing.T) {
@@ -778,7 +783,7 @@ func TestGitTemplateHandler_ReadFile(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, rr.Code)
 		var body map[string]any
 		require.NoError(t, json.NewDecoder(rr.Body).Decode(&body))
-		assert.Contains(t, body["message"], "not found in template")
+		assert.Equal(t, "git template not found", body["message"])
 	})
 
 	t.Run("returns 500 for unexpected FindFileByPath error", func(t *testing.T) {
@@ -858,12 +863,12 @@ func TestGitTemplateHandler_ReadFile(t *testing.T) {
 		t.Parallel()
 
 		fileWithVar := &model.GitTemplateFile{
-			ID:          2,
+			ID:            2,
 			GitTemplateID: 42,
-			Path:        "README.md",
-			Filename:    "README.md",
-			Content:     sql.NullString{String: "Hello, {{name}}!", Valid: true},
-			SizeBytes:   17,
+			Path:          "README.md",
+			Filename:      "README.md",
+			Content:       sql.NullString{String: "Hello, {{name}}!", Valid: true},
+			SizeBytes:     17,
 		}
 		repo := &mockGitTemplateRepo{
 			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
@@ -892,12 +897,12 @@ func TestGitTemplateHandler_ReadFile(t *testing.T) {
 		t.Parallel()
 
 		fileWithVars := &model.GitTemplateFile{
-			ID:          3,
+			ID:            3,
 			GitTemplateID: 42,
-			Path:        "config.yml",
-			Filename:    "config.yml",
-			Content:     sql.NullString{String: "{{found}} {{missing}}", Valid: true},
-			SizeBytes:   21,
+			Path:          "config.yml",
+			Filename:      "config.yml",
+			Content:       sql.NullString{String: "{{found}} {{missing}}", Valid: true},
+			SizeBytes:     21,
 		}
 		repo := &mockGitTemplateRepo{
 			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
@@ -927,12 +932,12 @@ func TestGitTemplateHandler_ReadFile(t *testing.T) {
 		t.Parallel()
 
 		fileWithVar := &model.GitTemplateFile{
-			ID:          4,
+			ID:            4,
 			GitTemplateID: 42,
-			Path:        "greeting.txt",
-			Filename:    "greeting.txt",
-			Content:     sql.NullString{String: "Hi {{name}}", Valid: true},
-			SizeBytes:   11,
+			Path:          "greeting.txt",
+			Filename:      "greeting.txt",
+			Content:       sql.NullString{String: "Hi {{name}}", Valid: true},
+			SizeBytes:     11,
 		}
 		repo := &mockGitTemplateRepo{
 			FindByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
@@ -1083,7 +1088,8 @@ func TestNewGitTemplateHandler(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.New(slog.DiscardHandler)
-	h := NewGitTemplateHandler(nil, nil, logger, true)
+	svc := service.NewGitTemplateService(nil, nil, nil, logger)
+	h := NewGitTemplateHandler(svc, nil, logger)
 
 	if h == nil {
 		t.Fatal("expected non-nil handler")
@@ -1091,8 +1097,8 @@ func TestNewGitTemplateHandler(t *testing.T) {
 	if h.logger != logger {
 		t.Error("logger not set correctly")
 	}
-	if !h.encryptionEnabled {
-		t.Error("encryptionEnabled not set correctly")
+	if h.service != svc {
+		t.Error("service not set correctly")
 	}
 }
 
@@ -1207,8 +1213,8 @@ func TestGitTemplateHandler_List(t *testing.T) {
 		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
 			t.Fatalf("decoding response: %v", err)
 		}
-		if msg := body["message"]; msg != "failed to count git templates" {
-			t.Errorf("message = %v, want 'failed to count git templates'", msg)
+		if msg := body["message"]; msg != "failed to list git templates" {
+			t.Errorf("message = %v, want 'failed to list git templates'", msg)
 		}
 	})
 
@@ -1601,14 +1607,15 @@ func TestGitTemplateHandler_ValidateURL(t *testing.T) {
 	})
 }
 
-// newGitTemplateHandlerFull creates a handler with repo and inserter mocks.
+// newGitTemplateHandlerWithInserter creates a handler with repo and inserter mocks.
 // Uses mockJobInserter from external_service_handler_test.go (same package).
-func newGitTemplateHandlerFull(repo *mockGitTemplateRepo, ins gitTemplateJobInserter) *GitTemplateHandler {
+func newGitTemplateHandlerWithInserter(repo *mockGitTemplateRepo, ins service.JobInserter) *GitTemplateHandler {
+	logger := slog.New(slog.DiscardHandler)
+	svc := service.NewGitTemplateService(repo, ins, nil, logger)
 	return &GitTemplateHandler{
-		repo:              repo,
-		inserter:          ins,
-		logger:            slog.New(slog.DiscardHandler),
-		encryptionEnabled: true,
+		service: svc,
+		repo:    repo,
+		logger:  logger,
 	}
 }
 
@@ -1989,8 +1996,8 @@ func TestGitTemplateHandler_Update(t *testing.T) {
 		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
 			t.Fatalf("decoding response: %v", err)
 		}
-		if msg := body["message"]; msg != "failed to update git template" {
-			t.Errorf("message = %v, want 'failed to update git template'", msg)
+		if msg := body["message"]; msg != "failed: updating git template" {
+			t.Errorf("message = %v, want 'failed: updating git template'", msg)
 		}
 	})
 
@@ -2080,7 +2087,7 @@ func TestGitTemplateHandler_Sync(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 503 when inserter is nil", func(t *testing.T) {
+	t.Run("returns 500 when inserter is nil", func(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockGitTemplateRepo{
@@ -2095,16 +2102,16 @@ func TestGitTemplateHandler_Sync(t *testing.T) {
 
 		h.Sync(rr, req)
 
-		if rr.Code != http.StatusServiceUnavailable {
-			t.Errorf("status = %d, want %d", rr.Code, http.StatusServiceUnavailable)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
 		}
 
 		var body map[string]any
 		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
 			t.Fatalf("decoding response: %v", err)
 		}
-		if msg := body["message"]; msg != "job queue not available" {
-			t.Errorf("message = %v, want 'job queue not available'", msg)
+		if msg := body["message"]; msg != "failed: enqueuing git template sync" {
+			t.Errorf("message = %v, want 'failed: enqueuing git template sync'", msg)
 		}
 	})
 
@@ -2121,7 +2128,7 @@ func TestGitTemplateHandler_Sync(t *testing.T) {
 				return nil, errors.New("queue full")
 			},
 		}
-		h := newGitTemplateHandlerFull(repo, ins)
+		h := newGitTemplateHandlerWithInserter(repo, ins)
 		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/test-uuid/sync", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
 		rr := httptest.NewRecorder()
@@ -2136,8 +2143,8 @@ func TestGitTemplateHandler_Sync(t *testing.T) {
 		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
 			t.Fatalf("decoding response: %v", err)
 		}
-		if msg := body["message"]; msg != "failed to enqueue sync job" {
-			t.Errorf("message = %v, want 'failed to enqueue sync job'", msg)
+		if msg := body["message"]; msg != "failed: enqueuing git template sync" {
+			t.Errorf("message = %v, want 'failed: enqueuing git template sync'", msg)
 		}
 	})
 
@@ -2156,7 +2163,7 @@ func TestGitTemplateHandler_Sync(t *testing.T) {
 				return &rivertype.JobInsertResult{}, nil
 			},
 		}
-		h := newGitTemplateHandlerFull(repo, ins)
+		h := newGitTemplateHandlerWithInserter(repo, ins)
 		req := httptest.NewRequest(http.MethodPost, "/api/git-templates/test-uuid/sync", http.NoBody)
 		req = chiContext(req, map[string]string{"uuid": "test-uuid"})
 		rr := httptest.NewRecorder()
@@ -2622,8 +2629,8 @@ func TestGitTemplateHandler_Create(t *testing.T) {
 		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
 			t.Fatalf("decoding response: %v", err)
 		}
-		if msg := body["message"]; msg != "failed to create git template" {
-			t.Errorf("message = %v, want 'failed to create git template'", msg)
+		if msg := body["message"]; msg != "failed: creating git template" {
+			t.Errorf("message = %v, want 'failed: creating git template'", msg)
 		}
 	})
 
@@ -2672,7 +2679,7 @@ func TestGitTemplateHandler_Create(t *testing.T) {
 				return &rivertype.JobInsertResult{}, nil
 			},
 		}
-		h := newGitTemplateHandlerFull(repo, ins)
+		h := newGitTemplateHandlerWithInserter(repo, ins)
 		reqBody := `{
 			"name": "Full Template",
 			"repository_url": "https://github.com/user/repo",

@@ -112,9 +112,11 @@ type Handler struct {
 	documentService     documentServicer
 	documentRepo        documentLister
 	externalServiceRepo *repository.ExternalServiceRepository
-	zimArchiveRepo  zimArchiveLister
-	gitTemplateRepo gitTemplateStore
-	searchQueryRepo     *repository.SearchQueryRepository
+	zimArchiveRepo      zimArchiveLister
+	gitTemplateRepo     gitTemplateStore
+
+	// Services
+	gitTemplateService *service.GitTemplateService
 
 	// External service clients
 	kiwixFactory kiwixClientFactory // lazy-init; nil means ZIM tools not enabled
@@ -137,12 +139,12 @@ type Config struct {
 	// Always required
 	DocumentService documentServicer
 	DocumentRepo    documentLister
-	SearchQueryRepo *repository.SearchQueryRepository
 
 	// Conditionally registered
 	ExternalServiceRepo *repository.ExternalServiceRepository
 	ZimArchiveRepo      zimArchiveLister
 	GitTemplateRepo     gitTemplateStore
+	GitTemplateService  *service.GitTemplateService
 
 	// External service clients
 	KiwixFactory *kiwix.ClientFactory // lazy-init Kiwix client (nil = ZIM tools disabled)
@@ -214,7 +216,7 @@ func New(cfg Config) *Handler {
 		externalServiceRepo: cfg.ExternalServiceRepo,
 		zimArchiveRepo:      cfg.ZimArchiveRepo,
 		gitTemplateRepo:     cfg.GitTemplateRepo,
-		searchQueryRepo:     cfg.SearchQueryRepo,
+		gitTemplateService:  cfg.GitTemplateService,
 		kiwixFactory:        kf,
 		searcher:            cfg.Searcher,
 

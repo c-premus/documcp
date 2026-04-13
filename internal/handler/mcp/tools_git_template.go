@@ -1,20 +1,18 @@
 package mcphandler
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/c-premus/documcp/internal/archive"
 	authscope "github.com/c-premus/documcp/internal/auth/scope"
 	gitclient "github.com/c-premus/documcp/internal/client/git"
 	"github.com/c-premus/documcp/internal/dto"
 	"github.com/c-premus/documcp/internal/search"
+	"github.com/c-premus/documcp/internal/service"
 )
 
 // --- Response types ---
@@ -126,9 +124,7 @@ type downloadTemplateResponse struct {
 	Message             string   `json:"message,omitempty"`
 }
 
-
 // --- Variable substitution ---
-
 
 // --- Tool registration ---
 
@@ -326,8 +322,8 @@ func (h *Handler) handleSearchGitTemplates(
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, searchGitTemplatesResponse{}, errors.New("mcp:read scope required")
 	}
-	if len(input.Query) > 500 {
-		return nil, searchGitTemplatesResponse{}, errors.New("query must be at most 500 characters")
+	if len(input.Query) > search.MaxQueryLength {
+		return nil, searchGitTemplatesResponse{}, fmt.Errorf("query must be at most %d characters", search.MaxQueryLength)
 	}
 
 	limit := int64(clampPagination(input.Limit, 10, 50))
@@ -401,52 +397,27 @@ func (h *Handler) handleGetTemplateStructure(
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, getTemplateStructureResponse{}, errors.New("mcp:read scope required")
 	}
-	tmpl, _ := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
-	if tmpl == nil {
-		return nil, getTemplateStructureResponse{
-			Success: false,
-			Message: "Template " + input.UUID + " not found",
-		}, nil
-	}
 
-	files, err := h.gitTemplateRepo.FilesForTemplate(ctx, tmpl.ID)
+	structure, err := h.gitTemplateService.GetStructure(ctx, input.UUID)
 	if err != nil {
-		return nil, getTemplateStructureResponse{}, fmt.Errorf("listing template files: %w", err)
-	}
-
-	fileTree := make([]string, 0, len(files))
-	essentialFiles := make([]string, 0)
-	variableSet := make(map[string]bool)
-
-	for i := range files {
-		fileTree = append(fileTree, files[i].Path)
-
-		if files[i].IsEssential {
-			essentialFiles = append(essentialFiles, files[i].Path)
+		if errors.Is(err, service.ErrGitTemplateNotFound) {
+			return nil, getTemplateStructureResponse{
+				Success: false,
+				Message: "Template " + input.UUID + " not found",
+			}, nil
 		}
-
-		// Extract {{variables}} from file content.
-		if files[i].Content.Valid {
-			matches := gitclient.VariablePattern.FindAllStringSubmatch(files[i].Content.String, -1)
-			for _, match := range matches {
-				variableSet[match[1]] = true
-			}
-		}
+		return nil, getTemplateStructureResponse{}, fmt.Errorf("getting template structure: %w", err)
 	}
 
-	variables := make([]string, 0, len(variableSet))
-	for v := range variableSet {
-		variables = append(variables, v)
-	}
-
+	tmpl := structure.Template
 	detail := &templateStructureDetail{
 		UUID:           tmpl.UUID,
 		Name:           tmpl.Name,
-		FileTree:       fileTree,
-		EssentialFiles: essentialFiles,
-		Variables:      variables,
-		FileCount:      tmpl.FileCount,
-		TotalSize:      tmpl.TotalSizeBytes,
+		FileTree:       structure.FileTree,
+		EssentialFiles: structure.EssentialFiles,
+		Variables:      structure.Variables,
+		FileCount:      structure.FileCount,
+		TotalSize:      structure.TotalSize,
 	}
 	if tmpl.Description.Valid {
 		detail.Description = tmpl.Description.String
@@ -469,33 +440,24 @@ func (h *Handler) handleGetTemplateFile(
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, getTemplateFileResponse{}, errors.New("mcp:read scope required")
 	}
-	tmpl, _ := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
-	if tmpl == nil {
-		return nil, getTemplateFileResponse{
-			Success: false,
-			Message: "Template " + input.UUID + " not found",
-		}, nil
-	}
-
-	file, _ := h.gitTemplateRepo.FindFileByPath(ctx, tmpl.ID, input.Path)
-	if file == nil {
-		return nil, getTemplateFileResponse{
-			Success: false,
-			Message: fmt.Sprintf("File %q not found in template %s", input.Path, input.UUID),
-		}, nil
-	}
 
 	variables, err := gitclient.ParseVariablesJSON(input.Variables)
 	if err != nil {
 		return nil, getTemplateFileResponse{}, fmt.Errorf("parsing variables: %w", err)
 	}
 
-	content := file.Content.String
-	var unresolved []string
-	if len(variables) > 0 {
-		content, unresolved = gitclient.SubstituteVariables(content, variables)
+	result, err := h.gitTemplateService.GetFile(ctx, input.UUID, input.Path, variables)
+	if err != nil {
+		if errors.Is(err, service.ErrGitTemplateNotFound) {
+			return nil, getTemplateFileResponse{
+				Success: false,
+				Message: fmt.Sprintf("File %q not found in template %s", input.Path, input.UUID),
+			}, nil
+		}
+		return nil, getTemplateFileResponse{}, fmt.Errorf("getting template file: %w", err)
 	}
 
+	file := result.File
 	info := &templateFileInfo{
 		Path:        file.Path,
 		Filename:    file.Filename,
@@ -518,8 +480,8 @@ func (h *Handler) handleGetTemplateFile(
 	return nil, getTemplateFileResponse{
 		Success:             true,
 		File:                info,
-		Content:             content,
-		UnresolvedVariables: unresolved,
+		Content:             result.Content,
+		UnresolvedVariables: result.Unresolved,
 	}, nil
 }
 
@@ -531,48 +493,30 @@ func (h *Handler) handleGetDeploymentGuide(
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, getDeploymentGuideResponse{}, errors.New("mcp:read scope required")
 	}
-	tmpl, _ := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
-	if tmpl == nil {
-		return nil, getDeploymentGuideResponse{
-			Success: false,
-			Message: "Template " + input.UUID + " not found",
-		}, nil
-	}
-
-	files, err := h.gitTemplateRepo.FilesForTemplate(ctx, tmpl.ID)
-	if err != nil {
-		return nil, getDeploymentGuideResponse{}, fmt.Errorf("listing template files: %w", err)
-	}
 
 	variables, err := gitclient.ParseVariablesJSON(input.Variables)
 	if err != nil {
 		return nil, getDeploymentGuideResponse{}, fmt.Errorf("parsing variables: %w", err)
 	}
 
-	allUnresolved := make(map[string]bool)
-	deploymentFiles := make([]deploymentFile, 0)
-
-	for i := range files {
-		if !files[i].IsEssential {
-			continue
+	result, err := h.gitTemplateService.GetDeploymentGuide(ctx, input.UUID, variables)
+	if err != nil {
+		if errors.Is(err, service.ErrGitTemplateNotFound) {
+			return nil, getDeploymentGuideResponse{
+				Success: false,
+				Message: "Template " + input.UUID + " not found",
+			}, nil
 		}
-		content := files[i].Content.String
-		if len(variables) > 0 {
-			var unresolved []string
-			content, unresolved = gitclient.SubstituteVariables(content, variables)
-			for _, u := range unresolved {
-				allUnresolved[u] = true
-			}
-		}
-		deploymentFiles = append(deploymentFiles, deploymentFile{
-			Path:    files[i].Path,
-			Content: content,
-		})
+		return nil, getDeploymentGuideResponse{}, fmt.Errorf("getting deployment guide: %w", err)
 	}
 
-	unresolvedList := make([]string, 0, len(allUnresolved))
-	for v := range allUnresolved {
-		unresolvedList = append(unresolvedList, v)
+	tmpl := result.Template
+	files := make([]deploymentFile, 0, len(result.Files))
+	for _, f := range result.Files {
+		files = append(files, deploymentFile{
+			Path:    f.Path,
+			Content: f.Content,
+		})
 	}
 
 	description := ""
@@ -583,9 +527,9 @@ func (h *Handler) handleGetDeploymentGuide(
 	guide := &deploymentGuide{
 		TemplateName:        tmpl.Name,
 		Description:         description,
-		Steps:               []string{"Create the following files in your project directory."},
-		Files:               deploymentFiles,
-		UnresolvedVariables: unresolvedList,
+		Steps:               result.Steps,
+		Files:               files,
+		UnresolvedVariables: result.Unresolved,
 	}
 
 	return nil, getDeploymentGuideResponse{
@@ -602,81 +546,34 @@ func (h *Handler) handleDownloadTemplate(
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, downloadTemplateResponse{}, errors.New("mcp:read scope required")
 	}
-	tmpl, _ := h.gitTemplateRepo.FindByUUID(ctx, input.UUID)
-	if tmpl == nil {
-		return nil, downloadTemplateResponse{
-			Success: false,
-			Message: "Template " + input.UUID + " not found",
-		}, nil
-	}
-
-	files, err := h.gitTemplateRepo.FilesForTemplate(ctx, tmpl.ID)
-	if err != nil {
-		return nil, downloadTemplateResponse{}, fmt.Errorf("listing template files: %w", err)
-	}
 
 	variables, err := gitclient.ParseVariablesJSON(input.Variables)
 	if err != nil {
 		return nil, downloadTemplateResponse{}, fmt.Errorf("parsing variables: %w", err)
 	}
 
-	format := input.Format
-	if format == "" {
-		format = "zip"
-	}
-
-	allUnresolved := make(map[string]bool)
-
-	// Prepare file contents with optional variable substitution.
-	entries := make([]archive.Entry, 0, len(files))
-	for i := range files {
-		content := files[i].Content.String
-		if len(variables) > 0 {
-			var unresolved []string
-			content, unresolved = gitclient.SubstituteVariables(content, variables)
-			for _, u := range unresolved {
-				allUnresolved[u] = true
-			}
+	result, err := h.gitTemplateService.BuildArchive(ctx, input.UUID, input.Format, variables)
+	if err != nil {
+		if errors.Is(err, service.ErrGitTemplateNotFound) {
+			return nil, downloadTemplateResponse{
+				Success: false,
+				Message: "Template " + input.UUID + " not found",
+			}, nil
 		}
-		entries = append(entries, archive.Entry{Path: files[i].Path, Content: content})
-	}
-
-	var buf bytes.Buffer
-	var filename string
-
-	switch format {
-	case "tar.gz":
-		if err := archive.BuildTarGz(&buf, entries); err != nil {
-			return nil, downloadTemplateResponse{}, fmt.Errorf("creating tar.gz archive: %w", err)
-		}
-		filename = tmpl.Slug + ".tar.gz"
-	default:
-		format = "zip"
-		if err := archive.BuildZip(&buf, entries); err != nil {
-			return nil, downloadTemplateResponse{}, fmt.Errorf("creating zip archive: %w", err)
-		}
-		filename = tmpl.Slug + ".zip"
-	}
-
-	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
-
-	unresolvedList := make([]string, 0, len(allUnresolved))
-	for v := range allUnresolved {
-		unresolvedList = append(unresolvedList, v)
+		return nil, downloadTemplateResponse{}, fmt.Errorf("building template archive: %w", err)
 	}
 
 	return nil, downloadTemplateResponse{
 		Success:             true,
-		Template:            tmpl.Name,
-		Filename:            filename,
-		Format:              format,
-		SizeBytes:           buf.Len(),
-		FileCount:           len(entries),
-		ArchiveBase64:       encoded,
-		UnresolvedVariables: unresolvedList,
-		Usage:               "Decode the base64 archive_base64 field and save as " + filename,
+		Template:            input.UUID,
+		Filename:            result.Filename,
+		Format:              result.Format,
+		SizeBytes:           len(result.Data),
+		FileCount:           result.FileCount,
+		ArchiveBase64:       string(result.Data),
+		UnresolvedVariables: result.Unresolved,
+		Usage:               "Decode the base64 archive_base64 field and save as " + result.Filename,
 	}, nil
 }
 
 // --- Archive helpers ---
-

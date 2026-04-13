@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"log"
-	"log/slog"
 	"os"
 	"os/exec"
 	"testing"
@@ -103,10 +102,6 @@ func truncateAll(t *testing.T) {
 			t.Fatalf("truncating table %s: %v", table, err)
 		}
 	}
-}
-
-func discardLogger() *slog.Logger {
-	return slog.New(slog.DiscardHandler)
 }
 
 // testUUID generates a deterministic UUID v5-style string from a seed.

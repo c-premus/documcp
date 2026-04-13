@@ -6,11 +6,11 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
-	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/testutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -88,11 +88,6 @@ func (m *mockDocumentRepo) CreateVersion(ctx context.Context, version *model.Doc
 // Helpers
 // ---------------------------------------------------------------------------
 
-func discardLogger() *slog.Logger {
-	return slog.New(slog.DiscardHandler)
-}
-
-
 // ---------------------------------------------------------------------------
 // TestDocumentService_FindByUUID
 // ---------------------------------------------------------------------------
@@ -138,7 +133,7 @@ func TestDocumentService_FindByUUID(t *testing.T) {
 			t.Parallel()
 
 			repo := &mockDocumentRepo{findByUUIDFn: tt.repoFn}
-			svc := NewDocumentService(repo, discardLogger())
+			svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 			doc, err := svc.FindByUUID(context.Background(), "abc-123")
 
@@ -193,7 +188,7 @@ func TestDocumentService_Create(t *testing.T) {
 				return createdDoc, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 		content := "hello world"
 		params := CreateDocumentParams{
@@ -265,7 +260,7 @@ func TestDocumentService_Create(t *testing.T) {
 				return &model.Document{ID: 10}, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 		params := CreateDocumentParams{
 			Title:    "Tagged",
@@ -304,7 +299,7 @@ func TestDocumentService_Create(t *testing.T) {
 				return &model.Document{ID: 11}, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 		params := CreateDocumentParams{
 			Title:    "No Tags",
@@ -330,7 +325,7 @@ func TestDocumentService_Create(t *testing.T) {
 				return errors.New("disk full")
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 		params := CreateDocumentParams{
 			Title:    "Fail",
@@ -380,7 +375,7 @@ func TestDocumentService_Update(t *testing.T) {
 				return updatedDoc, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 		doc, err := svc.Update(context.Background(), "update-uuid", UpdateDocumentParams{
 			Title: "New Title",
@@ -409,7 +404,7 @@ func TestDocumentService_Update(t *testing.T) {
 				return updatedDoc, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 		doc, err := svc.Update(context.Background(), "update-uuid", UpdateDocumentParams{
 			IsPublic: new(true),
@@ -449,7 +444,7 @@ func TestDocumentService_Update(t *testing.T) {
 				return updatedDoc, nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 		_, err := svc.Update(context.Background(), "update-uuid", UpdateDocumentParams{
 			Tags: []string{"new-tag"},
@@ -470,7 +465,7 @@ func TestDocumentService_Update(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 		_, err := svc.Update(context.Background(), "missing-uuid", UpdateDocumentParams{
 			Title: "Nope",
@@ -494,7 +489,7 @@ func TestDocumentService_Update(t *testing.T) {
 				return errors.New("constraint violation")
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 		_, err := svc.Update(context.Background(), "update-uuid", UpdateDocumentParams{
 			Title: "Boom",
@@ -531,7 +526,7 @@ func TestDocumentService_Delete(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 		err := svc.Delete(context.Background(), "del-uuid")
 		if err != nil {
@@ -550,7 +545,7 @@ func TestDocumentService_Delete(t *testing.T) {
 				return nil, sql.ErrNoRows
 			},
 		}
-		svc := NewDocumentService(repo, discardLogger())
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 		err := svc.Delete(context.Background(), "ghost-uuid")
 		if err == nil {
@@ -577,7 +572,7 @@ func TestDocumentService_Delete_SoftDeleteError(t *testing.T) {
 			return errors.New("foreign key constraint")
 		},
 	}
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 	err := svc.Delete(context.Background(), "err-uuid")
 	if err == nil {
@@ -606,7 +601,7 @@ func TestDocumentService_Create_WithUserID(t *testing.T) {
 			return createdDoc, nil
 		},
 	}
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 	uid := int64(42)
 	params := CreateDocumentParams{
@@ -646,7 +641,7 @@ func TestDocumentService_Create_WithDescription(t *testing.T) {
 			return createdDoc, nil
 		},
 	}
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 	params := CreateDocumentParams{
 		Title:       "Described",
@@ -685,7 +680,7 @@ func TestDocumentService_Create_EmptyDescription(t *testing.T) {
 			return createdDoc, nil
 		},
 	}
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 	params := CreateDocumentParams{
 		Title:    "No Description",
@@ -718,7 +713,7 @@ func TestDocumentService_Create_ReplaceTagsError(t *testing.T) {
 			return errors.New("tag constraint")
 		},
 	}
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 	params := CreateDocumentParams{
 		Title:    "Tag Fail",
@@ -752,7 +747,7 @@ func TestDocumentService_Create_FindByIDError(t *testing.T) {
 			return nil, errors.New("unexpected connection loss")
 		},
 	}
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 	params := CreateDocumentParams{
 		Title:    "Refetch Fail",
@@ -793,7 +788,7 @@ func TestDocumentService_Update_DescriptionChange(t *testing.T) {
 			return updatedDoc, nil
 		},
 	}
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 	doc, err := svc.Update(context.Background(), "desc-uuid", UpdateDocumentParams{
 		Description: "Updated description",
@@ -828,7 +823,7 @@ func TestDocumentService_Update_ReplaceTagsError(t *testing.T) {
 			return errors.New("tag replace failure")
 		},
 	}
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 	_, err := svc.Update(context.Background(), "tag-err-uuid", UpdateDocumentParams{
 		Tags: []string{"fail"},
@@ -859,7 +854,7 @@ func TestDocumentService_Update_FindByIDError(t *testing.T) {
 			return nil, errors.New("db gone")
 		},
 	}
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 	_, err := svc.Update(context.Background(), "refetch-err", UpdateDocumentParams{
 		Title: "Whatever",
@@ -923,7 +918,7 @@ func TestDocumentService_TagsForDocument(t *testing.T) {
 			t.Parallel()
 
 			repo := &mockDocumentRepo{tagsForDocFn: tt.repoFn}
-			svc := NewDocumentService(repo, discardLogger())
+			svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 			tags, err := svc.TagsForDocument(context.Background(), 10)
 
@@ -969,7 +964,7 @@ func TestDocumentService_Update_NilTagsDoesNotCallReplaceTags(t *testing.T) {
 			return updatedDoc, nil
 		},
 	}
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 	// Tags field is nil (not provided), should not call ReplaceTags.
 	_, err := svc.Update(context.Background(), "no-tags-uuid", UpdateDocumentParams{
@@ -1010,7 +1005,7 @@ func TestDocumentService_Update_EmptyTagsCallsReplaceTags(t *testing.T) {
 			return updatedDoc, nil
 		},
 	}
-	svc := NewDocumentService(repo, discardLogger())
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
 
 	// Tags is an empty (non-nil) slice -- should clear all tags.
 	_, err := svc.Update(context.Background(), "empty-tags-uuid", UpdateDocumentParams{

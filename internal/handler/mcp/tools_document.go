@@ -284,8 +284,8 @@ func (h *Handler) handleSearchDocuments(
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, searchDocumentsResponse{}, errors.New("mcp:read scope required for document search")
 	}
-	if len(input.Query) > 500 {
-		return nil, searchDocumentsResponse{}, errors.New("query must be at most 500 characters")
+	if len(input.Query) > search.MaxQueryLength {
+		return nil, searchDocumentsResponse{}, fmt.Errorf("query must be at most %d characters", search.MaxQueryLength)
 	}
 	if h.searcher == nil {
 		return nil, searchDocumentsResponse{
@@ -449,7 +449,7 @@ func (h *Handler) handleCreateDocument(
 			UUID:      doc.UUID,
 			Title:     doc.Title,
 			FileType:  doc.FileType,
-			CreatedAt: formatNullTime(doc.CreatedAt),
+			CreatedAt: dto.FormatNullTime(doc.CreatedAt),
 		},
 	}, nil
 }
@@ -495,7 +495,7 @@ func (h *Handler) handleUpdateDocument(
 			UUID:      doc.UUID,
 			Title:     doc.Title,
 			FileType:  doc.FileType,
-			CreatedAt: formatNullTime(doc.CreatedAt),
+			CreatedAt: dto.FormatNullTime(doc.CreatedAt),
 		},
 	}, nil
 }
@@ -559,11 +559,10 @@ func buildDocumentMeta(doc *model.Document, tags []model.DocumentTag) *documentM
 		FileType:    doc.FileType,
 		WordCount:   doc.WordCount.Int64,
 		IsPublic:    doc.IsPublic,
-		Tags:        tagNames(tags),
+		Tags:        dto.TagNames(tags),
 		ContentHash: doc.ContentHash.String,
-		CreatedAt:   formatNullTime(doc.CreatedAt),
-		UpdatedAt:   formatNullTime(doc.UpdatedAt),
-		ProcessedAt: formatNullTime(doc.ProcessedAt),
+		CreatedAt:   dto.FormatNullTime(doc.CreatedAt),
+		UpdatedAt:   dto.FormatNullTime(doc.UpdatedAt),
+		ProcessedAt: dto.FormatNullTime(doc.ProcessedAt),
 	}
 }
-

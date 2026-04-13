@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/c-premus/documcp/internal/config"
+	"github.com/c-premus/documcp/internal/testutil"
 )
 
 func TestBuildPeriodicJobs_allSchedulesConfigured(t *testing.T) {
@@ -20,7 +21,7 @@ func TestBuildPeriodicJobs_allSchedulesConfigured(t *testing.T) {
 		HealthCheckSchedule:     "*/15 * * * *",
 	}
 
-	jobs := BuildPeriodicJobs(cfg, discardLogger())
+	jobs := BuildPeriodicJobs(cfg, testutil.DiscardLogger())
 
 	assert.Len(t, jobs, 6, "all 6 periodic jobs should be registered")
 }
@@ -37,7 +38,7 @@ func TestBuildPeriodicJobs_emptySchedulesSkipped(t *testing.T) {
 		HealthCheckSchedule:     "", // disabled
 	}
 
-	jobs := BuildPeriodicJobs(cfg, discardLogger())
+	jobs := BuildPeriodicJobs(cfg, testutil.DiscardLogger())
 
 	assert.Len(t, jobs, 2, "only 2 non-empty schedules should produce jobs")
 }
@@ -47,7 +48,7 @@ func TestBuildPeriodicJobs_allEmpty(t *testing.T) {
 
 	cfg := config.SchedulerConfig{}
 
-	jobs := BuildPeriodicJobs(cfg, discardLogger())
+	jobs := BuildPeriodicJobs(cfg, testutil.DiscardLogger())
 
 	assert.Empty(t, jobs, "no jobs should be registered when all schedules are empty")
 }
@@ -64,7 +65,7 @@ func TestBuildPeriodicJobs_invalidCronSkipped(t *testing.T) {
 		HealthCheckSchedule:     "*/15 * * * *",
 	}
 
-	jobs := BuildPeriodicJobs(cfg, discardLogger())
+	jobs := BuildPeriodicJobs(cfg, testutil.DiscardLogger())
 
 	// 3 invalid + 1 empty = 4 skipped, so 2 valid jobs.
 	assert.Len(t, jobs, 2, "invalid cron expressions should be skipped")
@@ -162,7 +163,7 @@ func TestBuildPeriodicJobs_singleValidSchedule(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			jobs := BuildPeriodicJobs(tt.cfg, discardLogger())
+			jobs := BuildPeriodicJobs(tt.cfg, testutil.DiscardLogger())
 			assert.Len(t, jobs, tt.wantCount)
 		})
 	}
@@ -180,7 +181,7 @@ func TestBuildPeriodicJobs_mixedValidAndInvalid(t *testing.T) {
 		HealthCheckSchedule:     "",            // empty (disabled)
 	}
 
-	jobs := BuildPeriodicJobs(cfg, discardLogger())
+	jobs := BuildPeriodicJobs(cfg, testutil.DiscardLogger())
 
 	// 2 valid, 1 invalid, 3 empty = 2 jobs.
 	assert.Len(t, jobs, 2)
@@ -191,7 +192,7 @@ func TestBuildPeriodicJobs_returnsNilForNoJobs(t *testing.T) {
 
 	cfg := config.SchedulerConfig{}
 
-	jobs := BuildPeriodicJobs(cfg, discardLogger())
+	jobs := BuildPeriodicJobs(cfg, testutil.DiscardLogger())
 
 	assert.Nil(t, jobs, "should return nil slice when no jobs are built")
 }
@@ -208,7 +209,7 @@ func TestBuildPeriodicJobs_allInvalidCron(t *testing.T) {
 		HealthCheckSchedule:     "1 2 3 4 5 6 7",
 	}
 
-	jobs := BuildPeriodicJobs(cfg, discardLogger())
+	jobs := BuildPeriodicJobs(cfg, testutil.DiscardLogger())
 
 	assert.Empty(t, jobs, "all invalid cron expressions should result in no jobs")
 }

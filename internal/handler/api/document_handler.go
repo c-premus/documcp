@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
+	"github.com/c-premus/documcp/internal/dto"
 	"github.com/c-premus/documcp/internal/extractor"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/repository"
@@ -395,11 +396,6 @@ func (h *DocumentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // toDocumentResponse converts a model.Document and its tags to a response DTO.
 // Pass includeContent=true to populate the Content field (omitted by default — can be large).
 func toDocumentResponse(doc *model.Document, tags []model.DocumentTag, includeContent ...bool) documentResponse {
-	tagNames := make([]string, len(tags))
-	for i, t := range tags {
-		tagNames[i] = t.Tag
-	}
-
 	resp := documentResponse{
 		UUID:        doc.UUID,
 		Title:       doc.Title,
@@ -412,10 +408,10 @@ func toDocumentResponse(doc *model.Document, tags []model.DocumentTag, includeCo
 		HasFile:     doc.FilePath != "",
 		Status:      string(doc.Status),
 		ContentHash: nullStringValue(doc.ContentHash),
-		Tags:        tagNames,
-		CreatedAt:   nullTimeToString(doc.CreatedAt),
-		UpdatedAt:   nullTimeToString(doc.UpdatedAt),
-		ProcessedAt: nullTimeToString(doc.ProcessedAt),
+		Tags:        dto.TagNames(tags),
+		CreatedAt:   dto.FormatNullTime(doc.CreatedAt),
+		UpdatedAt:   dto.FormatNullTime(doc.UpdatedAt),
+		ProcessedAt: dto.FormatNullTime(doc.ProcessedAt),
 	}
 
 	if len(includeContent) > 0 && includeContent[0] && doc.Content.Valid {

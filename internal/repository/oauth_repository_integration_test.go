@@ -22,7 +22,7 @@ import (
 func TestOAuthRepository_Users(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewOAuthRepository(testPool, discardLogger())
+	repo := NewOAuthRepository(testPool, testutil.DiscardLogger())
 
 	// Create a user.
 	user := testutil.NewUser(
@@ -122,7 +122,7 @@ func TestOAuthRepository_Users(t *testing.T) {
 func TestOAuthRepository_Clients(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewOAuthRepository(testPool, discardLogger())
+	repo := NewOAuthRepository(testPool, testutil.DiscardLogger())
 
 	client := testutil.NewOAuthClient(
 		testutil.WithOAuthClientID(0),
@@ -190,7 +190,7 @@ func TestOAuthRepository_Clients(t *testing.T) {
 func TestOAuthRepository_AuthorizationCodes(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewOAuthRepository(testPool, discardLogger())
+	repo := NewOAuthRepository(testPool, testutil.DiscardLogger())
 
 	// FK dependencies: user and client.
 	user := testutil.NewUser(
@@ -243,7 +243,7 @@ func TestOAuthRepository_AuthorizationCodes(t *testing.T) {
 func TestOAuthRepository_AccessTokens(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewOAuthRepository(testPool, discardLogger())
+	repo := NewOAuthRepository(testPool, testutil.DiscardLogger())
 
 	// FK dependencies.
 	user := testutil.NewUser(
@@ -303,7 +303,7 @@ func TestOAuthRepository_AccessTokens(t *testing.T) {
 func TestOAuthRepository_RefreshTokens(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewOAuthRepository(testPool, discardLogger())
+	repo := NewOAuthRepository(testPool, testutil.DiscardLogger())
 
 	// FK dependencies: user -> client -> access token.
 	user := testutil.NewUser(
@@ -375,7 +375,7 @@ func TestOAuthRepository_RefreshTokens(t *testing.T) {
 func TestOAuthRepository_DeviceCodes(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewOAuthRepository(testPool, discardLogger())
+	repo := NewOAuthRepository(testPool, testutil.DiscardLogger())
 
 	// FK dependency: client.
 	client := testutil.NewOAuthClient(
@@ -463,7 +463,7 @@ func TestOAuthRepository_DeviceCodes(t *testing.T) {
 func TestOAuthRepository_PurgeExpiredTokens(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewOAuthRepository(testPool, discardLogger())
+	repo := NewOAuthRepository(testPool, testutil.DiscardLogger())
 
 	// FK dependencies: user and client.
 	user := testutil.NewUser(
@@ -641,7 +641,7 @@ func TestOAuthRepository_PurgeExpiredTokens(t *testing.T) {
 func TestOAuthRepository_DeleteUser(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewOAuthRepository(testPool, discardLogger())
+	repo := NewOAuthRepository(testPool, testutil.DiscardLogger())
 
 	user := testutil.NewUser(
 		testutil.WithUserID(0),

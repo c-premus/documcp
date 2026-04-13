@@ -4,89 +4,20 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"testing"
+
+	"github.com/c-premus/documcp/internal/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/c-premus/documcp/internal/model"
 )
-
-func TestSearchQueryRepository_Create(t *testing.T) {
-	truncateAll(t)
-	ctx := context.Background()
-	repo := NewSearchQueryRepository(testPool, discardLogger())
-
-	t.Run("null user_id", func(t *testing.T) {
-		sq := &model.SearchQuery{
-			Query:        "golang concurrency",
-			ResultsCount: 42,
-		}
-
-		err := repo.Create(ctx, sq)
-		require.NoError(t, err)
-		assert.NotZero(t, sq.ID, "ID should be set after insert")
-	})
-
-	t.Run("with filters", func(t *testing.T) {
-		sq := &model.SearchQuery{
-			Query:        "docker networking",
-			ResultsCount: 15,
-			Filters:      sql.NullString{String: `{"type":"pdf","tag":"docs"}`, Valid: true},
-		}
-
-		err := repo.Create(ctx, sq)
-		require.NoError(t, err)
-		assert.NotZero(t, sq.ID, "ID should be set after insert")
-	})
-
-	t.Run("with user_id", func(t *testing.T) {
-		// Insert a user to satisfy the FK constraint.
-		var userID int64
-		err := testPool.QueryRow(ctx,
-			`INSERT INTO users (name, email, created_at, updated_at)
-			VALUES ($1, $2, NOW(), NOW()) RETURNING id`,
-			"Test User", "test@example.com",
-		).Scan(&userID)
-		require.NoError(t, err)
-
-		sq := &model.SearchQuery{
-			UserID:       sql.NullInt64{Int64: userID, Valid: true},
-			Query:        "kubernetes pods",
-			ResultsCount: 7,
-		}
-
-		err = repo.Create(ctx, sq)
-		require.NoError(t, err)
-		assert.NotZero(t, sq.ID, "ID should be set after insert")
-	})
-
-	t.Run("multiple creates get unique IDs", func(t *testing.T) {
-		sq1 := &model.SearchQuery{
-			Query:        "first query",
-			ResultsCount: 10,
-		}
-		sq2 := &model.SearchQuery{
-			Query:        "second query",
-			ResultsCount: 20,
-		}
-
-		require.NoError(t, repo.Create(ctx, sq1))
-		require.NoError(t, repo.Create(ctx, sq2))
-
-		assert.NotZero(t, sq1.ID)
-		assert.NotZero(t, sq2.ID)
-		assert.NotEqual(t, sq1.ID, sq2.ID, "each insert should produce a unique ID")
-	})
-}
 
 func TestSearchQueryRepository_PopularQueries(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
-	repo := NewSearchQueryRepository(testPool, discardLogger())
+	repo := NewSearchQueryRepository(testPool, testutil.DiscardLogger())
 
-	// Insert search queries with varying frequencies and casing.
+	// Insert search queries with varying frequencies and casing via direct SQL.
 	queries := []struct {
 		query string
 		count int
@@ -99,11 +30,12 @@ func TestSearchQueryRepository_PopularQueries(t *testing.T) {
 
 	for _, q := range queries {
 		for range q.count {
-			sq := &model.SearchQuery{
-				Query:        q.query,
-				ResultsCount: 10,
-			}
-			require.NoError(t, repo.Create(ctx, sq))
+			_, err := testPool.Exec(ctx,
+				`INSERT INTO search_queries (query, results_count, created_at, updated_at)
+				VALUES ($1, $2, NOW(), NOW())`,
+				q.query, 10,
+			)
+			require.NoError(t, err)
 		}
 	}
 

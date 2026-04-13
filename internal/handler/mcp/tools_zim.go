@@ -9,6 +9,7 @@ import (
 
 	authscope "github.com/c-premus/documcp/internal/auth/scope"
 	"github.com/c-premus/documcp/internal/dto"
+	"github.com/c-premus/documcp/internal/search"
 )
 
 // --- Response types ---
@@ -166,8 +167,8 @@ func (h *Handler) handleSearchZim(ctx context.Context, _ *mcp.CallToolRequest, i
 	if err := requireMCPScope(ctx, authscope.MCPRead); err != nil {
 		return nil, searchZimResponse{}, errors.New("mcp:read scope required")
 	}
-	if len(input.Query) > 500 {
-		return nil, searchZimResponse{}, errors.New("query must be at most 500 characters")
+	if len(input.Query) > search.MaxQueryLength {
+		return nil, searchZimResponse{}, fmt.Errorf("query must be at most %d characters", search.MaxQueryLength)
 	}
 	kiwixClient, _ := h.getKiwixClient(ctx)
 	if kiwixClient == nil {

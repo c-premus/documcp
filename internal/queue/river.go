@@ -167,11 +167,6 @@ func (rc *RiverClient) Stop(ctx context.Context) error {
 	return nil
 }
 
-// InsertOnly returns true when the client can only insert jobs, not process them.
-func (rc *RiverClient) InsertOnly() bool {
-	return rc.insertOnly
-}
-
 // Insert enqueues a job. Satisfies the service.JobInserter interface.
 func (rc *RiverClient) Insert(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error) {
 	result, err := rc.client.Insert(ctx, args, opts)
