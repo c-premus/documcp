@@ -429,11 +429,11 @@ func TestOAuthRepository_DeviceCodes(t *testing.T) {
 		require.NoError(t, repo.CreateUser(ctx, user))
 
 		userID := user.ID
-		require.NoError(t, repo.UpdateDeviceCodeStatus(ctx, dc.ID, model.DeviceCodeStatus("approved"), &userID))
+		require.NoError(t, repo.UpdateDeviceCodeStatus(ctx, dc.ID, model.DeviceCodeStatusAuthorized, &userID))
 
 		found, err := repo.FindDeviceCodeByDeviceCode(ctx, "hashed-device-code-999")
 		require.NoError(t, err)
-		assert.Equal(t, model.DeviceCodeStatus("approved"), found.Status)
+		assert.Equal(t, model.DeviceCodeStatusAuthorized, found.Status)
 		assert.True(t, found.UserID.Valid)
 		assert.Equal(t, user.ID, found.UserID.Int64)
 	})

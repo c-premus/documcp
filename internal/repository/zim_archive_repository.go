@@ -121,11 +121,12 @@ func (r *ZimArchiveRepository) CountFiltered(ctx context.Context, category, lang
 }
 
 // ListSearchable returns all enabled and searchable ZIM archives, ordered by
-// article count descending. Used by unified search to determine which archives
-// participate in federated Kiwix fan-out.
+// article count descending. Capped at maxUnboundedList rows. Used by unified
+// search to determine which archives participate in federated Kiwix fan-out.
 func (r *ZimArchiveRepository) ListSearchable(ctx context.Context) ([]model.ZimArchive, error) {
 	archives, err := database.Select[model.ZimArchive](ctx, r.db,
-		`SELECT * FROM zim_archives WHERE is_enabled = true AND is_searchable = true ORDER BY article_count DESC`)
+		`SELECT * FROM zim_archives WHERE is_enabled = true AND is_searchable = true
+		ORDER BY article_count DESC LIMIT $1`, maxUnboundedList)
 	if err != nil {
 		return nil, fmt.Errorf("listing searchable zim archives: %w", err)
 	}
@@ -152,10 +153,10 @@ func (r *ZimArchiveRepository) FindByUUID(ctx context.Context, uuid string) (*mo
 	return &archive, nil
 }
 
-// FindDisabled returns all disabled ZIM archives.
+// FindDisabled returns all disabled ZIM archives, capped at maxUnboundedList.
 func (r *ZimArchiveRepository) FindDisabled(ctx context.Context) ([]model.ZimArchive, error) {
 	archives, err := database.Select[model.ZimArchive](ctx, r.db,
-		`SELECT * FROM zim_archives WHERE is_enabled = false`)
+		`SELECT * FROM zim_archives WHERE is_enabled = false LIMIT $1`, maxUnboundedList)
 	if err != nil {
 		return nil, fmt.Errorf("finding disabled zim archives: %w", err)
 	}
@@ -329,10 +330,12 @@ func (r *ZimArchiveRepository) DisableOrphaned(ctx context.Context, serviceID in
 }
 
 // FindUUIDsByExternalServiceID returns the UUIDs of all ZIM archives
-// associated with the given external service, for index cleanup on service deletion.
+// associated with the given external service, capped at maxUnboundedList. Used
+// for index cleanup on service deletion.
 func (r *ZimArchiveRepository) FindUUIDsByExternalServiceID(ctx context.Context, serviceID int64) ([]string, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT uuid FROM zim_archives WHERE external_service_id = $1`, serviceID)
+		`SELECT uuid FROM zim_archives WHERE external_service_id = $1 LIMIT $2`,
+		serviceID, maxUnboundedList)
 	if err != nil {
 		return nil, fmt.Errorf("finding ZIM archive UUIDs for service %d: %w", serviceID, err)
 	}

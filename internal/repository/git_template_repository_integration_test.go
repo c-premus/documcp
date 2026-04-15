@@ -390,7 +390,7 @@ func TestGitTemplateRepository_UpdateSyncStatus(t *testing.T) {
 	assert.True(t, found.LastSyncedAt.Valid)
 
 	t.Run("with error message", func(t *testing.T) {
-		err := repo.UpdateSyncStatus(ctx, tmpl.ID, "error", "def456sha", 0, 0, "clone failed: timeout")
+		err := repo.UpdateSyncStatus(ctx, tmpl.ID, model.GitTemplateStatusFailed, "def456sha", 0, 0, "clone failed: timeout")
 		require.NoError(t, err)
 
 		var status string
@@ -399,7 +399,7 @@ func TestGitTemplateRepository_UpdateSyncStatus(t *testing.T) {
 			`SELECT status, error_message FROM git_templates WHERE id = $1`, tmpl.ID,
 		).Scan(&status, &errMsg)
 		require.NoError(t, scanErr)
-		assert.Equal(t, "error", status)
+		assert.Equal(t, "failed", status)
 		assert.True(t, errMsg.Valid)
 		assert.Equal(t, "clone failed: timeout", errMsg.String)
 	})
