@@ -17,6 +17,8 @@ import (
 )
 
 // Authorize handles GET /oauth/authorize — shows the consent screen.
+//
+//nolint:gocyclo // OAuth authorize is a sequence of independent validation steps; splitting them obscures the flow.
 func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	// Parse and validate query parameters
 	responseType := r.URL.Query().Get("response_type")
@@ -26,6 +28,7 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	scope := authscope.Normalize(r.URL.Query().Get("scope"))
 	codeChallenge := r.URL.Query().Get("code_challenge")
 	codeChallengeMethod := r.URL.Query().Get("code_challenge_method")
+	resource := r.URL.Query().Get("resource")
 
 	// Validate required parameters
 	if responseType == "" {
@@ -51,6 +54,18 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	if codeChallengeMethod != "" && codeChallengeMethod != "S256" {
 		oauthError(w, http.StatusBadRequest, "invalid_request", "The selected code challenge method is invalid.")
 		return
+	}
+
+	// RFC 8707 resource indicator. Optional at this layer (the resource
+	// server enforces audience binding); validated against the configured
+	// allowlist when present so callers can't bind tokens to unknown audiences.
+	if resource != "" {
+		canonical, err := oauth.ValidateResource(resource, h.oauthCfg.AllowedResources)
+		if err != nil {
+			oauthError(w, http.StatusBadRequest, "invalid_target", "The requested resource is not recognized.")
+			return
+		}
+		resource = canonical
 	}
 
 	// Check user is authenticated
@@ -163,6 +178,7 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		"code_challenge":        codeChallenge,
 		"code_challenge_method": codeChallengeMethod,
 		"scope":                 effectiveScope,
+		"resource":              resource,
 		"timestamp":             time.Now().Unix(),
 	}
 	if err := session.Save(r, w); err != nil {
@@ -325,6 +341,7 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	pendingScope, _ := pending["scope"].(string)
 	pendingCodeChallenge, _ := pending["code_challenge"].(string)
 	pendingCodeChallengeMethod, _ := pending["code_challenge_method"].(string)
+	pendingResource, _ := pending["resource"].(string)
 
 	// Defense-in-depth: verify POST body values match session state.
 	// An attacker who tampers with the POST body cannot alter the grant.
@@ -365,6 +382,7 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 		Scope:               pendingScope,
 		CodeChallenge:       pendingCodeChallenge,
 		CodeChallengeMethod: pendingCodeChallengeMethod,
+		Resource:            pendingResource,
 	})
 	if err != nil {
 		h.logger.Error("generating authorization code", "error", err)

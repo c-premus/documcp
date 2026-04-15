@@ -17,20 +17,20 @@ import (
 
 // Config holds the complete application configuration.
 type Config struct {
-	App         AppConfig
-	Server      ServerConfig
-	Database    DatabaseConfig
-	Redis       RedisConfig
-	OIDC OIDCConfig
-	OAuth       OAuthConfig
-	Storage     StorageConfig
-	OTEL        OTELConfig
-	DocuMCP     DocuMCPConfig
-	Sentry      SentryConfig
-	Scheduler   SchedulerConfig
-	Queue       QueueConfig
-	Kiwix       KiwixConfig
-	Git         GitConfig
+	App       AppConfig
+	Server    ServerConfig
+	Database  DatabaseConfig
+	Redis     RedisConfig
+	OIDC      OIDCConfig
+	OAuth     OAuthConfig
+	Storage   StorageConfig
+	OTEL      OTELConfig
+	DocuMCP   DocuMCPConfig
+	Sentry    SentryConfig
+	Scheduler SchedulerConfig
+	Queue     QueueConfig
+	Kiwix     KiwixConfig
+	Git       GitConfig
 }
 
 // RedisConfig holds Redis connection settings used for distributed rate
@@ -75,17 +75,17 @@ type SchedulerConfig struct {
 
 // AppConfig holds general application settings.
 type AppConfig struct {
-	Name              string        `mapstructure:"app_name"`
-	Env               string        `mapstructure:"app_env"`
-	Debug             bool          `mapstructure:"app_debug"`
-	URL               string        `mapstructure:"app_url"`
-	Timezone          string        `mapstructure:"app_timezone"`
-	InternalAPIToken  string        `mapstructure:"internal_api_token"`
-	EncryptionKey     string        `mapstructure:"encryption_key"`
-	EncryptionKeyBytes []byte       // Decoded from EncryptionKey (hex); populated by Validate()
-	QueueStopTimeout  time.Duration `mapstructure:"app_queue_stop_timeout"`
-	TracerStopTimeout time.Duration `mapstructure:"app_tracer_stop_timeout"`
-	SSRFDialerTimeout time.Duration `mapstructure:"ssrf_dialer_timeout"`
+	Name               string        `mapstructure:"app_name"`
+	Env                string        `mapstructure:"app_env"`
+	Debug              bool          `mapstructure:"app_debug"`
+	URL                string        `mapstructure:"app_url"`
+	Timezone           string        `mapstructure:"app_timezone"`
+	InternalAPIToken   string        `mapstructure:"internal_api_token"`
+	EncryptionKey      string        `mapstructure:"encryption_key"`
+	EncryptionKeyBytes []byte        // Decoded from EncryptionKey (hex); populated by Validate()
+	QueueStopTimeout   time.Duration `mapstructure:"app_queue_stop_timeout"`
+	TracerStopTimeout  time.Duration `mapstructure:"app_tracer_stop_timeout"`
+	SSRFDialerTimeout  time.Duration `mapstructure:"ssrf_dialer_timeout"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -170,6 +170,10 @@ type OAuthConfig struct {
 	RegistrationRequireAuth bool          `mapstructure:"oauth_registration_require_auth"`
 	ClientTouchTimeout      time.Duration `mapstructure:"oauth_client_touch_timeout"`
 	ScopeGrantTTL           time.Duration `mapstructure:"oauth_scope_grant_ttl"`
+	// AllowedResources is the RFC 8707 resource indicator allowlist. Clients
+	// may only request access tokens bound to one of these URIs. Defaults to
+	// [AppURL, AppURL+DocuMCP.Endpoint] when unset.
+	AllowedResources []string `mapstructure:"oauth_allowed_resources"`
 }
 
 // KiwixConfig holds Kiwix external service client settings.
@@ -179,9 +183,9 @@ type KiwixConfig struct {
 	HealthCheckTimeout time.Duration `mapstructure:"kiwix_health_check_timeout"`
 
 	// Federated search: fan-out to Kiwix archives during unified_search.
-	FederatedSearchTimeout  time.Duration `mapstructure:"kiwix_federated_search_timeout"`
-	FederatedMaxArchives    int           `mapstructure:"kiwix_federated_max_archives"`
-	FederatedPerArchiveLimit int          `mapstructure:"kiwix_federated_per_archive_limit"`
+	FederatedSearchTimeout   time.Duration `mapstructure:"kiwix_federated_search_timeout"`
+	FederatedMaxArchives     int           `mapstructure:"kiwix_federated_max_archives"`
+	FederatedPerArchiveLimit int           `mapstructure:"kiwix_federated_per_archive_limit"`
 }
 
 // GitConfig holds Git template client settings.
@@ -528,6 +532,7 @@ func Load() (*Config, error) {
 		RegistrationRequireAuth: v.GetBool("oauth_registration_require_auth"),
 		ClientTouchTimeout:      v.GetDuration("oauth_client_touch_timeout"),
 		ScopeGrantTTL:           v.GetDuration("oauth_scope_grant_ttl"),
+		AllowedResources:        v.GetStringSlice("oauth_allowed_resources"),
 	}
 
 	cfg.Storage = StorageConfig{
@@ -562,6 +567,16 @@ func Load() (*Config, error) {
 		Endpoint:      v.GetString("documcp_endpoint"),
 		ServerName:    v.GetString("documcp_name"),
 		ServerVersion: v.GetString("documcp_version"),
+	}
+
+	// Derive default resource indicator allowlist from AppURL + MCP endpoint
+	// when not explicitly configured. Both the admin/API surface (AppURL) and
+	// the MCP surface (AppURL + endpoint) are valid token audiences.
+	if len(cfg.OAuth.AllowedResources) == 0 && cfg.App.URL != "" {
+		cfg.OAuth.AllowedResources = []string{
+			cfg.App.URL,
+			cfg.App.URL + cfg.DocuMCP.Endpoint,
+		}
 	}
 
 	cfg.Sentry = SentryConfig{

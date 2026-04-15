@@ -27,6 +27,10 @@ var (
 type DeviceAuthorizationParams struct {
 	ClientID string
 	Scope    string
+	// Resource is the optional RFC 8707 audience to bind the eventual token
+	// to. Validated against the server allowlist by the handler before this
+	// struct is constructed.
+	Resource string
 }
 
 // DeviceAuthorizationResult holds the device authorization response.
@@ -89,6 +93,7 @@ func (s *Service) GenerateDeviceCode(ctx context.Context, params DeviceAuthoriza
 		UserCode:                userCode,
 		ClientID:                client.ID,
 		Scope:                   sql.NullString{String: params.Scope, Valid: params.Scope != ""},
+		Resource:                sql.NullString{String: params.Resource, Valid: params.Resource != ""},
 		VerificationURI:         verificationURI,
 		VerificationURIComplete: sql.NullString{String: verificationURIComplete, Valid: true},
 		Interval:                interval,
@@ -247,8 +252,12 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceC
 		if dc.Scope.Valid {
 			scope = dc.Scope.String
 		}
+		resource := ""
+		if dc.Resource.Valid {
+			resource = dc.Resource.String
+		}
 
-		return s.issueTokenPair(ctx, client.ID, dc.UserID, scope)
+		return s.issueTokenPair(ctx, client.ID, dc.UserID, scope, resource)
 	default:
 		return nil, &DeviceCodeError{Code: "invalid_grant", Description: "Device code not in valid state for exchange"}
 	}

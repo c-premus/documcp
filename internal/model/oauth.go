@@ -78,6 +78,7 @@ type OAuthAuthorizationCode struct {
 	Scope               sql.NullString `db:"scope" json:"scope"`
 	CodeChallenge       sql.NullString `db:"code_challenge" json:"code_challenge"`
 	CodeChallengeMethod sql.NullString `db:"code_challenge_method" json:"code_challenge_method"`
+	Resource            sql.NullString `db:"resource" json:"resource"`
 	ExpiresAt           time.Time      `db:"expires_at" json:"expires_at"`
 	Revoked             bool           `db:"revoked" json:"revoked"`
 	CreatedAt           sql.NullTime   `db:"created_at" json:"created_at"`
@@ -91,6 +92,7 @@ type OAuthAccessToken struct {
 	ClientID  int64          `db:"client_id" json:"client_id"`
 	UserID    sql.NullInt64  `db:"user_id" json:"user_id"`
 	Scope     sql.NullString `db:"scope" json:"scope"`
+	Resource  sql.NullString `db:"resource" json:"resource"`
 	ExpiresAt time.Time      `db:"expires_at" json:"expires_at"`
 	Revoked   bool           `db:"revoked" json:"revoked"`
 	CreatedAt sql.NullTime   `db:"created_at" json:"created_at"`
@@ -121,18 +123,19 @@ const (
 
 // OAuthDeviceCode represents a row in the "oauth_device_codes" table.
 type OAuthDeviceCode struct {
-	ID                      int64          `db:"id" json:"id"`
-	DeviceCode              string         `db:"device_code" json:"device_code"`
-	UserCode                string         `db:"user_code" json:"user_code"`
-	ClientID                int64          `db:"client_id" json:"client_id"`
-	UserID                  sql.NullInt64  `db:"user_id" json:"user_id"`
-	Scope                   sql.NullString `db:"scope" json:"scope"`
-	VerificationURI         string         `db:"verification_uri" json:"verification_uri"`
-	VerificationURIComplete sql.NullString `db:"verification_uri_complete" json:"verification_uri_complete"`
-	Interval                int            `db:"interval" json:"interval"`
-	LastPolledAt            sql.NullTime   `db:"last_polled_at" json:"last_polled_at"`
+	ID                      int64            `db:"id" json:"id"`
+	DeviceCode              string           `db:"device_code" json:"device_code"`
+	UserCode                string           `db:"user_code" json:"user_code"`
+	ClientID                int64            `db:"client_id" json:"client_id"`
+	UserID                  sql.NullInt64    `db:"user_id" json:"user_id"`
+	Scope                   sql.NullString   `db:"scope" json:"scope"`
+	Resource                sql.NullString   `db:"resource" json:"resource"`
+	VerificationURI         string           `db:"verification_uri" json:"verification_uri"`
+	VerificationURIComplete sql.NullString   `db:"verification_uri_complete" json:"verification_uri_complete"`
+	Interval                int              `db:"interval" json:"interval"`
+	LastPolledAt            sql.NullTime     `db:"last_polled_at" json:"last_polled_at"`
 	Status                  DeviceCodeStatus `db:"status" json:"status"`
-	ExpiresAt               time.Time      `db:"expires_at" json:"expires_at"`
-	CreatedAt               sql.NullTime   `db:"created_at" json:"created_at"`
-	UpdatedAt               sql.NullTime   `db:"updated_at" json:"updated_at"`
+	ExpiresAt               time.Time        `db:"expires_at" json:"expires_at"`
+	CreatedAt               sql.NullTime     `db:"created_at" json:"created_at"`
+	UpdatedAt               sql.NullTime     `db:"updated_at" json:"updated_at"`
 }

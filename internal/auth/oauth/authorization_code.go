@@ -25,6 +25,11 @@ type GenerateAuthorizationCodeParams struct {
 	Scope               string
 	CodeChallenge       string
 	CodeChallengeMethod string
+	// Resource is the RFC 8707 audience the resulting access token will be
+	// bound to. Empty means the client did not supply a `resource` parameter
+	// at /oauth/authorize; the issued token will not be usable at any
+	// audience-checked resource server.
+	Resource string
 }
 
 // GenerateAuthorizationCode creates a new authorization code.
@@ -56,6 +61,10 @@ func (s *Service) GenerateAuthorizationCode(ctx context.Context, params Generate
 			String: params.CodeChallengeMethod,
 			Valid:  params.CodeChallengeMethod != "",
 		},
+		Resource: sql.NullString{
+			String: params.Resource,
+			Valid:  params.Resource != "",
+		},
 		ExpiresAt: time.Now().Add(s.config.AuthCodeLifetime),
 		Revoked:   false,
 	}
@@ -79,6 +88,10 @@ type ExchangeAuthorizationCodeParams struct {
 	ClientSecret string
 	RedirectURI  string
 	CodeVerifier string
+	// Resource is the optional RFC 8707 audience the client is requesting on
+	// the token. When non-empty it must equal the resource captured at
+	// /oauth/authorize; widening is forbidden (RFC 8707 §2.2).
+	Resource string
 }
 
 // ExchangeAuthorizationCode exchanges an auth code for tokens.
@@ -141,6 +154,19 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 		return nil, errors.New("unexpected code_verifier - authorization request did not include code_challenge")
 	}
 
+	// RFC 8707 §2.2: if the client supplies a resource on the token request
+	// it must equal the resource captured at /oauth/authorize. Single-resource
+	// schema makes "subset" equivalent to "equal or absent".
+	resource := ""
+	if authCode.Resource.Valid {
+		resource = authCode.Resource.String
+	}
+	if params.Resource != "" {
+		if resource == "" || params.Resource != resource {
+			return nil, errors.New("invalid resource: does not match authorization request")
+		}
+	}
+
 	// Atomically revoke the authorization code (one-time use).
 	// Returns sql.ErrNoRows if a concurrent request already consumed it.
 	if err := s.repo.RevokeAuthorizationCode(ctx, authCode.ID); err != nil {
@@ -181,5 +207,5 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 		}
 	}
 
-	return s.issueTokenPair(ctx, client.ID, authCode.UserID, scope)
+	return s.issueTokenPair(ctx, client.ID, authCode.UserID, scope, resource)
 }
