@@ -30,8 +30,22 @@ func SubstituteVariables(content string, variables map[string]string) (result st
 // amplification when a variable appears multiple times in a template.
 const maxVariableValueLen = 10 * 1024 // 10 KiB
 
+// ValidateVariables enforces the per-value size cap. Used by callers that
+// receive the variables map directly (e.g. the MCP tools, where the schema
+// already shapes the payload as an object).
+func ValidateVariables(vars map[string]string) error {
+	for k, v := range vars {
+		if len(v) > maxVariableValueLen {
+			return fmt.Errorf("variable %q value exceeds maximum length of %d bytes", k, maxVariableValueLen)
+		}
+	}
+	return nil
+}
+
 // ParseVariablesJSON decodes a JSON string into a map of variable substitutions.
 // Returns an empty map if the input is empty. Rejects values exceeding 10 KiB.
+// Still used by the REST API where variables arrive JSON-encoded on the query
+// string.
 func ParseVariablesJSON(raw string) (map[string]string, error) {
 	if raw == "" {
 		return map[string]string{}, nil
@@ -40,10 +54,8 @@ func ParseVariablesJSON(raw string) (map[string]string, error) {
 	if err := json.Unmarshal([]byte(raw), &vars); err != nil {
 		return nil, fmt.Errorf("decoding variables JSON: %w", err)
 	}
-	for k, v := range vars {
-		if len(v) > maxVariableValueLen {
-			return nil, fmt.Errorf("variable %q value exceeds maximum length of %d bytes", k, maxVariableValueLen)
-		}
+	if err := ValidateVariables(vars); err != nil {
+		return nil, err
 	}
 	return vars, nil
 }

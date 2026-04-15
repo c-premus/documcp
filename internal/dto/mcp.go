@@ -100,22 +100,22 @@ type GetTemplateStructureInput struct {
 
 // GetTemplateFileInput holds parameters for reading a single file from a template.
 type GetTemplateFileInput struct {
-	UUID      string `json:"uuid" jsonschema:"Template UUID,required"`
-	Path      string `json:"path" jsonschema:"File path within the template,required"`
-	Variables string `json:"variables,omitempty" jsonschema:"JSON object of variables for placeholder substitution"`
+	UUID      string            `json:"uuid" jsonschema:"Template UUID,required"`
+	Path      string            `json:"path" jsonschema:"File path within the template,required"`
+	Variables map[string]string `json:"variables,omitempty" jsonschema:"Variables for {{placeholder}} substitution (keys are placeholder names, values are substitutions)"`
 }
 
 // GetDeploymentGuideInput holds parameters for retrieving a template's deployment guide.
 type GetDeploymentGuideInput struct {
-	UUID      string `json:"uuid" jsonschema:"Template UUID,required"`
-	Variables string `json:"variables,omitempty" jsonschema:"JSON object of variables for placeholder substitution"`
+	UUID      string            `json:"uuid" jsonschema:"Template UUID,required"`
+	Variables map[string]string `json:"variables,omitempty" jsonschema:"Variables for {{placeholder}} substitution"`
 }
 
 // DownloadTemplateInput holds parameters for downloading a template archive.
 type DownloadTemplateInput struct {
-	UUID      string `json:"uuid" jsonschema:"Template UUID,required"`
-	Format    string `json:"format,omitempty" jsonschema:"Archive format: zip (default) or tar.gz"`
-	Variables string `json:"variables,omitempty" jsonschema:"JSON object of variables for placeholder substitution"`
+	UUID      string            `json:"uuid" jsonschema:"Template UUID,required"`
+	Format    string            `json:"format,omitempty" jsonschema:"Archive format: zip (default) or tar.gz"`
+	Variables map[string]string `json:"variables,omitempty" jsonschema:"Variables for {{placeholder}} substitution"`
 }
 
 // --- Unified Search ---.
