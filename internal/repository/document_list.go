@@ -11,6 +11,11 @@ import (
 	"github.com/c-premus/documcp/internal/model"
 )
 
+// maxUnboundedList caps defensive queries that have no natural paging
+// mechanism (cleanup jobs, index reconciliation). Callers that need more rows
+// must paginate explicitly.
+const maxUnboundedList = 10000
+
 // DocumentListParams holds filters and pagination for listing documents.
 type DocumentListParams struct {
 	FileType      string

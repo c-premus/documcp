@@ -212,9 +212,10 @@ func (r *DocumentRepository) CreateVersion(ctx context.Context, version *model.D
 	return nil
 }
 
-// ListAllUUIDs returns all document UUIDs including soft-deleted ones.
+// ListAllUUIDs returns all document UUIDs including soft-deleted ones, capped
+// at maxUnboundedList rows per call. Callers that need more must paginate.
 func (r *DocumentRepository) ListAllUUIDs(ctx context.Context) ([]string, error) {
-	rows, err := r.db.Query(ctx, `SELECT uuid FROM documents`)
+	rows, err := r.db.Query(ctx, `SELECT uuid FROM documents LIMIT $1`, maxUnboundedList)
 	if err != nil {
 		return nil, fmt.Errorf("listing all document uuids: %w", err)
 	}
@@ -239,11 +240,13 @@ func (r *DocumentRepository) FindByUUIDs(ctx context.Context, uuids []string) ([
 	return docs, nil
 }
 
-// ListActiveFilePaths returns file paths for non-deleted documents.
+// ListActiveFilePaths returns file paths for non-deleted documents, capped at
+// maxUnboundedList rows. Used by the orphaned-file cleanup job.
 func (r *DocumentRepository) ListActiveFilePaths(ctx context.Context) ([]DocumentFilePath, error) {
 	paths, err := database.Select[DocumentFilePath](ctx, r.db,
 		`SELECT id, uuid, file_path FROM documents
-		WHERE deleted_at IS NULL AND file_path IS NOT NULL AND file_path != ''`)
+		WHERE deleted_at IS NULL AND file_path IS NOT NULL AND file_path != ''
+		LIMIT $1`, maxUnboundedList)
 	if err != nil {
 		return nil, fmt.Errorf("listing active file paths: %w", err)
 	}

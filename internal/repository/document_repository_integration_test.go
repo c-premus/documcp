@@ -120,13 +120,13 @@ func TestDocumentRepository_Update(t *testing.T) {
 			name:      "update title and status",
 			uuid:      testUUID("update-title-status"),
 			newTitle:  "Updated Title",
-			newStatus: model.DocumentStatus("processing"),
+			newStatus: model.DocumentStatusPending,
 		},
 		{
-			name:      "update to error status",
-			uuid:      testUUID("update-error-status"),
-			newTitle:  "Error Doc",
-			newStatus: model.DocumentStatus("error"),
+			name:      "update to failed status",
+			uuid:      testUUID("update-failed-status"),
+			newTitle:  "Failed Doc",
+			newStatus: model.DocumentStatusFailed,
 		},
 	}
 
@@ -821,7 +821,7 @@ func TestDocumentRepository_List(t *testing.T) {
 		testutil.WithDocumentUUID(testUUID("list-doc-002")),
 		testutil.WithDocumentTitle("Beta Report"),
 		testutil.WithDocumentFileType("pdf"),
-		testutil.WithDocumentStatus(model.DocumentStatus("processing")),
+		testutil.WithDocumentStatus(model.DocumentStatusPending),
 		testutil.WithDocumentIsPublic(false),
 	)
 	doc3 := testutil.NewDocument(
@@ -1099,7 +1099,7 @@ func TestDocumentRepository_FindByStatus(t *testing.T) {
 	})
 
 	t.Run("no matches", func(t *testing.T) {
-		docs, err := repo.FindByStatus(ctx, model.DocumentStatus("error"), 10)
+		docs, err := repo.FindByStatus(ctx, model.DocumentStatusUploaded, 10)
 		if err != nil {
 			t.Fatalf("FindByStatus() error: %v", err)
 		}
