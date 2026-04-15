@@ -146,6 +146,18 @@ func (m *mockOAuthRepo) RevokeTokenPair(_ context.Context, _, _ int64) error {
 	return nil
 }
 
+func (m *mockOAuthRepo) FindAuthorizationCodeByCodeIncludingRevoked(_ context.Context, _ string) (*model.OAuthAuthorizationCode, error) {
+	return nil, sql.ErrNoRows
+}
+
+func (m *mockOAuthRepo) RevokeTokenFamilyByAuthorizationCodeID(_ context.Context, _ int64) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockOAuthRepo) FindRefreshTokenByTokenIgnoringRevocation(_ context.Context, _ string) (*model.OAuthRefreshToken, error) {
+	return nil, sql.ErrNoRows
+}
+
 func (m *mockOAuthRepo) CreateRefreshToken(ctx context.Context, token *model.OAuthRefreshToken) error {
 	if m.createRefreshTokenFn != nil {
 		return m.createRefreshTokenFn(ctx, token)

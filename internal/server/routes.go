@@ -404,11 +404,12 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 			}
 
 			if deps.UserHandler != nil {
+				// Create/Update are intentionally absent — DocuMCP is OIDC-only.
+				// User rows are provisioned by the OIDC callback on first login
+				// and synced from claims thereafter. See security.md H1.
 				r.Route("/users", func(r chi.Router) {
 					r.Get("/", deps.UserHandler.List)
-					r.Post("/", deps.UserHandler.Create)
 					r.Get("/{id}", deps.UserHandler.Show)
-					r.Put("/{id}", deps.UserHandler.Update)
 					r.Delete("/{id}", deps.UserHandler.Delete)
 					r.Post("/{id}/toggle-admin", deps.UserHandler.ToggleAdmin)
 				})

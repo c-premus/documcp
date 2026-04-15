@@ -87,16 +87,21 @@ type OAuthAuthorizationCode struct {
 
 // OAuthAccessToken represents a row in the "oauth_access_tokens" table.
 type OAuthAccessToken struct {
-	ID        int64          `db:"id" json:"id"`
-	Token     string         `db:"token" json:"token"`
-	ClientID  int64          `db:"client_id" json:"client_id"`
-	UserID    sql.NullInt64  `db:"user_id" json:"user_id"`
-	Scope     sql.NullString `db:"scope" json:"scope"`
-	Resource  sql.NullString `db:"resource" json:"resource"`
-	ExpiresAt time.Time      `db:"expires_at" json:"expires_at"`
-	Revoked   bool           `db:"revoked" json:"revoked"`
-	CreatedAt sql.NullTime   `db:"created_at" json:"created_at"`
-	UpdatedAt sql.NullTime   `db:"updated_at" json:"updated_at"`
+	ID       int64          `db:"id" json:"id"`
+	Token    string         `db:"token" json:"token"`
+	ClientID int64          `db:"client_id" json:"client_id"`
+	UserID   sql.NullInt64  `db:"user_id" json:"user_id"`
+	Scope    sql.NullString `db:"scope" json:"scope"`
+	Resource sql.NullString `db:"resource" json:"resource"`
+	// AuthorizationCodeID links this token back to the authorization code
+	// that minted it (including after refresh rotation, which inherits the
+	// original code's ID). Null for device-flow tokens and tokens issued by
+	// pre-v0.21.0 builds. Used for replay-family revocation.
+	AuthorizationCodeID sql.NullInt64 `db:"authorization_code_id" json:"authorization_code_id"`
+	ExpiresAt           time.Time     `db:"expires_at" json:"expires_at"`
+	Revoked             bool          `db:"revoked" json:"revoked"`
+	CreatedAt           sql.NullTime  `db:"created_at" json:"created_at"`
+	UpdatedAt           sql.NullTime  `db:"updated_at" json:"updated_at"`
 }
 
 // OAuthRefreshToken represents a row in the "oauth_refresh_tokens" table.

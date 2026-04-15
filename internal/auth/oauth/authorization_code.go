@@ -120,9 +120,15 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 		return nil, err
 	}
 
-	// Look up the authorization code by hash
+	// Look up the authorization code by hash. A non-revoked hit is the
+	// happy path. If the lookup fails with no-rows, dispatch to the replay
+	// detector before returning — a revoked match means the code is being
+	// replayed (security.md M1 / OAuth 2.1 §4.1.3).
 	authCode, err := s.repo.FindAuthorizationCodeByCode(ctx, codeHash)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			s.handleAuthCodeReusePossible(ctx, codeHash, codeID, params.ClientID)
+		}
 		return nil, errors.New("invalid authorization code")
 	}
 
@@ -207,5 +213,28 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 		}
 	}
 
-	return s.issueTokenPair(ctx, client.ID, authCode.UserID, scope, resource)
+	return s.issueTokenPair(ctx, client.ID, authCode.UserID, scope, resource, authCode.ID)
+}
+
+// handleAuthCodeReusePossible runs when the primary code lookup misses with
+// sql.ErrNoRows. If the same hash exists with revoked=true, the code is
+// being replayed — evidence the token lineage is compromised — and every
+// access/refresh token descending from that code is revoked. Non-fatal on
+// error. Security.md M1.
+func (s *Service) handleAuthCodeReusePossible(ctx context.Context, codeHash string, codeID int64, clientID string) {
+	replayed, err := s.repo.FindAuthorizationCodeByCodeIncludingRevoked(ctx, codeHash)
+	if err != nil || !replayed.Revoked || replayed.ID != codeID {
+		return
+	}
+
+	revoked, famErr := s.repo.RevokeTokenFamilyByAuthorizationCodeID(ctx, replayed.ID)
+	if famErr != nil {
+		s.logger.Error("revoking token family on auth-code replay",
+			"error", famErr, "auth_code_id", replayed.ID, "client_id", clientID)
+		return
+	}
+	s.logger.Warn("oauth auth-code replay detected",
+		"auth_code_id", replayed.ID, "client_id", clientID,
+		"tokens_revoked", revoked)
+	tokenReplayTotal.WithLabelValues("authcode").Inc()
 }

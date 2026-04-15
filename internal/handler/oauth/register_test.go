@@ -561,6 +561,67 @@ func TestHandler_Register(t *testing.T) {
 		assert.Equal(t, authscope.DefaultScopes(), result["scope"])
 	})
 
+	t.Run("rejects redirect_uris array longer than 10 entries (security.md L1)", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newHandlerWithRepoAndConfig(&mockOAuthRepo{}, defaultOAuthConfig())
+
+		var uris strings.Builder
+		uris.WriteByte('[')
+		for i := range 11 {
+			if i > 0 {
+				uris.WriteByte(',')
+			}
+			uris.WriteString(`"https://example.com/cb`)
+			uris.WriteByte(byte('0' + i%10))
+			uris.WriteString(`"`)
+		}
+		uris.WriteByte(']')
+		body := `{"client_name":"too-many","redirect_uris":` + uris.String() + `}`
+
+		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Register(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		result := decodeOAuthJSON(t, rr.Body)
+		assert.Equal(t, "invalid_client_metadata", result["error"])
+		assert.Contains(t, result["error_description"], "at most 10")
+	})
+
+	t.Run("accepts redirect_uris array of exactly 10 entries", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			CreateClientFunc: func(_ context.Context, c *model.OAuthClient) error {
+				c.ID = 1
+				return nil
+			},
+		}
+		h, _ := newHandlerWithRepoAndConfig(repo, defaultOAuthConfig())
+
+		var uris strings.Builder
+		uris.WriteByte('[')
+		for i := range 10 {
+			if i > 0 {
+				uris.WriteByte(',')
+			}
+			uris.WriteString(`"https://example.com/cb`)
+			uris.WriteByte(byte('0' + i))
+			uris.WriteString(`"`)
+		}
+		uris.WriteByte(']')
+		body := `{"client_name":"exactly-10","redirect_uris":` + uris.String() + `}`
+
+		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Register(rr, req)
+
+		assert.Equal(t, http.StatusCreated, rr.Code)
+	})
+
 	t.Run("unauthenticated registration succeeds with valid request", func(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{

@@ -2,6 +2,7 @@ package oauthhandler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -77,6 +78,16 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(req.RedirectURIs) == 0 {
 		oauthError(w, http.StatusBadRequest, "invalid_client_metadata", "The redirect uris field is required.")
+		return
+	}
+	// Cap the array to prevent a rate-limited client from bloating state:
+	// every authorize request iterates the list to match the incoming URI.
+	// Ten is already generous — real clients register one or two URIs.
+	// Security.md L1.
+	const maxRedirectURIs = 10
+	if len(req.RedirectURIs) > maxRedirectURIs {
+		oauthError(w, http.StatusBadRequest, "invalid_client_metadata",
+			fmt.Sprintf("The redirect uris field must contain at most %d entries.", maxRedirectURIs))
 		return
 	}
 

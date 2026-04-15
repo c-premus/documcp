@@ -37,22 +37,14 @@ func init() {
 
 // mockUserRepo implements UserRepo for testing.
 type mockUserRepo struct {
-	findBySubFn   func(ctx context.Context, sub string) (*model.User, error)
-	findByEmailFn func(ctx context.Context, email string) (*model.User, error)
-	createFn      func(ctx context.Context, user *model.User) error
-	updateFn      func(ctx context.Context, user *model.User) error
+	findBySubFn func(ctx context.Context, sub string) (*model.User, error)
+	createFn    func(ctx context.Context, user *model.User) error
+	updateFn    func(ctx context.Context, user *model.User) error
 }
 
 func (m *mockUserRepo) FindUserByOIDCSub(ctx context.Context, sub string) (*model.User, error) {
 	if m.findBySubFn != nil {
 		return m.findBySubFn(ctx, sub)
-	}
-	return nil, sql.ErrNoRows
-}
-
-func (m *mockUserRepo) FindUserByEmail(ctx context.Context, email string) (*model.User, error) {
-	if m.findByEmailFn != nil {
-		return m.findByEmailFn(ctx, email)
 	}
 	return nil, sql.ErrNoRows
 }
@@ -614,22 +606,21 @@ func TestCallback(t *testing.T) {
 		}
 	})
 
-	t.Run("links existing user by email", func(t *testing.T) {
-		var updatedUser *model.User
-		existingUser := &model.User{
-			ID:    2,
-			Name:  "Existing",
-			Email: "test@example.com",
-		}
+	t.Run("unknown sub creates fresh user even when email matches existing", func(t *testing.T) {
+		// v0.21.0 removed the FindUserByEmail fallback. A pre-existing local
+		// record with the same email as the OIDC user MUST NOT be linked —
+		// that was the admin-takeover vector. The callback path goes straight
+		// to CreateUser.
+		var updatedCalls int
+		var created *model.User
 		repo := &mockUserRepo{
-			findByEmailFn: func(ctx context.Context, email string) (*model.User, error) {
-				if email == "test@example.com" {
-					return existingUser, nil
-				}
-				return nil, sql.ErrNoRows
+			updateFn: func(_ context.Context, _ *model.User) error {
+				updatedCalls++
+				return nil
 			},
-			updateFn: func(ctx context.Context, user *model.User) error {
-				updatedUser = user
+			createFn: func(_ context.Context, user *model.User) error {
+				user.ID = 42
+				created = user
 				return nil
 			},
 		}
@@ -649,12 +640,14 @@ func TestCallback(t *testing.T) {
 		if w.Code != http.StatusFound {
 			t.Fatalf("expected 302, got %d; body: %s", w.Code, w.Body.String())
 		}
-
-		if updatedUser == nil {
-			t.Fatal("expected UpdateUser to be called to link OIDC identity")
+		if updatedCalls != 0 {
+			t.Errorf("expected no UpdateUser call (email linking removed), got %d", updatedCalls)
 		}
-		if !updatedUser.OIDCSub.Valid || updatedUser.OIDCSub.String != "test-sub-123" {
-			t.Errorf("expected OIDC sub to be linked, got %v", updatedUser.OIDCSub)
+		if created == nil {
+			t.Fatal("expected CreateUser to be called for unknown sub")
+		}
+		if !created.OIDCSub.Valid || created.OIDCSub.String != "test-sub-123" {
+			t.Errorf("expected new user's sub to be test-sub-123, got %v", created.OIDCSub)
 		}
 	})
 
@@ -696,9 +689,9 @@ func TestCallback(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects callback when email missing from claims", func(t *testing.T) {
-		// To test missing email, we need a token endpoint that returns a token without email claim.
-		// We'll create a custom mock provider for this case.
+	t.Run("rejects callback when sub missing from claims", func(t *testing.T) {
+		// v0.21.0: identity is `sub`; email is optional and display-only.
+		// A token with no sub must be rejected (previously: no email → 400).
 		privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 		if err != nil {
 			t.Fatalf("generating RSA key: %v", err)
@@ -732,17 +725,17 @@ func TestCallback(t *testing.T) {
 				(&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", "test-key"),
 			)
 			now := time.Now()
+			// No Subject — this is the scenario under test.
 			claims := josejwt.Claims{
 				Issuer:    serverURL,
-				Subject:   "test-sub-no-email",
 				Audience:  josejwt.Audience{"test-client-id"},
 				IssuedAt:  josejwt.NewNumericDate(now),
 				Expiry:    josejwt.NewNumericDate(now.Add(1 * time.Hour)),
 				NotBefore: josejwt.NewNumericDate(now.Add(-1 * time.Minute)),
 			}
-			// No email claim — but include nonce so nonce validation passes.
 			extraClaims := map[string]any{
-				"name":  "No Email User",
+				"email": "present@example.com",
+				"name":  "No Sub User",
 				"nonce": expectedNonce,
 			}
 			rawToken, _ := josejwt.Signed(signer).Claims(claims).Claims(extraClaims).Serialize()
@@ -779,7 +772,6 @@ func TestCallback(t *testing.T) {
 			t.Fatalf("creating handler: %v", err)
 		}
 
-		// Login to get state and nonce.
 		loginReq := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
 		loginW := httptest.NewRecorder()
 		h.Login(loginW, loginReq)
@@ -798,8 +790,12 @@ func TestCallback(t *testing.T) {
 
 		h.Callback(w, req)
 
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400 for missing email, got %d; body: %s", w.Code, w.Body.String())
+		// go-oidc's IDTokenVerifier requires the `sub` claim and rejects the
+		// token at Verify() time — so we get 401 (authentication failed),
+		// not 400 from our own sub check. Either outcome is correct; assert
+		// the token was rejected.
+		if w.Code != http.StatusBadRequest && w.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 400 or 401 for missing sub, got %d; body: %s", w.Code, w.Body.String())
 		}
 	})
 
@@ -1100,7 +1096,7 @@ func TestFindOrCreateUser(t *testing.T) {
 		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 
-		user, err := h.findOrCreateUser(context.Background(), "sub-1", "new@example.com", "New Name", nil)
+		user, err := h.findOrCreateUser(context.Background(), "sub-1", "new@example.com", true, "New Name", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1112,33 +1108,29 @@ func TestFindOrCreateUser(t *testing.T) {
 		}
 	})
 
-	t.Run("finds by email and links OIDC identity", func(t *testing.T) {
-		var updatedUser *model.User
-		existingUser := &model.User{
-			ID:    2,
-			Email: "user@example.com",
-		}
+	t.Run("unknown sub creates fresh user even when email would match another record", func(t *testing.T) {
+		// Regression guard for v0.21.0: FindUserByEmail is gone. The only
+		// lookup is by sub. An unknown sub must always hit CreateUser.
+		var created *model.User
 		repo := &mockUserRepo{
-			findByEmailFn: func(ctx context.Context, email string) (*model.User, error) {
-				return existingUser, nil
-			},
-			updateFn: func(ctx context.Context, user *model.User) error {
-				updatedUser = user
+			createFn: func(_ context.Context, user *model.User) error {
+				user.ID = 101
+				created = user
 				return nil
 			},
 		}
 		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 
-		user, err := h.findOrCreateUser(context.Background(), "new-sub", "user@example.com", "User", nil)
+		user, err := h.findOrCreateUser(context.Background(), "new-sub", "user@example.com", true, "User", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if user.ID != 2 {
-			t.Errorf("expected existing user ID 2, got %d", user.ID)
+		if user.ID != 101 {
+			t.Errorf("expected new user ID 101, got %d", user.ID)
 		}
-		if updatedUser == nil || !updatedUser.OIDCSub.Valid || updatedUser.OIDCSub.String != "new-sub" {
-			t.Error("expected OIDC sub to be linked")
+		if created == nil || !created.OIDCSub.Valid || created.OIDCSub.String != "new-sub" {
+			t.Error("expected new user created with the incoming sub")
 		}
 	})
 
@@ -1154,7 +1146,7 @@ func TestFindOrCreateUser(t *testing.T) {
 		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 
-		user, err := h.findOrCreateUser(context.Background(), "brand-new-sub", "new@example.com", "New User", nil)
+		user, err := h.findOrCreateUser(context.Background(), "brand-new-sub", "new@example.com", true, "New User", nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1181,24 +1173,136 @@ func TestFindOrCreateUser(t *testing.T) {
 		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
 
-		_, err := h.findOrCreateUser(context.Background(), "sub", "email@example.com", "Name", nil)
+		_, err := h.findOrCreateUser(context.Background(), "sub", "email@example.com", true, "Name", nil)
 		if err == nil {
 			t.Fatal("expected error on sub lookup failure")
 		}
 	})
+}
 
-	t.Run("returns error on email lookup failure", func(t *testing.T) {
+func TestFindOrCreateUserBootstrapAdmin(t *testing.T) {
+	t.Run("promotes first user when verified email matches", func(t *testing.T) {
+		var created *model.User
 		repo := &mockUserRepo{
-			findByEmailFn: func(ctx context.Context, email string) (*model.User, error) {
-				return nil, errors.New("database error")
+			createFn: func(_ context.Context, user *model.User) error {
+				user.ID = 1
+				created = user
+				return nil
 			},
 		}
 		h, server, _ := newTestHandler(t, repo)
 		defer server.Close()
+		h.bootstrapAdminEmail = "owner@example.com"
 
-		_, err := h.findOrCreateUser(context.Background(), "sub", "email@example.com", "Name", nil)
-		if err == nil {
-			t.Fatal("expected error on email lookup failure")
+		_, err := h.findOrCreateUser(context.Background(), "sub", "Owner@example.com", true, "Owner", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if created == nil || !created.IsAdmin {
+			t.Error("expected bootstrap admin to be promoted")
+		}
+	})
+
+	t.Run("does not promote when email_verified=false", func(t *testing.T) {
+		var created *model.User
+		repo := &mockUserRepo{
+			createFn: func(_ context.Context, user *model.User) error {
+				user.ID = 2
+				created = user
+				return nil
+			},
+		}
+		h, server, _ := newTestHandler(t, repo)
+		defer server.Close()
+		h.bootstrapAdminEmail = "owner@example.com"
+
+		_, err := h.findOrCreateUser(context.Background(), "sub", "owner@example.com", false, "Owner", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if created == nil || created.IsAdmin {
+			t.Error("expected bootstrap promotion to require email_verified=true")
+		}
+	})
+
+	t.Run("does not promote when email does not match", func(t *testing.T) {
+		var created *model.User
+		repo := &mockUserRepo{
+			createFn: func(_ context.Context, user *model.User) error {
+				user.ID = 3
+				created = user
+				return nil
+			},
+		}
+		h, server, _ := newTestHandler(t, repo)
+		defer server.Close()
+		h.bootstrapAdminEmail = "owner@example.com"
+
+		_, err := h.findOrCreateUser(context.Background(), "sub", "other@example.com", true, "Other", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if created == nil || created.IsAdmin {
+			t.Error("expected no promotion for non-matching email")
+		}
+	})
+
+	t.Run("returning user is not re-bootstrapped", func(t *testing.T) {
+		existing := &model.User{
+			ID:      5,
+			Email:   "owner@example.com",
+			OIDCSub: sql.NullString{String: "sub", Valid: true},
+			IsAdmin: false,
+		}
+		var updated *model.User
+		repo := &mockUserRepo{
+			findBySubFn: func(_ context.Context, _ string) (*model.User, error) {
+				return existing, nil
+			},
+			updateFn: func(_ context.Context, u *model.User) error {
+				updated = u
+				return nil
+			},
+		}
+		h, server, _ := newTestHandler(t, repo)
+		defer server.Close()
+		h.bootstrapAdminEmail = "owner@example.com"
+
+		user, err := h.findOrCreateUser(context.Background(), "sub", "owner@example.com", true, "Owner", nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if user.IsAdmin {
+			t.Error("returning user must not be re-bootstrapped to admin")
+		}
+		if updated != nil && updated.IsAdmin {
+			t.Error("UpdateUser must not flip IsAdmin via bootstrap")
+		}
+	})
+
+	t.Run("groups outrank bootstrap on create", func(t *testing.T) {
+		// When both are configured and groups grants admin, adminSource is
+		// groups. When groups does not grant (user not in group) the bootstrap
+		// path may still fire. This test covers the "groups grants" case.
+		var created *model.User
+		repo := &mockUserRepo{
+			createFn: func(_ context.Context, user *model.User) error {
+				user.ID = 7
+				created = user
+				return nil
+			},
+		}
+		h, server, _ := newTestHandler(t, repo)
+		defer server.Close()
+		h.adminGroups = []string{"admins"}
+		h.bootstrapAdminEmail = "owner@example.com"
+
+		_, err := h.findOrCreateUser(context.Background(), "sub", "owner@example.com", true, "Owner", []string{"admins"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if created == nil || !created.IsAdmin {
+			t.Error("expected user to be admin (via groups)")
 		}
 	})
 }
@@ -1249,7 +1353,7 @@ func TestFindOrCreateUserAdminGroups(t *testing.T) {
 		defer server.Close()
 		h.adminGroups = []string{"documcp-admins"}
 
-		_, err := h.findOrCreateUser(context.Background(), "sub-new", "admin@example.com", "Admin", []string{"users", "documcp-admins"})
+		_, err := h.findOrCreateUser(context.Background(), "sub-new", "admin@example.com", true, "Admin", []string{"users", "documcp-admins"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1274,7 +1378,7 @@ func TestFindOrCreateUserAdminGroups(t *testing.T) {
 		defer server.Close()
 		h.adminGroups = []string{"documcp-admins"}
 
-		_, err := h.findOrCreateUser(context.Background(), "sub-new", "user@example.com", "User", []string{"users"})
+		_, err := h.findOrCreateUser(context.Background(), "sub-new", "user@example.com", true, "User", []string{"users"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1299,7 +1403,7 @@ func TestFindOrCreateUserAdminGroups(t *testing.T) {
 		defer server.Close()
 		// adminGroups is nil (default from newTestHandler)
 
-		_, err := h.findOrCreateUser(context.Background(), "sub-new", "user@example.com", "User", []string{"documcp-admins"})
+		_, err := h.findOrCreateUser(context.Background(), "sub-new", "user@example.com", true, "User", []string{"documcp-admins"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1325,7 +1429,7 @@ func TestFindOrCreateUserAdminGroups(t *testing.T) {
 		defer server.Close()
 		h.adminGroups = []string{"admins"}
 
-		user, err := h.findOrCreateUser(context.Background(), "sub-1", "user@example.com", "User", []string{"admins"})
+		user, err := h.findOrCreateUser(context.Background(), "sub-1", "user@example.com", true, "User", []string{"admins"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1354,7 +1458,7 @@ func TestFindOrCreateUserAdminGroups(t *testing.T) {
 		defer server.Close()
 		h.adminGroups = []string{"admins"}
 
-		user, err := h.findOrCreateUser(context.Background(), "sub-1", "admin@example.com", "Admin", []string{"users"})
+		user, err := h.findOrCreateUser(context.Background(), "sub-1", "admin@example.com", true, "Admin", []string{"users"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1383,7 +1487,7 @@ func TestFindOrCreateUserAdminGroups(t *testing.T) {
 		defer server.Close()
 		// adminGroups is nil (feature disabled)
 
-		user, err := h.findOrCreateUser(context.Background(), "sub-1", "admin@example.com", "Admin", []string{"users"})
+		user, err := h.findOrCreateUser(context.Background(), "sub-1", "admin@example.com", true, "Admin", []string{"users"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1392,34 +1496,6 @@ func TestFindOrCreateUserAdminGroups(t *testing.T) {
 		}
 		if updated {
 			t.Error("expected no update when nothing changed")
-		}
-	})
-
-	t.Run("email-linked user gets admin synced", func(t *testing.T) {
-		var updatedUser *model.User
-		existingUser := &model.User{ID: 2, Email: "user@example.com", IsAdmin: false}
-		repo := &mockUserRepo{
-			findByEmailFn: func(ctx context.Context, email string) (*model.User, error) {
-				return existingUser, nil
-			},
-			updateFn: func(ctx context.Context, user *model.User) error {
-				updatedUser = user
-				return nil
-			},
-		}
-		h, server, _ := newTestHandler(t, repo)
-		defer server.Close()
-		h.adminGroups = []string{"admins"}
-
-		user, err := h.findOrCreateUser(context.Background(), "new-sub", "user@example.com", "User", []string{"admins"})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !user.IsAdmin {
-			t.Error("expected email-linked user to get admin from groups")
-		}
-		if updatedUser == nil || !updatedUser.IsAdmin {
-			t.Error("expected UpdateUser with IsAdmin=true")
 		}
 	})
 }

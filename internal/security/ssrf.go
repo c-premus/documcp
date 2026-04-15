@@ -13,13 +13,42 @@ import (
 	"time"
 )
 
-// privateRanges defines CIDR blocks that are not allowed as request targets.
+// privateRanges defines CIDR blocks that are not allowed as request targets
+// unless the caller opts in via allowPrivate. RFC 1918 (the classic private
+// IPv4 space) is joined by several ranges that are equally unsafe but that
+// Go's IsPrivate helper omits: carrier-grade NAT (RFC 6598, used by Tailscale
+// and Oracle internal), IETF benchmark/test/documentation space, and
+// multicast/future-reserved. Loopback (127/8, ::1) is still listed here for
+// belt-and-braces even though checkIP also calls IsLoopback unconditionally.
+// Link-local remains handled separately via IsLinkLocalUnicast/Multicast.
+//
+// Rationale for each addition (security.md M5):
+//   - 100.64/10    — CGN (RFC 6598); common inside Tailscale, Oracle Cloud,
+//                    and carrier networks; not "private" by Go's definition.
+//   - 192.0.2/24,
+//     198.51.100/24,
+//     203.0.113/24 — TEST-NET-1/2/3 (RFC 5737); documentation ranges that
+//                    some broken DNS resolvers hand out unexpectedly.
+//   - 192.0.0/24   — IETF protocol assignments (RFC 6890); no legitimate
+//                    destination value.
+//   - 198.18/15    — benchmarking (RFC 2544); should never be a real target.
+//   - 224/4        — multicast (RFC 5771); sending HTTP to a multicast
+//                    address is a misconfiguration at best.
+//   - 240/4        — reserved class E (RFC 1112); treat as untargetable.
 var privateRanges = []string{
 	"10.0.0.0/8",
 	"172.16.0.0/12",
 	"192.168.0.0/16",
 	"169.254.0.0/16",
 	"127.0.0.0/8",
+	"100.64.0.0/10",
+	"192.0.0.0/24",
+	"192.0.2.0/24",
+	"198.18.0.0/15",
+	"198.51.100.0/24",
+	"203.0.113.0/24",
+	"224.0.0.0/4",
+	"240.0.0.0/4",
 	"::1/128",
 	"fc00::/7",
 	"fe80::/10",
