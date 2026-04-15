@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -147,7 +148,9 @@ func (r *DocumentRepository) TagsForDocuments(ctx context.Context, documentIDs [
 	return result, nil
 }
 
-// ReplaceTags deletes existing tags and inserts new ones within a transaction.
+// ReplaceTags deletes existing tags, inserts new ones, and refreshes the
+// denormalized documents.tags_text column — all within a single transaction.
+// tags_text feeds the STORED search_vector generated column.
 func (r *DocumentRepository) ReplaceTags(ctx context.Context, documentID int64, tags []string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -167,6 +170,17 @@ func (r *DocumentRepository) ReplaceTags(ctx context.Context, documentID int64, 
 		if err != nil {
 			return fmt.Errorf("inserting tag %q for document %d: %w", tag, documentID, err)
 		}
+	}
+
+	var tagsText sql.NullString
+	if len(tags) > 0 {
+		tagsText = sql.NullString{String: strings.Join(tags, " "), Valid: true}
+	}
+	_, err = tx.Exec(ctx,
+		`UPDATE documents SET tags_text = $1, updated_at = NOW() WHERE id = $2`,
+		tagsText, documentID)
+	if err != nil {
+		return fmt.Errorf("updating tags_text for document %d: %w", documentID, err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
