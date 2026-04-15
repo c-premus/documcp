@@ -17,17 +17,17 @@ import (
 func (r *OAuthRepository) CreateDeviceCode(ctx context.Context, dc *model.OAuthDeviceCode) error {
 	err := r.db.QueryRow(ctx,
 		`INSERT INTO oauth_device_codes (
-			device_code, user_code, client_id, user_id, scope,
+			device_code, user_code, client_id, user_id, scope, resource,
 			verification_uri, verification_uri_complete, interval,
 			last_polled_at, status, expires_at,
 			created_at, updated_at
 		) VALUES (
-			$1, $2, $3, $4, $5,
-			$6, $7, $8,
-			$9, $10, $11,
+			$1, $2, $3, $4, $5, $6,
+			$7, $8, $9,
+			$10, $11, $12,
 			NOW(), NOW()
 		) RETURNING id, created_at, updated_at`,
-		dc.DeviceCode, dc.UserCode, dc.ClientID, dc.UserID, dc.Scope,
+		dc.DeviceCode, dc.UserCode, dc.ClientID, dc.UserID, dc.Scope, dc.Resource,
 		dc.VerificationURI, dc.VerificationURIComplete, dc.Interval,
 		dc.LastPolledAt, dc.Status, dc.ExpiresAt,
 	).Scan(&dc.ID, &dc.CreatedAt, &dc.UpdatedAt)

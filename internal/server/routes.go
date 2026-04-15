@@ -69,15 +69,21 @@ type Deps struct {
 	IsSecure bool // true when running behind TLS (reserved for future use)
 
 	// Infrastructure
-	BareRedisClient *redis.Client    // uninstrumented client (rate limiting + readiness pings)
-	RedisClient     *redis.Client    // instrumented client (EventBus, app queries)
-	DB              handler.PoolHealthy // for readiness checks (nil disables /health/ready)
-	InternalAPIToken     string           // protects /metrics and /health/ready (empty = unrestricted)
+	BareRedisClient  *redis.Client       // uninstrumented client (rate limiting + readiness pings)
+	RedisClient      *redis.Client       // instrumented client (EventBus, app queries)
+	DB               handler.PoolHealthy // for readiness checks (nil disables /health/ready)
+	InternalAPIToken string              // protects /metrics and /health/ready (empty = unrestricted)
 
 	// Server tuning (populated from config)
 	MaxBodySize    int64         // max request body size in bytes (excludes multipart)
 	RequestTimeout time.Duration // context timeout for non-streaming requests
 	HSTSMaxAge     int           // HSTS max-age in seconds (0 to disable)
+
+	// RFC 8707 expected token audiences. Bearer tokens reaching these route
+	// groups must carry a matching `resource` binding (set by the AS when the
+	// client supplied a `resource` parameter at /oauth/authorize).
+	MCPResource string // expected audience for the /documcp MCP endpoint
+	APIResource string // expected audience for /api/* bearer-token requests
 }
 
 // RegisterRoutes configures all middleware and route groups on the server.
@@ -132,7 +138,7 @@ func (s *Server) registerInfraRoutes(deps Deps) {
 	if deps.MCPHandler != nil && deps.OAuthService != nil {
 		r.Group(func(r chi.Router) {
 			r.Use(rateLimitByIP(60, time.Minute, deps.BareRedisClient))
-			r.Use(authmiddleware.BearerToken(deps.OAuthService, s.logger))
+			r.Use(authmiddleware.BearerTokenWithAudience(deps.OAuthService, s.logger, deps.MCPResource))
 			r.Use(authmiddleware.RequireScope("mcp:access", s.logger))
 			r.Handle("/documcp/*", deps.MCPHandler)
 			r.Handle("/documcp", deps.MCPHandler)
@@ -241,7 +247,7 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 	s.router.Route("/api", func(r chi.Router) {
 		switch {
 		case deps.OAuthService != nil:
-			r.Use(authmiddleware.BearerOrSession(deps.OAuthService, deps.SessionStore, s.logger))
+			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.OAuthService, deps.SessionStore, s.logger, deps.APIResource))
 		default:
 			r.Use(func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -467,7 +473,7 @@ func (s *Server) registerSPARoutes(deps Deps) {
 	// River UI — must be registered before the SPA catch-all so chi matches it first.
 	if deps.RiverUIHandler != nil {
 		r.Route("/admin/river", func(r chi.Router) {
-			r.Use(authmiddleware.BearerOrSession(deps.OAuthService, deps.SessionStore, s.logger))
+			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.OAuthService, deps.SessionStore, s.logger, deps.APIResource))
 			r.Use(authmiddleware.RequireScope(authscope.Admin, s.logger))
 			r.Use(authmiddleware.RequireAdmin)
 			r.Use(riverUICSP)

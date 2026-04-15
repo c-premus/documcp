@@ -19,15 +19,15 @@ func (r *OAuthRepository) CreateAuthorizationCode(ctx context.Context, code *mod
 	err := r.db.QueryRow(ctx,
 		`INSERT INTO oauth_authorization_codes (
 			code, client_id, user_id, redirect_uri, scope,
-			code_challenge, code_challenge_method, expires_at, revoked,
+			code_challenge, code_challenge_method, resource, expires_at, revoked,
 			created_at, updated_at
 		) VALUES (
 			$1, $2, $3, $4, $5,
-			$6, $7, $8, $9,
+			$6, $7, $8, $9, $10,
 			NOW(), NOW()
 		) RETURNING id, created_at, updated_at`,
 		code.Code, code.ClientID, code.UserID, code.RedirectURI, code.Scope,
-		code.CodeChallenge, code.CodeChallengeMethod, code.ExpiresAt, code.Revoked,
+		code.CodeChallenge, code.CodeChallengeMethod, code.Resource, code.ExpiresAt, code.Revoked,
 	).Scan(&code.ID, &code.CreatedAt, &code.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("creating authorization code: %w", err)
@@ -68,13 +68,13 @@ func (r *OAuthRepository) RevokeAuthorizationCode(ctx context.Context, id int64)
 func (r *OAuthRepository) CreateAccessToken(ctx context.Context, token *model.OAuthAccessToken) error {
 	err := r.db.QueryRow(ctx,
 		`INSERT INTO oauth_access_tokens (
-			token, client_id, user_id, scope, expires_at, revoked,
+			token, client_id, user_id, scope, resource, expires_at, revoked,
 			created_at, updated_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6,
+			$1, $2, $3, $4, $5, $6, $7,
 			NOW(), NOW()
 		) RETURNING id, created_at, updated_at`,
-		token.Token, token.ClientID, token.UserID, token.Scope, token.ExpiresAt, token.Revoked,
+		token.Token, token.ClientID, token.UserID, token.Scope, token.Resource, token.ExpiresAt, token.Revoked,
 	).Scan(&token.ID, &token.CreatedAt, &token.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("creating access token: %w", err)

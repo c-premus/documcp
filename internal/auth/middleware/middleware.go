@@ -3,6 +3,7 @@ package authmiddleware
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -207,6 +208,80 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store, logger *
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// BearerTokenWithAudience validates a bearer token like BearerToken and
+// additionally requires that the token's RFC 8707 resource binding matches
+// expectedResource. Tokens minted before the audience-binding migration
+// (Resource is NULL) are rejected.
+func BearerTokenWithAudience(oauthService *oauth.Service, logger *slog.Logger, expectedResource string) func(http.Handler) http.Handler {
+	inner := BearerToken(oauthService, logger)
+	return func(next http.Handler) http.Handler {
+		return inner(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token, ok := r.Context().Value(AccessTokenContextKey).(*model.OAuthAccessToken)
+			if !ok {
+				// BearerToken should always set the token; defensive guard.
+				w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+				jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
+				return
+			}
+			if !audienceMatches(token, expectedResource) {
+				logger.Warn("auth failed: token audience mismatch",
+					"client_ip", r.RemoteAddr,
+					"path", r.URL.Path,
+					"expected", expectedResource,
+					"token_resource", nullStringOrEmpty(token.Resource),
+				)
+				w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token", error_description="audience mismatch"`)
+				jsonError(w, http.StatusUnauthorized, "Token not valid for this resource")
+				return
+			}
+			next.ServeHTTP(w, r)
+		}))
+	}
+}
+
+// BearerOrSessionWithAudience layers an audience check on top of
+// BearerOrSession. The audience check applies only when the request is
+// authenticated by bearer token; session-cookie requests bypass the check
+// because sessions are not bound to a specific resource.
+func BearerOrSessionWithAudience(oauthService *oauth.Service, store sessions.Store, logger *slog.Logger, expectedResource string) func(http.Handler) http.Handler {
+	inner := BearerOrSession(oauthService, store, logger)
+	return func(next http.Handler) http.Handler {
+		return inner(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// If a token is present in context, the request was authenticated
+			// via bearer; enforce audience. Otherwise it's a session — pass.
+			token, ok := r.Context().Value(AccessTokenContextKey).(*model.OAuthAccessToken)
+			if ok && !audienceMatches(token, expectedResource) {
+				logger.Warn("auth failed: token audience mismatch",
+					"client_ip", r.RemoteAddr,
+					"path", r.URL.Path,
+					"expected", expectedResource,
+					"token_resource", nullStringOrEmpty(token.Resource),
+				)
+				w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token", error_description="audience mismatch"`)
+				jsonError(w, http.StatusUnauthorized, "Token not valid for this resource")
+				return
+			}
+			next.ServeHTTP(w, r)
+		}))
+	}
+}
+
+// audienceMatches returns true when the token's bound resource exactly equals
+// the expected resource. NULL/empty resource never matches.
+func audienceMatches(token *model.OAuthAccessToken, expected string) bool {
+	if !token.Resource.Valid || token.Resource.String == "" {
+		return false
+	}
+	return token.Resource.String == expected
+}
+
+func nullStringOrEmpty(s sql.NullString) string {
+	if !s.Valid {
+		return ""
+	}
+	return s.String
 }
 
 // SessionAuth validates an admin session cookie.

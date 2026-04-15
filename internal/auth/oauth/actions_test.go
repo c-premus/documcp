@@ -29,7 +29,7 @@ type mockOAuthRepo struct {
 	FindClientByClientIDFunc func(ctx context.Context, clientID string) (*model.OAuthClient, error)
 	FindClientByIDFunc       func(ctx context.Context, id int64) (*model.OAuthClient, error)
 	TouchClientLastUsedFunc  func(ctx context.Context, clientID int64) error
-	UpdateClientScopeFunc   func(ctx context.Context, clientID int64, scope string) error
+	UpdateClientScopeFunc    func(ctx context.Context, clientID int64, scope string) error
 	// Authorization Codes
 	CreateAuthorizationCodeFunc     func(ctx context.Context, code *model.OAuthAuthorizationCode) error
 	FindAuthorizationCodeByCodeFunc func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
@@ -46,9 +46,9 @@ type mockOAuthRepo struct {
 	RevokeRefreshTokenFunc                func(ctx context.Context, id int64) error
 	RevokeRefreshTokenByAccessTokenIDFunc func(ctx context.Context, accessTokenID int64) error
 	// Device Codes
-	CreateDeviceCodeFunc           func(ctx context.Context, dc *model.OAuthDeviceCode) error
-	FindDeviceCodeByDeviceCodeFunc func(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error)
-	FindDeviceCodeByUserCodeFunc   func(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
+	CreateDeviceCodeFunc               func(ctx context.Context, dc *model.OAuthDeviceCode) error
+	FindDeviceCodeByDeviceCodeFunc     func(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error)
+	FindDeviceCodeByUserCodeFunc       func(ctx context.Context, userCode string) (*model.OAuthDeviceCode, error)
 	UpdateDeviceCodeStatusFunc         func(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64) error
 	UpdateDeviceCodeStatusAndScopeFunc func(ctx context.Context, id int64, status model.DeviceCodeStatus, userID *int64, scope string) error
 	ExchangeDeviceCodeStatusFunc       func(ctx context.Context, id int64) error
@@ -3070,6 +3070,7 @@ func TestIssueTokenPair(t *testing.T) {
 			100,
 			sql.NullInt64{Int64: 42, Valid: true},
 			"mcp:access",
+			"",
 		)
 
 		require.NoError(t, err)
@@ -3110,6 +3111,7 @@ func TestIssueTokenPair(t *testing.T) {
 			100,
 			sql.NullInt64{Int64: 42, Valid: true},
 			"",
+			"",
 		)
 
 		require.NoError(t, err)
@@ -3131,6 +3133,7 @@ func TestIssueTokenPair(t *testing.T) {
 			100,
 			sql.NullInt64{Int64: 42, Valid: true},
 			"mcp:access",
+			"",
 		)
 
 		require.Error(t, err)
@@ -3156,6 +3159,7 @@ func TestIssueTokenPair(t *testing.T) {
 			100,
 			sql.NullInt64{Int64: 42, Valid: true},
 			"mcp:access",
+			"",
 		)
 
 		require.Error(t, err)
@@ -3173,6 +3177,7 @@ func TestIssueTokenPair(t *testing.T) {
 			100,
 			sql.NullInt64{Int64: 42, Valid: true},
 			"mcp:access bogus:scope",
+			"",
 		)
 
 		require.Error(t, err)

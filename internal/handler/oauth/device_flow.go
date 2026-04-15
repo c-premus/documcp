@@ -19,6 +19,7 @@ func (h *Handler) DeviceAuthorization(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ClientID string `json:"client_id"`
 		Scope    string `json:"scope"`
+		Resource string `json:"resource"`
 	}
 
 	contentType := r.Header.Get("Content-Type")
@@ -30,6 +31,7 @@ func (h *Handler) DeviceAuthorization(w http.ResponseWriter, r *http.Request) {
 		}
 		req.ClientID = r.FormValue("client_id")
 		req.Scope = r.FormValue("scope")
+		req.Resource = r.FormValue("resource")
 	} else {
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -43,9 +45,19 @@ func (h *Handler) DeviceAuthorization(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Resource != "" {
+		canonical, err := oauth.ValidateResource(req.Resource, h.oauthCfg.AllowedResources)
+		if err != nil {
+			oauthError(w, http.StatusBadRequest, "invalid_target", "The requested resource is not recognized.")
+			return
+		}
+		req.Resource = canonical
+	}
+
 	result, err := h.service.GenerateDeviceCode(r.Context(), oauth.DeviceAuthorizationParams{
 		ClientID: req.ClientID,
 		Scope:    authscope.Normalize(req.Scope),
+		Resource: req.Resource,
 	})
 	if err != nil {
 		h.logger.Error("generating device code", "error", err)
@@ -276,4 +288,3 @@ func (h *Handler) DeviceApprove(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(deviceDeniedHTML))
 	}
 }
-
