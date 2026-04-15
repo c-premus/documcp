@@ -17,7 +17,7 @@
   "server": {
     "name": "DocuMCP Server",
     "version": "1.0.0",
-    "instructions": "Documentation knowledge base with full-text search.\n\n**Unified Search**\n- `unified_search` - Search across ALL sources (documents, templates, archives, wikis) in one request. Use for discovery; type-specific tools for deep search.\n\n**Documents**\n- `list_documents` - List all accessible documents with optional filters (file type, status). Paginated.\n- `search_documents` - Full-text search with filters (file type, tags). Returns metadata and snippets.\n- `read_document` - Retrieve document content by UUID. Supports `summary_only` and `max_paragraphs`.\n- `create_document` - Create documents (markdown, pdf, docx, xlsx, html, epub). Auto-indexed for search.\n- `update_document` - Modify title, description, tags, or visibility.\n- `delete_document` - Remove documents (ownership required).\n\n**ZIM Archives** (offline documentation: DevDocs, Wikipedia, Stack Exchange)\n- `list_zim_archives` - List available archives with category/language filters.\n- `search_zim` - Search within an archive. `suggest` matches titles, `fulltext` searches content.\n- `read_zim_article` - Retrieve article content. Supports `summary_only` and `max_paragraphs`.\n\n**Git Templates** (project bootstrapping: CLAUDE.md, Memory Bank)\n- `list_git_templates` - List available templates with category filter.\n- `search_git_templates` - Full-text search across README files and metadata.\n- `get_template_structure` - View folder tree, essential files, and required variables.\n- `get_template_file` - Retrieve file content with optional variable substitution.\n- `get_deployment_guide` - Get deployment instructions with all essential files.\n- `download_template` - Download a complete template as a base64-encoded archive (zip or tar.gz). Reduces deployment from ~45 API calls to 1.\n\n**Prompts**\n- `document_analysis` - Analyze documents (summarize, compare, extract, assess). Supports multiple documents.\n- `search_query_builder` - Query construction assistance.\n- `knowledge_base_builder` - Guide document creation and organization.\n- `git_template_setup` - Template discovery, preview, and deployment.\n- `zim_research` - Research across ZIM archives.\n- `cross_source_research` - Research across all sources (Documents, ZIM, Git Templates).\n\n**Availability**: ZIM tools require Kiwix service configuration. Git Template tools are enabled by default. Document tools are always available. Configure services in Admin panel under External Services.\n\n**Access Control**: Document modifications require ownership. Public documents are readable by all.",
+    "instructions": "Documentation knowledge base with full-text search.\n\n**Unified Search**\n- `unified_search` - Search across ALL sources (documents, templates, archives, wikis) in one request. Use for discovery; type-specific tools for deep search.\n\n**Documents**\n- `list_documents` - List all accessible documents with optional filters (file type, status). Paginated.\n- `search_documents` - Full-text search with filters (file type, tags). Returns metadata and snippets.\n- `read_document` - Retrieve document content by UUID. Supports `summary_only` and `max_paragraphs`.\n- `create_document` - Create text-based documents (markdown or html). Binary formats (pdf, docx, xlsx, epub) must be uploaded via the REST API. Auto-indexed for search.\n- `update_document` - Modify title, description, tags, or visibility.\n- `delete_document` - Remove documents (ownership required).\n\n**ZIM Archives** (offline documentation: DevDocs, Wikipedia, Stack Exchange)\n- `list_zim_archives` - List available archives with category/language filters.\n- `search_zim` - Search within an archive. `suggest` matches titles, `fulltext` searches content.\n- `read_zim_article` - Retrieve article content. Supports `summary_only` and `max_paragraphs`.\n\n**Git Templates** (project bootstrapping: CLAUDE.md, Memory Bank)\n- `list_git_templates` - List available templates with category filter.\n- `search_git_templates` - Full-text search across README files and metadata.\n- `get_template_structure` - View folder tree, essential files, and required variables.\n- `get_template_file` - Retrieve file content with optional variable substitution.\n- `get_deployment_guide` - Get deployment instructions with all essential files.\n- `download_template` - Download a complete template as a base64-encoded archive (zip or tar.gz). Reduces deployment from ~45 API calls to 1.\n\n**Prompts**\n- `document_analysis` - Analyze documents (summarize, compare, extract, assess). Supports multiple documents.\n- `search_query_builder` - Query construction assistance.\n- `knowledge_base_builder` - Guide document creation and organization.\n- `git_template_setup` - Template discovery, preview, and deployment.\n- `zim_research` - Research across ZIM archives.\n- `cross_source_research` - Research across all sources (Documents, ZIM, Git Templates).\n\n**Availability**: ZIM tools require Kiwix service configuration. Git Template tools are enabled by default. Document tools are always available. Configure services in Admin panel under External Services.\n\n**Access Control**: Document modifications require ownership. Public documents are readable by all.",
     "pagination": {
       "default_length": 100,
       "max_length": 100,
@@ -673,9 +673,12 @@
             "description": "File path within the template (e.g., CLAUDE.md, memory-bank/activeContext.md)"
           },
           "variables": {
-            "type": "string",
-            "description": "JSON object of variables for {{placeholder}} substitution. Example: {\"project_name\": \"MyApp\", \"author\": \"Jane Doe\"}",
-            "notes": "Uses $schema->string() as workaround for free-form key-value maps. JSON-decoded internally."
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 10240
+            },
+            "description": "Variables for {{placeholder}} substitution. Keys are placeholder names, values are their substitutions. Example: {\"project_name\": \"MyApp\", \"author\": \"Jane Doe\"}"
           }
         },
         "required": [
@@ -712,9 +715,12 @@
             "description": "Template UUID"
           },
           "variables": {
-            "type": "string",
-            "description": "JSON object of variables for {{placeholder}} substitution. Example: {\"project_name\": \"MyApp\", \"author\": \"Jane Doe\"}",
-            "notes": "Uses $schema->string() as workaround for free-form key-value maps. JSON-decoded internally."
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 10240
+            },
+            "description": "Variables for {{placeholder}} substitution. Keys are placeholder names, values are their substitutions. Example: {\"project_name\": \"MyApp\", \"author\": \"Jane Doe\"}"
           }
         },
         "required": [
@@ -759,9 +765,12 @@
             "description": "Archive format: zip (default) or tar.gz"
           },
           "variables": {
-            "type": "string",
-            "description": "JSON object of variables for {{placeholder}} substitution. Example: {\"project_name\": \"MyApp\"}",
-            "notes": "Uses $schema->string() as workaround for free-form key-value maps. JSON-decoded internally."
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 10240
+            },
+            "description": "Variables for {{placeholder}} substitution. Keys are placeholder names, values are their substitutions. Example: {\"project_name\": \"MyApp\"}"
           }
         },
         "required": [
@@ -1137,6 +1146,7 @@
   ],
   "toolRegistrationOrder": [
     "unified_search",
+    "list_documents",
     "search_documents",
     "read_document",
     "create_document",
@@ -1163,6 +1173,7 @@
   "conditionalRegistrationSummary": {
     "always_available": [
       "unified_search",
+      "list_documents",
       "search_documents",
       "read_document",
       "create_document",

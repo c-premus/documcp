@@ -171,7 +171,9 @@ func (h *DocumentHandler) ListDeleted(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"data": responses,
 		"meta": map[string]any{
-			"total": total,
+			"total":  total,
+			"limit":  limit,
+			"offset": offset,
 		},
 	})
 }
