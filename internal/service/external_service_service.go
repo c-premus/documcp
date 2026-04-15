@@ -274,4 +274,3 @@ func (s *ExternalServiceService) CheckHealth(ctx context.Context, svcUUID string
 
 	return updated, nil
 }
-

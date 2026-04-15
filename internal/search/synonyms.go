@@ -4,12 +4,12 @@ import "strings"
 
 // synonymMap defines bidirectional synonym mappings expanded at query time.
 var synonymMap = map[string][]string{
-	"php":                     {"hypertext-preprocessor"},
-	"hypertext-preprocessor":  {"php"},
-	"js":                      {"javascript"},
-	"javascript":              {"js"},
-	"ts":                      {"typescript"},
-	"typescript":              {"ts"},
+	"php":                    {"hypertext-preprocessor"},
+	"hypertext-preprocessor": {"php"},
+	"js":                     {"javascript"},
+	"javascript":             {"js"},
+	"ts":                     {"typescript"},
+	"typescript":             {"ts"},
 }
 
 // ExpandSynonyms preprocesses a search query by expanding known synonym terms

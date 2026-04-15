@@ -34,8 +34,8 @@ func InitSentry(cfg config.SentryConfig, appEnv, appVersion string) (flush func(
 		Dsn:              cfg.DSN,
 		Environment:      env,
 		Release:          release,
-		SampleRate:        cfg.SampleRate,
-		TracesSampleRate:  0, // OTEL handles tracing
+		SampleRate:       cfg.SampleRate,
+		TracesSampleRate: 0, // OTEL handles tracing
 		AttachStacktrace: true,
 	}); err != nil {
 		return nil, fmt.Errorf("initializing sentry: %w", err)

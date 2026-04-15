@@ -135,19 +135,19 @@ func TestNext(t *testing.T) {
 			name: "weekday filter Monday",
 			expr: "0 9 * * 1",
 			from: time.Date(2025, 1, 1, 0, 0, 0, 0, loc), // Wednesday
-			want: time.Date(2025, 1, 6, 9, 0, 0, 0, loc),  // Next Monday
+			want: time.Date(2025, 1, 6, 9, 0, 0, 0, loc), // Next Monday
 		},
 		{
 			name: "dow 0 matches Sunday",
 			expr: "0 0 * * 0",
 			from: time.Date(2025, 1, 1, 0, 0, 0, 0, loc), // Wednesday
-			want: time.Date(2025, 1, 5, 0, 0, 0, 0, loc),  // Next Sunday
+			want: time.Date(2025, 1, 5, 0, 0, 0, 0, loc), // Next Sunday
 		},
 		{
 			name: "dow 7 matches Sunday same as 0",
 			expr: "0 0 * * 7",
 			from: time.Date(2025, 1, 1, 0, 0, 0, 0, loc), // Wednesday
-			want: time.Date(2025, 1, 5, 0, 0, 0, 0, loc),  // Next Sunday
+			want: time.Date(2025, 1, 5, 0, 0, 0, 0, loc), // Next Sunday
 		},
 		{
 			name: "end of month rollover",
@@ -183,7 +183,7 @@ func TestNext(t *testing.T) {
 			name: "weekday range Mon-Fri",
 			expr: "0 9 * * 1-5",
 			from: time.Date(2025, 1, 4, 10, 0, 0, 0, loc), // Saturday
-			want: time.Date(2025, 1, 6, 9, 0, 0, 0, loc),   // Monday
+			want: time.Date(2025, 1, 6, 9, 0, 0, 0, loc),  // Monday
 		},
 		{
 			name: "month list",

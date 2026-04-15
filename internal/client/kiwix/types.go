@@ -4,17 +4,17 @@ import "encoding/xml"
 
 // CatalogEntry represents a ZIM archive from the OPDS catalog feed.
 type CatalogEntry struct {
-	ID           string   // Kiwix catalog ID
-	Title        string   // Human-readable title
-	Description  string   // Summary of archive contents
-	Language     string   // ISO 639 language code
-	Category     string   // devdocs, wikipedia, stack_exchange, other
-	Creator      string   // Content creator
-	Publisher    string   // Archive publisher
-	Favicon      string   // URL to favicon
-	ArticleCount int64    // Number of articles in the archive
-	MediaCount   int64    // Number of media items in the archive
-	FileSize     int64    // Size in bytes
+	ID               string   // Kiwix catalog ID
+	Title            string   // Human-readable title
+	Description      string   // Summary of archive contents
+	Language         string   // ISO 639 language code
+	Category         string   // devdocs, wikipedia, stack_exchange, other
+	Creator          string   // Content creator
+	Publisher        string   // Archive publisher
+	Favicon          string   // URL to favicon
+	ArticleCount     int64    // Number of articles in the archive
+	MediaCount       int64    // Number of media items in the archive
+	FileSize         int64    // Size in bytes
 	Tags             []string // Descriptive tags
 	Name             string   // Archive name (derived from ID)
 	ContentID        string   // Versioned content ID for search/article reading (e.g. "gobyexample.com_en_all_2025-11")
@@ -28,6 +28,7 @@ type SearchResult struct {
 	Snippet string  `json:"snippet,omitempty"`
 	Score   float64 `json:"score,omitempty"`
 }
+
 // Article represents an article read from a ZIM archive.
 type Article struct {
 	Title    string // Article title, extracted from HTML <title> or path

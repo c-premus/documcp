@@ -23,4 +23,3 @@ func TestIsValidFileType(t *testing.T) {
 		})
 	}
 }
-

@@ -61,4 +61,3 @@ func serverMode() string {
 	}
 	return "serve-only"
 }
-

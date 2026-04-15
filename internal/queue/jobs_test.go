@@ -158,4 +158,3 @@ func TestDocumentExtractArgs_fieldsPreserved(t *testing.T) {
 	assert.Equal(t, int64(42), args.DocumentID)
 	assert.Equal(t, "test-uuid-123", args.DocUUID)
 }
-

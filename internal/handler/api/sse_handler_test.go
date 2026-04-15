@@ -449,7 +449,7 @@ func (s *stubEventSubscriber) Close() {
 type nilEventSubscriber struct{}
 
 func (nilEventSubscriber) Subscribe(_ string) <-chan queue.Event { return nil }
-func (nilEventSubscriber) Unsubscribe(_ string)                 {}
+func (nilEventSubscriber) Unsubscribe(_ string)                  {}
 func (nilEventSubscriber) Close()                                {}
 
 // ctxWithUser returns a context with the given user set via the auth middleware key.

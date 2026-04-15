@@ -209,4 +209,3 @@ func parseSingleByteRange(header string, size int64) (start, length int64, ok bo
 		return s, e - s + 1, true
 	}
 }
-
