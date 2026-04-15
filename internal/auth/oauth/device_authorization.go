@@ -138,7 +138,10 @@ func (s *Service) AuthorizeDeviceCode(ctx context.Context, userCode string, user
 		return s.repo.UpdateDeviceCodeStatus(ctx, dc.ID, model.DeviceCodeStatusDenied, &userID)
 	}
 
-	// Narrow scope to the approving user's entitlements.
+	// Narrow scope to what the approving user may grant to a third-party
+	// OAuth client (security.md H2: excludes `admin` and `services:write`).
+	// The grant is recorded here — at the approval boundary — not at consent
+	// render time (security.md H3).
 	scope := ""
 	if dc.Scope.Valid {
 		scope = dc.Scope.String
@@ -148,16 +151,13 @@ func (s *Service) AuthorizeDeviceCode(ctx context.Context, userCode string, user
 		if err != nil {
 			return fmt.Errorf("looking up approving user: %w", err)
 		}
-		// Record a time-bounded scope grant (replaces permanent scope widening).
-		userEntitlements := authscope.UserScopes(user.IsAdmin)
-		if entitled := authscope.Intersect(scope, userEntitlements); entitled != "" {
-			if grantErr := s.GrantClientScope(ctx, dc.ClientID, entitled, userID); grantErr != nil {
-				s.logger.Error("granting client scope for device flow", "error", grantErr)
-			}
-		}
-		scope = authscope.Intersect(scope, userEntitlements)
+		userCeiling := authscope.ThirdPartyGrantable(user.IsAdmin)
+		scope = authscope.Intersect(scope, userCeiling)
 		if scope == "" {
 			return errors.New("none of the requested scopes are available to your account")
+		}
+		if grantErr := s.GrantClientScope(ctx, dc.ClientID, scope, userID); grantErr != nil {
+			s.logger.Error("granting client scope for device flow", "error", grantErr)
 		}
 	}
 
@@ -257,7 +257,9 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceC
 			resource = dc.Resource.String
 		}
 
-		return s.issueTokenPair(ctx, client.ID, dc.UserID, scope, resource)
+		// Device flow tokens have no parent authorization code — pass 0
+		// so authorization_code_id stays NULL on the access token row.
+		return s.issueTokenPair(ctx, client.ID, dc.UserID, scope, resource, 0)
 	default:
 		return nil, &DeviceCodeError{Code: "invalid_grant", Description: "Device code not in valid state for exchange"}
 	}

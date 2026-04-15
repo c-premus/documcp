@@ -2,21 +2,26 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
 	"github.com/c-premus/documcp/internal/model"
 )
 
 // userRepo defines the methods used by UserHandler — defined where consumed.
+//
+// Create/Update are intentionally absent. DocuMCP is OIDC-only: user rows are
+// created on first OIDC login, profile fields (name/email) sync from claims
+// on every login, and IsAdmin derives from OIDC_ADMIN_GROUPS or the one-time
+// OIDC_BOOTSTRAP_ADMIN_EMAIL. Admin-side user management is limited to
+// listing, viewing, toggling admin, and deleting — none of which can produce
+// a new authn-linked record. This was a deliberate v0.21.0 hardening: the
+// previous POST/PUT endpoints were the admin-takeover vector in security.md
+// finding H1.
 type userRepo interface {
 	ListUsers(ctx context.Context, query string, limit, offset int) ([]model.User, int, error)
 	FindUserByID(ctx context.Context, id int64) (*model.User, error)
-	CreateUser(ctx context.Context, user *model.User) error
-	UpdateUser(ctx context.Context, user *model.User) error
 	DeleteUser(ctx context.Context, id int64) error
 	ToggleAdmin(ctx context.Context, id int64) error
 }
@@ -114,103 +119,6 @@ func (h *UserHandler) Show(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// createUserRequest is the JSON body for creating a user.
-type createUserRequest struct {
-	Name    string `json:"name"`
-	Email   string `json:"email"`
-	IsAdmin bool   `json:"is_admin"`
-}
-
-// Create handles POST /api/admin/users — create a new user.
-func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var req createUserRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		errorResponse(w, http.StatusBadRequest, "invalid JSON body")
-		return
-	}
-
-	if req.Name == "" || req.Email == "" {
-		errorResponse(w, http.StatusBadRequest, "name and email are required")
-		return
-	}
-	if !isValidEmail(req.Email) {
-		errorResponse(w, http.StatusBadRequest, "invalid email address")
-		return
-	}
-
-	user := &model.User{
-		Name:    req.Name,
-		Email:   req.Email,
-		IsAdmin: req.IsAdmin,
-	}
-
-	if err := h.repo.CreateUser(r.Context(), user); err != nil {
-		h.logger.Error("creating user", "email", req.Email, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to create user")
-		return
-	}
-
-	jsonResponse(w, http.StatusCreated, map[string]any{
-		"data": newUserResponse(user),
-	})
-}
-
-// updateUserRequest is the JSON body for updating a user.
-type updateUserRequest struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
-}
-
-// Update handles PUT /api/admin/users/{id} — update an existing user.
-func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, ok := h.parseID(w, r)
-	if !ok {
-		return
-	}
-
-	var req updateUserRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		errorResponse(w, http.StatusBadRequest, "invalid JSON body")
-		return
-	}
-
-	user, err := h.repo.FindUserByID(r.Context(), id)
-	if err != nil {
-		h.logger.Error("finding user for update", "id", id, "error", err)
-		errorResponse(w, http.StatusNotFound, "user not found")
-		return
-	}
-
-	if req.Name != "" {
-		user.Name = req.Name
-	}
-	if req.Email != "" {
-		if !isValidEmail(req.Email) {
-			errorResponse(w, http.StatusBadRequest, "invalid email address")
-			return
-		}
-		user.Email = req.Email
-	}
-
-	if err = h.repo.UpdateUser(r.Context(), user); err != nil {
-		h.logger.Error("updating user", "id", id, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to update user")
-		return
-	}
-
-	// Re-fetch to get the updated_at timestamp from the database.
-	user, err = h.repo.FindUserByID(r.Context(), id)
-	if err != nil {
-		h.logger.Error("re-fetching user after update", "id", id, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to fetch updated user")
-		return
-	}
-
-	jsonResponse(w, http.StatusOK, map[string]any{
-		"data": newUserResponse(user),
-	})
-}
-
 // Delete handles DELETE /api/admin/users/{id} — hard-delete a user.
 func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, ok := h.parseID(w, r)
@@ -236,6 +144,11 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // ToggleAdmin handles POST /api/admin/users/{id}/toggle-admin — toggle admin flag.
+//
+// When OIDC_ADMIN_GROUPS is configured, this toggle is effectively read-only:
+// group membership re-syncs IsAdmin on every login. The toggle is useful in
+// bootstrap-email mode (no group claim support at the IdP) for promoting or
+// demoting users after the initial admin is provisioned.
 func (h *UserHandler) ToggleAdmin(w http.ResponseWriter, r *http.Request) {
 	id, ok := h.parseID(w, r)
 	if !ok {
@@ -270,17 +183,4 @@ func (h *UserHandler) ToggleAdmin(w http.ResponseWriter, r *http.Request) {
 // Returns the parsed ID and true on success, or writes an error response and returns false.
 func (h *UserHandler) parseID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return parseIDParam(w, r, "id", "user ID")
-}
-
-// isValidEmail performs basic email validation: must contain exactly one @,
-// have non-empty local and domain parts, and be within RFC 5321 length limit.
-func isValidEmail(email string) bool {
-	if len(email) > 254 {
-		return false
-	}
-	at := strings.Index(email, "@")
-	if at < 1 || at >= len(email)-1 {
-		return false
-	}
-	return strings.Count(email, "@") == 1
 }

@@ -2,7 +2,7 @@
 import { ref, watch, computed, h } from 'vue'
 import { toast } from 'vue-sonner'
 import { formatDistanceToNow } from 'date-fns'
-import { PencilSquareIcon, TrashIcon } from '@heroicons/vue/24/outline'
+import { TrashIcon } from '@heroicons/vue/24/outline'
 import { Switch } from '@headlessui/vue'
 import type { ColumnDef } from '@tanstack/vue-table'
 
@@ -12,7 +12,6 @@ import Pagination from '../components/shared/Pagination.vue'
 import SearchInput from '../components/shared/SearchInput.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
-import UserModal from '../components/users/UserModal.vue'
 
 interface User {
   readonly id: number
@@ -57,8 +56,6 @@ const searchQuery = ref('')
 const page = ref(1)
 const perPage = ref(20)
 
-const showModal = ref(false)
-const editTarget = ref<User | null>(null)
 const deleteTarget = ref<User | null>(null)
 const showDeleteDialog = computed(() => deleteTarget.value !== null)
 
@@ -108,31 +105,6 @@ async function handleToggleAdmin(user: User): Promise<void> {
   } catch {
     toast.error(`Failed to toggle admin for ${user.name}`)
   }
-}
-
-function openCreateModal(): void {
-  editTarget.value = null
-  showModal.value = true
-}
-
-function openEditModal(user: User): void {
-  editTarget.value = user
-  showModal.value = true
-}
-
-function handleRowClick(row: User): void {
-  openEditModal(row)
-}
-
-function handleModalClose(): void {
-  showModal.value = false
-  editTarget.value = null
-}
-
-function handleModalSaved(): void {
-  showModal.value = false
-  editTarget.value = null
-  fetchUsers()
 }
 
 async function handleDeleteConfirm(): Promise<void> {
@@ -233,20 +205,6 @@ const columns: ColumnDef<User, unknown>[] = [
           'button',
           {
             type: 'button',
-            class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
-            title: 'Edit user',
-            'aria-label': 'Edit user',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              openEditModal(row.original)
-            },
-          },
-          [h(PencilSquareIcon, { class: 'h-5 w-5' })],
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
             class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
             title: 'Delete user',
             'aria-label': 'Delete user',
@@ -274,42 +232,25 @@ const columns: ColumnDef<User, unknown>[] = [
         placeholder="Search users..."
         class="w-full sm:w-auto sm:max-w-sm"
       />
-
-      <button
-        type="button"
-        class="bg-indigo-600 text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-indigo-500"
-        @click="openCreateModal"
-      >
-        Create User
-      </button>
     </div>
+
+    <!-- OIDC-only notice -->
+    <p class="text-sm text-text-muted mb-4">
+      Users are provisioned on first OIDC login. Name and email sync from identity-provider claims
+      on every sign-in. Admin membership follows <code>OIDC_ADMIN_GROUPS</code> when configured; the
+      admin toggle below is effective only when no admin group is set.
+    </p>
 
     <!-- Empty State -->
     <EmptyState
       v-if="!loading && users.length === 0 && searchQuery === ''"
       title="No users yet"
-      description="Create your first user to get started."
-    >
-      <template #action>
-        <button
-          type="button"
-          class="bg-indigo-600 text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-indigo-500"
-          @click="openCreateModal"
-        >
-          Create User
-        </button>
-      </template>
-    </EmptyState>
+      description="Users appear here after their first OIDC sign-in."
+    />
 
     <!-- Data Table -->
     <template v-else>
-      <DataTable
-        :data="users"
-        :columns="columns"
-        :loading="loading"
-        :clickable="true"
-        @row-click="handleRowClick"
-      />
+      <DataTable :data="users" :columns="columns" :loading="loading" />
 
       <Pagination
         :page="page"
@@ -324,19 +265,11 @@ const columns: ColumnDef<User, unknown>[] = [
     <ConfirmDialog
       :open="showDeleteDialog"
       title="Delete User"
-      :message="`Are you sure you want to delete &quot;${deleteTarget?.name ?? ''}&quot;? This action cannot be undone.`"
+      :message="`Are you sure you want to delete &quot;${deleteTarget?.name ?? ''}&quot;? If the user still has an active account at your identity provider, they will be re-provisioned on next login.`"
       confirm-label="Delete"
       variant="danger"
       @confirm="handleDeleteConfirm"
       @cancel="handleDeleteCancel"
-    />
-
-    <!-- Create / Edit Modal -->
-    <UserModal
-      :open="showModal"
-      :user="editTarget"
-      @close="handleModalClose"
-      @saved="handleModalSaved"
     />
   </div>
 </template>

@@ -2,6 +2,7 @@ package oauthhandler
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -47,6 +48,10 @@ type mockOAuthRepo struct {
 	FindUserByIDFunc                      func(ctx context.Context, id int64) (*model.User, error)
 	UpsertScopeGrantFunc                  func(ctx context.Context, grant *model.OAuthClientScopeGrant) error
 	FindActiveScopeGrantsFunc             func(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error)
+	// v0.21.0 — replay detection (security.md M1 / M2)
+	FindAuthorizationCodeByCodeIncludingRevokedFunc func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
+	RevokeTokenFamilyByAuthorizationCodeIDFunc      func(ctx context.Context, authCodeID int64) (int64, error)
+	FindRefreshTokenByTokenIgnoringRevocationFunc   func(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error)
 }
 
 func (m *mockOAuthRepo) CreateClient(ctx context.Context, client *model.OAuthClient) error {
@@ -233,6 +238,30 @@ func (m *mockOAuthRepo) FindActiveScopeGrants(ctx context.Context, clientID int6
 		return m.FindActiveScopeGrantsFunc(ctx, clientID)
 	}
 	return nil, nil
+}
+
+// v0.21.0 security.md M1 / M2 additions — default to sql.ErrNoRows (no row)
+// so existing tests get the "not a replay" path unless they opt in.
+
+func (m *mockOAuthRepo) FindAuthorizationCodeByCodeIncludingRevoked(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error) {
+	if m.FindAuthorizationCodeByCodeIncludingRevokedFunc != nil {
+		return m.FindAuthorizationCodeByCodeIncludingRevokedFunc(ctx, codeHash)
+	}
+	return nil, sql.ErrNoRows
+}
+
+func (m *mockOAuthRepo) RevokeTokenFamilyByAuthorizationCodeID(ctx context.Context, authCodeID int64) (int64, error) {
+	if m.RevokeTokenFamilyByAuthorizationCodeIDFunc != nil {
+		return m.RevokeTokenFamilyByAuthorizationCodeIDFunc(ctx, authCodeID)
+	}
+	return 0, nil
+}
+
+func (m *mockOAuthRepo) FindRefreshTokenByTokenIgnoringRevocation(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error) {
+	if m.FindRefreshTokenByTokenIgnoringRevocationFunc != nil {
+		return m.FindRefreshTokenByTokenIgnoringRevocationFunc(ctx, tokenHash)
+	}
+	return nil, sql.ErrNoRows
 }
 
 // ---------------------------------------------------------------------------

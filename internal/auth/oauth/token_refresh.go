@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"slices"
@@ -51,9 +52,17 @@ func (s *Service) RefreshAccessToken(ctx context.Context, params RefreshTokenPar
 		return nil, err
 	}
 
-	// Look up the refresh token
+	// Look up the refresh token (non-revoked, non-expired). On primary
+	// miss, do a follow-up query without the revoked filter: a revoked
+	// hit means the refresh token was rotated away successfully and is
+	// now being replayed — evidence of token theft (security.md M2 /
+	// OAuth 2.1 §4.3.2). We revoke every descendant in the grant's
+	// lineage via the shared authorization_code_id.
 	refreshToken, err := s.repo.FindRefreshTokenByToken(ctx, tokenHash)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			s.handleRefreshTokenReusePossible(ctx, tokenHash, params.ClientID)
+		}
 		return nil, errors.New("refresh token not found")
 	}
 
@@ -96,5 +105,46 @@ func (s *Service) RefreshAccessToken(ctx context.Context, params RefreshTokenPar
 		return nil, errors.New("invalid resource: does not match original token audience")
 	}
 
-	return s.issueTokenPair(ctx, client.ID, accessToken.UserID, scope, resource)
+	// Propagate the original authorization_code_id through rotation so that
+	// a later replay detection can revoke the entire grant's lineage in
+	// one query (security.md M2).
+	authCodeID := int64(0)
+	if accessToken.AuthorizationCodeID.Valid {
+		authCodeID = accessToken.AuthorizationCodeID.Int64
+	}
+
+	return s.issueTokenPair(ctx, client.ID, accessToken.UserID, scope, resource, authCodeID)
+}
+
+// handleRefreshTokenReusePossible detects refresh-token reuse: the primary
+// lookup missed, but the token may still exist with revoked=true. If so,
+// we revoke every access/refresh pair that descends from the same
+// authorization code. Non-fatal on error — the outer handler still
+// returns "refresh token not found" to the caller regardless. Security.md
+// M2.
+func (s *Service) handleRefreshTokenReusePossible(ctx context.Context, tokenHash, clientID string) {
+	replayed, err := s.repo.FindRefreshTokenByTokenIgnoringRevocation(ctx, tokenHash)
+	if err != nil || !replayed.Revoked {
+		return
+	}
+
+	// Walk the lineage: revoked refresh → access token → original auth code.
+	access, err := s.repo.FindAccessTokenByID(ctx, replayed.AccessTokenID)
+	if err != nil || !access.AuthorizationCodeID.Valid {
+		s.logger.Warn("oauth refresh-token reuse detected but lineage unknown",
+			"refresh_token_id", replayed.ID, "client_id", clientID)
+		tokenReplayTotal.WithLabelValues("refresh").Inc()
+		return
+	}
+
+	revoked, famErr := s.repo.RevokeTokenFamilyByAuthorizationCodeID(ctx, access.AuthorizationCodeID.Int64)
+	if famErr != nil {
+		s.logger.Error("revoking token family on refresh reuse",
+			"error", famErr, "auth_code_id", access.AuthorizationCodeID.Int64, "client_id", clientID)
+		return
+	}
+	s.logger.Warn("oauth refresh-token reuse detected",
+		"auth_code_id", access.AuthorizationCodeID.Int64,
+		"client_id", clientID, "tokens_revoked", revoked)
+	tokenReplayTotal.WithLabelValues("refresh").Inc()
 }

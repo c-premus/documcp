@@ -49,13 +49,11 @@ describe('UserListView', () => {
           },
           SearchInput: { template: '<input data-testid="search"/>', props: ['modelValue'] },
           EmptyState: {
-            template: '<div data-testid="empty-state"><slot name="action"/></div>',
-            props: ['title'],
+            template: '<div data-testid="empty-state"/>',
+            props: ['title', 'description'],
           },
           ConfirmDialog: { template: '<div data-testid="confirm-dialog"/>', props: ['open'] },
-          UserModal: { template: '<div data-testid="user-modal"/>', props: ['open', 'user'] },
           Switch: true,
-          PencilSquareIcon: true,
           TrashIcon: true,
         },
       },
@@ -82,10 +80,16 @@ describe('UserListView', () => {
     expect(wrapper.find('[data-testid="empty-state"]').exists()).toBe(true)
   })
 
-  it('has create user button', async () => {
+  it('does not render a Create User button (OIDC-only)', async () => {
     const wrapper = mountView()
     await flushPromises()
     const btn = wrapper.findAll('button').find((b) => b.text().includes('Create User'))
-    expect(btn).toBeDefined()
+    expect(btn).toBeUndefined()
+  })
+
+  it('explains OIDC-only provisioning in the UI', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.text()).toContain('OIDC')
   })
 })

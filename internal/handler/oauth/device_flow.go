@@ -168,7 +168,13 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Show the scope the user can actually grant (narrowed to their entitlements).
+	// Show the scope the user can actually grant (narrowed to their
+	// entitlement ceiling via ThirdPartyGrantable — filters out `admin` and
+	// `services:write`, closing security.md H2).
+	//
+	// No GrantClientScope call here (security.md H3): the grant is recorded
+	// in AuthorizeDeviceCode only when the user clicks Approve, not on
+	// consent render.
 	scope := ""
 	if dc.Scope.Valid {
 		scope = dc.Scope.String
@@ -181,16 +187,7 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 			_ = deviceErrorTmpl.Execute(w, "An error occurred while processing your authorization.")
 			return
 		}
-		// Record a time-bounded scope grant so the client can use these scopes
-		// in future consent flows (replaces permanent scope widening).
-		userEntitlements := authscope.UserScopes(user.IsAdmin)
-		if entitled := authscope.Intersect(scope, userEntitlements); entitled != "" {
-			if grantErr := h.service.GrantClientScope(r.Context(), dc.ClientID, entitled, userID); grantErr != nil {
-				h.logger.Error("granting client scope for device consent", "error", grantErr)
-			}
-		}
-
-		scope = authscope.Intersect(scope, userEntitlements)
+		scope = authscope.Intersect(scope, authscope.ThirdPartyGrantable(user.IsAdmin))
 		if scope == "" {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_ = deviceErrorTmpl.Execute(w, "None of the requested scopes are available to your account.")

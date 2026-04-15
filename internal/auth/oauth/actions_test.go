@@ -31,20 +31,23 @@ type mockOAuthRepo struct {
 	TouchClientLastUsedFunc  func(ctx context.Context, clientID int64) error
 	UpdateClientScopeFunc    func(ctx context.Context, clientID int64, scope string) error
 	// Authorization Codes
-	CreateAuthorizationCodeFunc     func(ctx context.Context, code *model.OAuthAuthorizationCode) error
-	FindAuthorizationCodeByCodeFunc func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
-	RevokeAuthorizationCodeFunc     func(ctx context.Context, id int64) error
+	CreateAuthorizationCodeFunc                    func(ctx context.Context, code *model.OAuthAuthorizationCode) error
+	FindAuthorizationCodeByCodeFunc                func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
+	FindAuthorizationCodeByCodeIncludingRevokedFunc func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
+	RevokeAuthorizationCodeFunc                    func(ctx context.Context, id int64) error
 	// Access Tokens
-	CreateAccessTokenFunc      func(ctx context.Context, token *model.OAuthAccessToken) error
-	FindAccessTokenByIDFunc    func(ctx context.Context, id int64) (*model.OAuthAccessToken, error)
-	FindAccessTokenByTokenFunc func(ctx context.Context, tokenHash string) (*model.OAuthAccessToken, error)
-	RevokeAccessTokenFunc      func(ctx context.Context, id int64) error
-	RevokeTokenPairFunc        func(ctx context.Context, accessTokenID, refreshTokenID int64) error
+	CreateAccessTokenFunc                      func(ctx context.Context, token *model.OAuthAccessToken) error
+	FindAccessTokenByIDFunc                    func(ctx context.Context, id int64) (*model.OAuthAccessToken, error)
+	FindAccessTokenByTokenFunc                 func(ctx context.Context, tokenHash string) (*model.OAuthAccessToken, error)
+	RevokeAccessTokenFunc                      func(ctx context.Context, id int64) error
+	RevokeTokenPairFunc                        func(ctx context.Context, accessTokenID, refreshTokenID int64) error
+	RevokeTokenFamilyByAuthorizationCodeIDFunc func(ctx context.Context, authCodeID int64) (int64, error)
 	// Refresh Tokens
-	CreateRefreshTokenFunc                func(ctx context.Context, token *model.OAuthRefreshToken) error
-	FindRefreshTokenByTokenFunc           func(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error)
-	RevokeRefreshTokenFunc                func(ctx context.Context, id int64) error
-	RevokeRefreshTokenByAccessTokenIDFunc func(ctx context.Context, accessTokenID int64) error
+	CreateRefreshTokenFunc                        func(ctx context.Context, token *model.OAuthRefreshToken) error
+	FindRefreshTokenByTokenFunc                   func(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error)
+	FindRefreshTokenByTokenIgnoringRevocationFunc func(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error)
+	RevokeRefreshTokenFunc                        func(ctx context.Context, id int64) error
+	RevokeRefreshTokenByAccessTokenIDFunc         func(ctx context.Context, accessTokenID int64) error
 	// Device Codes
 	CreateDeviceCodeFunc               func(ctx context.Context, dc *model.OAuthDeviceCode) error
 	FindDeviceCodeByDeviceCodeFunc     func(ctx context.Context, deviceCodeHash string) (*model.OAuthDeviceCode, error)
@@ -109,11 +112,32 @@ func (m *mockOAuthRepo) FindAuthorizationCodeByCode(ctx context.Context, codeHas
 	return nil, sql.ErrNoRows
 }
 
+func (m *mockOAuthRepo) FindAuthorizationCodeByCodeIncludingRevoked(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error) {
+	if m.FindAuthorizationCodeByCodeIncludingRevokedFunc != nil {
+		return m.FindAuthorizationCodeByCodeIncludingRevokedFunc(ctx, codeHash)
+	}
+	return nil, sql.ErrNoRows
+}
+
 func (m *mockOAuthRepo) RevokeAuthorizationCode(ctx context.Context, id int64) error {
 	if m.RevokeAuthorizationCodeFunc != nil {
 		return m.RevokeAuthorizationCodeFunc(ctx, id)
 	}
 	return nil
+}
+
+func (m *mockOAuthRepo) RevokeTokenFamilyByAuthorizationCodeID(ctx context.Context, authCodeID int64) (int64, error) {
+	if m.RevokeTokenFamilyByAuthorizationCodeIDFunc != nil {
+		return m.RevokeTokenFamilyByAuthorizationCodeIDFunc(ctx, authCodeID)
+	}
+	return 0, nil
+}
+
+func (m *mockOAuthRepo) FindRefreshTokenByTokenIgnoringRevocation(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error) {
+	if m.FindRefreshTokenByTokenIgnoringRevocationFunc != nil {
+		return m.FindRefreshTokenByTokenIgnoringRevocationFunc(ctx, tokenHash)
+	}
+	return nil, sql.ErrNoRows
 }
 
 func (m *mockOAuthRepo) CreateAccessToken(ctx context.Context, token *model.OAuthAccessToken) error {
@@ -1408,6 +1432,84 @@ func TestExchangeAuthorizationCode(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "none of the granted scopes are allowed")
 	})
+
+	t.Run("replayed auth code revokes token family (security.md M1)", func(t *testing.T) {
+		t.Parallel()
+
+		codePlaintext, codeHash, client, _ := setupValidExchange(t)
+		// Make the code look consumed: primary lookup (revoked=false filter)
+		// misses, but the follow-up lookup returns a revoked row with the
+		// same hash.
+		consumed := &model.OAuthAuthorizationCode{
+			ID:          testAuthCodeDBID,
+			Code:        codeHash,
+			ClientID:    testClientDBID,
+			RedirectURI: testRedirectURI,
+			Scope:       sql.NullString{String: "mcp:access", Valid: true},
+			ExpiresAt:   time.Now().Add(5 * time.Minute),
+			Revoked:     true,
+		}
+		var familyRevokeID int64
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return client, nil
+			},
+			FindAuthorizationCodeByCodeFunc: func(_ context.Context, _ string) (*model.OAuthAuthorizationCode, error) {
+				return nil, sql.ErrNoRows
+			},
+			FindAuthorizationCodeByCodeIncludingRevokedFunc: func(_ context.Context, _ string) (*model.OAuthAuthorizationCode, error) {
+				return consumed, nil
+			},
+			RevokeTokenFamilyByAuthorizationCodeIDFunc: func(_ context.Context, id int64) (int64, error) {
+				familyRevokeID = id
+				return 2, nil
+			},
+		}
+		svc := testService(repo)
+
+		_, err := svc.ExchangeAuthorizationCode(context.Background(), ExchangeAuthorizationCodeParams{
+			Code:        codePlaintext,
+			ClientID:    testClientID,
+			RedirectURI: testRedirectURI,
+		})
+
+		require.Error(t, err, "replayed code must still fail the exchange")
+		assert.Equal(t, testAuthCodeDBID, familyRevokeID,
+			"RevokeTokenFamilyByAuthorizationCodeID must be called with the replayed code's ID")
+	})
+
+	t.Run("unknown code does NOT revoke a family (no false positive)", func(t *testing.T) {
+		t.Parallel()
+
+		codePlaintext, _, client, _ := setupValidExchange(t)
+		var familyRevokeCalled bool
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return client, nil
+			},
+			FindAuthorizationCodeByCodeFunc: func(_ context.Context, _ string) (*model.OAuthAuthorizationCode, error) {
+				return nil, sql.ErrNoRows
+			},
+			FindAuthorizationCodeByCodeIncludingRevokedFunc: func(_ context.Context, _ string) (*model.OAuthAuthorizationCode, error) {
+				return nil, sql.ErrNoRows
+			},
+			RevokeTokenFamilyByAuthorizationCodeIDFunc: func(_ context.Context, _ int64) (int64, error) {
+				familyRevokeCalled = true
+				return 0, nil
+			},
+		}
+		svc := testService(repo)
+
+		_, err := svc.ExchangeAuthorizationCode(context.Background(), ExchangeAuthorizationCodeParams{
+			Code:        codePlaintext,
+			ClientID:    testClientID,
+			RedirectURI: testRedirectURI,
+		})
+
+		require.Error(t, err)
+		assert.False(t, familyRevokeCalled,
+			"an unknown code must not trigger family revocation — no evidence of theft")
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -1710,6 +1812,78 @@ func TestRefreshAccessToken(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "documents:read documents:write", result.Scope)
 		assert.Equal(t, "documents:read documents:write", capturedScope)
+	})
+
+	t.Run("replayed refresh token revokes token family (security.md M2)", func(t *testing.T) {
+		t.Parallel()
+
+		refreshPlaintext, _, client, refreshTok, accessTok := setupValidRefresh(t)
+		// Primary lookup misses (revoked=false filter). Secondary lookup
+		// returns a revoked row — evidence this refresh token was rotated
+		// and is now being replayed.
+		refreshTok.Revoked = true
+		accessTok.AuthorizationCodeID = sql.NullInt64{Int64: 777, Valid: true}
+
+		var familyRevokeID int64
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return client, nil
+			},
+			FindRefreshTokenByTokenFunc: func(_ context.Context, _ string) (*model.OAuthRefreshToken, error) {
+				return nil, sql.ErrNoRows
+			},
+			FindRefreshTokenByTokenIgnoringRevocationFunc: func(_ context.Context, _ string) (*model.OAuthRefreshToken, error) {
+				return refreshTok, nil
+			},
+			FindAccessTokenByIDFunc: func(_ context.Context, _ int64) (*model.OAuthAccessToken, error) {
+				return accessTok, nil
+			},
+			RevokeTokenFamilyByAuthorizationCodeIDFunc: func(_ context.Context, id int64) (int64, error) {
+				familyRevokeID = id
+				return 3, nil
+			},
+		}
+		svc := testService(repo)
+
+		_, err := svc.RefreshAccessToken(context.Background(), RefreshTokenParams{
+			RefreshToken: refreshPlaintext,
+			ClientID:     testClientID,
+		})
+
+		require.Error(t, err, "replayed refresh token must still fail the exchange")
+		assert.Equal(t, int64(777), familyRevokeID,
+			"family revocation must target the parent auth code ID")
+	})
+
+	t.Run("unknown refresh token does NOT revoke a family (no false positive)", func(t *testing.T) {
+		t.Parallel()
+
+		refreshPlaintext, _, client, _, _ := setupValidRefresh(t)
+		var familyRevokeCalled bool
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return client, nil
+			},
+			FindRefreshTokenByTokenFunc: func(_ context.Context, _ string) (*model.OAuthRefreshToken, error) {
+				return nil, sql.ErrNoRows
+			},
+			FindRefreshTokenByTokenIgnoringRevocationFunc: func(_ context.Context, _ string) (*model.OAuthRefreshToken, error) {
+				return nil, sql.ErrNoRows
+			},
+			RevokeTokenFamilyByAuthorizationCodeIDFunc: func(_ context.Context, _ int64) (int64, error) {
+				familyRevokeCalled = true
+				return 0, nil
+			},
+		}
+		svc := testService(repo)
+
+		_, err := svc.RefreshAccessToken(context.Background(), RefreshTokenParams{
+			RefreshToken: refreshPlaintext,
+			ClientID:     testClientID,
+		})
+
+		require.Error(t, err)
+		assert.False(t, familyRevokeCalled)
 	})
 }
 
@@ -2302,7 +2476,7 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 		assert.Contains(t, capturedScope, "documents:read")
 	})
 
-	t.Run("approve with admin user preserves all scopes and creates grant", func(t *testing.T) {
+	t.Run("approve with admin user gets delegable scopes only (H2: admin scope filtered)", func(t *testing.T) {
 		t.Parallel()
 
 		var capturedScope string
@@ -2313,7 +2487,7 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 				return &model.OAuthDeviceCode{
 					ID:        600,
 					ClientID:  100,
-					Scope:     sql.NullString{String: "mcp:access admin", Valid: true},
+					Scope:     sql.NullString{String: "mcp:access admin documents:write", Valid: true},
 					Status:    model.DeviceCodeStatusPending,
 					ExpiresAt: time.Now().Add(5 * time.Minute),
 				}, nil
@@ -2336,11 +2510,15 @@ func TestAuthorizeDeviceCode(t *testing.T) {
 		err := svc.AuthorizeDeviceCode(context.Background(), "BCDF-GHJK", 42, true)
 
 		require.NoError(t, err)
+		// Admin can grant writes but NOT `admin` (ThirdPartyGrantable ceiling).
 		assert.Contains(t, capturedScope, "mcp:access")
-		assert.Contains(t, capturedScope, "admin")
-		// Verify a scope grant was created (not permanent client scope mutation).
-		assert.Contains(t, grantedScope, "admin")
+		assert.Contains(t, capturedScope, "documents:write")
+		assert.NotContains(t, capturedScope, "admin",
+			"security.md H2: admin scope must never reach a third-party client")
+		// Grant record reflects the same filtering.
+		assert.NotContains(t, grantedScope, "admin")
 		assert.Contains(t, grantedScope, "mcp:access")
+		assert.Contains(t, grantedScope, "documents:write")
 		assert.Equal(t, int64(42), grantedBy)
 	})
 
@@ -3071,6 +3249,7 @@ func TestIssueTokenPair(t *testing.T) {
 			sql.NullInt64{Int64: 42, Valid: true},
 			"mcp:access",
 			"",
+			0,
 		)
 
 		require.NoError(t, err)
@@ -3112,6 +3291,7 @@ func TestIssueTokenPair(t *testing.T) {
 			sql.NullInt64{Int64: 42, Valid: true},
 			"",
 			"",
+			0,
 		)
 
 		require.NoError(t, err)
@@ -3134,6 +3314,7 @@ func TestIssueTokenPair(t *testing.T) {
 			sql.NullInt64{Int64: 42, Valid: true},
 			"mcp:access",
 			"",
+			0,
 		)
 
 		require.Error(t, err)
@@ -3160,6 +3341,7 @@ func TestIssueTokenPair(t *testing.T) {
 			sql.NullInt64{Int64: 42, Valid: true},
 			"mcp:access",
 			"",
+			0,
 		)
 
 		require.Error(t, err)
@@ -3178,6 +3360,7 @@ func TestIssueTokenPair(t *testing.T) {
 			sql.NullInt64{Int64: 42, Valid: true},
 			"mcp:access bogus:scope",
 			"",
+			0,
 		)
 
 		require.Error(t, err)

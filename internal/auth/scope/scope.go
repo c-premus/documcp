@@ -125,6 +125,11 @@ func Union(a, b string) string {
 
 // UserScopes returns the set of scopes a user is entitled to grant. Admins can
 // grant all known scopes; regular users can grant DefaultScopes only.
+//
+// UserScopes is for server-internal use only (documentation of what an admin
+// can DO, not what they can hand to a third-party client). For OAuth client
+// consent flows, use ThirdPartyGrantable — it excludes privilege-escalating
+// scopes that should never leave the server-internal boundary.
 func UserScopes(isAdmin bool) string {
 	if isAdmin {
 		out := make([]string, 0, len(All))
@@ -135,6 +140,40 @@ func UserScopes(isAdmin bool) string {
 		return strings.Join(out, " ")
 	}
 	return DefaultScopes()
+}
+
+// thirdPartyExcluded is the set of scopes that may never be granted to a
+// third-party OAuth client, regardless of the consenting user's privilege
+// level. Split into its own var for visibility in tests and in the consent
+// UX if we ever want to show "these scopes cannot be delegated".
+//
+//   - admin:          full administrative authority; a bearer-token grant
+//     would let any consented client impersonate the admin over the REST
+//     API. Must be session-bound.
+//   - services:write: create/edit external service URLs (Kiwix, Git) — the
+//     resulting SSRF blast radius is larger than any useful MCP workflow.
+var thirdPartyExcluded = map[string]bool{
+	Admin:         true,
+	ServicesWrite: true,
+}
+
+// ThirdPartyGrantable returns the scopes a user may grant to a third-party
+// OAuth client at consent time. Admins receive every registered scope except
+// the thirdPartyExcluded set; non-admins receive DefaultScopes only. This is
+// the ceiling applied in the authorize and device-flow consent paths.
+func ThirdPartyGrantable(isAdmin bool) string {
+	if !isAdmin {
+		return DefaultScopes()
+	}
+	out := make([]string, 0, len(All))
+	for s := range All {
+		if thirdPartyExcluded[s] {
+			continue
+		}
+		out = append(out, s)
+	}
+	slices.Sort(out)
+	return strings.Join(out, " ")
 }
 
 // ValidateAll returns the list of scopes in the space-delimited string that are

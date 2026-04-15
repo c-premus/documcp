@@ -10,10 +10,31 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	authscope "github.com/c-premus/documcp/internal/auth/scope"
 	"github.com/c-premus/documcp/internal/config"
 	"github.com/c-premus/documcp/internal/model"
 )
+
+// tokenReplayTotal counts detected OAuth token replays. A non-zero rate on
+// this counter is evidence of interception (stolen code or refresh token).
+// Labeled by replay type so alerts can distinguish auth-code replay
+// (security.md M1) from refresh-token reuse (M2). Registered at init time
+// on the default Prometheus registry.
+var tokenReplayTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "documcp",
+		Subsystem: "oauth",
+		Name:      "token_replay_total",
+		Help:      "Total detected OAuth token replays (auth-code or refresh-token reuse).",
+	},
+	[]string{"type"},
+)
+
+func init() {
+	prometheus.MustRegister(tokenReplayTotal)
+}
 
 // safeStateRegexp allows only safe characters in the state parameter.
 var safeStateRegexp = regexp.MustCompile(`^[a-zA-Z0-9._~()'\-]+$`)
@@ -29,6 +50,7 @@ type OAuthRepo interface {
 	// Authorization Codes
 	CreateAuthorizationCode(ctx context.Context, code *model.OAuthAuthorizationCode) error
 	FindAuthorizationCodeByCode(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
+	FindAuthorizationCodeByCodeIncludingRevoked(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
 	RevokeAuthorizationCode(ctx context.Context, id int64) error
 	// Access Tokens
 	CreateAccessToken(ctx context.Context, token *model.OAuthAccessToken) error
@@ -36,9 +58,11 @@ type OAuthRepo interface {
 	FindAccessTokenByToken(ctx context.Context, tokenHash string) (*model.OAuthAccessToken, error)
 	RevokeAccessToken(ctx context.Context, id int64) error
 	RevokeTokenPair(ctx context.Context, accessTokenID, refreshTokenID int64) error
+	RevokeTokenFamilyByAuthorizationCodeID(ctx context.Context, authCodeID int64) (int64, error)
 	// Refresh Tokens
 	CreateRefreshToken(ctx context.Context, token *model.OAuthRefreshToken) error
 	FindRefreshTokenByToken(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error)
+	FindRefreshTokenByTokenIgnoringRevocation(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, id int64) error
 	RevokeRefreshTokenByAccessTokenID(ctx context.Context, accessTokenID int64) error
 	// Device Codes
@@ -205,7 +229,14 @@ func (s *Service) verifyClientAuth(client *model.OAuthClient, secret string) err
 // issueTokenPair creates a new access token and refresh token pair. The
 // resource argument is the RFC 8707 audience the token is bound to; empty
 // means unbound (token will fail audience-checked middleware).
-func (s *Service) issueTokenPair(ctx context.Context, clientID int64, userID sql.NullInt64, scope, resource string) (*TokenResult, error) {
+//
+// authCodeID is the authorization code that originally authorized this
+// lineage — set for code-grant issuance and propagated unchanged through
+// refresh rotations. Zero means "no parent auth code" (device flow). It is
+// stored on the access-token row so that replay detection in either the
+// code-exchange or the refresh path can revoke every descendant in the
+// lineage with one query (security.md M1 + M2).
+func (s *Service) issueTokenPair(ctx context.Context, clientID int64, userID sql.NullInt64, scope, resource string, authCodeID int64) (*TokenResult, error) {
 	// Final scope validation gate
 	if scope != "" {
 		if invalid := authscope.ValidateAll(scope); len(invalid) > 0 {
@@ -227,6 +258,10 @@ func (s *Service) issueTokenPair(ctx context.Context, clientID int64, userID sql
 		Resource:  sql.NullString{String: resource, Valid: resource != ""},
 		ExpiresAt: time.Now().Add(s.config.AccessTokenLifetime),
 		Revoked:   false,
+	}
+
+	if authCodeID > 0 {
+		accessToken.AuthorizationCodeID = sql.NullInt64{Int64: authCodeID, Valid: true}
 	}
 
 	if err = s.repo.CreateAccessToken(ctx, accessToken); err != nil {

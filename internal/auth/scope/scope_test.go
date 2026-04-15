@@ -216,6 +216,53 @@ func TestUserScopes(t *testing.T) {
 	})
 }
 
+func TestThirdPartyGrantable(t *testing.T) {
+	t.Parallel()
+
+	t.Run("admin never gets admin scope", func(t *testing.T) {
+		t.Parallel()
+		got := ParseScopes(ThirdPartyGrantable(true))
+		assert.NotContains(t, got, Admin,
+			"ThirdPartyGrantable(admin) must exclude the admin scope — security.md H2")
+	})
+
+	t.Run("admin never gets services:write scope", func(t *testing.T) {
+		t.Parallel()
+		got := ParseScopes(ThirdPartyGrantable(true))
+		assert.NotContains(t, got, ServicesWrite,
+			"ThirdPartyGrantable(admin) must exclude services:write to avoid SSRF-widening")
+	})
+
+	t.Run("admin gets write scopes that are delegable", func(t *testing.T) {
+		t.Parallel()
+		got := ParseScopes(ThirdPartyGrantable(true))
+		assert.Contains(t, got, MCPWrite)
+		assert.Contains(t, got, DocumentsWrite)
+		assert.Contains(t, got, TemplatesWrite)
+	})
+
+	t.Run("admin gets exactly All minus exclusions", func(t *testing.T) {
+		t.Parallel()
+		got := ParseScopes(ThirdPartyGrantable(true))
+		want := len(All) - 2 // admin + services:write
+		assert.Len(t, got, want)
+	})
+
+	t.Run("non-admin gets default scopes only", func(t *testing.T) {
+		t.Parallel()
+		assert.Equal(t, DefaultScopes(), ThirdPartyGrantable(false))
+	})
+
+	t.Run("scopes are sorted", func(t *testing.T) {
+		t.Parallel()
+		got := ParseScopes(ThirdPartyGrantable(true))
+		for i := 1; i < len(got); i++ {
+			assert.True(t, got[i-1] <= got[i],
+				"not sorted: %q should come before %q", got[i-1], got[i])
+		}
+	})
+}
+
 func TestDefaultScopes(t *testing.T) {
 	t.Parallel()
 

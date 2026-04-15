@@ -1,7 +1,6 @@
 package oauthhandler
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,6 +11,19 @@ import (
 )
 
 // Token handles POST /oauth/token — the token endpoint.
+//
+// Content-Type handling follows RFC 6749 §3.2: only
+// `application/x-www-form-urlencoded` is accepted. JSON bodies were supported
+// in prior releases and are now rejected with 415 Unsupported Media Type —
+// noted in security.md M4 (spec deviation; JSON support also muddied the
+// CSRF analysis).
+//
+// Client authentication accepts either `Authorization: Basic ...`
+// (client_secret_basic, the RFC 6749 REQUIRED auth method) or credentials in
+// the request body (client_secret_post). Callers MUST NOT supply both —
+// RFC 6749 §2.3.1 forbids dual-auth. Security.md M3 fix: `wellknown.go`
+// advertises `client_secret_basic` but prior releases only parsed body
+// credentials, so a spec-compliant client using Basic auth silently failed.
 func (h *Handler) Token(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		GrantType    string `json:"grant_type"`
@@ -27,28 +39,45 @@ func (h *Handler) Token(w http.ResponseWriter, r *http.Request) {
 	}
 
 	contentType := r.Header.Get("Content-Type")
-	if strings.HasPrefix(contentType, "application/x-www-form-urlencoded") {
-		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-		if err := r.ParseForm(); err != nil {
-			oauthError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
+	mediaType := contentType
+	if idx := strings.Index(mediaType, ";"); idx != -1 {
+		mediaType = strings.TrimSpace(mediaType[:idx])
+	}
+	mediaType = strings.ToLower(mediaType)
+	if mediaType != "application/x-www-form-urlencoded" {
+		// RFC 6749 §3.2 mandates form encoding at the token endpoint.
+		w.Header().Set("Accept", "application/x-www-form-urlencoded")
+		oauthError(w, http.StatusUnsupportedMediaType, "invalid_request",
+			"The token endpoint requires Content-Type: application/x-www-form-urlencoded")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	if err := r.ParseForm(); err != nil {
+		oauthError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
+		return
+	}
+	req.GrantType = r.FormValue("grant_type")
+	req.ClientID = r.FormValue("client_id")
+	req.ClientSecret = r.FormValue("client_secret")
+	req.Code = r.FormValue("code")
+	req.RedirectURI = r.FormValue("redirect_uri")
+	req.CodeVerifier = r.FormValue("code_verifier")
+	req.RefreshToken = r.FormValue("refresh_token")
+	req.Scope = r.FormValue("scope")
+	req.DeviceCode = r.FormValue("device_code")
+	req.Resource = r.FormValue("resource")
+
+	// HTTP Basic auth overrides body credentials. Presenting both is a
+	// protocol violation; reject per RFC 6749 §2.3.1.
+	if basicID, basicSecret, hasBasic := r.BasicAuth(); hasBasic {
+		if req.ClientID != "" || req.ClientSecret != "" {
+			oauthError(w, http.StatusBadRequest, "invalid_request",
+				"client credentials must be supplied via either HTTP Basic or request body, not both")
 			return
 		}
-		req.GrantType = r.FormValue("grant_type")
-		req.ClientID = r.FormValue("client_id")
-		req.ClientSecret = r.FormValue("client_secret")
-		req.Code = r.FormValue("code")
-		req.RedirectURI = r.FormValue("redirect_uri")
-		req.CodeVerifier = r.FormValue("code_verifier")
-		req.RefreshToken = r.FormValue("refresh_token")
-		req.Scope = r.FormValue("scope")
-		req.DeviceCode = r.FormValue("device_code")
-		req.Resource = r.FormValue("resource")
-	} else {
-		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			oauthError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
-			return
-		}
+		req.ClientID = basicID
+		req.ClientSecret = basicSecret
 	}
 
 	req.Scope = authscope.Normalize(req.Scope)

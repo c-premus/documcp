@@ -110,8 +110,14 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Narrow requested scope to what this user is entitled to grant.
-	// Admins can grant all scopes; regular users only DefaultScopes.
+	// Narrow requested scope to what this user is entitled to grant to a
+	// third-party OAuth client. Admins can grant most scopes except those
+	// that would let a bearer-token client impersonate them at the admin
+	// surface (see authscope.ThirdPartyGrantable).
+	//
+	// This is ALSO the H2 choke point: `admin` and `services:write` live in
+	// UserScopes but are filtered out here so they never leave the
+	// server-internal boundary.
 	user, err := h.service.FindUserByID(r.Context(), userID)
 	if err != nil {
 		h.logger.Error("looking up user for scope computation", "error", err)
@@ -120,42 +126,21 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	}
 	effectiveScope := scope
 	if scope != "" {
-		effectiveScope = authscope.Intersect(scope, authscope.UserScopes(user.IsAdmin))
+		effectiveScope = authscope.Intersect(scope, authscope.ThirdPartyGrantable(user.IsAdmin))
 	}
 	if effectiveScope == "" && scope != "" {
 		oauthError(w, http.StatusBadRequest, "invalid_scope", "None of the requested scopes are available to your account.")
 		return
 	}
 
-	// Record a time-bounded scope grant so the client can use these scopes
-	// in future consent flows (replaces permanent scope widening).
-	if effectiveScope != "" {
-		if grantErr := h.service.GrantClientScope(r.Context(), client.ID, effectiveScope, userID); grantErr != nil {
-			h.logger.Error("granting client scope", "error", grantErr)
-			// Non-fatal: proceed with base client scope.
-		}
-	}
-
-	// Narrow to the client's effective scope (base registration + active grants).
-	// A client should not receive scopes beyond what it has been granted.
-	if effectiveScope != "" {
-		baseScope := ""
-		if client.Scope.Valid {
-			baseScope = client.Scope.String
-		}
-		clientEffective, effErr := h.service.EffectiveClientScope(r.Context(), client.ID, baseScope)
-		if effErr != nil {
-			h.logger.Error("computing effective client scope", "error", effErr)
-			clientEffective = baseScope
-		}
-		if clientEffective != "" {
-			effectiveScope = authscope.Intersect(effectiveScope, clientEffective)
-			if effectiveScope == "" {
-				oauthError(w, http.StatusBadRequest, "invalid_scope", "None of the requested scopes are available for this client.")
-				return
-			}
-		}
-	}
+	// NO GrantClientScope call here. Recording the grant at render time was
+	// security.md H3 (CSRF-ish scope-laundering: merely luring an admin to
+	// GET /oauth/authorize with scope=... silently widened the client's
+	// effective scope for 30 days). The grant now happens in AuthorizeApprove
+	// after the user actually consents. Consent UX shows the full requested
+	// scope set (narrowed to entitlement ceiling); the token exchange path's
+	// defense-in-depth intersection with the client's effective scope (base +
+	// prior grants + this new grant, once recorded) catches any drift.
 
 	// Generate consent nonce
 	nonce := uuid.New().String()
@@ -370,6 +355,21 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Failed to generate authorization code", http.StatusInternalServerError)
 		return
+	}
+
+	// Consent has been given — record the time-bounded scope grant now.
+	// Moved from GET /oauth/authorize (security.md H3) so a user who is lured
+	// to the consent page without clicking Approve cannot widen a client's
+	// effective scope. The granted scope is the pendingScope from session
+	// state, which was already narrowed to the user's entitlement ceiling
+	// (ThirdPartyGrantable) in the GET handler.
+	if pendingScope != "" {
+		if grantErr := h.service.GrantClientScope(r.Context(), client.ID, pendingScope, userID); grantErr != nil {
+			h.logger.Error("granting client scope on approval", "error", grantErr)
+			// Non-fatal: the code is still issued, but the exchange-time
+			// intersection with effective client scope will narrow tokens to
+			// the client's base scope only.
+		}
 	}
 
 	// Generate authorization code using session-validated values.

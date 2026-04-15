@@ -1021,6 +1021,7 @@ func routeRegistered(t *testing.T, srv *server.Server, method, path string) {
 	}
 }
 
+
 func TestRegisterRoutes_DocumentEndpoints(t *testing.T) {
 	t.Parallel()
 
@@ -1202,14 +1203,15 @@ func TestRegisterRoutes_AdminUserEndpoints(t *testing.T) {
 		UserHandler:  new(apihandler.UserHandler),
 	})
 
+	// v0.21.0: DocuMCP is OIDC-only. POST /users and PUT /users/{id} were
+	// removed as part of closing the admin-takeover vector in security.md H1.
+	// Users are provisioned by the OIDC callback, not by admin-API calls.
 	routes := []struct {
 		method string
 		path   string
 	}{
 		{http.MethodGet, "/api/admin/users"},
-		{http.MethodPost, "/api/admin/users"},
 		{http.MethodGet, "/api/admin/users/1"},
-		{http.MethodPut, "/api/admin/users/1"},
 		{http.MethodDelete, "/api/admin/users/1"},
 		{http.MethodPost, "/api/admin/users/1/toggle-admin"},
 	}

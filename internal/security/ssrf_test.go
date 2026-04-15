@@ -94,6 +94,24 @@ func TestValidateExternalURL(t *testing.T) {
 
 		// Public IPv6 should be allowed
 		{"public IPv6", "http://[2001:db8::1]", false},
+
+		// Ranges added in v0.21.0 (security.md M5). These used to pass the
+		// ValidateExternalURL check because they sit outside RFC 1918 and Go's
+		// IsPrivate list. 100.64/10 is the practically-dangerous one for
+		// Tailscale deployments; the rest are spec-reserved spaces that a
+		// well-behaved client would never target.
+		{"100.64.0.0 CGN blocked", "http://100.64.0.0", true},
+		{"100.127.255.255 CGN blocked", "http://100.127.255.255", true},
+		{"100.128.0.0 allowed (just past CGN)", "http://100.128.0.0", false},
+		{"192.0.0.1 IETF blocked", "http://192.0.0.1", true},
+		{"192.0.2.5 TEST-NET-1 blocked", "http://192.0.2.5", true},
+		{"198.18.0.1 benchmark blocked", "http://198.18.0.1", true},
+		{"198.19.0.1 benchmark blocked", "http://198.19.0.1", true},
+		{"198.51.100.5 TEST-NET-2 blocked", "http://198.51.100.5", true},
+		{"203.0.113.5 TEST-NET-3 blocked", "http://203.0.113.5", true},
+		{"224.0.0.1 multicast blocked", "http://224.0.0.1", true},
+		{"239.255.255.255 multicast blocked", "http://239.255.255.255", true},
+		{"240.0.0.1 reserved blocked", "http://240.0.0.1", true},
 	}
 
 	for _, tt := range tests {

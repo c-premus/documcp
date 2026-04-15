@@ -339,59 +339,7 @@ func TestHandler_Authorize(t *testing.T) {
 		assert.NotNil(t, pending["timestamp"])
 	})
 
-	t.Run("admin user creates scope grant on authorize", func(t *testing.T) {
-		t.Parallel()
-		var grantedScope string
-		var grantedBy int64
-		baseScope := "documents:read mcp:access search:read services:read templates:read zim:read"
-		repo := &mockOAuthRepo{
-			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
-				return &model.OAuthClient{
-					ID:                      1,
-					ClientID:                "cid",
-					ClientName:              "Auto-Registered App",
-					RedirectURIs:            `["https://example.com/cb"]`,
-					TokenEndpointAuthMethod: "none",
-					Scope:                   sql.NullString{String: baseScope, Valid: true},
-				}, nil
-			},
-			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
-				return &model.User{ID: id, IsAdmin: true}, nil
-			},
-			UpsertScopeGrantFunc: func(_ context.Context, grant *model.OAuthClientScopeGrant) error {
-				grantedScope = grant.Scope
-				grantedBy = grant.GrantedBy
-				return nil
-			},
-			FindActiveScopeGrantsFunc: func(_ context.Context, _ int64) ([]model.OAuthClientScopeGrant, error) {
-				// Return the grant we just created to simulate effective scope.
-				return []model.OAuthClientScopeGrant{
-					{Scope: "admin documents:read documents:write mcp:access"},
-				}, nil
-			},
-		}
-		h, store := newHandlerWithRepo(repo)
-		store.session.Values["user_id"] = int64(42)
-
-		req := httptest.NewRequest(http.MethodGet,
-			"/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&scope=admin+mcp:access+documents:read+documents:write&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256",
-			http.NoBody)
-		rr := httptest.NewRecorder()
-
-		h.Authorize(rr, req)
-
-		require.Equal(t, http.StatusOK, rr.Code)
-		// Verify a scope grant was created (not permanent client scope mutation).
-		assert.NotEmpty(t, grantedScope, "UpsertScopeGrant should have been called")
-		assert.Contains(t, grantedScope, "admin")
-		assert.Contains(t, grantedScope, "documents:write")
-		assert.Equal(t, int64(42), grantedBy)
-		// Verify consent screen shows the requested admin scopes.
-		body := rr.Body.String()
-		assert.Contains(t, body, "admin")
-	})
-
-	t.Run("non-admin user grant contains only default scopes", func(t *testing.T) {
+	t.Run("GET does NOT record a scope grant (security.md H3 regression guard)", func(t *testing.T) {
 		t.Parallel()
 		var grantCalled bool
 		baseScope := "documents:read mcp:access search:read services:read templates:read zim:read"
@@ -407,30 +355,96 @@ func TestHandler_Authorize(t *testing.T) {
 				}, nil
 			},
 			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
-				return &model.User{ID: id, IsAdmin: false}, nil
+				return &model.User{ID: id, IsAdmin: true}, nil
 			},
 			UpsertScopeGrantFunc: func(_ context.Context, _ *model.OAuthClientScopeGrant) error {
 				grantCalled = true
 				return nil
-			},
-			FindActiveScopeGrantsFunc: func(_ context.Context, _ int64) ([]model.OAuthClientScopeGrant, error) {
-				return nil, nil
 			},
 		}
 		h, store := newHandlerWithRepo(repo)
 		store.session.Values["user_id"] = int64(42)
 
 		req := httptest.NewRequest(http.MethodGet,
-			"/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&scope=mcp:access+documents:read&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256",
+			"/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&scope=mcp:access+documents:read+documents:write&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256",
 			http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.Authorize(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
-		// Non-admin requesting only default scopes — grant is created but
-		// contains only scopes that intersect with user entitlements.
-		assert.True(t, grantCalled, "UpsertScopeGrant should be called even for default scopes")
+		assert.False(t, grantCalled,
+			"UpsertScopeGrant MUST NOT be called on GET /oauth/authorize — scope laundering vector (security.md H3)")
+	})
+
+	t.Run("admin scope is never shown on consent screen (security.md H2 regression guard)", func(t *testing.T) {
+		t.Parallel()
+		baseScope := "admin documents:read documents:write mcp:access mcp:write search:read services:read templates:read templates:write zim:read"
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:                      1,
+					ClientID:                "cid",
+					ClientName:              "Attacker App",
+					RedirectURIs:            `["https://example.com/cb"]`,
+					TokenEndpointAuthMethod: "none",
+					Scope:                   sql.NullString{String: baseScope, Valid: true},
+				}, nil
+			},
+			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
+				return &model.User{ID: id, IsAdmin: true}, nil
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+
+		req := httptest.NewRequest(http.MethodGet,
+			"/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&scope=admin+mcp:access&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256",
+			http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Authorize(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		pending, _ := store.session.Values["oauth_pending_request"].(map[string]any)
+		pendingScope, _ := pending["scope"].(string)
+		assert.NotContains(t, pendingScope, "admin",
+			"pending scope must not contain admin — ThirdPartyGrantable filters it out")
+		assert.Contains(t, pendingScope, "mcp:access")
+	})
+
+	t.Run("services:write is never granted to third-party clients (H2)", func(t *testing.T) {
+		t.Parallel()
+		baseScope := "services:write"
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:                      1,
+					ClientID:                "cid",
+					ClientName:              "SSRF Attacker",
+					RedirectURIs:            `["https://example.com/cb"]`,
+					TokenEndpointAuthMethod: "none",
+					Scope:                   sql.NullString{String: baseScope, Valid: true},
+				}, nil
+			},
+			FindUserByIDFunc: func(_ context.Context, id int64) (*model.User, error) {
+				return &model.User{ID: id, IsAdmin: true}, nil
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+
+		req := httptest.NewRequest(http.MethodGet,
+			"/oauth/authorize?response_type=code&client_id=cid&redirect_uri=https://example.com/cb&state=abcdefgh&scope=services:write&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256",
+			http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.Authorize(rr, req)
+
+		// Requested scope is exactly one excluded scope → effective scope empty → invalid_scope.
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		result := decodeOAuthJSON(t, rr.Body)
+		assert.Equal(t, "invalid_scope", result["error"])
 	})
 }
 
@@ -619,6 +633,57 @@ func TestHandler_AuthorizeApprove(t *testing.T) {
 		assert.Contains(t, body, "https://example.com/cb")
 		assert.Contains(t, body, "code=")
 		assert.Contains(t, body, "state=my_state_")
+	})
+
+	t.Run("records scope grant on approval (H3: grant moved here from GET)", func(t *testing.T) {
+		t.Parallel()
+		var grantedScope string
+		var grantedBy int64
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:                      1,
+					ClientID:                "cid",
+					ClientName:              "Test App",
+					TokenEndpointAuthMethod: "none",
+					RedirectURIs:            `["https://example.com/cb"]`,
+				}, nil
+			},
+			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
+				code.ID = 99
+				return nil
+			},
+			UpsertScopeGrantFunc: func(_ context.Context, grant *model.OAuthClientScopeGrant) error {
+				grantedScope = grant.Scope
+				grantedBy = grant.GrantedBy
+				return nil
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+		store.session.Values["oauth_pending_request"] = map[string]any{
+			"nonce":                 "grant-nonce",
+			"client_id":             "cid",
+			"state":                 "my_state_",
+			"redirect_uri":          "https://example.com/cb",
+			"code_challenge":        "",
+			"code_challenge_method": "",
+			"scope":                 "mcp:access documents:read",
+			"timestamp":             time.Now().Unix(),
+		}
+
+		formBody := "client_id=cid&redirect_uri=https://example.com/cb&state=my_state_&scope=mcp:access%20documents:read&nonce=grant-nonce"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/authorize/approve", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.AuthorizeApprove(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "mcp:access documents:read", grantedScope,
+			"grant scope should match the session's pendingScope")
+		assert.Equal(t, int64(42), grantedBy,
+			"grant should be attributed to the consenting user")
 	})
 
 	t.Run("happy path clears pending request from session", func(t *testing.T) {
