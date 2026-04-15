@@ -1500,7 +1500,7 @@ func TestHandleSearchGitTemplates(t *testing.T) {
 					"status":      "synced",
 				})
 				return &search.SearchResponse{
-					Hits:               []search.SearchResult{hit},
+					Hits:           []search.SearchResult{hit},
 					EstimatedTotal: 1,
 				}, nil
 			},

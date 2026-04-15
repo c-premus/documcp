@@ -84,9 +84,9 @@ var validGrantTypes = map[string]bool{
 
 // validAuthMethods is the whitelist of allowed token endpoint auth methods.
 var validAuthMethods = map[string]bool{
-	"none":                 true,
-	"client_secret_basic":  true,
-	"client_secret_post":   true,
+	"none":                true,
+	"client_secret_basic": true,
+	"client_secret_post":  true,
 }
 
 // RegisterClient validates input, generates credentials, and persists a new

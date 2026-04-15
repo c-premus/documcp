@@ -77,11 +77,11 @@ type SearchParams struct {
 
 // FederatedSearchParams holds parameters for searching across multiple indexes.
 type FederatedSearchParams struct {
-	Query   string
-	Indexes []string // Index UIDs to search. Empty = all 3 indexes.
-	Limit   int64
-	Offset  int64
-	UserID  *int64
+	Query    string
+	Indexes  []string // Index UIDs to search. Empty = all 3 indexes.
+	Limit    int64
+	Offset   int64
+	UserID   *int64
 	IsPublic *bool
 	IsAdmin  bool
 }

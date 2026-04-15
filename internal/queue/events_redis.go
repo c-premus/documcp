@@ -147,4 +147,3 @@ func (reb *RedisEventBus) Close() {
 		}
 	})
 }
-

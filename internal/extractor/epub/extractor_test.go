@@ -371,8 +371,8 @@ func TestEPUBExtractor_Extract_MetadataMap(t *testing.T) {
 			wantNoMetadata: true,
 		},
 		{
-			name: "title only",
-			meta: &epubMeta{Title: "Solo Title"},
+			name:             "title only",
+			meta:             &epubMeta{Title: "Solo Title"},
 			wantMetadataKeys: []string{"title"},
 		},
 		{

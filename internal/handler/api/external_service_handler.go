@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
-	"net/http"
 	"github.com/go-chi/chi/v5"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/rivertype"
+	"log/slog"
+	"net/http"
 
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/queue"

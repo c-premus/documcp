@@ -122,7 +122,7 @@ func (h *DashboardHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		"oauth_clients":     oauthClients,
 		"external_services": extServices,
 		"zim_archives":      zimArchives,
-		"git_templates": gitTemplates,
+		"git_templates":     gitTemplates,
 	}
 
 	if h.riverClient != nil {

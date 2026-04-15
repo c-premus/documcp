@@ -32,9 +32,9 @@ var _ extractor.Extractor = (*XLSXExtractor)(nil)
 //
 //nolint:revive // exported stutter is intentional; renaming would be a breaking change
 type XLSXExtractor struct {
-	maxSheets        int
-	maxUnzipSize     int64
-	maxUnzipXMLSize  int64
+	maxSheets       int
+	maxUnzipSize    int64
+	maxUnzipXMLSize int64
 }
 
 // New creates a new XLSXExtractor with default limits.

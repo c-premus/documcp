@@ -385,9 +385,9 @@ func TestToZimArchiveResponse(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 type mockZimArchiveRepo struct {
-	ListFn            func(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error)
-	CountFilteredFn   func(ctx context.Context, category, language, query string) (int, error)
-	FindByNameFn      func(ctx context.Context, name string) (*model.ZimArchive, error)
+	ListFn          func(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error)
+	CountFilteredFn func(ctx context.Context, category, language, query string) (int, error)
+	FindByNameFn    func(ctx context.Context, name string) (*model.ZimArchive, error)
 }
 
 func (m *mockZimArchiveRepo) List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error) {
