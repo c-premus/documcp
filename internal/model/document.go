@@ -48,6 +48,7 @@ type Document struct {
 	UserID       sql.NullInt64  `db:"user_id" json:"user_id"`
 	IsPublic     bool           `db:"is_public" json:"is_public"`
 	Status       DocumentStatus `db:"status" json:"status"`
+	TagsText     sql.NullString `db:"tags_text" json:"-"`
 	SearchVector any            `db:"search_vector" json:"-"`
 	ErrorMessage sql.NullString `db:"error_message" json:"error_message"`
 	CreatedAt    sql.NullTime   `db:"created_at" json:"created_at"`
