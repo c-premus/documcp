@@ -74,12 +74,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Docker Hub: attest to GitHub's store only. Do NOT push a referrer
+      # manifest to Docker Hub — buildx already embeds SLSA provenance and
+      # SBOMs inside the fat manifest via `provenance: mode=max, sbom: true`,
+      # and Docker Hub's public API cannot garbage-collect separate referrer
+      # manifests once their subject index is untagged (Advanced Image
+      # Management endpoints were removed from the public API in 2023).
       - name: Attest Docker Hub image
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
         with:
           subject-name: docker.io/${{ env.DOCKERHUB_IMAGE }}
           subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
 
       - name: Attest GHCR image
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
@@ -88,72 +93,74 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-      - name: Clean up old Docker Hub tags and images
-        continue-on-error: true
+      # Docker Hub tag retention. We can't prune untagged manifests from here:
+      # the "Advanced Image Management" API (/v2/namespaces/.../images) was
+      # removed from public access in 2023 and now only backs the web UI.
+      # Orphan manifests left behind when tags expire rely on Docker Hub's
+      # own background GC. To avoid *generating* additional orphans, we also
+      # do not push referrer attestations to Docker Hub (see the attest step
+      # above) — buildx embeds provenance/SBOM inside the fat manifest.
+      - name: Clean up old Docker Hub tags
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
-          set -uo pipefail
+          set -euo pipefail
           NAMESPACE="cpremus"
           IMAGE="documcp"
           KEEP=10
 
-          # Authenticate — fail fast with diagnostic output
-          RESPONSE=$(curl -s -w "\n%{http_code}" "https://hub.docker.com/v2/users/login/" \
+          # Authenticate
+          LOGIN_RESP=$(curl -sS -w "\n%{http_code}" "https://hub.docker.com/v2/users/login/" \
             -H "Content-Type: application/json" \
             -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}")
-          HTTP_CODE=$(echo "${RESPONSE}" | tail -1)
-          BODY=$(echo "${RESPONSE}" | sed '$d')
-
-          if [ "${HTTP_CODE}" -ne 200 ]; then
-            echo "::error::Docker Hub login failed (HTTP ${HTTP_CODE})"
+          LOGIN_CODE=$(echo "${LOGIN_RESP}" | tail -n1)
+          LOGIN_BODY=$(echo "${LOGIN_RESP}" | sed '$d')
+          if [ "${LOGIN_CODE}" != "200" ]; then
+            echo "::error::Docker Hub login failed (HTTP ${LOGIN_CODE}): ${LOGIN_BODY}"
             exit 1
           fi
-          HUB_TOKEN=$(echo "${BODY}" | jq -r .token)
+          HUB_TOKEN=$(printf '%s' "${LOGIN_BODY}" | jq -r .token)
 
-          # Step 1: Delete old tags (keeps latest KEEP by last_updated)
-          echo "Fetching tags..."
-          TAGS=$(curl -sf "https://hub.docker.com/v2/repositories/${NAMESPACE}/${IMAGE}/tags/?page_size=100" \
-            -H "Authorization: Bearer ${HUB_TOKEN}" \
-            | jq -r "[.results | sort_by(.last_updated) | reverse | .[${KEEP}:][] | .name] | .[]") || true
+          # Page through every tag (not just the first 100)
+          TAGS_FILE=$(mktemp)
+          URL="https://hub.docker.com/v2/repositories/${NAMESPACE}/${IMAGE}/tags/?page_size=100&ordering=last_updated"
+          # ordering=last_updated is ascending, so the oldest tags appear first — flipped below
+          while [ -n "${URL}" ] && [ "${URL}" != "null" ]; do
+            PAGE=$(curl -sSf -H "Authorization: Bearer ${HUB_TOKEN}" "${URL}")
+            echo "${PAGE}" | jq -r '.results[] | "\(.last_updated)\t\(.name)"' >> "${TAGS_FILE}"
+            URL=$(echo "${PAGE}" | jq -r '.next // ""')
+          done
 
-          if [ -n "${TAGS}" ]; then
-            for TAG in ${TAGS}; do
-              echo "Removing tag ${IMAGE}:${TAG}"
-              curl -sf -X DELETE "https://hub.docker.com/v2/repositories/${NAMESPACE}/${IMAGE}/tags/${TAG}/" \
-                -H "Authorization: Bearer ${HUB_TOKEN}" || echo "  Warning: failed to delete tag ${TAG}"
-            done
-          else
-            echo "No old tags to remove (≤${KEEP} tags)"
-          fi
+          # Newest first, strip timestamp, skip the KEEP newest, emit the rest
+          DELETE_FILE=$(mktemp)
+          sort -r "${TAGS_FILE}" | cut -f2- | tail -n "+$((KEEP + 1))" > "${DELETE_FILE}"
 
-          # Step 2: Delete inactive images via Advanced Image Management API (Docker Pro)
-          # status=inactive returns manifests with no tags AND not referenced by any tagged manifest
-          echo "Fetching inactive images..."
-          DIGESTS=$(curl -sf \
-            "https://hub.docker.com/v2/namespaces/${NAMESPACE}/repositories/${IMAGE}/images?status=inactive&page_size=100&ordering=-last_activity" \
-            -H "Authorization: Bearer ${HUB_TOKEN}" \
-            | jq -r '[.results[].digest] | .[]') || true
+          TOTAL=$(wc -l < "${TAGS_FILE}" | tr -d ' ')
+          DELETE_COUNT=$(wc -l < "${DELETE_FILE}" | tr -d ' ')
+          echo "Tags: total=${TOTAL}, keep=${KEEP}, to-delete=${DELETE_COUNT}"
 
-          if [ -z "${DIGESTS}" ]; then
-            echo "No inactive images to clean up"
+          if [ "${DELETE_COUNT}" = "0" ]; then
+            echo "Nothing to delete."
             exit 0
           fi
 
-          # Bulk delete by digest — actually reclaims storage
-          MANIFESTS=$(echo "${DIGESTS}" \
-            | jq -Rsc '[split("\n") | .[] | select(length > 0) | {repository: "'"${IMAGE}"'", digest: .}]')
-          COUNT=$(echo "${DIGESTS}" | grep -c . || true)
+          FAIL=0
+          while IFS= read -r TAG; do
+            [ -z "${TAG}" ] && continue
+            HTTP=$(curl -sS -o /dev/null -w "%{http_code}" -X DELETE \
+              "https://hub.docker.com/v2/repositories/${NAMESPACE}/${IMAGE}/tags/${TAG}/" \
+              -H "Authorization: Bearer ${HUB_TOKEN}")
+            if [ "${HTTP}" = "204" ] || [ "${HTTP}" = "200" ]; then
+              echo "  deleted: ${TAG}"
+            else
+              echo "::warning::failed to delete tag ${TAG} (HTTP ${HTTP})"
+              FAIL=$((FAIL + 1))
+            fi
+          done < "${DELETE_FILE}"
 
-          echo "Deleting ${COUNT} inactive image(s)"
-          curl -sf -X POST \
-            "https://hub.docker.com/v2/namespaces/${NAMESPACE}/repositories/${IMAGE}/images/delete" \
-            -H "Authorization: Bearer ${HUB_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "{\"manifests\": ${MANIFESTS}, \"dry_run\": false}" || echo "Warning: bulk delete failed"
-
-          echo "Docker Hub cleanup complete"
+          echo "Done. deleted=$((DELETE_COUNT - FAIL)), failed=${FAIL}"
+          [ "${FAIL}" = "0" ]
 
       # Multi-arch builds + attestations create ~5 versions per release
       - name: Clean up old GHCR versions
