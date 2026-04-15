@@ -202,8 +202,10 @@ func (s *Service) verifyClientAuth(client *model.OAuthClient, secret string) err
 	return nil
 }
 
-// issueTokenPair creates a new access token and refresh token pair.
-func (s *Service) issueTokenPair(ctx context.Context, clientID int64, userID sql.NullInt64, scope string) (*TokenResult, error) {
+// issueTokenPair creates a new access token and refresh token pair. The
+// resource argument is the RFC 8707 audience the token is bound to; empty
+// means unbound (token will fail audience-checked middleware).
+func (s *Service) issueTokenPair(ctx context.Context, clientID int64, userID sql.NullInt64, scope, resource string) (*TokenResult, error) {
 	// Final scope validation gate
 	if scope != "" {
 		if invalid := authscope.ValidateAll(scope); len(invalid) > 0 {
@@ -222,6 +224,7 @@ func (s *Service) issueTokenPair(ctx context.Context, clientID int64, userID sql
 		ClientID:  clientID,
 		UserID:    userID,
 		Scope:     sql.NullString{String: scope, Valid: scope != ""},
+		Resource:  sql.NullString{String: resource, Valid: resource != ""},
 		ExpiresAt: time.Now().Add(s.config.AccessTokenLifetime),
 		Revoked:   false,
 	}

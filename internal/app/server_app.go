@@ -244,7 +244,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	}, logger)
 
 	srv.RegisterRoutes(server.Deps{
-		BareRedisClient:   f.BareRedisClient,
+		BareRedisClient:        f.BareRedisClient,
 		RedisClient:            f.RedisClient,
 		Version:                cfg.DocuMCP.ServerVersion,
 		MCPHandler:             mcpH,
@@ -274,6 +274,8 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		MaxBodySize:            cfg.Server.MaxBodySize,
 		RequestTimeout:         cfg.Server.RequestTimeout,
 		HSTSMaxAge:             cfg.Server.HSTSMaxAge,
+		MCPResource:            cfg.App.URL + cfg.DocuMCP.Endpoint,
+		APIResource:            cfg.App.URL,
 	})
 
 	logger.Info("HTTP server configured",

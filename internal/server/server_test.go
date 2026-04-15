@@ -15,8 +15,8 @@ import (
 
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
-	"github.com/c-premus/documcp/internal/auth/oidc"
 	"github.com/c-premus/documcp/internal/auth/oauth"
+	"github.com/c-premus/documcp/internal/auth/oidc"
 	"github.com/c-premus/documcp/internal/config"
 	"github.com/c-premus/documcp/internal/handler"
 	apihandler "github.com/c-premus/documcp/internal/handler/api"

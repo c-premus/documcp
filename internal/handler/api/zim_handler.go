@@ -165,7 +165,6 @@ func (h *ZimHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	archiveName := chi.URLParam(r, "archive")
 
 	query := r.URL.Query().Get("q")
@@ -221,7 +220,6 @@ func (h *ZimHandler) Suggest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	archiveName := chi.URLParam(r, "archive")
 
 	query := r.URL.Query().Get("q")
@@ -265,7 +263,6 @@ func (h *ZimHandler) ReadArticle(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusServiceUnavailable, "Kiwix integration not configured")
 		return
 	}
-
 
 	archiveName := chi.URLParam(r, "archive")
 	articlePath := chi.URLParam(r, "*")

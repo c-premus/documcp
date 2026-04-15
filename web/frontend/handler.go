@@ -16,11 +16,11 @@ var distFS embed.FS
 // authentication. Browsers and external clients (e.g. Claude.ai) expect these
 // at well-known paths outside the SPA mount.
 var rootAssetAllowlist = map[string]bool{
-	"/favicon.ico":                    true,
-	"/favicon.svg":                    true,
-	"/favicon-96x96.png":             true,
-	"/apple-touch-icon.png":          true,
-	"/site.webmanifest":              true,
+	"/favicon.ico":                  true,
+	"/favicon.svg":                  true,
+	"/favicon-96x96.png":            true,
+	"/apple-touch-icon.png":         true,
+	"/site.webmanifest":             true,
 	"/web-app-manifest-192x192.png": true,
 	"/web-app-manifest-512x512.png": true,
 }

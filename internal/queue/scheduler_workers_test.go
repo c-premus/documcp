@@ -101,10 +101,10 @@ func (m *mockExternalServiceFinder) FindEnabledByType(ctx context.Context, servi
 }
 
 type mockGitTemplateRepo struct {
-	listFn               func(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error)
-	updateSyncStatusFn   func(ctx context.Context, templateID int64, status model.GitTemplateStatus, commitSHA string, fileCount int, totalSize int64, errMsg string) error
-	replaceFilesFn       func(ctx context.Context, templateID int64, files []repository.GitTemplateFileInsert) error
-	updateSearchFn       func(ctx context.Context, templateID int64, readmeContent, filePaths string) error
+	listFn             func(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error)
+	updateSyncStatusFn func(ctx context.Context, templateID int64, status model.GitTemplateStatus, commitSHA string, fileCount int, totalSize int64, errMsg string) error
+	replaceFilesFn     func(ctx context.Context, templateID int64, files []repository.GitTemplateFileInsert) error
+	updateSearchFn     func(ctx context.Context, templateID int64, readmeContent, filePaths string) error
 }
 
 func (m *mockGitTemplateRepo) List(ctx context.Context, category string, limit, offset int) ([]model.GitTemplate, error) {

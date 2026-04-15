@@ -18,32 +18,32 @@ const (
 
 // GitTemplate represents a row in the "git_templates" table.
 type GitTemplate struct {
-	ID             int64          `db:"id" json:"id"`
-	UUID           string         `db:"uuid" json:"uuid"`
-	Name           string         `db:"name" json:"name"`
-	Slug           string         `db:"slug" json:"slug"`
-	Description    sql.NullString `db:"description" json:"description"`
-	RepositoryURL  string         `db:"repository_url" json:"repository_url"`
-	Branch         string         `db:"branch" json:"branch"`
-	GitToken       sql.NullString `db:"git_token" json:"-"`
-	ReadmeContent  sql.NullString `db:"readme_content" json:"readme_content"`
-	Manifest       sql.NullString `db:"manifest" json:"manifest"`
-	Category       sql.NullString `db:"category" json:"category"`
-	Tags           sql.NullString `db:"tags" json:"tags"`
-	UserID         sql.NullInt64  `db:"user_id" json:"user_id"`
-	IsPublic       bool           `db:"is_public" json:"is_public"`
-	IsEnabled      bool           `db:"is_enabled" json:"is_enabled"`
+	ID             int64             `db:"id" json:"id"`
+	UUID           string            `db:"uuid" json:"uuid"`
+	Name           string            `db:"name" json:"name"`
+	Slug           string            `db:"slug" json:"slug"`
+	Description    sql.NullString    `db:"description" json:"description"`
+	RepositoryURL  string            `db:"repository_url" json:"repository_url"`
+	Branch         string            `db:"branch" json:"branch"`
+	GitToken       sql.NullString    `db:"git_token" json:"-"`
+	ReadmeContent  sql.NullString    `db:"readme_content" json:"readme_content"`
+	Manifest       sql.NullString    `db:"manifest" json:"manifest"`
+	Category       sql.NullString    `db:"category" json:"category"`
+	Tags           sql.NullString    `db:"tags" json:"tags"`
+	UserID         sql.NullInt64     `db:"user_id" json:"user_id"`
+	IsPublic       bool              `db:"is_public" json:"is_public"`
+	IsEnabled      bool              `db:"is_enabled" json:"is_enabled"`
 	Status         GitTemplateStatus `db:"status" json:"status"`
-	ErrorMessage   sql.NullString `db:"error_message" json:"error_message"`
-	LastSyncedAt   sql.NullTime   `db:"last_synced_at" json:"last_synced_at"`
-	LastCommitSHA  sql.NullString `db:"last_commit_sha" json:"last_commit_sha"`
-	FileCount      int            `db:"file_count" json:"file_count"`
-	TotalSizeBytes int64          `db:"total_size_bytes" json:"total_size_bytes"`
-	FilePaths      sql.NullString `db:"file_paths" json:"-"`
-	SearchVector   any            `db:"search_vector" json:"-"`
-	CreatedAt      sql.NullTime   `db:"created_at" json:"created_at"`
-	UpdatedAt      sql.NullTime   `db:"updated_at" json:"updated_at"`
-	DeletedAt      sql.NullTime   `db:"deleted_at" json:"deleted_at"`
+	ErrorMessage   sql.NullString    `db:"error_message" json:"error_message"`
+	LastSyncedAt   sql.NullTime      `db:"last_synced_at" json:"last_synced_at"`
+	LastCommitSHA  sql.NullString    `db:"last_commit_sha" json:"last_commit_sha"`
+	FileCount      int               `db:"file_count" json:"file_count"`
+	TotalSizeBytes int64             `db:"total_size_bytes" json:"total_size_bytes"`
+	FilePaths      sql.NullString    `db:"file_paths" json:"-"`
+	SearchVector   any               `db:"search_vector" json:"-"`
+	CreatedAt      sql.NullTime      `db:"created_at" json:"created_at"`
+	UpdatedAt      sql.NullTime      `db:"updated_at" json:"updated_at"`
+	DeletedAt      sql.NullTime      `db:"deleted_at" json:"deleted_at"`
 }
 
 // ParseTags decodes the JSON tags string into a string slice.

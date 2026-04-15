@@ -19,6 +19,10 @@ type RefreshTokenParams struct {
 	ClientID     string
 	ClientSecret string
 	Scope        string
+	// Resource is an optional RFC 8707 audience. When non-empty it must equal
+	// the resource bound to the original access token; refresh cannot widen
+	// or change the audience (RFC 8707 §2.2).
+	Resource string
 }
 
 // RefreshAccessToken exchanges a refresh token for new tokens (rotation).
@@ -82,5 +86,15 @@ func (s *Service) RefreshAccessToken(ctx context.Context, params RefreshTokenPar
 		scope = params.Scope
 	}
 
-	return s.issueTokenPair(ctx, client.ID, accessToken.UserID, scope)
+	// Resource is inherited from the original access token; client cannot
+	// widen or change the audience on refresh.
+	resource := ""
+	if accessToken.Resource.Valid {
+		resource = accessToken.Resource.String
+	}
+	if params.Resource != "" && params.Resource != resource {
+		return nil, errors.New("invalid resource: does not match original token audience")
+	}
+
+	return s.issueTokenPair(ctx, client.ID, accessToken.UserID, scope, resource)
 }

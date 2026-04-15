@@ -128,7 +128,6 @@ func (CleanupOrphanedFilesArgs) InsertOpts() river.InsertOpts {
 	}
 }
 
-
 // PurgeSoftDeletedArgs dispatches permanent removal of soft-deleted documents.
 type PurgeSoftDeletedArgs struct{}
 
@@ -153,7 +152,6 @@ func (PurgeSoftDeletedArgs) InsertOpts() river.InsertOpts {
 		},
 	}
 }
-
 
 // HealthCheckServicesArgs dispatches external service health checks.
 type HealthCheckServicesArgs struct{}

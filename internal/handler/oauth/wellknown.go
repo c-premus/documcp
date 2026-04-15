@@ -33,6 +33,7 @@ func (h *Handler) AuthorizationServerMetadata(w http.ResponseWriter, r *http.Req
 		"code_challenge_methods_supported": []string{"S256"},
 		"scopes_supported":                 allScopesSorted(),
 		"protected_resources":              []string{issuer},
+		"resource_indicators_supported":    true,
 	}
 
 	jsonResponse(w, http.StatusOK, metadata)

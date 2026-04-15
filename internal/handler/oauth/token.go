@@ -23,6 +23,7 @@ func (h *Handler) Token(w http.ResponseWriter, r *http.Request) {
 		RefreshToken string `json:"refresh_token"`
 		Scope        string `json:"scope"`
 		DeviceCode   string `json:"device_code"`
+		Resource     string `json:"resource"`
 	}
 
 	contentType := r.Header.Get("Content-Type")
@@ -41,6 +42,7 @@ func (h *Handler) Token(w http.ResponseWriter, r *http.Request) {
 		req.RefreshToken = r.FormValue("refresh_token")
 		req.Scope = r.FormValue("scope")
 		req.DeviceCode = r.FormValue("device_code")
+		req.Resource = r.FormValue("resource")
 	} else {
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -63,9 +65,9 @@ func (h *Handler) Token(w http.ResponseWriter, r *http.Request) {
 
 	switch req.GrantType {
 	case "authorization_code":
-		h.tokenAuthorizationCode(w, r, req.ClientID, req.ClientSecret, req.Code, req.RedirectURI, req.CodeVerifier)
+		h.tokenAuthorizationCode(w, r, req.ClientID, req.ClientSecret, req.Code, req.RedirectURI, req.CodeVerifier, req.Resource)
 	case "refresh_token":
-		h.tokenRefreshToken(w, r, req.ClientID, req.ClientSecret, req.RefreshToken, req.Scope)
+		h.tokenRefreshToken(w, r, req.ClientID, req.ClientSecret, req.RefreshToken, req.Scope, req.Resource)
 	case "urn:ietf:params:oauth:grant-type:device_code":
 		h.tokenDeviceCode(w, r, req.ClientID, req.ClientSecret, req.DeviceCode)
 	default:
@@ -74,7 +76,7 @@ func (h *Handler) Token(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) tokenAuthorizationCode(w http.ResponseWriter, r *http.Request, clientID, clientSecret, code, redirectURI, codeVerifier string) {
+func (h *Handler) tokenAuthorizationCode(w http.ResponseWriter, r *http.Request, clientID, clientSecret, code, redirectURI, codeVerifier, resource string) {
 	if code == "" {
 		oauthError(w, http.StatusBadRequest, "invalid_request", "The code field is required when grant type is authorization_code.")
 		return
@@ -90,6 +92,7 @@ func (h *Handler) tokenAuthorizationCode(w http.ResponseWriter, r *http.Request,
 		ClientSecret: clientSecret,
 		RedirectURI:  redirectURI,
 		CodeVerifier: codeVerifier,
+		Resource:     resource,
 	})
 	if err != nil {
 		h.logger.Warn("oauth token failed: invalid authorization code",
@@ -108,7 +111,7 @@ func (h *Handler) tokenAuthorizationCode(w http.ResponseWriter, r *http.Request,
 	jsonResponse(w, http.StatusOK, result)
 }
 
-func (h *Handler) tokenRefreshToken(w http.ResponseWriter, r *http.Request, clientID, clientSecret, refreshToken, scope string) {
+func (h *Handler) tokenRefreshToken(w http.ResponseWriter, r *http.Request, clientID, clientSecret, refreshToken, scope, resource string) {
 	if refreshToken == "" {
 		oauthError(w, http.StatusBadRequest, "invalid_request", "The refresh token field is required when grant type is refresh_token.")
 		return
@@ -119,6 +122,7 @@ func (h *Handler) tokenRefreshToken(w http.ResponseWriter, r *http.Request, clie
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		Scope:        scope,
+		Resource:     resource,
 	})
 	if err != nil {
 		h.logger.Warn("oauth token failed: invalid refresh token",
