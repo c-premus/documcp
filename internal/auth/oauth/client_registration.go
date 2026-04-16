@@ -101,7 +101,7 @@ func (s *Service) RegisterClient(ctx context.Context, params RegisterClientParam
 		client.ClientSecret = sql.NullString{String: hashed, Valid: true}
 	}
 
-	if err := s.repo.CreateClient(ctx, client); err != nil {
+	if err := s.clients.CreateClient(ctx, client); err != nil {
 		return nil, fmt.Errorf("creating client: %w", err)
 	}
 
