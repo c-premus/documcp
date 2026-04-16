@@ -116,6 +116,62 @@ func TestSearch_TrigramFallback(t *testing.T) {
 	}
 }
 
+// TestFederatedSearch_SourceTotals is a regression guard for a double-bug
+// in the api-design audit 7a closure: the SQL `source` column emits
+// MCP-facing singular names ('document', 'zim_archive', 'git_template')
+// while callers pass plural index UIDs ('documents', ...) via
+// FederatedSearchParams.Indexes. An earlier fix keyed SourceTotals by the
+// SQL column value; the handler looked up by index UID and always missed,
+// producing zero totals in production even when matches existed.
+//
+// Fixed behavior: sqlSourceToIndex in searcher.go normalizes SQL column
+// values to index UIDs before storing in SourceTotals. This test exercises
+// the real SQL path to catch drift between the union clauses' `AS source`
+// literals and the translation map.
+func TestFederatedSearch_SourceTotals(t *testing.T) {
+	ctx := context.Background()
+
+	if _, err := testPool.Exec(ctx, "TRUNCATE TABLE documents CASCADE"); err != nil {
+		t.Fatalf("truncating documents: %v", err)
+	}
+
+	// Insert three documents so a non-trivial count flows through.
+	insertIndexedDocument(ctx, t, "fed-src-1", "kubernetes primer", "content one")
+	insertIndexedDocument(ctx, t, "fed-src-2", "kubernetes operators", "content two")
+	insertIndexedDocument(ctx, t, "fed-src-3", "kubernetes networking", "content three")
+
+	s := search.NewSearcher(testPool, slog.Default())
+	resp, err := s.FederatedSearch(ctx, search.FederatedSearchParams{
+		Query:   "kubernetes",
+		Indexes: []string{search.IndexDocuments}, // documents only
+		Limit:   10,
+		IsAdmin: true,
+	})
+	if err != nil {
+		t.Fatalf("FederatedSearch returned error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("FederatedSearch returned nil response")
+	}
+
+	// The headline total should match.
+	if resp.EstimatedTotal != 3 {
+		t.Errorf("EstimatedTotal = %d, want 3", resp.EstimatedTotal)
+	}
+
+	// SourceTotals must be keyed by the index UID the caller passed in,
+	// not the SQL column value. If a future refactor changes either side
+	// (SQL `AS source` literal OR sqlSourceToIndex map) without updating
+	// the other, this check flips to 0.
+	got, ok := resp.SourceTotals[search.IndexDocuments]
+	if !ok {
+		t.Fatalf("SourceTotals missing key %q; got %v", search.IndexDocuments, resp.SourceTotals)
+	}
+	if got != 3 {
+		t.Errorf("SourceTotals[%q] = %d, want 3", search.IndexDocuments, got)
+	}
+}
+
 // insertIndexedDocument writes a minimal indexed document row. Status is set
 // explicitly because the column default ("processing") predates migration
 // 000014's CHECK constraint and would violate it.

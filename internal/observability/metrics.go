@@ -5,6 +5,7 @@ package observability
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
@@ -123,6 +124,40 @@ func NewMetrics() *Metrics {
 	return m
 }
 
+// readinessProbeTimeout caps the total budget for the documcp_ready
+// self-collecting gauge. Matches the ReadinessHandler timeout so the
+// gauge and HTTP endpoint draw the same conclusion.
+const readinessProbeTimeout = 2 * time.Second
+
+// RegisterReadinessGauge exposes documcp_ready as a self-collecting gauge.
+// The value is computed on every Prometheus scrape: 1 when both the
+// database and Redis respond to Ping within the probe timeout, 0
+// otherwise. The uninstrumented pool and client must be passed so the
+// scrape path emits no otelpgx/redisotel spans. Redis is optional — pass
+// nil when the deployment does not require it.
+func RegisterReadinessGauge(db *pgxpool.Pool, redisClient *redis.Client) {
+	prometheus.MustRegister(prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "ready",
+			Help:      "1 when database and Redis respond to Ping, 0 otherwise.",
+		},
+		func() float64 {
+			ctx, cancel := context.WithTimeout(context.Background(), readinessProbeTimeout)
+			defer cancel()
+			if err := db.Ping(ctx); err != nil {
+				return 0
+			}
+			if redisClient != nil {
+				if err := redisClient.Ping(ctx).Err(); err != nil {
+					return 0
+				}
+			}
+			return 1
+		},
+	))
+}
+
 // RegisterDocumentCount registers a gauge that queries the database for the
 // current non-deleted document count on each Prometheus scrape.
 func RegisterDocumentCount(pool *pgxpool.Pool) {
@@ -141,25 +176,6 @@ func RegisterDocumentCount(pool *pgxpool.Pool) {
 			}
 			return float64(count)
 		},
-	))
-}
-
-// RegisterMCPSessionGauge registers a gauge that reports the number of
-// active MCP sessions held by this replica. Sampled on each Prometheus
-// scrape by calling source().
-//
-// Because sessions live in-memory per replica, operators can divide
-// `max(documcp_mcp_active_sessions)` by `min(documcp_mcp_active_sessions)`
-// to spot sticky-session hot-spotting across replicas behind a load
-// balancer with cookie-based affinity.
-func RegisterMCPSessionGauge(source func() int) {
-	prometheus.MustRegister(prometheus.NewGaugeFunc(
-		prometheus.GaugeOpts{
-			Namespace: namespace,
-			Name:      "mcp_active_sessions",
-			Help:      "Number of MCP sessions currently held by this replica.",
-		},
-		func() float64 { return float64(source()) },
 	))
 }
 

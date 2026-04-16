@@ -24,7 +24,6 @@ import (
 	apihandler "github.com/c-premus/documcp/internal/handler/api"
 	mcphandler "github.com/c-premus/documcp/internal/handler/mcp"
 	oauthhandler "github.com/c-premus/documcp/internal/handler/oauth"
-	"github.com/c-premus/documcp/internal/observability"
 	"github.com/c-premus/documcp/internal/queue"
 	"github.com/c-premus/documcp/internal/server"
 	"github.com/c-premus/documcp/internal/service"
@@ -63,7 +62,10 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	}
 
 	// --- EventBus (Redis-backed for cross-instance SSE delivery) ---
-	eventBus := queue.NewRedisEventBus(context.Background(), f.RedisClient, logger)
+	eventBus, err := queue.NewRedisEventBus(context.Background(), f.RedisClient, logger)
+	if err != nil {
+		return nil, fmt.Errorf("redis event bus: %w", err)
+	}
 	var eventBusOK bool
 	defer func() {
 		if !eventBusOK {
@@ -209,10 +211,6 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	mcpCfg.Searcher = f.Searcher
 	mcpH := mcphandler.New(mcpCfg)
 
-	// Register the per-replica MCP session gauge so operators can observe
-	// session distribution across sticky-session-routed replicas.
-	observability.RegisterMCPSessionGauge(mcpH.ActiveSessionCount)
-
 	// --- HTTP Server ---
 	trustedProxies, err := config.ParseCIDRs(cfg.Server.TrustedProxies)
 	if err != nil {
@@ -279,7 +277,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		OTELEnabled:     cfg.OTEL.Enabled,
 		BareRedisClient: f.BareRedisClient,
 		RedisClient:     f.RedisClient,
-		DB:              &server.PgxPoolHealth{Pool: f.PgxPool},
+		DB:              &server.PgxPoolPinger{Pool: f.BarePgxPool},
 	})
 
 	logger.Info("HTTP server configured",

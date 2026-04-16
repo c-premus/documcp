@@ -36,7 +36,10 @@ ARG VERSION=dev
 ARG BUILD_TIME=unknown
 
 # Cross-compile a statically linked binary for the target architecture.
+# -trimpath strips the build host's filesystem prefix from the binary so two
+# builds of the same source tree on different machines produce identical bytes.
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+    -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" \
     -o /bin/documcp ./cmd/documcp
 

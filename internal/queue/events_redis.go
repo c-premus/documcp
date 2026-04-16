@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -31,9 +32,18 @@ type RedisEventBus struct {
 }
 
 // NewRedisEventBus creates a RedisEventBus and starts a background goroutine
-// that subscribes to the Redis channel and fans out messages to local subscribers.
-func NewRedisEventBus(ctx context.Context, client *redis.Client, logger *slog.Logger) *RedisEventBus {
+// that fans Redis pub/sub messages out to local subscribers. The Redis
+// SUBSCRIBE is confirmed synchronously before returning, so the caller can
+// Publish immediately without a lost-event window at startup.
+func NewRedisEventBus(ctx context.Context, client *redis.Client, logger *slog.Logger) (*RedisEventBus, error) {
 	subCtx, cancel := context.WithCancel(ctx)
+
+	pubsub := client.Subscribe(subCtx, redisEventChannel)
+	if _, err := pubsub.Receive(subCtx); err != nil {
+		cancel()
+		_ = pubsub.Close()
+		return nil, fmt.Errorf("redis event bus: subscribe %q: %w", redisEventChannel, err)
+	}
 
 	reb := &RedisEventBus{
 		client:      client,
@@ -43,17 +53,16 @@ func NewRedisEventBus(ctx context.Context, client *redis.Client, logger *slog.Lo
 		done:        make(chan struct{}),
 	}
 
-	go reb.subscribe(subCtx)
+	go reb.subscribe(subCtx, pubsub)
 
-	return reb
+	return reb, nil
 }
 
-// subscribe listens on the Redis Pub/Sub channel and fans out received
+// subscribe reads from the confirmed pub/sub channel and fans out received
 // messages to all local subscriber channels.
-func (reb *RedisEventBus) subscribe(ctx context.Context) {
+func (reb *RedisEventBus) subscribe(ctx context.Context, pubsub *redis.PubSub) {
 	defer close(reb.done)
 
-	pubsub := reb.client.Subscribe(ctx, redisEventChannel)
 	ch := pubsub.Channel()
 
 	// Close pubsub when context is canceled so ch drains and the loop exits.

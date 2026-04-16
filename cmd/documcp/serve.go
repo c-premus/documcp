@@ -46,6 +46,14 @@ Examples:
 			"mode", serverMode(),
 		)
 
+		if !withWorker {
+			foundation.Logger.Warn(
+				"serve is running without --with-worker; periodic jobs require at least one worker replica in the fleet",
+				"periodic_jobs", "oauth_token_cleanup,orphan_file_cleanup,soft_delete_purge,external_service_sync,scope_grant_cleanup,stuck_document_recovery",
+				"monitor", "documcp_river_leader_active Prometheus gauge",
+			)
+		}
+
 		return serverApp.Start(context.Background())
 	},
 }

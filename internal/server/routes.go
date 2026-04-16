@@ -83,9 +83,9 @@ type Deps struct {
 	OTELEnabled bool                   // enables tracing middleware
 
 	// Infrastructure
-	BareRedisClient *redis.Client       // uninstrumented (rate limit + readiness)
-	RedisClient     *redis.Client       // instrumented (EventBus, app queries)
-	DB              handler.PoolHealthy // readiness (nil disables /health/ready)
+	BareRedisClient *redis.Client            // uninstrumented (rate limit + readiness)
+	RedisClient     *redis.Client            // instrumented (EventBus, app queries)
+	DB              handler.DependencyPinger // readiness (nil disables /health/ready)
 }
 
 // RegisterRoutes configures all middleware and route groups on the server.
@@ -156,7 +156,7 @@ func (s *Server) registerInfraRoutes(deps Deps) {
 
 	// Readiness probe (checks dependencies like Postgres and Redis)
 	if deps.DB != nil {
-		var redisPinger handler.RedisPinger
+		var redisPinger handler.DependencyPinger
 		if deps.BareRedisClient != nil {
 			redisPinger = &redisClientPinger{deps.BareRedisClient}
 		}
@@ -558,28 +558,27 @@ func jsonErrorResponse(w http.ResponseWriter, status int, message string) {
 	})
 }
 
-// PgxPoolHealth adapts *pgxpool.Pool to handler.PoolHealthy using pool
-// statistics instead of Ping(), avoiding otelpgx trace noise.
-type PgxPoolHealth struct {
+// PgxPoolPinger adapts *pgxpool.Pool to handler.DependencyPinger. Wrap the
+// uninstrumented BarePgxPool — Ping on the instrumented pool emits
+// otelpgx ping + pool.acquire spans on every probe.
+type PgxPoolPinger struct {
 	Pool *pgxpool.Pool
 }
 
-// IsHealthy reports true when the pool has at least one live connection.
-// pgxpool maintains connections internally and removes dead ones, so
-// TotalConns() == 0 reliably signals the database is unreachable.
-func (p *PgxPoolHealth) IsHealthy() bool {
-	return p.Pool.Stat().TotalConns() > 0
+// Ping delegates to pgxpool's Ping. The caller's context carries the probe
+// budget; readiness handlers cap this before invoking.
+func (p *PgxPoolPinger) Ping(ctx context.Context) error {
+	return p.Pool.Ping(ctx)
 }
 
-// redisClientPinger adapts *redis.Client to handler.RedisPinger.
+// redisClientPinger adapts *redis.Client to handler.DependencyPinger.
 type redisClientPinger struct {
 	client *redis.Client
 }
 
-// Ping checks Redis connectivity using an independent context to avoid
-// tying the health check to the caller's request lifecycle.
-func (p *redisClientPinger) Ping(_ context.Context) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
+// Ping checks Redis connectivity using the caller's context. Readiness
+// handlers cap the probe budget before invoking, so no additional timeout
+// is layered here.
+func (p *redisClientPinger) Ping(ctx context.Context) error {
 	return p.client.Ping(ctx).Err()
 }

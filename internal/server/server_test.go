@@ -3,6 +3,7 @@ package server_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -31,13 +32,13 @@ var (
 	testMetricsOnce sync.Once
 )
 
-// stubPoolHealth implements handler.PoolHealthy for testing.
-type stubPoolHealth struct {
-	healthy bool
+// stubPinger implements handler.DependencyPinger for testing.
+type stubPinger struct {
+	err error
 }
 
-func (s *stubPoolHealth) IsHealthy() bool {
-	return s.healthy
+func (s *stubPinger) Ping(_ context.Context) error {
+	return s.err
 }
 
 func sharedMetrics() *observability.Metrics {
@@ -834,7 +835,7 @@ func TestRegisterRoutes_ReadinessEndpointWithDB(t *testing.T) {
 
 	// Use a stub that reports unhealthy. The readiness handler will
 	// report not_ready, but the route should still be registered.
-	db := &stubPoolHealth{healthy: false}
+	db := &stubPinger{err: errors.New("db offline")}
 
 	srv := newTestServerWithDeps(t, server.Deps{
 		Version: "test",

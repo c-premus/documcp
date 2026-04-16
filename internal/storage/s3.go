@@ -11,10 +11,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"gocloud.dev/blob"
-	"gocloud.dev/blob/s3blob"
-	"gocloud.dev/gcerrors"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	smithy "github.com/aws/smithy-go"
 )
 
 // S3Config configures an S3-compatible object-storage backend.
@@ -46,11 +46,13 @@ type S3Config struct {
 	ForceSSL bool
 }
 
-// S3Blob wraps gocloud.dev/blob/s3blob to speak the Blob interface.
-// Works against AWS S3, Cloudflare R2, Backblaze B2, Wasabi, Garage,
-// SeaweedFS — any service that implements the S3 API.
+// S3Blob is a Blob backend talking directly to an S3-compatible service via
+// aws-sdk-go-v2. Works against AWS S3, Cloudflare R2, Backblaze B2, Wasabi,
+// Garage, SeaweedFS — any service that implements the S3 API.
 type S3Blob struct {
-	bucket *blob.Bucket
+	client   *s3.Client
+	uploader *manager.Uploader
+	bucket   string
 }
 
 // NewS3Blob opens an S3-compatible bucket.
@@ -83,35 +85,63 @@ func NewS3Blob(ctx context.Context, cfg S3Config) (*S3Blob, error) {
 			o.BaseEndpoint = aws.String(cfg.Endpoint)
 		}
 		o.UsePathStyle = cfg.UsePathStyle
-	})
-
-	bucket, err := s3blob.OpenBucketV2(ctx, client, cfg.Bucket, &s3blob.Options{
 		// Third-party S3 providers (Garage, SeaweedFS) don't support
-		// SDK-side checksum enforcement — set to when_required so we
-		// only send checksums when the service asks for them.
-		RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired,
+		// SDK-side checksum enforcement — only send checksums when the
+		// service explicitly asks for them.
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
 	})
-	if err != nil {
-		return nil, fmt.Errorf("s3blob: open bucket %q: %w", cfg.Bucket, err)
-	}
 
-	return &S3Blob{bucket: bucket}, nil
+	return &S3Blob{
+		client:   client,
+		uploader: manager.NewUploader(client),
+		bucket:   cfg.Bucket,
+	}, nil
 }
 
 // NewWriter returns a writer that uploads to the object at key on Close.
+// Internally it pipes writes into manager.Uploader, which handles multipart
+// chunking transparently. Callers must Close the writer; abandoning it leaks
+// the background upload goroutine until Close (or the request context) cancels it.
 func (b *S3Blob) NewWriter(ctx context.Context, key string, opts *WriterOpts) (io.WriteCloser, error) {
 	if err := ValidateKey(key); err != nil {
 		return nil, err
 	}
-	var wopts *blob.WriterOptions
+	pr, pw := io.Pipe()
+	input := &s3.PutObjectInput{
+		Bucket: aws.String(b.bucket),
+		Key:    aws.String(key),
+		Body:   pr,
+	}
 	if opts != nil && opts.ContentType != "" {
-		wopts = &blob.WriterOptions{ContentType: opts.ContentType}
+		input.ContentType = aws.String(opts.ContentType)
 	}
-	w, err := b.bucket.NewWriter(ctx, key, wopts)
-	if err != nil {
-		return nil, mapS3Err("s3blob: new writer", err)
-	}
+	w := &s3Writer{pw: pw, done: make(chan error, 1)}
+	go func() {
+		_, err := b.uploader.Upload(ctx, input)
+		// Closing the pipe reader unblocks any pending Write on pw with
+		// io.ErrClosedPipe — matters when Upload errors mid-stream.
+		_ = pr.CloseWithError(err)
+		w.done <- err
+	}()
 	return w, nil
+}
+
+// s3Writer pipes Writes into a background manager.Uploader.Upload.
+type s3Writer struct {
+	pw   *io.PipeWriter
+	done chan error
+}
+
+func (w *s3Writer) Write(p []byte) (int, error) { return w.pw.Write(p) }
+
+// Close signals end-of-input and waits for the background upload to finish.
+// Close errors propagate the upload error if any.
+func (w *s3Writer) Close() error {
+	if err := w.pw.Close(); err != nil {
+		<-w.done
+		return err
+	}
+	return <-w.done
 }
 
 // NewReader opens the object for streaming reads.
@@ -119,14 +149,18 @@ func (b *S3Blob) NewReader(ctx context.Context, key string) (io.ReadCloser, erro
 	if err := ValidateKey(key); err != nil {
 		return nil, err
 	}
-	r, err := b.bucket.NewReader(ctx, key, nil)
+	out, err := b.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(b.bucket),
+		Key:    aws.String(key),
+	})
 	if err != nil {
 		return nil, mapS3Err("s3blob: new reader", err)
 	}
-	return r, nil
+	return out.Body, nil
 }
 
-// NewRangeReader reads length bytes starting at offset.
+// NewRangeReader reads length bytes starting at offset. A negative length
+// reads to end-of-object.
 func (b *S3Blob) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
 	if err := ValidateKey(key); err != nil {
 		return nil, err
@@ -134,11 +168,21 @@ func (b *S3Blob) NewRangeReader(ctx context.Context, key string, offset, length 
 	if offset < 0 {
 		return nil, fmt.Errorf("s3blob: negative offset %d", offset)
 	}
-	r, err := b.bucket.NewRangeReader(ctx, key, offset, length, nil)
+	var rangeHeader string
+	if length < 0 {
+		rangeHeader = fmt.Sprintf("bytes=%d-", offset)
+	} else {
+		rangeHeader = fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)
+	}
+	out, err := b.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(b.bucket),
+		Key:    aws.String(key),
+		Range:  aws.String(rangeHeader),
+	})
 	if err != nil {
 		return nil, mapS3Err("s3blob: new range reader", err)
 	}
-	return r, nil
+	return out.Body, nil
 }
 
 // Delete removes the object. Returns nil when already absent.
@@ -146,8 +190,14 @@ func (b *S3Blob) Delete(ctx context.Context, key string) error {
 	if err := ValidateKey(key); err != nil {
 		return err
 	}
-	if err := b.bucket.Delete(ctx, key); err != nil {
-		if gcerrors.Code(err) == gcerrors.NotFound {
+	_, err := b.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(b.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		// S3 itself returns 204 even on missing keys; some compatible services
+		// (older Garage, SeaweedFS variants) propagate NoSuchKey instead.
+		if isNotFound(err) {
 			return nil
 		}
 		return mapS3Err("s3blob: delete", err)
@@ -160,42 +210,78 @@ func (b *S3Blob) Stat(ctx context.Context, key string) (Attrs, error) {
 	if err := ValidateKey(key); err != nil {
 		return Attrs{}, err
 	}
-	attrs, err := b.bucket.Attributes(ctx, key)
+	out, err := b.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(b.bucket),
+		Key:    aws.String(key),
+	})
 	if err != nil {
-		return Attrs{}, mapS3Err("s3blob: attributes", err)
+		return Attrs{}, mapS3Err("s3blob: head", err)
 	}
-	return Attrs{
-		Size:        attrs.Size,
-		ModTime:     attrs.ModTime,
-		ContentType: attrs.ContentType,
-		ETag:        attrs.ETag,
-	}, nil
+	attrs := Attrs{}
+	if out.ContentLength != nil {
+		attrs.Size = *out.ContentLength
+	}
+	if out.LastModified != nil {
+		attrs.ModTime = *out.LastModified
+	}
+	if out.ContentType != nil {
+		attrs.ContentType = *out.ContentType
+	}
+	if out.ETag != nil {
+		attrs.ETag = *out.ETag
+	}
+	return attrs, nil
 }
 
 // List returns an iterator over keys with the given prefix.
 func (b *S3Blob) List(_ context.Context, prefix string) Iterator {
+	input := &s3.ListObjectsV2Input{Bucket: aws.String(b.bucket)}
+	if prefix != "" {
+		input.Prefix = aws.String(prefix)
+	}
 	return &s3Iterator{
-		it: b.bucket.List(&blob.ListOptions{Prefix: prefix}),
+		paginator: s3.NewListObjectsV2Paginator(b.client, input),
 	}
 }
 
-// Close releases the bucket's underlying connections.
-func (b *S3Blob) Close() error { return b.bucket.Close() }
+// Close releases resources. The aws-sdk-go-v2 client itself doesn't hold any
+// long-lived connections that need closing — the underlying http.Client uses
+// the default idle-connection pool — so this is a no-op kept to satisfy Blob.
+func (b *S3Blob) Close() error { return nil }
 
-// mapS3Err converts a gocloud error code of NotFound into fs.ErrNotExist so
-// callers can use errors.Is(err, fs.ErrNotExist). Other errors pass through.
+// mapS3Err converts NoSuchKey / NotFound errors into ones that wrap fs.ErrNotExist
+// so callers can use errors.Is(err, fs.ErrNotExist). Other errors pass through.
 func mapS3Err(ctx string, err error) error {
-	if gcerrors.Code(err) == gcerrors.NotFound {
+	if isNotFound(err) {
 		return fmt.Errorf("%s: %w", ctx, errors.Join(fs.ErrNotExist, err))
 	}
 	return fmt.Errorf("%s: %w", ctx, err)
 }
 
-// s3Iterator wraps gocloud's ListIterator.
+// isNotFound recognizes the various ways aws-sdk-go-v2 reports a missing
+// object: typed NoSuchKey on GetObject/DeleteObject, generic APIError with
+// code "NoSuchKey" or "NotFound" on HeadObject (which has no response body
+// for the SDK to deserialize into a typed error).
+func isNotFound(err error) bool {
+	if _, ok := errors.AsType[*s3types.NoSuchKey](err); ok {
+		return true
+	}
+	if apiErr, ok := errors.AsType[smithy.APIError](err); ok {
+		switch apiErr.ErrorCode() {
+		case "NoSuchKey", "NotFound":
+			return true
+		}
+	}
+	return false
+}
+
+// s3Iterator wraps a paginator and yields keys lazily across pages.
 type s3Iterator struct {
-	it     *blob.ListIterator
-	curKey string
-	err    error
+	paginator *s3.ListObjectsV2Paginator
+	page      []s3types.Object
+	idx       int
+	curKey    string
+	err       error
 }
 
 // Next advances to the next key. Returns false at EOF or on error.
@@ -204,20 +290,25 @@ func (it *s3Iterator) Next(ctx context.Context) bool {
 		return false
 	}
 	for {
-		obj, err := it.it.Next(ctx)
-		if errors.Is(err, io.EOF) {
+		if it.idx < len(it.page) {
+			obj := it.page[it.idx]
+			it.idx++
+			if obj.Key == nil {
+				continue
+			}
+			it.curKey = *obj.Key
+			return true
+		}
+		if !it.paginator.HasMorePages() {
 			return false
 		}
+		out, err := it.paginator.NextPage(ctx)
 		if err != nil {
 			it.err = err
 			return false
 		}
-		// Skip synthetic directory entries (prefixes); yield only keys.
-		if obj.IsDir {
-			continue
-		}
-		it.curKey = obj.Key
-		return true
+		it.page = out.Contents
+		it.idx = 0
 	}
 }
 
