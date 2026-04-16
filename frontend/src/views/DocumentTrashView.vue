@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed, h } from 'vue'
 import { toast } from 'vue-sonner'
-import { formatDistanceToNow } from 'date-fns'
-import { ArrowPathIcon, TrashIcon } from '@heroicons/vue/24/outline'
+import { TrashIcon } from '@heroicons/vue/24/outline'
 import type { ColumnDef } from '@tanstack/vue-table'
 
 import { useAuthStore } from '@/stores/auth'
@@ -12,6 +11,9 @@ import DataTable from '../components/shared/DataTable.vue'
 import Pagination from '../components/shared/Pagination.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
+import FileTypeCell from '../components/shared/FileTypeCell.vue'
+import RelativeTimeCell from '../components/shared/RelativeTimeCell.vue'
+import DocumentTrashRowActions from '../components/documents/DocumentTrashRowActions.vue'
 
 const auth = useAuthStore()
 const store = useDocumentsStore()
@@ -25,79 +27,50 @@ const showPurgeDialog = computed(() => purgeTarget.value !== null)
 const showBulkPurgeDialog = ref(false)
 const bulkPurgeDays = ref(30)
 
-const columns = computed<ColumnDef<Document, unknown>[]>(() => {
-  const base: ColumnDef<Document, unknown>[] = [
-    {
-      accessorKey: 'title',
-      header: 'Title',
-      enableSorting: true,
-    },
-    {
-      accessorKey: 'file_type',
-      header: 'File Type',
-      size: 100,
-      enableSorting: true,
-      cell: ({ getValue }) => {
-        const value = getValue<string>()
-        return value.toUpperCase()
-      },
-    },
-    {
-      accessorKey: 'updated_at',
-      header: 'Deleted At',
-      enableSorting: true,
-      cell: ({ getValue }) => {
-        const value = getValue<string>()
-        return formatDistanceToNow(new Date(value), { addSuffix: true })
-      },
-    },
-    {
-      id: 'actions',
-      header: 'Actions',
-      enableSorting: false,
-      cell: ({ row }) => {
-        const buttons = [
-          h(
-            'button',
-            {
-              type: 'button',
-              class: 'text-text-muted hover:text-green-600 dark:hover:text-green-400',
-              title: 'Restore document',
-              'aria-label': 'Restore document',
-              onClick: (event: MouseEvent) => {
-                event.stopPropagation()
-                handleRestore(row.original)
-              },
-            },
-            [h(ArrowPathIcon, { class: 'h-5 w-5' })],
-          ),
-        ]
+async function handleRestore(doc: Document): Promise<void> {
+  try {
+    await store.restoreDocument(doc.uuid)
+    toast.success(`"${doc.title}" restored successfully`)
+    fetchData()
+  } catch {
+    toast.error(`Failed to restore "${doc.title}"`)
+  }
+}
 
-        if (auth.isAdmin) {
-          buttons.push(
-            h(
-              'button',
-              {
-                type: 'button',
-                class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
-                title: 'Permanently delete',
-                'aria-label': 'Permanently delete',
-                onClick: (event: MouseEvent) => {
-                  event.stopPropagation()
-                  purgeTarget.value = row.original
-                },
-              },
-              [h(TrashIcon, { class: 'h-5 w-5' })],
-            ),
-          )
-        }
-
-        return h('div', { class: 'flex items-center gap-2' }, buttons)
-      },
-    },
-  ]
-  return base
-})
+const columns = computed<ColumnDef<Document, unknown>[]>(() => [
+  {
+    accessorKey: 'title',
+    header: 'Title',
+    enableSorting: true,
+  },
+  {
+    accessorKey: 'file_type',
+    header: 'File Type',
+    size: 100,
+    enableSorting: true,
+    cell: ({ getValue }) => h(FileTypeCell, { value: getValue<string>() }),
+  },
+  {
+    accessorKey: 'updated_at',
+    header: 'Deleted At',
+    enableSorting: true,
+    cell: ({ getValue }) => h(RelativeTimeCell, { value: getValue<string>() }),
+  },
+  {
+    id: 'actions',
+    header: 'Actions',
+    enableSorting: false,
+    cell: ({ row }) =>
+      h(DocumentTrashRowActions, {
+        document: row.original,
+        canPurge: auth.isAdmin,
+        onRestore: handleRestore,
+        onPurge: (doc: Document) => {
+          purgeTarget.value = doc
+        },
+      }),
+  },
+])
 
 function fetchData(): void {
   const offset = (page.value - 1) * perPage.value
@@ -114,16 +87,6 @@ watch(
   },
   { immediate: true },
 )
-
-async function handleRestore(doc: Document): Promise<void> {
-  try {
-    await store.restoreDocument(doc.uuid)
-    toast.success(`"${doc.title}" restored successfully`)
-    fetchData()
-  } catch {
-    toast.error(`Failed to restore "${doc.title}"`)
-  }
-}
 
 async function handlePurgeConfirm(): Promise<void> {
   if (purgeTarget.value === null) {

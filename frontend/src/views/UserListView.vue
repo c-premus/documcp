@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed, h } from 'vue'
 import { toast } from 'vue-sonner'
-import { formatDistanceToNow } from 'date-fns'
-import { TrashIcon } from '@heroicons/vue/24/outline'
-import { Switch } from '@headlessui/vue'
 import type { ColumnDef } from '@tanstack/vue-table'
 
 import { apiFetch } from '@/api/helpers'
@@ -12,6 +9,10 @@ import Pagination from '../components/shared/Pagination.vue'
 import SearchInput from '../components/shared/SearchInput.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
+import ToggleCell from '../components/shared/ToggleCell.vue'
+import TruncatedText from '../components/shared/TruncatedText.vue'
+import RelativeTimeCell from '../components/shared/RelativeTimeCell.vue'
+import UserRowActions from '../components/users/UserRowActions.vue'
 
 interface User {
   readonly id: number
@@ -145,78 +146,39 @@ const columns: ColumnDef<User, unknown>[] = [
     header: 'Admin',
     enableSorting: false,
     meta: { className: 'w-20' },
-    cell: ({ row }) => {
-      const user = row.original
-      return h(
-        Switch,
-        {
-          modelValue: user.is_admin,
-          class: [
-            'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2',
-            user.is_admin ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600',
-          ],
-          onClick: (event: MouseEvent) => {
-            event.stopPropagation()
-          },
-          'onUpdate:modelValue': () => {
-            handleToggleAdmin(user)
-          },
-        },
-        {
-          default: () =>
-            h('span', {
-              class: [
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                user.is_admin ? 'translate-x-5' : 'translate-x-0',
-              ],
-            }),
-        },
-      )
-    },
+    cell: ({ row }) =>
+      h(ToggleCell, {
+        modelValue: row.original.is_admin,
+        label: `Toggle admin for ${row.original.name}`,
+        'onUpdate:modelValue': () => handleToggleAdmin(row.original),
+      }),
   },
   {
     accessorKey: 'oidc_sub',
     header: 'OIDC Subject',
     enableSorting: false,
     meta: { className: 'hidden lg:table-cell' },
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      return h('span', { class: 'block max-w-xs truncate', title: value }, value)
-    },
+    cell: ({ getValue }) => h(TruncatedText, { value: getValue<string>() }),
   },
   {
     accessorKey: 'created_at',
     header: 'Created',
     enableSorting: true,
     meta: { className: 'w-36 hidden md:table-cell' },
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      return formatDistanceToNow(new Date(value), { addSuffix: true })
-    },
+    cell: ({ getValue }) => h(RelativeTimeCell, { value: getValue<string>() }),
   },
   {
     id: 'actions',
     header: 'Actions',
     enableSorting: false,
     meta: { className: 'w-20' },
-    cell: ({ row }) => {
-      return h('div', { class: 'flex items-center gap-2' }, [
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
-            title: 'Delete user',
-            'aria-label': 'Delete user',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              deleteTarget.value = row.original
-            },
-          },
-          [h(TrashIcon, { class: 'h-5 w-5' })],
-        ),
-      ])
-    },
+    cell: ({ row }) =>
+      h(UserRowActions, {
+        user: row.original,
+        onDelete: (user) => {
+          deleteTarget.value = user as User
+        },
+      }),
   },
 ]
 </script>

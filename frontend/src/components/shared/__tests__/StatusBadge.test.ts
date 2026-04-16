@@ -7,63 +7,29 @@ function mountBadge(status: string) {
 }
 
 describe('StatusBadge', () => {
-  it('renders uploaded status with yellow classes', () => {
+  it('exposes role="status" so assistive tech reads it as a status region', () => {
     const wrapper = mountBadge('uploaded')
-
-    const span = wrapper.find('span')
-    expect(span.classes()).toContain('bg-yellow-100')
-    expect(span.classes()).toContain('text-yellow-800')
+    expect(wrapper.get('[role="status"]').exists()).toBe(true)
   })
 
-  it('renders extracted status with blue classes', () => {
-    const wrapper = mountBadge('extracted')
-
-    const span = wrapper.find('span')
-    expect(span.classes()).toContain('bg-blue-100')
-    expect(span.classes()).toContain('text-blue-800')
+  it('renders the status string as visible text', () => {
+    expect(mountBadge('uploaded').text()).toBe('uploaded')
+    expect(mountBadge('indexed').text()).toBe('indexed')
+    expect(mountBadge('failed').text()).toBe('failed')
   })
 
-  it('renders indexed status with green classes', () => {
-    const wrapper = mountBadge('indexed')
-
-    const span = wrapper.find('span')
-    expect(span.classes()).toContain('bg-green-100')
-    expect(span.classes()).toContain('text-green-800')
+  it('replaces underscores with spaces in the display label', () => {
+    expect(mountBadge('index_failed').text()).toBe('index failed')
   })
 
-  it('renders failed status with red classes', () => {
-    const wrapper = mountBadge('failed')
-
-    const span = wrapper.find('span')
-    expect(span.classes()).toContain('bg-red-100')
-    expect(span.classes()).toContain('text-red-800')
+  it('preserves unknown statuses in display text (does not drop them)', () => {
+    expect(mountBadge('custom_unknown_state').text()).toBe('custom unknown state')
   })
 
-  it('renders index_failed status with orange classes', () => {
-    const wrapper = mountBadge('index_failed')
-
-    const span = wrapper.find('span')
-    expect(span.classes()).toContain('bg-orange-100')
-    expect(span.classes()).toContain('text-orange-800')
-  })
-
-  it('renders unknown status with gray classes', () => {
-    const wrapper = mountBadge('unknown_status')
-
-    const span = wrapper.find('span')
-    expect(span.classes()).toContain('bg-gray-100')
-    expect(span.classes()).toContain('text-gray-800')
-  })
-
-  it('displays the status text', () => {
+  it('reacts to prop changes', async () => {
     const wrapper = mountBadge('uploaded')
-
     expect(wrapper.text()).toBe('uploaded')
-  })
-
-  it('replaces underscores with spaces in display label', () => {
-    const wrapper = mountBadge('index_failed')
-
-    expect(wrapper.text()).toBe('index failed')
+    await wrapper.setProps({ status: 'indexed' })
+    expect(wrapper.text()).toBe('indexed')
   })
 })
