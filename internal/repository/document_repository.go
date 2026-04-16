@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -147,7 +148,9 @@ func (r *DocumentRepository) TagsForDocuments(ctx context.Context, documentIDs [
 	return result, nil
 }
 
-// ReplaceTags deletes existing tags and inserts new ones within a transaction.
+// ReplaceTags deletes existing tags, inserts new ones, and refreshes the
+// denormalized documents.tags_text column — all within a single transaction.
+// tags_text feeds the STORED search_vector generated column.
 func (r *DocumentRepository) ReplaceTags(ctx context.Context, documentID int64, tags []string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -167,6 +170,17 @@ func (r *DocumentRepository) ReplaceTags(ctx context.Context, documentID int64, 
 		if err != nil {
 			return fmt.Errorf("inserting tag %q for document %d: %w", tag, documentID, err)
 		}
+	}
+
+	var tagsText sql.NullString
+	if len(tags) > 0 {
+		tagsText = sql.NullString{String: strings.Join(tags, " "), Valid: true}
+	}
+	_, err = tx.Exec(ctx,
+		`UPDATE documents SET tags_text = $1, updated_at = NOW() WHERE id = $2`,
+		tagsText, documentID)
+	if err != nil {
+		return fmt.Errorf("updating tags_text for document %d: %w", documentID, err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -198,9 +212,10 @@ func (r *DocumentRepository) CreateVersion(ctx context.Context, version *model.D
 	return nil
 }
 
-// ListAllUUIDs returns all document UUIDs including soft-deleted ones.
+// ListAllUUIDs returns all document UUIDs including soft-deleted ones, capped
+// at maxUnboundedList rows per call. Callers that need more must paginate.
 func (r *DocumentRepository) ListAllUUIDs(ctx context.Context) ([]string, error) {
-	rows, err := r.db.Query(ctx, `SELECT uuid FROM documents`)
+	rows, err := r.db.Query(ctx, `SELECT uuid FROM documents LIMIT $1`, maxUnboundedList)
 	if err != nil {
 		return nil, fmt.Errorf("listing all document uuids: %w", err)
 	}
@@ -225,11 +240,13 @@ func (r *DocumentRepository) FindByUUIDs(ctx context.Context, uuids []string) ([
 	return docs, nil
 }
 
-// ListActiveFilePaths returns file paths for non-deleted documents.
+// ListActiveFilePaths returns file paths for non-deleted documents, capped at
+// maxUnboundedList rows. Used by the orphaned-file cleanup job.
 func (r *DocumentRepository) ListActiveFilePaths(ctx context.Context) ([]DocumentFilePath, error) {
 	paths, err := database.Select[DocumentFilePath](ctx, r.db,
 		`SELECT id, uuid, file_path FROM documents
-		WHERE deleted_at IS NULL AND file_path IS NOT NULL AND file_path != ''`)
+		WHERE deleted_at IS NULL AND file_path IS NOT NULL AND file_path != ''
+		LIMIT $1`, maxUnboundedList)
 	if err != nil {
 		return nil, fmt.Errorf("listing active file paths: %w", err)
 	}

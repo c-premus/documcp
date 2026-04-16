@@ -61,7 +61,6 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	if err != nil {
 		return nil, fmt.Errorf("deriving HMAC key: %w", err)
 	}
-	oauth.SetTokenHMACKey(hmacKey)
 
 	// --- EventBus (Redis-backed for cross-instance SSE delivery) ---
 	eventBus := queue.NewRedisEventBus(context.Background(), f.RedisClient, logger)
@@ -114,7 +113,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	rs.ExtractWorker.Pipeline = documentPipeline
 	rs.ExtractWorker.Metrics = f.Metrics
 
-	oauthService := oauth.NewService(f.OAuthRepo, cfg.OAuth, cfg.App.URL, logger)
+	oauthService := oauth.NewService(f.OAuthRepo, cfg.OAuth, cfg.App.URL, logger, hmacKey)
 	externalServiceSvc := service.NewExternalServiceService(
 		f.ExternalServiceRepo,
 		f.ZimArchiveRepo,
@@ -146,7 +145,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	}
 
 	// --- API Handlers ---
-	documentH := apihandler.NewDocumentHandler(documentPipeline, f.DocumentRepo, f.BlobStore, f.WorkerTempDir, logger)
+	documentH := apihandler.NewDocumentHandler(documentPipeline, f.BlobStore, f.WorkerTempDir, logger)
 	searchH := apihandler.NewSearchHandler(f.Searcher, f.SearchQueryRepo, f.DocumentRepo, logger)
 	zimH := apihandler.NewZimHandler(f.ZimArchiveRepo, &apihandler.KiwixFactoryAdapter{Factory: f.KiwixFactory}, logger)
 	gitTemplateSvc := service.NewGitTemplateService(f.GitTemplateRepo, riverClient, f.Encryptor, logger)
@@ -244,38 +243,43 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	}, logger)
 
 	srv.RegisterRoutes(server.Deps{
-		BareRedisClient:        f.BareRedisClient,
-		RedisClient:            f.RedisClient,
-		Version:                cfg.DocuMCP.ServerVersion,
-		MCPHandler:             mcpH,
-		OAuthHandler:           oauthH,
-		OIDCHandler:            oidcH,
-		OAuthService:           oauthService,
-		SessionStore:           sessionStore,
-		DocumentHandler:        documentH,
-		SearchHandler:          searchH,
-		ZimHandler:             zimH,
-		GitTemplateHandler:     gitTemplateH,
-		ExternalServiceHandler: externalServiceH,
-		UserHandler:            userH,
-		OAuthClientHandler:     oauthClientH,
-		AuthHandler:            authH,
-		SPAHandler:             spaHandler,
-		RootAssetHandler:       rootAssetHandler,
-		DashboardHandler:       dashboardH,
-		SSEHandler:             sseH,
-		QueueHandler:           queueH,
-		RiverUIHandler:         riverUIHandler,
-		Metrics:                f.Metrics,
-		OTELEnabled:            cfg.OTEL.Enabled,
-		IsSecure:               cfg.App.Env == "production" || cfg.Server.TLSEnabled,
-		DB:                     &server.PgxPoolHealth{Pool: f.PgxPool},
-		InternalAPIToken:       cfg.App.InternalAPIToken,
-		MaxBodySize:            cfg.Server.MaxBodySize,
-		RequestTimeout:         cfg.Server.RequestTimeout,
-		HSTSMaxAge:             cfg.Server.HSTSMaxAge,
-		MCPResource:            cfg.App.URL + cfg.DocuMCP.Endpoint,
-		APIResource:            cfg.App.URL,
+		Version: cfg.DocuMCP.ServerVersion,
+		Handlers: server.Handlers{
+			MCPHandler:             mcpH,
+			DocumentHandler:        documentH,
+			SearchHandler:          searchH,
+			ZimHandler:             zimH,
+			GitTemplateHandler:     gitTemplateH,
+			ExternalServiceHandler: externalServiceH,
+			UserHandler:            userH,
+			OAuthClientHandler:     oauthClientH,
+			SSEHandler:             sseH,
+			QueueHandler:           queueH,
+			DashboardHandler:       dashboardH,
+			RiverUIHandler:         riverUIHandler,
+			AuthHandler:            authH,
+			SPAHandler:             spaHandler,
+			RootAssetHandler:       rootAssetHandler,
+		},
+		Auth: server.Auth{
+			OAuthHandler: oauthH,
+			OIDCHandler:  oidcH,
+			OAuthService: oauthService,
+			SessionStore: sessionStore,
+			MCPResource:  cfg.App.URL + cfg.DocuMCP.Endpoint,
+			APIResource:  cfg.App.URL,
+		},
+		Tuning: server.Tuning{
+			MaxBodySize:      cfg.Server.MaxBodySize,
+			RequestTimeout:   cfg.Server.RequestTimeout,
+			HSTSMaxAge:       cfg.Server.HSTSMaxAge,
+			InternalAPIToken: cfg.App.InternalAPIToken,
+		},
+		Metrics:         f.Metrics,
+		OTELEnabled:     cfg.OTEL.Enabled,
+		BareRedisClient: f.BareRedisClient,
+		RedisClient:     f.RedisClient,
+		DB:              &server.PgxPoolHealth{Pool: f.PgxPool},
 	})
 
 	logger.Info("HTTP server configured",

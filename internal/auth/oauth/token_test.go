@@ -17,7 +17,7 @@ func TestGenerateToken(t *testing.T) {
 
 	t.Run("returns non-nil token pair", func(t *testing.T) {
 		t.Parallel()
-		tp, err := GenerateToken()
+		tp, err := tokenTestSvc.GenerateToken()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -28,7 +28,7 @@ func TestGenerateToken(t *testing.T) {
 
 	t.Run("plaintext is 64 characters", func(t *testing.T) {
 		t.Parallel()
-		tp, err := GenerateToken()
+		tp, err := tokenTestSvc.GenerateToken()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -40,7 +40,7 @@ func TestGenerateToken(t *testing.T) {
 	t.Run("plaintext contains only alphanumeric characters", func(t *testing.T) {
 		t.Parallel()
 		const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-		tp, err := GenerateToken()
+		tp, err := tokenTestSvc.GenerateToken()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -53,7 +53,7 @@ func TestGenerateToken(t *testing.T) {
 
 	t.Run("hash is SHA-256 hex of plaintext", func(t *testing.T) {
 		t.Parallel()
-		tp, err := GenerateToken()
+		tp, err := tokenTestSvc.GenerateToken()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -65,7 +65,7 @@ func TestGenerateToken(t *testing.T) {
 
 	t.Run("hash is 64-character hex string", func(t *testing.T) {
 		t.Parallel()
-		tp, err := GenerateToken()
+		tp, err := tokenTestSvc.GenerateToken()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -76,7 +76,7 @@ func TestGenerateToken(t *testing.T) {
 
 	t.Run("ID defaults to zero", func(t *testing.T) {
 		t.Parallel()
-		tp, err := GenerateToken()
+		tp, err := tokenTestSvc.GenerateToken()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -87,11 +87,11 @@ func TestGenerateToken(t *testing.T) {
 
 	t.Run("successive calls produce unique tokens", func(t *testing.T) {
 		t.Parallel()
-		tp1, err := GenerateToken()
+		tp1, err := tokenTestSvc.GenerateToken()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		tp2, err := GenerateToken()
+		tp2, err := tokenTestSvc.GenerateToken()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -123,7 +123,7 @@ func TestTokenPairSetID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tp, err := GenerateToken()
+			tp, err := tokenTestSvc.GenerateToken()
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -147,7 +147,7 @@ func TestTokenPairSetID(t *testing.T) {
 
 	t.Run("hash is not modified by SetID", func(t *testing.T) {
 		t.Parallel()
-		tp, err := GenerateToken()
+		tp, err := tokenTestSvc.GenerateToken()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -202,7 +202,7 @@ func TestParseToken(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				id, hash, err := ParseToken(tt.plaintext)
+				id, hash, err := tokenTestSvc.ParseToken(tt.plaintext)
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -252,7 +252,7 @@ func TestParseToken(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				_, _, err := ParseToken(tt.plaintext)
+				_, _, err := tokenTestSvc.ParseToken(tt.plaintext)
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
@@ -285,7 +285,7 @@ func TestTokenRoundTrip(t *testing.T) {
 			t.Parallel()
 
 			// Arrange
-			tp, err := GenerateToken()
+			tp, err := tokenTestSvc.GenerateToken()
 			if err != nil {
 				t.Fatalf("GenerateToken: %v", err)
 			}
@@ -293,7 +293,7 @@ func TestTokenRoundTrip(t *testing.T) {
 
 			// Act
 			tp.SetID(tt.id)
-			parsedID, parsedHash, err := ParseToken(tp.Plaintext)
+			parsedID, parsedHash, err := tokenTestSvc.ParseToken(tp.Plaintext)
 
 			// Assert
 			if err != nil {

@@ -8,8 +8,10 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/testutil"
 )
 
@@ -18,19 +20,34 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockDocumentRepo struct {
-	findByUUIDFn    func(ctx context.Context, uuid string) (*model.Document, error)
-	findByIDFn      func(ctx context.Context, id int64) (*model.Document, error)
-	createFn        func(ctx context.Context, doc *model.Document) error
-	updateFn        func(ctx context.Context, doc *model.Document) error
-	softDeleteFn    func(ctx context.Context, id int64) error
-	tagsForDocFn    func(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
-	replaceTagsFn   func(ctx context.Context, documentID int64, tags []string) error
-	createVersionFn func(ctx context.Context, version *model.DocumentVersion) error
+	findByUUIDFn                 func(ctx context.Context, uuid string) (*model.Document, error)
+	findByUUIDIncludingDeletedFn func(ctx context.Context, uuid string) (*model.Document, error)
+	findByIDFn                   func(ctx context.Context, id int64) (*model.Document, error)
+	createFn                     func(ctx context.Context, doc *model.Document) error
+	updateFn                     func(ctx context.Context, doc *model.Document) error
+	softDeleteFn                 func(ctx context.Context, id int64) error
+	restoreFn                    func(ctx context.Context, id int64) error
+	purgeSingleFn                func(ctx context.Context, id int64) (string, error)
+	purgeSoftDeletedFn           func(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
+	listFn                       func(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error)
+	listDeletedFn                func(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
+	listDistinctTagsFn           func(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error)
+	tagsForDocFn                 func(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
+	tagsForDocsFn                func(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error)
+	replaceTagsFn                func(ctx context.Context, documentID int64, tags []string) error
+	createVersionFn              func(ctx context.Context, version *model.DocumentVersion) error
 }
 
 func (m *mockDocumentRepo) FindByUUID(ctx context.Context, uuid string) (*model.Document, error) {
 	if m.findByUUIDFn != nil {
 		return m.findByUUIDFn(ctx, uuid)
+	}
+	return nil, nil
+}
+
+func (m *mockDocumentRepo) FindByUUIDIncludingDeleted(ctx context.Context, uuid string) (*model.Document, error) {
+	if m.findByUUIDIncludingDeletedFn != nil {
+		return m.findByUUIDIncludingDeletedFn(ctx, uuid)
 	}
 	return nil, nil
 }
@@ -63,9 +80,58 @@ func (m *mockDocumentRepo) SoftDelete(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (m *mockDocumentRepo) Restore(ctx context.Context, id int64) error {
+	if m.restoreFn != nil {
+		return m.restoreFn(ctx, id)
+	}
+	return nil
+}
+
+func (m *mockDocumentRepo) PurgeSingle(ctx context.Context, id int64) (string, error) {
+	if m.purgeSingleFn != nil {
+		return m.purgeSingleFn(ctx, id)
+	}
+	return "", nil
+}
+
+func (m *mockDocumentRepo) PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error) {
+	if m.purgeSoftDeletedFn != nil {
+		return m.purgeSoftDeletedFn(ctx, olderThan)
+	}
+	return nil, nil
+}
+
+func (m *mockDocumentRepo) List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+	if m.listFn != nil {
+		return m.listFn(ctx, params)
+	}
+	return &repository.DocumentListResult{}, nil
+}
+
+func (m *mockDocumentRepo) ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error) {
+	if m.listDeletedFn != nil {
+		return m.listDeletedFn(ctx, limit, offset, userID)
+	}
+	return nil, 0, nil
+}
+
+func (m *mockDocumentRepo) ListDistinctTags(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error) {
+	if m.listDistinctTagsFn != nil {
+		return m.listDistinctTagsFn(ctx, prefix, limit, userID)
+	}
+	return nil, nil
+}
+
 func (m *mockDocumentRepo) TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error) {
 	if m.tagsForDocFn != nil {
 		return m.tagsForDocFn(ctx, documentID)
+	}
+	return nil, nil
+}
+
+func (m *mockDocumentRepo) TagsForDocuments(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error) {
+	if m.tagsForDocsFn != nil {
+		return m.tagsForDocsFn(ctx, documentIDs)
 	}
 	return nil, nil
 }
@@ -100,7 +166,8 @@ func TestDocumentService_FindByUUID(t *testing.T) {
 		repoFn    func(ctx context.Context, uuid string) (*model.Document, error)
 		wantDoc   bool
 		wantErr   bool
-		errSubstr string
+		wantIs    error  // sentinel to match via errors.Is (takes precedence over errSubstr)
+		errSubstr string // fallback: wrapper-context substring for non-sentinel paths
 	}{
 		{
 			name: "document found",
@@ -114,9 +181,9 @@ func TestDocumentService_FindByUUID(t *testing.T) {
 			repoFn: func(_ context.Context, _ string) (*model.Document, error) {
 				return nil, sql.ErrNoRows
 			},
-			wantDoc:   false,
-			wantErr:   true,
-			errSubstr: "not found",
+			wantDoc: false,
+			wantErr: true,
+			wantIs:  ErrNotFound,
 		},
 		{
 			name: "repository error is wrapped",
@@ -140,6 +207,9 @@ func TestDocumentService_FindByUUID(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
+				}
+				if tt.wantIs != nil && !errors.Is(err, tt.wantIs) {
+					t.Errorf("errors.Is(err, %v) = false, err = %q", tt.wantIs, err.Error())
 				}
 				if tt.errSubstr != "" && !strings.Contains(err.Error(), tt.errSubstr) {
 					t.Errorf("error %q does not contain %q", err.Error(), tt.errSubstr)

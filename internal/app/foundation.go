@@ -1,3 +1,11 @@
+// Package app implements the Foundation service locator and the HTTP/worker
+// app lifecycles that consume it. Foundation deliberately leans on the
+// service-locator pattern: the application needs ~20 interdependent
+// singletons (pgxpool, Redis clients, repositories, extractors, tracing,
+// Sentry) that all must exist together. Each field is constructed by a
+// phase factory (newDatabasePool, newRedisClients, newRepositoryBundle,
+// newStoragePaths, newObservability) so the init code reads as a sequence
+// of narrow steps instead of one 275-line prelude.
 package app
 
 import (
@@ -98,15 +106,126 @@ type Foundation struct {
 	sentryFlush    func()
 }
 
-// NewFoundation initializes all shared dependencies: database, repositories,
-// search, extractors, storage, observability, and tracing.
+// NewFoundation constructs every shared singleton by calling narrow phase
+// factories in sequence. On any error before initOK flips true, the deferred
+// cleanup chain closes each resource already opened in reverse order.
 func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	logger := newLogger(cfg.App.Env, cfg.App.Debug, os.Stdout)
 
-	pgxPool, err := database.NewPgxPool(
+	pgxPool, err := newDatabasePool(cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	var initOK bool
+	defer func() {
+		if !initOK {
+			pgxPool.Close()
+		}
+	}()
+
+	redisClient, bareRedisClient, err := newRedisClients(cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if !initOK {
+			_ = bareRedisClient.Close()
+			_ = redisClient.Close()
+		}
+	}()
+
+	if migErr := runMigrations(pgxPool); migErr != nil {
+		return nil, migErr
+	}
+	logger.Info("database and river migrations applied")
+
+	encryptor, err := newEncryptor(cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	repos := newRepositoryBundle(pgxPool, logger, encryptor)
+	searcher := search.NewSearcher(pgxPool, logger)
+
+	kiwixFactory := kiwix.NewClientFactory(repos.ExternalService, kiwix.ClientConfig{
+		HTTPTimeout:        cfg.Kiwix.HTTPTimeout,
+		HealthCheckTimeout: cfg.Kiwix.HealthCheckTimeout,
+		CacheTTL:           cfg.Kiwix.CacheTTL,
+		SSRFDialerTimeout:  cfg.App.SSRFDialerTimeout,
+	}, logger)
+
+	extractorRegistry := newExtractorRegistry(cfg)
+
+	storagePath, workerTempDir, gitTempDir, err := newStoragePaths(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	blobStore, err := openBlobStore(context.Background(), cfg.Storage, storagePath)
+	if err != nil {
+		return nil, fmt.Errorf("opening blob store: %w", err)
+	}
+	defer func() {
+		if !initOK {
+			_ = blobStore.Close()
+		}
+	}()
+	logger.Info("blob store opened", "driver", cfg.Storage.Driver)
+
+	// Control bus for cross-replica control messages (cache invalidation).
+	// Lives in its own Redis channels so it doesn't contend with the SSE
+	// subscriber cap on the main event bus.
+	controlBus := queue.NewRedisControlBus(redisClient, logger)
+	defer func() {
+		if !initOK {
+			_ = controlBus.Close()
+		}
+	}()
+
+	obs, err := newObservability(context.Background(), cfg, pgxPool, redisClient, searcher, logger)
+	if err != nil {
+		return nil, err
+	}
+	// Observability may wrap the logger with the OTEL trace-correlating
+	// handler, so replace from here onward.
+	logger = obs.Logger
+
+	initOK = true
+	return &Foundation{
+		Config:              cfg,
+		Logger:              logger,
+		PgxPool:             pgxPool,
+		RedisClient:         redisClient,
+		BareRedisClient:     bareRedisClient,
+		Metrics:             obs.Metrics,
+		DocumentRepo:        repos.Document,
+		ExternalServiceRepo: repos.ExternalService,
+		ZimArchiveRepo:      repos.ZimArchive,
+		GitTemplateRepo:     repos.GitTemplate,
+		SearchQueryRepo:     repos.SearchQuery,
+		OAuthRepo:           repos.OAuth,
+		Searcher:            searcher,
+		KiwixFactory:        kiwixFactory,
+		ExtractorRegistry:   extractorRegistry,
+		Encryptor:           encryptor,
+		BlobStore:           blobStore,
+		StoragePath:         storagePath,
+		WorkerTempDir:       workerTempDir,
+		GitTempDir:          gitTempDir,
+		ControlBus:          controlBus,
+		tracerShutdown:      obs.TracerShutdown,
+		sentryFlush:         obs.SentryFlush,
+	}, nil
+}
+
+// newDatabasePool initializes the pgxpool used by repositories, River, and
+// goose migrations.
+func newDatabasePool(cfg *config.Config, logger *slog.Logger) (*pgxpool.Pool, error) {
+	pool, err := database.NewPgxPool(
 		context.Background(),
 		cfg.DatabaseDSN(),
-		int32(min(cfg.Database.MaxOpenConns, 1<<31-1)), //nolint:gosec // config value is bounded by validation
+		cfg.Database.MaxOpenConns,
 		cfg.Database.PgxMinConns,
 		cfg.Database.PgxMaxConnLifetime,
 		cfg.Database.PgxMaxConnIdleTime,
@@ -114,37 +233,28 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	if err != nil {
 		return nil, fmt.Errorf("initializing database pool: %w", err)
 	}
-
 	logger.Info("database connected",
 		"host", cfg.Database.Host,
 		"database", cfg.Database.Database,
 		"max_conns", cfg.Database.MaxOpenConns,
 		"min_conns", cfg.Database.PgxMinConns,
 	)
+	return pool, nil
+}
 
-	// --- Redis ---
+// newRedisClients creates the instrumented main client (EventBus, app
+// queries) and the uninstrumented bare client (rate limit + readiness).
+// Both share the same TLS config when REDIS_TLS_ENABLED=true. The bare
+// client uses MaxRetries=-1 and short timeouts so readiness checks fail
+// fast and rate-limit TxPipelines can't cause partial-response noise.
+func newRedisClients(cfg *config.Config, logger *slog.Logger) (mainClient, bareClient *redis.Client, err error) {
 	// Bridge go-redis internal logger to slog so pool warnings appear
 	// in structured logs instead of raw stderr.
 	redis.SetLogger(&redisSlogLogger{logger: logger})
 
-	// Build TLS config for Redis if enabled (cloud-managed Redis requires TLS).
-	var redisTLS *tls.Config
-	if cfg.Redis.TLSEnabled {
-		redisTLS = &tls.Config{MinVersion: tls.VersionTLS12}
-		if cfg.Redis.TLSCAFile != "" {
-			caCert, readErr := os.ReadFile(cfg.Redis.TLSCAFile)
-			if readErr != nil {
-				pgxPool.Close()
-				return nil, fmt.Errorf("reading redis TLS CA file: %w", readErr)
-			}
-			pool := x509.NewCertPool()
-			if !pool.AppendCertsFromPEM(caCert) {
-				pgxPool.Close()
-				return nil, errors.New("redis TLS CA file contains no valid certificates")
-			}
-			redisTLS.RootCAs = pool
-		}
-		logger.Info("redis TLS enabled", "ca_file", cfg.Redis.TLSCAFile)
+	redisTLS, err := buildRedisTLS(cfg, logger)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	redisOpts := &redis.Options{
@@ -175,17 +285,13 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 
 		TLSConfig: redisTLS,
 	}
-	redisClient := redis.NewClient(redisOpts)
-	if err = redisClient.Ping(context.Background()).Err(); err != nil {
-		pgxPool.Close()
-		return nil, fmt.Errorf("connecting to redis: %w", err)
+	mainClient = redis.NewClient(redisOpts)
+	if err = mainClient.Ping(context.Background()).Err(); err != nil {
+		return nil, nil, fmt.Errorf("connecting to redis: %w", err)
 	}
-
-	// Instrument Redis with OpenTelemetry tracing.
-	if err = redisotel.InstrumentTracing(redisClient); err != nil {
-		_ = redisClient.Close()
-		pgxPool.Close()
-		return nil, fmt.Errorf("instrumenting redis tracing: %w", err)
+	if err = redisotel.InstrumentTracing(mainClient); err != nil {
+		_ = mainClient.Close()
+		return nil, nil, fmt.Errorf("instrumenting redis tracing: %w", err)
 	}
 
 	// Dedicated rate-limit client — isolates httprate-redis TxPipeline
@@ -193,7 +299,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	// retry-induced partial responses. DisableIdentity skips CLIENT SETINFO.
 	// No redisotel hook — counter increments are high-frequency, low-value to trace.
 	// NOTE: Redis ACL must include +@transaction for MULTI/EXEC to succeed.
-	bareRedisClient := redis.NewClient(&redis.Options{
+	bareClient = redis.NewClient(&redis.Options{
 		Addr:                  cfg.Redis.Addr,
 		Username:              cfg.Redis.Username,
 		Password:              cfg.Redis.Password,
@@ -208,10 +314,9 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		ContextTimeoutEnabled: true,
 		TLSConfig:             redisTLS,
 	})
-	if err = bareRedisClient.Ping(context.Background()).Err(); err != nil {
-		_ = redisClient.Close()
-		pgxPool.Close()
-		return nil, fmt.Errorf("connecting to redis (rate limit): %w", err)
+	if err = bareClient.Ping(context.Background()).Err(); err != nil {
+		_ = mainClient.Close()
+		return nil, nil, fmt.Errorf("connecting to redis (rate limit): %w", err)
 	}
 
 	logger.Info("redis connected",
@@ -223,58 +328,75 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		"context_timeout_enabled", true,
 		"rate_limit_pool_size", 3,
 	)
+	return mainClient, bareClient, nil
+}
 
-	// After this point pgxPool, redisClient, and bareRedisClient are live.
-	// Use a deferred cleanup to close all on any initialization error.
-	var initOK bool
-	defer func() {
-		if !initOK {
-			_ = bareRedisClient.Close()
-			_ = redisClient.Close()
-			pgxPool.Close()
-		}
-	}()
-
-	// Run database and River schema migrations.
-	if migErr := runMigrations(pgxPool); migErr != nil {
-		return nil, migErr
+// buildRedisTLS returns the tls.Config for Redis connections. Returns nil
+// when TLS is disabled. When a CA file is set, it is loaded into a private
+// cert pool; otherwise the system pool is used.
+func buildRedisTLS(cfg *config.Config, logger *slog.Logger) (*tls.Config, error) {
+	if !cfg.Redis.TLSEnabled {
+		return nil, nil
 	}
-	logger.Info("database and river migrations applied")
-
-	// --- Encryption ---
-	var encryptor *crypto.Encryptor
-	if len(cfg.App.EncryptionKeyBytes) > 0 {
-		var encErr error
-		encryptor, encErr = crypto.NewEncryptor(cfg.App.EncryptionKeyBytes)
-		if encErr != nil {
-			return nil, fmt.Errorf("initializing encryptor: %w", encErr)
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	if cfg.Redis.TLSCAFile != "" {
+		caCert, err := os.ReadFile(cfg.Redis.TLSCAFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading redis TLS CA file: %w", err)
 		}
-		logger.Info("encryption at rest enabled")
-	} else {
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caCert) {
+			return nil, errors.New("redis TLS CA file contains no valid certificates")
+		}
+		tlsCfg.RootCAs = pool
+	}
+	logger.Info("redis TLS enabled", "ca_file", cfg.Redis.TLSCAFile)
+	return tlsCfg, nil
+}
+
+// newEncryptor returns an AES-256-GCM encryptor when EncryptionKeyBytes is
+// set; otherwise nil with a warning log. Repositories that encrypt fields
+// (git_token, service credentials) must check for nil before use.
+func newEncryptor(cfg *config.Config, logger *slog.Logger) (*crypto.Encryptor, error) {
+	if len(cfg.App.EncryptionKeyBytes) == 0 {
 		logger.Warn("ENCRYPTION_KEY not set, secrets will be stored in plaintext")
+		return nil, nil
 	}
+	enc, err := crypto.NewEncryptor(cfg.App.EncryptionKeyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("initializing encryptor: %w", err)
+	}
+	logger.Info("encryption at rest enabled")
+	return enc, nil
+}
 
-	// --- Repositories ---
-	documentRepo := repository.NewDocumentRepository(pgxPool, logger)
-	externalServiceRepo := repository.NewExternalServiceRepository(pgxPool, logger, encryptor)
-	zimArchiveRepo := repository.NewZimArchiveRepository(pgxPool, logger)
-	gitTemplateRepo := repository.NewGitTemplateRepository(pgxPool, logger, encryptor)
-	searchQueryRepo := repository.NewSearchQueryRepository(pgxPool, logger)
-	oauthRepo := repository.NewOAuthRepository(pgxPool, logger)
+// repositoryBundle groups the six repositories constructed from a shared
+// pool. Kept unexported — external callers read individual fields off
+// Foundation.
+type repositoryBundle struct {
+	Document        *repository.DocumentRepository
+	ExternalService *repository.ExternalServiceRepository
+	ZimArchive      *repository.ZimArchiveRepository
+	GitTemplate     *repository.GitTemplateRepository
+	SearchQuery     *repository.SearchQueryRepository
+	OAuth           *repository.OAuthRepository
+}
 
-	// --- Search ---
-	searcher := search.NewSearcher(pgxPool, logger)
+func newRepositoryBundle(pool *pgxpool.Pool, logger *slog.Logger, encryptor *crypto.Encryptor) repositoryBundle {
+	return repositoryBundle{
+		Document:        repository.NewDocumentRepository(pool, logger),
+		ExternalService: repository.NewExternalServiceRepository(pool, logger, encryptor),
+		ZimArchive:      repository.NewZimArchiveRepository(pool, logger),
+		GitTemplate:     repository.NewGitTemplateRepository(pool, logger, encryptor),
+		SearchQuery:     repository.NewSearchQueryRepository(pool, logger),
+		OAuth:           repository.NewOAuthRepository(pool, logger),
+	}
+}
 
-	// --- External Service Clients ---
-	kiwixFactory := kiwix.NewClientFactory(externalServiceRepo, kiwix.ClientConfig{
-		HTTPTimeout:        cfg.Kiwix.HTTPTimeout,
-		HealthCheckTimeout: cfg.Kiwix.HealthCheckTimeout,
-		CacheTTL:           cfg.Kiwix.CacheTTL,
-		SSRFDialerTimeout:  cfg.App.SSRFDialerTimeout,
-	}, logger)
-
-	// --- Content Extractors ---
-	extractorRegistry := extractor.NewRegistry(
+// newExtractorRegistry wires every content extractor with the operator-
+// configured limits. First MIME match wins at registry lookup time.
+func newExtractorRegistry(cfg *config.Config) *extractor.Registry {
+	return extractor.NewRegistry(
 		pdfext.NewWithLimits(cfg.Storage.MaxExtractedText),
 		docxext.NewWithLimits(cfg.Storage.MaxZIPFiles, cfg.Storage.MaxExtractedText),
 		xlsxext.NewWithLimits(cfg.Storage.MaxSheets, cfg.Storage.MaxExtractedText),
@@ -282,58 +404,58 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		htmlext.New(),
 		markdownext.New(),
 	)
+}
 
-	// --- Storage ---
-	storagePath := filepath.Join(cfg.Storage.BasePath, cfg.Storage.DocumentPath)
+// newStoragePaths creates the three scratch directories under BasePath and
+// returns their absolute locations. Worker-tmp and git-tmp live alongside
+// the blob root so operators can size the whole scratch area with a single
+// volume or tmpfs.
+func newStoragePaths(cfg *config.Config) (storagePath, workerTempDir, gitTempDir string, err error) {
+	storagePath = filepath.Join(cfg.Storage.BasePath, cfg.Storage.DocumentPath)
 	if err = os.MkdirAll(storagePath, 0o750); err != nil {
-		return nil, fmt.Errorf("creating document storage path: %w", err)
+		return "", "", "", fmt.Errorf("creating document storage path: %w", err)
 	}
-
-	// Worker-tmp and git-tmp both live under BasePath so operators can size
-	// the whole scratch area with one volume or tmpfs. They exist even when
-	// the blob store is S3-backed — extraction still spills to local disk.
-	workerTempDir := filepath.Join(cfg.Storage.BasePath, "worker-tmp")
+	workerTempDir = filepath.Join(cfg.Storage.BasePath, "worker-tmp")
 	if err = os.MkdirAll(workerTempDir, 0o750); err != nil {
-		return nil, fmt.Errorf("creating worker temp path: %w", err)
+		return "", "", "", fmt.Errorf("creating worker temp path: %w", err)
 	}
-
-	gitTempDir := filepath.Join(cfg.Storage.BasePath, "git")
+	gitTempDir = filepath.Join(cfg.Storage.BasePath, "git")
 	if err = os.MkdirAll(gitTempDir, 0o750); err != nil {
-		return nil, fmt.Errorf("creating git temp path: %w", err)
+		return "", "", "", fmt.Errorf("creating git temp path: %w", err)
 	}
+	return storagePath, workerTempDir, gitTempDir, nil
+}
 
-	blobStore, err := openBlobStore(context.Background(), cfg.Storage, storagePath)
-	if err != nil {
-		return nil, fmt.Errorf("opening blob store: %w", err)
-	}
-	defer func() {
-		if !initOK {
-			_ = blobStore.Close()
-		}
-	}()
-	logger.Info("blob store opened", "driver", cfg.Storage.Driver)
+// observabilityBundle groups the values newObservability returns. Logger
+// may be a wrapped version of the input logger when OTEL is enabled.
+type observabilityBundle struct {
+	Metrics        *observability.Metrics
+	TracerShutdown func(context.Context) error
+	SentryFlush    func()
+	Logger         *slog.Logger
+}
 
-	// Control bus for cross-replica control messages (cache invalidation).
-	// Lives in its own Redis channels so it doesn't contend with the SSE
-	// subscriber cap on the main event bus.
-	controlBus := queue.NewRedisControlBus(redisClient, logger)
-	defer func() {
-		if !initOK {
-			_ = controlBus.Close()
-		}
-	}()
-
-	// --- Observability ---
+// newObservability registers Prometheus metrics, initializes the OTEL
+// tracer, and opens the Sentry client. Wraps the logger with a trace-
+// correlating handler when OTEL is enabled so span IDs reach log lines.
+func newObservability(
+	ctx context.Context,
+	cfg *config.Config,
+	pool *pgxpool.Pool,
+	redisClient *redis.Client,
+	searcher *search.Searcher,
+	logger *slog.Logger,
+) (observabilityBundle, error) {
 	metrics := observability.NewMetrics()
-	observability.RegisterDBMetrics(pgxPool)
+	observability.RegisterDBMetrics(pool)
 	observability.RegisterRedisMetrics(redisClient)
-	observability.RegisterDocumentCount(pgxPool)
+	observability.RegisterDocumentCount(pool)
 	searcher.SetMetrics(metrics)
 	logger.Info("Prometheus metrics registered")
 
-	tracerShutdown, err := observability.InitTracer(context.Background(), cfg.OTEL)
+	tracerShutdown, err := observability.InitTracer(ctx, cfg.OTEL)
 	if err != nil {
-		return nil, fmt.Errorf("initializing tracer: %w", err)
+		return observabilityBundle{}, fmt.Errorf("initializing tracer: %w", err)
 	}
 	if cfg.OTEL.Enabled {
 		logger = slog.New(observability.NewTracedHandler(logger.Handler()))
@@ -342,37 +464,17 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 
 	sentryFlush, err := observability.InitSentry(cfg.Sentry, cfg.App.Env, cfg.DocuMCP.ServerVersion)
 	if err != nil {
-		return nil, fmt.Errorf("initializing sentry: %w", err)
+		return observabilityBundle{}, fmt.Errorf("initializing sentry: %w", err)
 	}
 	if cfg.Sentry.DSN != "" {
 		logger.Info("Sentry error tracking enabled")
 	}
 
-	initOK = true
-	return &Foundation{
-		Config:              cfg,
-		Logger:              logger,
-		PgxPool:             pgxPool,
-		RedisClient:         redisClient,
-		BareRedisClient:     bareRedisClient,
-		Metrics:             metrics,
-		DocumentRepo:        documentRepo,
-		ExternalServiceRepo: externalServiceRepo,
-		ZimArchiveRepo:      zimArchiveRepo,
-		GitTemplateRepo:     gitTemplateRepo,
-		SearchQueryRepo:     searchQueryRepo,
-		OAuthRepo:           oauthRepo,
-		Searcher:            searcher,
-		KiwixFactory:        kiwixFactory,
-		ExtractorRegistry:   extractorRegistry,
-		Encryptor:           encryptor,
-		BlobStore:           blobStore,
-		StoragePath:         storagePath,
-		WorkerTempDir:       workerTempDir,
-		GitTempDir:          gitTempDir,
-		ControlBus:          controlBus,
-		tracerShutdown:      tracerShutdown,
-		sentryFlush:         sentryFlush,
+	return observabilityBundle{
+		Metrics:        metrics,
+		TracerShutdown: tracerShutdown,
+		SentryFlush:    sentryFlush,
+		Logger:         logger,
 	}, nil
 }
 
@@ -461,7 +563,7 @@ func RunMigrationsOnly(cfg *config.Config) error {
 	pgxPool, err := database.NewPgxPool(
 		context.Background(),
 		cfg.DatabaseDSN(),
-		int32(min(cfg.Database.MaxOpenConns, 1<<31-1)), //nolint:gosec // config value is bounded by validation
+		cfg.Database.MaxOpenConns,
 		cfg.Database.PgxMinConns,
 		cfg.Database.PgxMaxConnLifetime,
 		cfg.Database.PgxMaxConnIdleTime,

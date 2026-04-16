@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -1727,7 +1728,7 @@ func TestHandleGetTemplateFile(t *testing.T) {
 		_, resp, err := h.handleGetTemplateFile(ctx, nil, dto.GetTemplateFileInput{
 			UUID:      "t1",
 			Path:      "CLAUDE.md",
-			Variables: `{"project_name":"DocuMCP"}`,
+			Variables: map[string]string{"project_name": "DocuMCP"},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1768,7 +1769,7 @@ func TestHandleGetTemplateFile(t *testing.T) {
 		_, resp, err := h.handleGetTemplateFile(ctx, nil, dto.GetTemplateFileInput{
 			UUID:      "t1",
 			Path:      "f.md",
-			Variables: `{"name":"DocuMCP"}`,
+			Variables: map[string]string{"name": "DocuMCP"},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1778,7 +1779,7 @@ func TestHandleGetTemplateFile(t *testing.T) {
 		}
 	})
 
-	t.Run("returns error for invalid variables JSON", func(t *testing.T) {
+	t.Run("returns error when variable value exceeds size cap", func(t *testing.T) {
 		repo := &mockGitTemplateRepo{
 			findByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
 				return &model.GitTemplate{ID: 1, UUID: "t1"}, nil
@@ -1803,10 +1804,10 @@ func TestHandleGetTemplateFile(t *testing.T) {
 		_, _, err := h.handleGetTemplateFile(ctx, nil, dto.GetTemplateFileInput{
 			UUID:      "t1",
 			Path:      "f.md",
-			Variables: `{invalid}`,
+			Variables: map[string]string{"big": strings.Repeat("x", 10*1024+1)},
 		})
 		if err == nil {
-			t.Fatal("expected error for invalid JSON")
+			t.Fatal("expected error for oversized variable value")
 		}
 	})
 
@@ -1894,7 +1895,7 @@ func TestHandleGetDeploymentGuide(t *testing.T) {
 
 		_, resp, err := h.handleGetDeploymentGuide(ctx, nil, dto.GetDeploymentGuideInput{
 			UUID:      "t1",
-			Variables: `{"project_name":"DocuMCP"}`,
+			Variables: map[string]string{"project_name": "DocuMCP"},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1940,7 +1941,7 @@ func TestHandleGetDeploymentGuide(t *testing.T) {
 		}
 	})
 
-	t.Run("returns error for invalid variables JSON", func(t *testing.T) {
+	t.Run("returns error when variable value exceeds size cap", func(t *testing.T) {
 		repo := &mockGitTemplateRepo{
 			findByUUIDFn: func(_ context.Context, _ string) (*model.GitTemplate, error) {
 				return &model.GitTemplate{ID: 1, UUID: "t1", Name: "T"}, nil
@@ -1960,10 +1961,10 @@ func TestHandleGetDeploymentGuide(t *testing.T) {
 
 		_, _, err := h.handleGetDeploymentGuide(ctx, nil, dto.GetDeploymentGuideInput{
 			UUID:      "t1",
-			Variables: `{bad}`,
+			Variables: map[string]string{"big": strings.Repeat("x", 10*1024+1)},
 		})
 		if err == nil {
-			t.Fatal("expected error for invalid JSON")
+			t.Fatal("expected error for oversized variable value")
 		}
 	})
 }
@@ -2069,7 +2070,7 @@ func TestHandleDownloadTemplate(t *testing.T) {
 
 		_, resp, err := h.handleDownloadTemplate(ctx, nil, dto.DownloadTemplateInput{
 			UUID:      "t1",
-			Variables: `{"name":"World"}`,
+			Variables: map[string]string{"name": "World"},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

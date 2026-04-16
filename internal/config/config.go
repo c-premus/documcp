@@ -9,11 +9,37 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/spf13/viper"
 )
+
+// cleanDuplicateSlashes collapses runs of "/" in a URL path to a single "/".
+// It preserves an empty input and a single leading slash. Used to normalize
+// RFC 8707 allowlist entries that get "//" when an operator leaves a
+// trailing slash on APP_URL and DOCUMCP_ENDPOINT starts with "/".
+func cleanDuplicateSlashes(p string) string {
+	if p == "" {
+		return p
+	}
+	var out strings.Builder
+	out.Grow(len(p))
+	prevSlash := false
+	for _, r := range p {
+		if r == '/' {
+			if prevSlash {
+				continue
+			}
+			prevSlash = true
+		} else {
+			prevSlash = false
+		}
+		out.WriteRune(r)
+	}
+	return out.String()
+}
 
 // Config holds the complete application configuration.
 type Config struct {
@@ -125,7 +151,7 @@ type DatabaseConfig struct {
 	Username           string        `mapstructure:"db_username"`
 	Password           string        `mapstructure:"db_password"`
 	SSLMode            string        `mapstructure:"db_sslmode"`
-	MaxOpenConns       int           `mapstructure:"db_max_open_conns"`
+	MaxOpenConns       int32         `mapstructure:"db_max_open_conns"`
 	MaxIdleConns       int           `mapstructure:"db_max_idle_conns"`
 	MaxLifetime        time.Duration `mapstructure:"db_max_lifetime"`
 	PgxMinConns        int32         `mapstructure:"db_pgx_min_conns"`
@@ -148,6 +174,12 @@ type OIDCConfig struct {
 	UserinfoURL      string   `mapstructure:"oidc_userinfo_url"`
 	JWKSURL          string   `mapstructure:"oidc_jwks_url"`
 	EndSessionURL    string   `mapstructure:"oidc_end_session_url"`
+	// BootstrapAdminEmail promotes the first OIDC user whose email_verified
+	// claim matches this value to admin. Runs only on user creation; returning
+	// users keep whatever IsAdmin state they have (or what AdminGroups sets).
+	// Intended for providers that cannot emit group claims (plain Google /
+	// GitHub OIDC). Leave unset when AdminGroups is configured.
+	BootstrapAdminEmail string `mapstructure:"oidc_bootstrap_admin_email"`
 }
 
 // ManualEndpoints returns true when manual OIDC endpoint configuration is active.
@@ -321,6 +353,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oidc_redirect_uri", "")
 	v.SetDefault("oidc_scopes", "openid,profile,email")
 	v.SetDefault("oidc_admin_groups", "")
+	v.SetDefault("oidc_bootstrap_admin_email", "")
 	v.SetDefault("oidc_authorization_url", "")
 	v.SetDefault("oidc_token_url", "")
 	v.SetDefault("oidc_userinfo_url", "")
@@ -496,7 +529,7 @@ func Load() (*Config, error) {
 		Username:           v.GetString("db_username"),
 		Password:           v.GetString("db_password"),
 		SSLMode:            v.GetString("db_sslmode"),
-		MaxOpenConns:       v.GetInt("db_max_open_conns"),
+		MaxOpenConns:       clampInt32(v.GetInt("db_max_open_conns")),
 		MaxIdleConns:       v.GetInt("db_max_idle_conns"),
 		MaxLifetime:        v.GetDuration("db_max_lifetime"),
 		PgxMinConns:        clampInt32(v.GetInt("db_pgx_min_conns")),
@@ -505,17 +538,18 @@ func Load() (*Config, error) {
 	}
 
 	cfg.OIDC = OIDCConfig{
-		ProviderURL:      v.GetString("oidc_provider_url"),
-		ClientID:         v.GetString("oidc_client_id"),
-		ClientSecret:     v.GetString("oidc_client_secret"),
-		RedirectURL:      v.GetString("oidc_redirect_uri"),
-		Scopes:           splitComma(v.GetString("oidc_scopes")),
-		AdminGroups:      splitComma(v.GetString("oidc_admin_groups")),
-		AuthorizationURL: v.GetString("oidc_authorization_url"),
-		TokenURL:         v.GetString("oidc_token_url"),
-		UserinfoURL:      v.GetString("oidc_userinfo_url"),
-		JWKSURL:          v.GetString("oidc_jwks_url"),
-		EndSessionURL:    v.GetString("oidc_end_session_url"),
+		ProviderURL:         v.GetString("oidc_provider_url"),
+		ClientID:            v.GetString("oidc_client_id"),
+		ClientSecret:        v.GetString("oidc_client_secret"),
+		RedirectURL:         v.GetString("oidc_redirect_uri"),
+		Scopes:              splitComma(v.GetString("oidc_scopes")),
+		AdminGroups:         splitComma(v.GetString("oidc_admin_groups")),
+		AuthorizationURL:    v.GetString("oidc_authorization_url"),
+		TokenURL:            v.GetString("oidc_token_url"),
+		UserinfoURL:         v.GetString("oidc_userinfo_url"),
+		JWKSURL:             v.GetString("oidc_jwks_url"),
+		EndSessionURL:       v.GetString("oidc_end_session_url"),
+		BootstrapAdminEmail: strings.ToLower(strings.TrimSpace(v.GetString("oidc_bootstrap_admin_email"))),
 	}
 
 	cfg.OAuth = OAuthConfig{
@@ -576,6 +610,22 @@ func Load() (*Config, error) {
 		cfg.OAuth.AllowedResources = []string{
 			cfg.App.URL,
 			cfg.App.URL + cfg.DocuMCP.Endpoint,
+		}
+	}
+
+	// Canonicalize the allowlist. Operators routinely leave a trailing slash
+	// on APP_URL; plain concatenation with DOCUMCP_ENDPOINT produces entries
+	// like "https://host//documcp", which then fail byte-for-byte comparison
+	// against the resource indicator sent by a correctly-behaved client.
+	// url.Parse + re-serialize collapses duplicate slashes, strips default
+	// ports, and lower-cases the scheme/host. Entries that don't parse are
+	// left as-is so obviously-bad config still produces a clear runtime error
+	// rather than silently becoming the empty string. Security.md
+	// informational item.
+	for i, raw := range cfg.OAuth.AllowedResources {
+		if u, err := url.Parse(raw); err == nil && u.Scheme != "" && u.Host != "" {
+			u.Path = cleanDuplicateSlashes(u.Path)
+			cfg.OAuth.AllowedResources[i] = u.String()
 		}
 	}
 
@@ -678,17 +728,17 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	if c.Server.TLSEnabled && c.Server.TLSPort == c.Server.Port {
 		errs = append(errs, "TLS_PORT and SERVER_PORT must be different when TLS is enabled")
 	}
-	if c.Database.MaxOpenConns > 0 && c.Database.MaxIdleConns > c.Database.MaxOpenConns {
+	if c.Database.MaxOpenConns > 0 && c.Database.MaxIdleConns > int(c.Database.MaxOpenConns) {
 		errs = append(errs, "DB_MAX_IDLE_CONNS must not exceed DB_MAX_OPEN_CONNS")
 	}
-	if c.Database.PgxMinConns > 0 && int(c.Database.PgxMinConns) > c.Database.MaxOpenConns {
+	if c.Database.PgxMinConns > 0 && c.Database.PgxMinConns > c.Database.MaxOpenConns {
 		errs = append(errs, "DB_PGX_MIN_CONNS must not exceed DB_MAX_OPEN_CONNS")
 	}
 	if c.Redis.PoolSize < 0 {
 		errs = append(errs, "REDIS_POOL_SIZE must be non-negative")
 	}
 	totalWorkers := c.Queue.HighWorkers + c.Queue.DefaultWorkers + c.Queue.LowWorkers
-	if c.Database.MaxOpenConns > 0 && totalWorkers > 2*c.Database.MaxOpenConns {
+	if c.Database.MaxOpenConns > 0 && totalWorkers > 2*int(c.Database.MaxOpenConns) {
 		errs = append(errs, fmt.Sprintf(
 			"total queue workers (%d) exceed 2× DB_MAX_OPEN_CONNS (%d); increase pool or reduce workers",
 			totalWorkers, c.Database.MaxOpenConns))
@@ -753,6 +803,18 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	}
 	if isProd && c.OAuth.HKDFSalt == "DocuMCP-go-v1" {
 		errs = append(errs, "HKDF_SALT must be changed from the default value in production")
+	}
+
+	// --- Admin bootstrap requirement ---
+	// When OIDC is configured, at least one admin-promotion mechanism must be
+	// set or no user can ever become admin. Groups is the long-term control;
+	// BootstrapAdminEmail is a first-login fallback for IdPs without group
+	// claim support. If OIDC is unconfigured there is no login mechanism at
+	// all, so this check does not fire.
+	if c.OIDC.ProviderURL != "" && c.OIDC.ClientID != "" {
+		if len(c.OIDC.AdminGroups) == 0 && c.OIDC.BootstrapAdminEmail == "" {
+			errs = append(errs, "either OIDC_ADMIN_GROUPS or OIDC_BOOTSTRAP_ADMIN_EMAIL must be set so an admin can be provisioned")
+		}
 	}
 
 	if len(errs) > 0 {

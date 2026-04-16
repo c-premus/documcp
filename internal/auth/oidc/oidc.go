@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
@@ -29,26 +30,30 @@ import (
 )
 
 // UserRepo defines the repository interface consumed by the OIDC handler.
+// There is no FindUserByEmail method by design — email is display-only here.
+// Identity is `sub`. Looking up by email and silently linking a pre-created
+// local record to an OIDC identity was the admin-takeover vector removed in
+// v0.21.0.
 type UserRepo interface {
 	FindUserByOIDCSub(ctx context.Context, sub string) (*model.User, error)
-	FindUserByEmail(ctx context.Context, email string) (*model.User, error)
 	CreateUser(ctx context.Context, user *model.User) error
 	UpdateUser(ctx context.Context, user *model.User) error
 }
 
 // Handler provides HTTP handlers for OIDC login/callback/logout.
 type Handler struct {
-	provider           *gooidc.Provider // nil in manual-endpoint mode
-	oauth2Config       oauth2.Config
-	verifier           *gooidc.IDTokenVerifier
-	httpClient         *http.Client // instrumented with otelhttp for tracing
-	store              sessions.Store
-	repo               UserRepo
-	logger             *slog.Logger
-	adminGroups        []string
-	providerURL        string // stored for OIDCProvider field in user records
-	endSessionEndpoint string // RP-Initiated Logout endpoint (from discovery or manual config)
-	appURL             string // post_logout_redirect_uri target
+	provider            *gooidc.Provider // nil in manual-endpoint mode
+	oauth2Config        oauth2.Config
+	verifier            *gooidc.IDTokenVerifier
+	httpClient          *http.Client // instrumented with otelhttp for tracing
+	store               sessions.Store
+	repo                UserRepo
+	logger              *slog.Logger
+	adminGroups         []string
+	bootstrapAdminEmail string // normalized lower-case; empty = disabled
+	providerURL         string // stored for OIDCProvider field in user records
+	endSessionEndpoint  string // RP-Initiated Logout endpoint (from discovery or manual config)
+	appURL              string // post_logout_redirect_uri target
 }
 
 // Config holds the dependencies for creating a new OIDC Handler.
@@ -60,6 +65,12 @@ type Config struct {
 	AppURL       string // used as post_logout_redirect_uri
 }
 
+// gobRegisterOnce ensures session-stored types are registered with
+// encoding/gob exactly once before any handler is created. Registration is an
+// explicit side of New rather than a package init() so the registration is
+// tied to OIDC being actually configured.
+var gobRegisterOnce sync.Once
+
 // New creates a new OIDC Handler. It discovers the provider configuration
 // from the well-known endpoint, or uses manually configured endpoints when
 // OIDC_AUTHORIZATION_URL and OIDC_TOKEN_URL are set (REQ-AUTH-003).
@@ -68,6 +79,11 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 	if cfg.OIDCCfg.ProviderURL == "" || cfg.OIDCCfg.ClientID == "" {
 		return nil, nil
 	}
+
+	// gorilla/sessions uses gob encoding. Register types stored in sessions.
+	gobRegisterOnce.Do(func() {
+		gob.Register(map[string]any{})
+	})
 
 	// Validate operator-configured URLs before any outbound HTTP. Private RFC-1918
 	// ranges are allowed for homelab / internal Authentik deployments, matching
@@ -186,17 +202,18 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 	}
 
 	return &Handler{
-		provider:           provider,
-		oauth2Config:       oauth2Config,
-		verifier:           verifier,
-		httpClient:         httpClient,
-		store:              cfg.SessionStore,
-		repo:               cfg.Repo,
-		logger:             cfg.Logger,
-		adminGroups:        cfg.OIDCCfg.AdminGroups,
-		providerURL:        cfg.OIDCCfg.ProviderURL,
-		endSessionEndpoint: endSessionEndpoint,
-		appURL:             cfg.AppURL,
+		provider:            provider,
+		oauth2Config:        oauth2Config,
+		verifier:            verifier,
+		httpClient:          httpClient,
+		store:               cfg.SessionStore,
+		repo:                cfg.Repo,
+		logger:              cfg.Logger,
+		adminGroups:         cfg.OIDCCfg.AdminGroups,
+		bootstrapAdminEmail: strings.ToLower(strings.TrimSpace(cfg.OIDCCfg.BootstrapAdminEmail)),
+		providerURL:         cfg.OIDCCfg.ProviderURL,
+		endSessionEndpoint:  endSessionEndpoint,
+		appURL:              cfg.AppURL,
 	}, nil
 }
 
@@ -325,13 +342,15 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract claims
+	// Extract claims. EmailVerified is consulted only for bootstrap-admin
+	// promotion (see findOrCreateUser). Identity is `sub`; email is display.
 	var claims struct {
-		Sub    string   `json:"sub"`
-		Email  string   `json:"email"`
-		Name   string   `json:"name"`
-		Groups []string `json:"groups"`
-		Nonce  string   `json:"nonce"`
+		Sub           string   `json:"sub"`
+		Email         string   `json:"email"`
+		EmailVerified bool     `json:"email_verified"`
+		Name          string   `json:"name"`
+		Groups        []string `json:"groups"`
+		Nonce         string   `json:"nonce"`
 	}
 	if err = idToken.Claims(&claims); err != nil {
 		h.logger.Error("parsing ID token claims", "error", err)
@@ -346,13 +365,14 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if claims.Email == "" {
-		http.Error(w, "Email not provided by identity provider", http.StatusBadRequest)
+	if claims.Sub == "" {
+		h.logger.Error("OIDC token missing sub claim")
+		http.Error(w, "Authentication failed", http.StatusBadRequest)
 		return
 	}
 
-	// Find or create user
-	user, err := h.findOrCreateUser(r.Context(), claims.Sub, claims.Email, claims.Name, claims.Groups)
+	// Find or create user — lookup strictly by sub; no email fallback.
+	user, err := h.findOrCreateUser(r.Context(), claims.Sub, claims.Email, claims.EmailVerified, claims.Name, claims.Groups)
 	if err != nil {
 		h.logger.Error("finding or creating user", "error", err)
 		http.Error(w, "Authentication failed", http.StatusInternalServerError)
@@ -447,10 +467,20 @@ func (h *Handler) buildEndSessionURL(idTokenHint string) string {
 	return u.String()
 }
 
-// findOrCreateUser finds a user by OIDC sub or email, or creates a new one.
-// When adminGroups is configured, IsAdmin is synced from OIDC group membership on every login.
-func (h *Handler) findOrCreateUser(ctx context.Context, sub, email, name string, groups []string) (*model.User, error) {
-	// Try by OIDC sub first
+// findOrCreateUser looks up a user by OIDC sub, syncing profile fields from
+// current claims. When the sub is not found a new user is created.
+//
+// Admin resolution order on the create-new branch:
+//  1. AdminGroups — if configured and the user is in one, they are admin.
+//  2. BootstrapAdminEmail — if groups did not grant admin and the user's
+//     verified email matches the bootstrap address, they are admin. Fires
+//     only on first creation; returning users are never re-bootstrapped.
+//  3. Otherwise the user is a regular non-admin.
+//
+// Email-based lookup of existing local records is intentionally absent — that
+// was the admin-takeover vector closed in v0.21.0.
+func (h *Handler) findOrCreateUser(ctx context.Context, sub, email string, emailVerified bool, name string, groups []string) (*model.User, error) {
+	// Sync-by-sub path.
 	user, err := h.repo.FindUserByOIDCSub(ctx, sub)
 	if err == nil {
 		needsUpdate := user.Name != name || user.Email != email
@@ -473,38 +503,24 @@ func (h *Handler) findOrCreateUser(ctx context.Context, sub, email, name string,
 		return nil, fmt.Errorf("looking up user by oidc_sub: %w", err)
 	}
 
-	// Try by email
-	user, err = h.repo.FindUserByEmail(ctx, email)
-	if err == nil {
-		// Link OIDC identity
-		user.OIDCSub = sql.NullString{String: sub, Valid: true}
-		user.OIDCProvider = sql.NullString{String: h.providerURL, Valid: true}
-		if name != "" {
-			user.Name = name
-		}
-		if isAdmin, shouldSync := h.resolveAdmin(groups); shouldSync {
-			user.IsAdmin = isAdmin
-		}
-		if err = h.repo.UpdateUser(ctx, user); err != nil {
-			return nil, fmt.Errorf("linking OIDC identity: %w", err)
-		}
-		return user, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("looking up user by email: %w", err)
+	// Create-new path — decide IsAdmin from groups first, bootstrap second.
+	isAdmin := false
+	adminSource := "default"
+	if admin, shouldSync := h.resolveAdmin(groups); shouldSync && admin {
+		isAdmin = true
+		adminSource = "groups"
+	} else if h.bootstrapAdminEmail != "" && emailVerified &&
+		strings.EqualFold(strings.TrimSpace(email), h.bootstrapAdminEmail) {
+		isAdmin = true
+		adminSource = "bootstrap_email"
 	}
 
-	// Create new user
-	isAdmin := false
-	if admin, shouldSync := h.resolveAdmin(groups); shouldSync {
-		isAdmin = admin
-	}
 	user = &model.User{
 		Name:            name,
 		Email:           email,
 		OIDCSub:         sql.NullString{String: sub, Valid: true},
 		OIDCProvider:    sql.NullString{String: h.providerURL, Valid: true},
-		EmailVerifiedAt: sql.NullTime{Time: time.Now(), Valid: true},
+		EmailVerifiedAt: sql.NullTime{Time: time.Now(), Valid: emailVerified},
 		IsAdmin:         isAdmin,
 	}
 	if err := h.repo.CreateUser(ctx, user); err != nil {
@@ -515,6 +531,7 @@ func (h *Handler) findOrCreateUser(ctx context.Context, sub, email, name string,
 		"email", email,
 		"user_id", user.ID,
 		"is_admin", isAdmin,
+		"admin_source", adminSource,
 	)
 
 	return user, nil
@@ -570,7 +587,3 @@ func generateState() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-func init() {
-	// gorilla/sessions uses gob encoding. Register types stored in sessions.
-	gob.Register(map[string]any{})
-}

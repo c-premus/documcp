@@ -14,16 +14,25 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/repository"
 )
 
 // DocumentRepo defines the repository methods the document service needs.
 type DocumentRepo interface {
 	FindByUUID(ctx context.Context, uuid string) (*model.Document, error)
+	FindByUUIDIncludingDeleted(ctx context.Context, uuid string) (*model.Document, error)
 	FindByID(ctx context.Context, id int64) (*model.Document, error)
 	Create(ctx context.Context, doc *model.Document) error
 	Update(ctx context.Context, doc *model.Document) error
 	SoftDelete(ctx context.Context, id int64) error
+	Restore(ctx context.Context, id int64) error
+	PurgeSingle(ctx context.Context, id int64) (string, error)
+	PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
+	List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error)
+	ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
+	ListDistinctTags(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error)
 	TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
+	TagsForDocuments(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error)
 	ReplaceTags(ctx context.Context, documentID int64, tags []string) error
 }
 
@@ -176,6 +185,86 @@ func (s *DocumentService) Delete(ctx context.Context, docUUID string) error {
 // TagsForDocument returns all tags associated with a document.
 func (s *DocumentService) TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error) {
 	return s.repo.TagsForDocument(ctx, documentID)
+}
+
+// TagsForDocuments batch-loads tags for the given document IDs.
+func (s *DocumentService) TagsForDocuments(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error) {
+	return s.repo.TagsForDocuments(ctx, documentIDs)
+}
+
+// List returns a paginated slice of documents matching params. Visibility
+// filtering (OwnerOrPublic) is the caller's responsibility — set on params.
+func (s *DocumentService) List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+	return s.repo.List(ctx, params)
+}
+
+// ListDeleted returns a paginated slice of soft-deleted documents. When
+// userID is non-nil, only documents owned by that user are returned.
+func (s *DocumentService) ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error) {
+	return s.repo.ListDeleted(ctx, limit, offset, userID)
+}
+
+// ListDistinctTags returns distinct tag strings matching the prefix, scoped
+// to the user's visible documents when userID is non-nil (non-admin caller).
+func (s *DocumentService) ListDistinctTags(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error) {
+	return s.repo.ListDistinctTags(ctx, prefix, limit, userID)
+}
+
+// FindByUUIDIncludingDeleted returns a document by UUID, including
+// soft-deleted rows. Returns ErrNotFound when the UUID does not exist.
+// Used by ownership checks on trash operations and by restore/purge.
+func (s *DocumentService) FindByUUIDIncludingDeleted(ctx context.Context, docUUID string) (*model.Document, error) {
+	doc, err := s.repo.FindByUUIDIncludingDeleted(ctx, docUUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("finding document (including deleted) by uuid: %w", err)
+	}
+	return doc, nil
+}
+
+// Restore reinstates a soft-deleted document identified by UUID and returns
+// the refreshed row. Returns ErrNotFound when the document does not exist,
+// ErrNotDeleted when the document is not soft-deleted.
+func (s *DocumentService) Restore(ctx context.Context, docUUID string) (*model.Document, error) {
+	doc, err := s.FindByUUIDIncludingDeleted(ctx, docUUID)
+	if err != nil {
+		return nil, fmt.Errorf("finding document for restore: %w", err)
+	}
+	if !doc.DeletedAt.Valid {
+		return nil, ErrNotDeleted
+	}
+	if err = s.repo.Restore(ctx, doc.ID); err != nil {
+		return nil, fmt.Errorf("restoring document: %w", err)
+	}
+	restored, err := s.repo.FindByUUID(ctx, docUUID)
+	if err != nil {
+		return nil, fmt.Errorf("re-fetching restored document: %w", err)
+	}
+	return restored, nil
+}
+
+// PurgeSingle permanently deletes a soft-deleted document and returns the
+// stored file path (empty when the document had no blob). Callers are
+// responsible for deleting the backing blob after a successful purge.
+func (s *DocumentService) PurgeSingle(ctx context.Context, docUUID string) (string, error) {
+	doc, err := s.FindByUUIDIncludingDeleted(ctx, docUUID)
+	if err != nil {
+		return "", fmt.Errorf("finding document for purge: %w", err)
+	}
+	filePath, err := s.repo.PurgeSingle(ctx, doc.ID)
+	if err != nil {
+		return "", fmt.Errorf("purging document: %w", err)
+	}
+	return filePath, nil
+}
+
+// PurgeSoftDeleted permanently deletes all soft-deleted documents whose
+// deleted_at is older than olderThan. Returns the file paths for callers
+// to clean up the corresponding blobs.
+func (s *DocumentService) PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error) {
+	return s.repo.PurgeSoftDeleted(ctx, olderThan)
 }
 
 // mimeTypeForFileType maps a file type string to its MIME type.

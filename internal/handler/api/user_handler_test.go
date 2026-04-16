@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -25,8 +24,6 @@ import (
 type mockUserRepo struct {
 	listUsersFn    func(ctx context.Context, query string, limit, offset int) ([]model.User, int, error)
 	findUserByIDFn func(ctx context.Context, id int64) (*model.User, error)
-	createUserFn   func(ctx context.Context, user *model.User) error
-	updateUserFn   func(ctx context.Context, user *model.User) error
 	deleteUserFn   func(ctx context.Context, id int64) error
 	toggleAdminFn  func(ctx context.Context, id int64) error
 }
@@ -43,20 +40,6 @@ func (m *mockUserRepo) FindUserByID(ctx context.Context, id int64) (*model.User,
 		return m.findUserByIDFn(ctx, id)
 	}
 	return nil, errors.New("not found")
-}
-
-func (m *mockUserRepo) CreateUser(ctx context.Context, user *model.User) error {
-	if m.createUserFn != nil {
-		return m.createUserFn(ctx, user)
-	}
-	return nil
-}
-
-func (m *mockUserRepo) UpdateUser(ctx context.Context, user *model.User) error {
-	if m.updateUserFn != nil {
-		return m.updateUserFn(ctx, user)
-	}
-	return nil
 }
 
 func (m *mockUserRepo) DeleteUser(ctx context.Context, id int64) error {
@@ -237,135 +220,6 @@ func TestUserHandler_Show_InvalidID(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Tests: Create
-// ---------------------------------------------------------------------------
-
-func TestUserHandler_Create_Success(t *testing.T) {
-	t.Parallel()
-
-	repo := &mockUserRepo{
-		createUserFn: func(_ context.Context, user *model.User) error {
-			user.ID = 42
-			return nil
-		},
-	}
-
-	h := NewUserHandler(repo, testutil.DiscardLogger())
-
-	body := `{"name":"Charlie","email":"charlie@example.com","is_admin":true}`
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/users", bytes.NewBufferString(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-
-	h.Create(rec, req)
-
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusCreated)
-	}
-}
-
-func TestUserHandler_Create_MissingFields(t *testing.T) {
-	t.Parallel()
-
-	h := NewUserHandler(&mockUserRepo{}, testutil.DiscardLogger())
-
-	body := `{"name":"Charlie"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/users", bytes.NewBufferString(body))
-	rec := httptest.NewRecorder()
-
-	h.Create(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
-	}
-}
-
-func TestUserHandler_Create_InvalidJSON(t *testing.T) {
-	t.Parallel()
-
-	h := NewUserHandler(&mockUserRepo{}, testutil.DiscardLogger())
-
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/users", bytes.NewBufferString("{invalid"))
-	rec := httptest.NewRecorder()
-
-	h.Create(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
-	}
-}
-
-func TestUserHandler_Create_RepoError(t *testing.T) {
-	t.Parallel()
-
-	repo := &mockUserRepo{
-		createUserFn: func(_ context.Context, _ *model.User) error {
-			return errors.New("unique constraint violation")
-		},
-	}
-
-	h := NewUserHandler(repo, testutil.DiscardLogger())
-
-	body := `{"name":"Charlie","email":"charlie@example.com"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/users", bytes.NewBufferString(body))
-	rec := httptest.NewRecorder()
-
-	h.Create(rec, req)
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Tests: Update
-// ---------------------------------------------------------------------------
-
-func TestUserHandler_Update_Success(t *testing.T) {
-	t.Parallel()
-
-	repo := &mockUserRepo{
-		findUserByIDFn: func(_ context.Context, _ int64) (*model.User, error) {
-			return &model.User{ID: 1, Name: "Alice", Email: "alice@example.com"}, nil
-		},
-	}
-
-	h := NewUserHandler(repo, testutil.DiscardLogger())
-
-	body := `{"name":"Alice Updated"}`
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodPut, "/api/admin/users/1", bytes.NewBufferString(body)), "1")
-	rec := httptest.NewRecorder()
-
-	h.Update(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
-	}
-}
-
-func TestUserHandler_Update_NotFound(t *testing.T) {
-	t.Parallel()
-
-	repo := &mockUserRepo{
-		findUserByIDFn: func(_ context.Context, _ int64) (*model.User, error) {
-			return nil, errors.New("not found")
-		},
-	}
-
-	h := NewUserHandler(repo, testutil.DiscardLogger())
-
-	body := `{"name":"Updated"}`
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodPut, "/api/admin/users/999", bytes.NewBufferString(body)), "999")
-	rec := httptest.NewRecorder()
-
-	h.Update(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Tests: Delete
 // ---------------------------------------------------------------------------
 
@@ -468,6 +322,49 @@ func TestUserHandler_ToggleAdmin_SelfDemotion(t *testing.T) {
 	}
 }
 
+func TestUserHandler_ToggleAdmin_RepoError(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockUserRepo{
+		toggleAdminFn: func(_ context.Context, _ int64) error {
+			return errors.New("db error")
+		},
+	}
+
+	h := NewUserHandler(repo, testutil.DiscardLogger())
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/5/toggle-admin", http.NoBody), "5")
+	req = withAuthUser(req, &model.User{ID: 99})
+	rec := httptest.NewRecorder()
+
+	h.ToggleAdmin(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestUserHandler_ToggleAdmin_FindAfterToggleError(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockUserRepo{
+		toggleAdminFn: func(_ context.Context, _ int64) error { return nil },
+		findUserByIDFn: func(_ context.Context, _ int64) (*model.User, error) {
+			return nil, errors.New("not found")
+		},
+	}
+
+	h := NewUserHandler(repo, testutil.DiscardLogger())
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/5/toggle-admin", http.NoBody), "5")
+	req = withAuthUser(req, &model.User{ID: 99})
+	rec := httptest.NewRecorder()
+
+	h.ToggleAdmin(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Tests: newUserResponse
 // ---------------------------------------------------------------------------
@@ -553,118 +450,3 @@ func TestNewUserResponse(t *testing.T) {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// Tests: Update — additional error paths
-// ---------------------------------------------------------------------------
-
-func TestUserHandler_Update_InvalidJSON(t *testing.T) {
-	t.Parallel()
-
-	h := NewUserHandler(&mockUserRepo{}, testutil.DiscardLogger())
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodPut, "/api/admin/users/1", bytes.NewBufferString("{bad")), "1")
-	rec := httptest.NewRecorder()
-
-	h.Update(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
-	}
-}
-
-func TestUserHandler_Update_RepoUpdateError(t *testing.T) {
-	t.Parallel()
-
-	repo := &mockUserRepo{
-		findUserByIDFn: func(_ context.Context, id int64) (*model.User, error) {
-			return &model.User{ID: id, Name: "Alice"}, nil
-		},
-		updateUserFn: func(_ context.Context, _ *model.User) error {
-			return errors.New("constraint violation")
-		},
-	}
-
-	h := NewUserHandler(repo, testutil.DiscardLogger())
-	body := `{"name":"Updated"}`
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodPut, "/api/admin/users/1", bytes.NewBufferString(body)), "1")
-	rec := httptest.NewRecorder()
-
-	h.Update(rec, req)
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
-	}
-}
-
-func TestUserHandler_Update_ReFetchError(t *testing.T) {
-	t.Parallel()
-
-	callCount := 0
-	repo := &mockUserRepo{
-		findUserByIDFn: func(_ context.Context, id int64) (*model.User, error) {
-			callCount++
-			if callCount == 1 {
-				return &model.User{ID: id, Name: "Alice"}, nil
-			}
-			// Second call (re-fetch after update) fails.
-			return nil, errors.New("connection lost")
-		},
-	}
-
-	h := NewUserHandler(repo, testutil.DiscardLogger())
-	body := `{"name":"Updated"}`
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodPut, "/api/admin/users/1", bytes.NewBufferString(body)), "1")
-	rec := httptest.NewRecorder()
-
-	h.Update(rec, req)
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Tests: ToggleAdmin — additional error paths
-// ---------------------------------------------------------------------------
-
-func TestUserHandler_ToggleAdmin_RepoError(t *testing.T) {
-	t.Parallel()
-
-	repo := &mockUserRepo{
-		toggleAdminFn: func(_ context.Context, _ int64) error {
-			return errors.New("db error")
-		},
-	}
-
-	h := NewUserHandler(repo, testutil.DiscardLogger())
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/5/toggle-admin", http.NoBody), "5")
-	req = withAuthUser(req, &model.User{ID: 99})
-	rec := httptest.NewRecorder()
-
-	h.ToggleAdmin(rec, req)
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
-	}
-}
-
-func TestUserHandler_ToggleAdmin_FindAfterToggleError(t *testing.T) {
-	t.Parallel()
-
-	repo := &mockUserRepo{
-		toggleAdminFn: func(_ context.Context, _ int64) error { return nil },
-		findUserByIDFn: func(_ context.Context, _ int64) (*model.User, error) {
-			return nil, errors.New("not found")
-		},
-	}
-
-	h := NewUserHandler(repo, testutil.DiscardLogger())
-	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/5/toggle-admin", http.NoBody), "5")
-	req = withAuthUser(req, &model.User{ID: 99})
-	rec := httptest.NewRecorder()
-
-	h.ToggleAdmin(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
-	}
-}

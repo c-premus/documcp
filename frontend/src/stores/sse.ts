@@ -1,8 +1,17 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { SSEEvent } from '@/composables/useSSE'
 
-export type { SSEEvent }
+export interface SSEEvent {
+  readonly type: string
+  readonly job_kind: string
+  readonly job_id: number
+  readonly queue: string
+  readonly attempt?: number
+  readonly error?: string
+  readonly timestamp: string
+  readonly user_id?: number
+  readonly doc_uuid?: string
+}
 
 /**
  * Singleton SSE store — exactly one EventSource connection for the whole app.

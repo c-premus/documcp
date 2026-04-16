@@ -154,15 +154,18 @@ func gatherDocumentCount(t *testing.T, reg *prometheus.Registry) float64 {
 	return 0 // unreachable
 }
 
-// insertDocument inserts a minimal document row directly via SQL.
+// insertDocument inserts a minimal document row directly via SQL. Status is
+// set explicitly because the column default ("processing") predates migration
+// 000014's CHECK constraint and would violate it — production code always
+// sets status explicitly via DocumentService.Create, so the default is dead.
 func insertDocument(ctx context.Context, t *testing.T, seed, title string) {
 	t.Helper()
 
-	const q = `INSERT INTO documents (uuid, title, content, file_type, file_path, file_size, mime_type, is_public, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`
+	const q = `INSERT INTO documents (uuid, title, content, file_type, file_path, file_size, mime_type, is_public, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())`
 
 	if _, err := testPool.Exec(ctx, q,
-		testUUID(seed), title, "test content", "markdown", "/test/"+seed+".md", 12, "text/markdown", true,
+		testUUID(seed), title, "test content", "markdown", "/test/"+seed+".md", 12, "text/markdown", true, "indexed",
 	); err != nil {
 		t.Fatalf("inserting document %q: %v", seed, err)
 	}

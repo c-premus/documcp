@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useNotificationsStore } from '@/stores/notifications'
-import type { SSEEvent } from '@/composables/useSSE'
+import type { SSEEvent } from '@/stores/sse'
 
 function mockEvent(overrides: Partial<SSEEvent> = {}): SSEEvent {
   return {

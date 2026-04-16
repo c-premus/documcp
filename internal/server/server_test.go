@@ -574,7 +574,7 @@ func TestRegisterRoutes_AdminLoginRedirect(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func stubOAuthService() *oauth.Service {
-	return oauth.NewService(nil, config.OAuthConfig{}, "http://localhost", slog.Default())
+	return oauth.NewService(nil, config.OAuthConfig{}, "http://localhost", slog.Default(), nil)
 }
 
 func TestRegisterRoutes_MCPHandler(t *testing.T) {
@@ -586,9 +586,13 @@ func TestRegisterRoutes_MCPHandler(t *testing.T) {
 	})
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:      "test",
-		MCPHandler:   mcpHandler,
-		OAuthService: stubOAuthService(),
+		Version: "test",
+		Handlers: server.Handlers{
+			MCPHandler: mcpHandler,
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
 	// Without a valid bearer token, expect 401 (route is registered but auth required).
@@ -610,9 +614,13 @@ func TestRegisterRoutes_MCPHandlerSubpath(t *testing.T) {
 	})
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:      "test",
-		MCPHandler:   mcpHandler,
-		OAuthService: stubOAuthService(),
+		Version: "test",
+		Handlers: server.Handlers{
+			MCPHandler: mcpHandler,
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
 	// Without a valid bearer token, expect non-404 (route registered).
@@ -656,8 +664,10 @@ func TestRegisterRoutes_SPAHandler(t *testing.T) {
 	})
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:    "test",
-		SPAHandler: spaHandler,
+		Version: "test",
+		Handlers: server.Handlers{
+			SPAHandler: spaHandler,
+		},
 	})
 
 	// /admin should redirect to /admin/
@@ -696,8 +706,10 @@ func TestRegisterRoutes_SPAHandlerSubpath(t *testing.T) {
 	})
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:    "test",
-		SPAHandler: spaHandler,
+		Version: "test",
+		Handlers: server.Handlers{
+			SPAHandler: spaHandler,
+		},
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", http.NoBody)
@@ -722,8 +734,10 @@ func TestRegisterRoutes_RootAssetHandler(t *testing.T) {
 	})
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:          "test",
-		RootAssetHandler: assetHandler,
+		Version: "test",
+		Handlers: server.Handlers{
+			RootAssetHandler: assetHandler,
+		},
 	})
 
 	paths := []string{
@@ -940,9 +954,11 @@ func TestRegisterRoutes_MCPHandlerWithoutOAuth(t *testing.T) {
 	})
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:    "test",
-		MCPHandler: mcpHandler,
-		// OAuthService is nil -- MCP must NOT be registered (security: no unauthenticated access)
+		Version: "test",
+		// OAuthService is nil -- MCP must NOT be registered (security: no unauthenticated access),
+		Handlers: server.Handlers{
+			MCPHandler: mcpHandler,
+		},
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/documcp/", http.NoBody)
@@ -1025,9 +1041,13 @@ func TestRegisterRoutes_DocumentEndpoints(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:         "test",
-		OAuthService:    stubOAuthService(),
-		DocumentHandler: new(apihandler.DocumentHandler),
+		Version: "test",
+		Handlers: server.Handlers{
+			DocumentHandler: new(apihandler.DocumentHandler),
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
 	routes := []struct {
@@ -1058,8 +1078,10 @@ func TestRegisterRoutes_DocumentEndpointsNotRegisteredWhenNil(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:      "test",
-		OAuthService: stubOAuthService(),
+		Version: "test",
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/documents", http.NoBody)
@@ -1078,9 +1100,13 @@ func TestRegisterRoutes_SearchEndpoints(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:       "test",
-		OAuthService:  stubOAuthService(),
-		SearchHandler: new(apihandler.SearchHandler),
+		Version: "test",
+		Handlers: server.Handlers{
+			SearchHandler: new(apihandler.SearchHandler),
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
 	routes := []struct {
@@ -1105,9 +1131,13 @@ func TestRegisterRoutes_ZimEndpoints(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:      "test",
-		OAuthService: stubOAuthService(),
-		ZimHandler:   new(apihandler.ZimHandler),
+		Version: "test",
+		Handlers: server.Handlers{
+			ZimHandler: new(apihandler.ZimHandler),
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
 	routes := []struct {
@@ -1133,9 +1163,13 @@ func TestRegisterRoutes_GitTemplateEndpoints(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:            "test",
-		OAuthService:       stubOAuthService(),
-		GitTemplateHandler: new(apihandler.GitTemplateHandler),
+		Version: "test",
+		Handlers: server.Handlers{
+			GitTemplateHandler: new(apihandler.GitTemplateHandler),
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
 	routes := []struct {
@@ -1167,9 +1201,13 @@ func TestRegisterRoutes_ExternalServiceEndpoints(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:                "test",
-		OAuthService:           stubOAuthService(),
-		ExternalServiceHandler: new(apihandler.ExternalServiceHandler),
+		Version: "test",
+		Handlers: server.Handlers{
+			ExternalServiceHandler: new(apihandler.ExternalServiceHandler),
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
 	routes := []struct {
@@ -1197,19 +1235,24 @@ func TestRegisterRoutes_AdminUserEndpoints(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:      "test",
-		OAuthService: stubOAuthService(),
-		UserHandler:  new(apihandler.UserHandler),
+		Version: "test",
+		Handlers: server.Handlers{
+			UserHandler: new(apihandler.UserHandler),
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
+	// v0.21.0: DocuMCP is OIDC-only. POST /users and PUT /users/{id} were
+	// removed as part of closing the admin-takeover vector in security.md H1.
+	// Users are provisioned by the OIDC callback, not by admin-API calls.
 	routes := []struct {
 		method string
 		path   string
 	}{
 		{http.MethodGet, "/api/admin/users"},
-		{http.MethodPost, "/api/admin/users"},
 		{http.MethodGet, "/api/admin/users/1"},
-		{http.MethodPut, "/api/admin/users/1"},
 		{http.MethodDelete, "/api/admin/users/1"},
 		{http.MethodPost, "/api/admin/users/1/toggle-admin"},
 	}
@@ -1226,9 +1269,13 @@ func TestRegisterRoutes_AdminOAuthClientEndpoints(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:            "test",
-		OAuthService:       stubOAuthService(),
-		OAuthClientHandler: new(apihandler.OAuthClientHandler),
+		Version: "test",
+		Handlers: server.Handlers{
+			OAuthClientHandler: new(apihandler.OAuthClientHandler),
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
 	routes := []struct {
@@ -1253,9 +1300,13 @@ func TestRegisterRoutes_AdminQueueEndpoints(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:      "test",
-		OAuthService: stubOAuthService(),
-		QueueHandler: new(apihandler.QueueHandler),
+		Version: "test",
+		Handlers: server.Handlers{
+			QueueHandler: new(apihandler.QueueHandler),
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
 	routes := []struct {
@@ -1280,9 +1331,13 @@ func TestRegisterRoutes_AdminDashboardEndpoints(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:          "test",
-		OAuthService:     stubOAuthService(),
-		DashboardHandler: new(apihandler.DashboardHandler),
+		Version: "test",
+		Handlers: server.Handlers{
+			DashboardHandler: new(apihandler.DashboardHandler),
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
 	routeRegistered(t, srv, http.MethodGet, "/api/admin/dashboard/stats")
@@ -1292,9 +1347,13 @@ func TestRegisterRoutes_AdminSSEEndpoints(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:      "test",
-		OAuthService: stubOAuthService(),
-		SSEHandler:   new(apihandler.SSEHandler),
+		Version: "test",
+		Handlers: server.Handlers{
+			SSEHandler: new(apihandler.SSEHandler),
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
 	routeRegistered(t, srv, http.MethodGet, "/api/admin/events/stream")
@@ -1304,9 +1363,13 @@ func TestRegisterRoutes_AdminBulkPurge(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:         "test",
-		OAuthService:    stubOAuthService(),
-		DocumentHandler: new(apihandler.DocumentHandler),
+		Version: "test",
+		Handlers: server.Handlers{
+			DocumentHandler: new(apihandler.DocumentHandler),
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
 	routeRegistered(t, srv, http.MethodDelete, "/api/admin/documents/purge")
@@ -1316,9 +1379,13 @@ func TestRegisterRoutes_AdminExternalServiceReorder(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:                "test",
-		OAuthService:           stubOAuthService(),
-		ExternalServiceHandler: new(apihandler.ExternalServiceHandler),
+		Version: "test",
+		Handlers: server.Handlers{
+			ExternalServiceHandler: new(apihandler.ExternalServiceHandler),
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
 	routeRegistered(t, srv, http.MethodPut, "/api/admin/external-services/reorder")
@@ -1328,9 +1395,13 @@ func TestRegisterRoutes_AdminGitTemplateValidateURL(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:            "test",
-		OAuthService:       stubOAuthService(),
-		GitTemplateHandler: new(apihandler.GitTemplateHandler),
+		Version: "test",
+		Handlers: server.Handlers{
+			GitTemplateHandler: new(apihandler.GitTemplateHandler),
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+		},
 	})
 
 	routeRegistered(t, srv, http.MethodPost, "/api/admin/git-templates/validate-url")
@@ -1340,8 +1411,10 @@ func TestRegisterRoutes_OAuthEndpoints(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:      "test",
-		OAuthHandler: new(oauthhandler.Handler),
+		Version: "test",
+		Auth: server.Auth{
+			OAuthHandler: new(oauthhandler.Handler),
+		},
 	})
 
 	routes := []struct {
@@ -1374,8 +1447,10 @@ func TestRegisterRoutes_OIDCEndpoints(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:     "test",
-		OIDCHandler: new(oidc.Handler),
+		Version: "test",
+		Auth: server.Auth{
+			OIDCHandler: new(oidc.Handler),
+		},
 	})
 
 	routes := []struct {
@@ -1399,8 +1474,10 @@ func TestRegisterRoutes_AuthMeEndpoint(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:     "test",
-		AuthHandler: new(apihandler.AuthHandler),
+		Version: "test",
+		Handlers: server.Handlers{
+			AuthHandler: new(apihandler.AuthHandler),
+		},
 	})
 
 	routeRegistered(t, srv, http.MethodGet, "/api/auth/me")
@@ -1487,27 +1564,31 @@ func TestRegisterRoutes_AllHandlers(t *testing.T) {
 
 	// Verify that RegisterRoutes does not panic when all handler slots are populated.
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:                "test",
-		OAuthService:           stubOAuthService(),
-		OAuthHandler:           new(oauthhandler.Handler),
-		OIDCHandler:            new(oidc.Handler),
-		DocumentHandler:        new(apihandler.DocumentHandler),
-		SearchHandler:          new(apihandler.SearchHandler),
-		ZimHandler:             new(apihandler.ZimHandler),
-		GitTemplateHandler:     new(apihandler.GitTemplateHandler),
-		ExternalServiceHandler: new(apihandler.ExternalServiceHandler),
-		UserHandler:            new(apihandler.UserHandler),
-		OAuthClientHandler:     new(apihandler.OAuthClientHandler),
-		QueueHandler:           new(apihandler.QueueHandler),
-		DashboardHandler:       new(apihandler.DashboardHandler),
-		SSEHandler:             new(apihandler.SSEHandler),
-		AuthHandler:            new(apihandler.AuthHandler),
-		SPAHandler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}),
-		MCPHandler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}),
+		Version: "test",
+		Handlers: server.Handlers{
+			DocumentHandler:        new(apihandler.DocumentHandler),
+			SearchHandler:          new(apihandler.SearchHandler),
+			ZimHandler:             new(apihandler.ZimHandler),
+			GitTemplateHandler:     new(apihandler.GitTemplateHandler),
+			ExternalServiceHandler: new(apihandler.ExternalServiceHandler),
+			UserHandler:            new(apihandler.UserHandler),
+			OAuthClientHandler:     new(apihandler.OAuthClientHandler),
+			QueueHandler:           new(apihandler.QueueHandler),
+			DashboardHandler:       new(apihandler.DashboardHandler),
+			SSEHandler:             new(apihandler.SSEHandler),
+			AuthHandler:            new(apihandler.AuthHandler),
+			SPAHandler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}),
+			MCPHandler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}),
+		},
+		Auth: server.Auth{
+			OAuthService: stubOAuthService(),
+			OAuthHandler: new(oauthhandler.Handler),
+			OIDCHandler:  new(oidc.Handler),
+		},
 	})
 
 	// Smoke test: health should still work.
@@ -1570,9 +1651,11 @@ func TestRegisterRoutes_MetricsProtectedByToken(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServerWithDeps(t, server.Deps{
-		Version:          "test",
-		Metrics:          sharedMetrics(),
-		InternalAPIToken: "secret-token",
+		Version: "test",
+		Metrics: sharedMetrics(),
+		Tuning: server.Tuning{
+			InternalAPIToken: "secret-token",
+		},
 	})
 
 	// Without token: should return 401

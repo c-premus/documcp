@@ -10,13 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/c-premus/documcp/internal/auth/oauth"
 	"github.com/c-premus/documcp/internal/model"
 )
 
 func newAudienceTokenAndRepo(t *testing.T, resource sql.NullString) (string, *mockOAuthRepo) {
 	t.Helper()
-	pair, err := oauth.GenerateToken()
+	pair, err := newTestOAuthService(nil).GenerateToken()
 	if err != nil {
 		t.Fatalf("GenerateToken: %v", err)
 	}

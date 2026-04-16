@@ -180,7 +180,7 @@ func (s *Searcher) FederatedSearch(ctx context.Context, params FederatedSearchPa
 	}
 
 	sql := fmt.Sprintf(`
-		SELECT uuid, title, description, source, rank, extra
+		SELECT uuid, title, description, source, rank, extra, COUNT(*) OVER () AS total
 		FROM (%s) federated
 		ORDER BY rank DESC
 		LIMIT $%d OFFSET $%d`,
@@ -196,10 +196,11 @@ func (s *Searcher) FederatedSearch(ctx context.Context, params FederatedSearchPa
 	defer rows.Close()
 
 	var hits []SearchResult
+	var total int64
 	for rows.Next() {
 		var r SearchResult
 		var extra map[string]any
-		if err := rows.Scan(&r.UUID, &r.Title, &r.Description, &r.Source, &r.Score, &extra); err != nil {
+		if err := rows.Scan(&r.UUID, &r.Title, &r.Description, &r.Source, &r.Score, &extra, &total); err != nil {
 			return nil, fmt.Errorf("scanning federated result: %w", err)
 		}
 		r.Extra = extra
@@ -220,7 +221,7 @@ func (s *Searcher) FederatedSearch(ctx context.Context, params FederatedSearchPa
 
 	return &FederatedSearchResponse{
 		Hits:             hits,
-		EstimatedTotal:   int64(len(hits)),
+		EstimatedTotal:   total,
 		ProcessingTimeMs: elapsed.Milliseconds(),
 	}, nil
 }
@@ -230,43 +231,49 @@ func (s *Searcher) searchDocuments(ctx context.Context, query string, params Sea
 	where, args, argIdx := s.buildDocumentFilters(params, 2) // $1 = query
 
 	sql := fmt.Sprintf(`
-		SELECT d.uuid, d.title, COALESCE(d.description, '') AS description,
+		SELECT d.id, d.uuid, d.title, COALESCE(d.description, '') AS description,
 			   ts_rank_cd(d.search_vector, websearch_to_tsquery('%s', $1)) AS rank,
 			   jsonb_build_object(
 				   'file_type', d.file_type,
 				   'word_count', COALESCE(d.word_count, 0),
-				   'tags', COALESCE((SELECT jsonb_agg(dt.tag) FROM document_tags dt WHERE dt.document_id = d.id), '[]'::jsonb),
 				   'content', COALESCE(d.content, ''),
 				   'is_public', d.is_public,
 				   'status', d.status,
 				   'created_at', COALESCE(to_char(d.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), ''),
 				   'updated_at', COALESCE(to_char(d.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')
-			   ) AS extra
+			   ) AS extra,
+			   COUNT(*) OVER () AS total
 		FROM documents d
 		WHERE d.search_vector @@ websearch_to_tsquery('%s', $1)
 		  AND d.deleted_at IS NULL
 		  %s
 		ORDER BY rank DESC
-		LIMIT %d OFFSET %d`,
-		tsConfig, tsConfig, where, limit, params.Offset,
+		LIMIT $%d OFFSET $%d`,
+		tsConfig, tsConfig, where, argIdx, argIdx+1,
 	)
 
 	allArgs := append([]any{query}, args...)
+	allArgs = append(allArgs, limit, params.Offset)
 	rows, err := s.db.Query(ctx, sql, allArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("searching documents: %w", err)
 	}
-	hits, err := scanSearchResults(rows, "document")
+	hits, ids, total, err := scanDocumentResults(rows)
 	if err != nil {
 		return nil, err
 	}
 
 	// Fallback to trigram similarity if FTS returned nothing.
 	if len(hits) == 0 && params.Query != "" {
-		hits, err = s.trigramFallbackDocuments(ctx, params, limit, argIdx)
+		hits, ids, err = s.trigramFallbackDocuments(ctx, params, limit)
 		if err != nil {
 			s.logger.Warn("trigram fallback failed", "error", err)
 		}
+		total = int64(len(hits))
+	}
+
+	if err := s.attachTags(ctx, hits, ids); err != nil {
+		s.logger.Warn("fetching tags for search hits", "error", err)
 	}
 
 	if hits == nil {
@@ -275,7 +282,7 @@ func (s *Searcher) searchDocuments(ctx context.Context, query string, params Sea
 
 	return &SearchResponse{
 		Hits:           hits,
-		EstimatedTotal: int64(len(hits)),
+		EstimatedTotal: total,
 	}, nil
 }
 
@@ -312,21 +319,23 @@ func (s *Searcher) searchZimArchives(ctx context.Context, query string, params S
 				   'category', COALESCE(za.category, ''),
 				   'creator', COALESCE(za.creator, ''),
 				   'article_count', za.article_count
-			   ) AS extra
+			   ) AS extra,
+			   COUNT(*) OVER () AS total
 		FROM zim_archives za
 		WHERE za.search_vector @@ websearch_to_tsquery('%s', $1)
 		  AND za.is_enabled = true
 		  %s
 		ORDER BY rank DESC
-		LIMIT %d OFFSET %d`,
-		tsConfig, tsConfig, where, limit, params.Offset,
+		LIMIT $%d OFFSET $%d`,
+		tsConfig, tsConfig, where, argIdx, argIdx+1,
 	)
+	args = append(args, limit, params.Offset)
 
 	rows, err := s.db.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("searching zim archives: %w", err)
 	}
-	hits, err := scanSearchResults(rows, "zim_archive")
+	hits, total, err := scanResultsWithTotal(rows, "zim_archive")
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +345,7 @@ func (s *Searcher) searchZimArchives(ctx context.Context, query string, params S
 
 	return &SearchResponse{
 		Hits:           hits,
-		EstimatedTotal: int64(len(hits)),
+		EstimatedTotal: total,
 	}, nil
 }
 
@@ -352,7 +361,6 @@ func (s *Searcher) searchGitTemplates(ctx context.Context, query string, params 
 		args = append(args, params.Category)
 		argIdx++
 	}
-	_ = argIdx
 
 	where := ""
 	if len(whereClauses) > 0 {
@@ -369,22 +377,24 @@ func (s *Searcher) searchGitTemplates(ctx context.Context, query string, params 
 				   'file_count', gt.file_count,
 				   'status', gt.status,
 				   'is_public', gt.is_public
-			   ) AS extra
+			   ) AS extra,
+			   COUNT(*) OVER () AS total
 		FROM git_templates gt
 		WHERE gt.search_vector @@ websearch_to_tsquery('%s', $1)
 		  AND gt.deleted_at IS NULL
 		  AND gt.is_enabled = true
 		  %s
 		ORDER BY rank DESC
-		LIMIT %d OFFSET %d`,
-		tsConfig, tsConfig, where, limit, params.Offset,
+		LIMIT $%d OFFSET $%d`,
+		tsConfig, tsConfig, where, argIdx, argIdx+1,
 	)
+	args = append(args, limit, params.Offset)
 
 	rows, err := s.db.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("searching git templates: %w", err)
 	}
-	hits, err := scanSearchResults(rows, "git_template")
+	hits, total, err := scanResultsWithTotal(rows, "git_template")
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +404,7 @@ func (s *Searcher) searchGitTemplates(ctx context.Context, query string, params 
 
 	return &SearchResponse{
 		Hits:           hits,
-		EstimatedTotal: int64(len(hits)),
+		EstimatedTotal: total,
 	}, nil
 }
 
@@ -424,11 +434,11 @@ func (s *Searcher) SearchGitTemplateFiles(ctx context.Context, query string, lim
 		  AND gt.deleted_at IS NULL
 		  AND gt.is_enabled = true
 		ORDER BY rank DESC
-		LIMIT %d`,
-		tsConfig, tsConfig, limit,
+		LIMIT $2`,
+		tsConfig, tsConfig,
 	)
 
-	rows, err := s.db.Query(ctx, sql, expanded)
+	rows, err := s.db.Query(ctx, sql, expanded, limit)
 	if err != nil {
 		return nil, fmt.Errorf("searching git template files: %w", err)
 	}
@@ -483,35 +493,38 @@ func (s *Searcher) buildDocumentFilters(params SearchParams, startIdx int) (wher
 }
 
 // trigramFallbackDocuments uses pg_trgm similarity for fuzzy matching on titles.
-func (s *Searcher) trigramFallbackDocuments(ctx context.Context, params SearchParams, limit int64, _ int) ([]SearchResult, error) {
-	where, args, _ := s.buildDocumentFilters(params, 2)
+// Returns hits and their document IDs for downstream tag batching.
+func (s *Searcher) trigramFallbackDocuments(ctx context.Context, params SearchParams, limit int64) ([]SearchResult, []int64, error) {
+	where, args, argIdx := s.buildDocumentFilters(params, 2)
 
 	sql := fmt.Sprintf(`
-		SELECT d.uuid, d.title, COALESCE(d.description, '') AS description,
+		SELECT d.id, d.uuid, d.title, COALESCE(d.description, '') AS description,
 			   similarity(d.title, $1) AS rank,
 			   jsonb_build_object(
 				   'file_type', d.file_type,
 				   'word_count', COALESCE(d.word_count, 0),
-				   'tags', COALESCE((SELECT jsonb_agg(dt.tag) FROM document_tags dt WHERE dt.document_id = d.id), '[]'::jsonb),
 				   'content', COALESCE(d.content, ''),
 				   'is_public', d.is_public,
 				   'status', d.status
-			   ) AS extra
+			   ) AS extra,
+			   0::bigint AS total
 		FROM documents d
 		WHERE d.title %% $1
 		  AND d.deleted_at IS NULL
 		  %s
 		ORDER BY rank DESC
-		LIMIT %d`,
-		where, limit,
+		LIMIT $%d`,
+		where, argIdx,
 	)
 
 	allArgs := append([]any{params.Query}, args...)
+	allArgs = append(allArgs, limit)
 	rows, err := s.db.Query(ctx, sql, allArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("trigram search: %w", err)
+		return nil, nil, fmt.Errorf("trigram search: %w", err)
 	}
-	return scanSearchResults(rows, "document")
+	hits, ids, _, err := scanDocumentResults(rows)
+	return hits, ids, err
 }
 
 // documentUnionClause builds the documents branch of a UNION ALL federated query.
@@ -588,22 +601,87 @@ func gitTemplateUnionClause() string {
 	)
 }
 
-// scanSearchResults scans rows into SearchResult slices.
-func scanSearchResults(rows pgx.Rows, source string) ([]SearchResult, error) {
+// scanResultsWithTotal scans rows carrying uuid, title, description, rank,
+// extra, and a windowed total count. Used by single-index search queries.
+func scanResultsWithTotal(rows pgx.Rows, source string) ([]SearchResult, int64, error) {
 	defer rows.Close()
 
 	var results []SearchResult
+	var total int64
 	for rows.Next() {
 		var r SearchResult
 		var extra map[string]any
-		if err := rows.Scan(&r.UUID, &r.Title, &r.Description, &r.Score, &extra); err != nil {
-			return nil, fmt.Errorf("scanning %s result: %w", source, err)
+		if err := rows.Scan(&r.UUID, &r.Title, &r.Description, &r.Score, &extra, &total); err != nil {
+			return nil, 0, fmt.Errorf("scanning %s result: %w", source, err)
 		}
 		r.Source = source
 		r.Extra = extra
 		results = append(results, r)
 	}
-	return results, rows.Err()
+	return results, total, rows.Err()
+}
+
+// scanDocumentResults scans the documents FTS/trigram projection, which carries
+// the primary key id as its first column for post-scan tag batching.
+func scanDocumentResults(rows pgx.Rows) (hits []SearchResult, ids []int64, total int64, err error) {
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int64
+		var r SearchResult
+		var extra map[string]any
+		if scanErr := rows.Scan(&id, &r.UUID, &r.Title, &r.Description, &r.Score, &extra, &total); scanErr != nil {
+			return nil, nil, 0, fmt.Errorf("scanning document result: %w", scanErr)
+		}
+		r.Source = "document"
+		r.Extra = extra
+		hits = append(hits, r)
+		ids = append(ids, id)
+	}
+	return hits, ids, total, rows.Err()
+}
+
+// attachTags batch-loads tags for the given document IDs and writes them back
+// into each SearchResult's Extra["tags"] as []any. Replaces a per-row
+// correlated subquery that rebuilt the array during FTS scan.
+func (s *Searcher) attachTags(ctx context.Context, hits []SearchResult, ids []int64) error {
+	for i := range hits {
+		if hits[i].Extra == nil {
+			hits[i].Extra = map[string]any{}
+		}
+		hits[i].Extra["tags"] = []any{}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+
+	rows, err := s.db.Query(ctx,
+		`SELECT document_id, tag FROM document_tags WHERE document_id = ANY($1) ORDER BY document_id, tag`,
+		ids)
+	if err != nil {
+		return fmt.Errorf("batch-fetching document tags: %w", err)
+	}
+	defer rows.Close()
+
+	tagsByID := make(map[int64][]any, len(ids))
+	for rows.Next() {
+		var docID int64
+		var tag string
+		if err := rows.Scan(&docID, &tag); err != nil {
+			return fmt.Errorf("scanning document tag: %w", err)
+		}
+		tagsByID[docID] = append(tagsByID[docID], tag)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterating document tags: %w", err)
+	}
+
+	for i, id := range ids {
+		if tags, ok := tagsByID[id]; ok {
+			hits[i].Extra["tags"] = tags
+		}
+	}
+	return nil
 }
 
 // ExtraString extracts a string value from a SearchResult.Extra map.

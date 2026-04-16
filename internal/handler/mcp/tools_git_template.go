@@ -398,7 +398,7 @@ func (h *Handler) handleGetTemplateStructure(
 		return nil, getTemplateStructureResponse{}, errors.New("mcp:read scope required")
 	}
 
-	structure, err := h.gitTemplateService.GetStructure(ctx, input.UUID)
+	structure, err := h.gitTemplateService.Structure(ctx, input.UUID)
 	if err != nil {
 		if errors.Is(err, service.ErrGitTemplateNotFound) {
 			return nil, getTemplateStructureResponse{
@@ -441,12 +441,11 @@ func (h *Handler) handleGetTemplateFile(
 		return nil, getTemplateFileResponse{}, errors.New("mcp:read scope required")
 	}
 
-	variables, err := gitclient.ParseVariablesJSON(input.Variables)
-	if err != nil {
-		return nil, getTemplateFileResponse{}, fmt.Errorf("parsing variables: %w", err)
+	if err := gitclient.ValidateVariables(input.Variables); err != nil {
+		return nil, getTemplateFileResponse{}, fmt.Errorf("validating variables: %w", err)
 	}
 
-	result, err := h.gitTemplateService.GetFile(ctx, input.UUID, input.Path, variables)
+	result, err := h.gitTemplateService.File(ctx, input.UUID, input.Path, input.Variables)
 	if err != nil {
 		if errors.Is(err, service.ErrGitTemplateNotFound) {
 			return nil, getTemplateFileResponse{
@@ -494,12 +493,11 @@ func (h *Handler) handleGetDeploymentGuide(
 		return nil, getDeploymentGuideResponse{}, errors.New("mcp:read scope required")
 	}
 
-	variables, err := gitclient.ParseVariablesJSON(input.Variables)
-	if err != nil {
-		return nil, getDeploymentGuideResponse{}, fmt.Errorf("parsing variables: %w", err)
+	if err := gitclient.ValidateVariables(input.Variables); err != nil {
+		return nil, getDeploymentGuideResponse{}, fmt.Errorf("validating variables: %w", err)
 	}
 
-	result, err := h.gitTemplateService.GetDeploymentGuide(ctx, input.UUID, variables)
+	result, err := h.gitTemplateService.DeploymentGuide(ctx, input.UUID, input.Variables)
 	if err != nil {
 		if errors.Is(err, service.ErrGitTemplateNotFound) {
 			return nil, getDeploymentGuideResponse{
@@ -547,12 +545,11 @@ func (h *Handler) handleDownloadTemplate(
 		return nil, downloadTemplateResponse{}, errors.New("mcp:read scope required")
 	}
 
-	variables, err := gitclient.ParseVariablesJSON(input.Variables)
-	if err != nil {
-		return nil, downloadTemplateResponse{}, fmt.Errorf("parsing variables: %w", err)
+	if err := gitclient.ValidateVariables(input.Variables); err != nil {
+		return nil, downloadTemplateResponse{}, fmt.Errorf("validating variables: %w", err)
 	}
 
-	result, err := h.gitTemplateService.BuildArchive(ctx, input.UUID, input.Format, variables)
+	result, err := h.gitTemplateService.BuildArchive(ctx, input.UUID, input.Format, input.Variables)
 	if err != nil {
 		if errors.Is(err, service.ErrGitTemplateNotFound) {
 			return nil, downloadTemplateResponse{

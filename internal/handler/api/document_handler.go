@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -23,28 +22,32 @@ import (
 	"github.com/c-premus/documcp/internal/storage"
 )
 
-// documentPipeline defines the pipeline methods used by DocumentHandler.
+// documentPipeline is the single dependency used by DocumentHandler. The
+// production implementation (*service.DocumentPipeline) embeds
+// *service.DocumentService, so read methods (List, Restore, Purge, etc.)
+// come from the service layer while write-with-extraction methods (Upload,
+// ReplaceContent) come from the pipeline.
 type documentPipeline interface {
-	FindByUUID(ctx context.Context, uuid string) (*model.Document, error)
+	// Pipeline orchestration (file handling + extraction).
 	Upload(ctx context.Context, params service.UploadDocumentParams) (*model.Document, error)
 	ReplaceContent(ctx context.Context, docUUID string, params service.ReplaceContentParams) (*model.Document, error)
 	Update(ctx context.Context, docUUID string, params service.UpdateDocumentParams) (*model.Document, error)
 	Delete(ctx context.Context, docUUID string) error
 	ExtractorRegistry() *extractor.Registry
-}
 
-// documentRepo defines the repository methods used by DocumentHandler.
-type documentRepo interface {
-	List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error)
+	// Document reads and tag lookups.
 	FindByUUID(ctx context.Context, uuid string) (*model.Document, error)
 	FindByUUIDIncludingDeleted(ctx context.Context, uuid string) (*model.Document, error)
+	List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error)
 	TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
 	TagsForDocuments(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error)
-	Restore(ctx context.Context, id int64) error
-	PurgeSingle(ctx context.Context, id int64) (string, error)
+	ListDistinctTags(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error)
+
+	// Trash operations.
+	Restore(ctx context.Context, docUUID string) (*model.Document, error)
+	PurgeSingle(ctx context.Context, docUUID string) (string, error)
 	PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
 	ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
-	ListDistinctTags(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error)
 }
 
 const maxUploadBodySize = 50*1024*1024 + 1024 // 50 MiB + metadata overhead
@@ -52,7 +55,6 @@ const maxUploadBodySize = 50*1024*1024 + 1024 // 50 MiB + metadata overhead
 // DocumentHandler handles REST API endpoints for documents.
 type DocumentHandler struct {
 	pipeline      documentPipeline
-	repo          documentRepo
 	blob          storage.Blob
 	workerTempDir string
 	logger        *slog.Logger
@@ -63,14 +65,12 @@ type DocumentHandler struct {
 // used by the Analyze endpoint to stage uploaded files for extraction.
 func NewDocumentHandler(
 	pipeline documentPipeline,
-	repo documentRepo,
 	blob storage.Blob,
 	workerTempDir string,
 	logger *slog.Logger,
 ) *DocumentHandler {
 	return &DocumentHandler{
 		pipeline:      pipeline,
-		repo:          repo,
 		blob:          blob,
 		workerTempDir: workerTempDir,
 		logger:        logger,
@@ -117,7 +117,7 @@ func (h *DocumentHandler) List(w http.ResponseWriter, r *http.Request) {
 		params.OwnerOrPublic = &user.ID
 	}
 
-	result, err := h.repo.List(r.Context(), params)
+	result, err := h.pipeline.List(r.Context(), params)
 	if err != nil {
 		h.logger.Error("listing documents", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to list documents")
@@ -129,7 +129,7 @@ func (h *DocumentHandler) List(w http.ResponseWriter, r *http.Request) {
 	for i := range result.Documents {
 		docIDs[i] = result.Documents[i].ID
 	}
-	tagsByDoc, tagsErr := h.repo.TagsForDocuments(r.Context(), docIDs)
+	tagsByDoc, tagsErr := h.pipeline.TagsForDocuments(r.Context(), docIDs)
 	if tagsErr != nil {
 		h.logger.Warn("batch-loading tags", "error", tagsErr)
 		tagsByDoc = map[int64][]model.DocumentTag{}
@@ -166,10 +166,13 @@ func (h *DocumentHandler) Show(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tags, _ := h.repo.TagsForDocument(r.Context(), doc.ID)
-	includeContent := r.URL.Query().Get("include_content") == "true"
+	tags, _ := h.pipeline.TagsForDocument(r.Context(), doc.ID)
+	resp := toDocumentResponse(doc, tags)
+	if r.URL.Query().Get("include_content") == "true" {
+		resp = toDocumentResponseWithContent(doc, tags)
+	}
 	jsonResponse(w, http.StatusOK, map[string]any{
-		"data": toDocumentResponse(doc, tags, includeContent),
+		"data": resp,
 	})
 }
 
@@ -239,7 +242,7 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tags2, _ := h.repo.TagsForDocument(r.Context(), doc.ID)
+	tags2, _ := h.pipeline.TagsForDocument(r.Context(), doc.ID)
 	jsonResponse(w, http.StatusCreated, map[string]any{
 		"data":    toDocumentResponse(doc, tags2),
 		"message": "Document uploaded and queued for processing.",
@@ -298,7 +301,7 @@ func (h *DocumentHandler) ReplaceContent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	tags, _ := h.repo.TagsForDocument(r.Context(), doc.ID)
+	tags, _ := h.pipeline.TagsForDocument(r.Context(), doc.ID)
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"data":    toDocumentResponse(doc, tags),
 		"message": "Document content replaced and queued for processing.",
@@ -315,7 +318,7 @@ func (h *DocumentHandler) checkOwnership(r *http.Request, docUUID string) bool {
 	if user.IsAdmin {
 		return true
 	}
-	doc, err := h.repo.FindByUUIDIncludingDeleted(r.Context(), docUUID)
+	doc, err := h.pipeline.FindByUUIDIncludingDeleted(r.Context(), docUUID)
 	if err != nil {
 		return false
 	}
@@ -362,7 +365,7 @@ func (h *DocumentHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tags, _ := h.repo.TagsForDocument(r.Context(), doc.ID)
+	tags, _ := h.pipeline.TagsForDocument(r.Context(), doc.ID)
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"data":    toDocumentResponse(doc, tags),
 		"message": "Document updated successfully.",
@@ -394,9 +397,10 @@ func (h *DocumentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // toDocumentResponse converts a model.Document and its tags to a response DTO.
-// Pass includeContent=true to populate the Content field (omitted by default — can be large).
-func toDocumentResponse(doc *model.Document, tags []model.DocumentTag, includeContent ...bool) documentResponse {
-	resp := documentResponse{
+// The Content field is always omitted — it can be large. Use
+// toDocumentResponseWithContent to include it.
+func toDocumentResponse(doc *model.Document, tags []model.DocumentTag) documentResponse {
+	return documentResponse{
 		UUID:        doc.UUID,
 		Title:       doc.Title,
 		Description: nullStringValue(doc.Description),
@@ -413,11 +417,15 @@ func toDocumentResponse(doc *model.Document, tags []model.DocumentTag, includeCo
 		UpdatedAt:   dto.FormatNullTime(doc.UpdatedAt),
 		ProcessedAt: dto.FormatNullTime(doc.ProcessedAt),
 	}
+}
 
-	if len(includeContent) > 0 && includeContent[0] && doc.Content.Valid {
+// toDocumentResponseWithContent is toDocumentResponse with the Content field
+// populated when the document has body content available.
+func toDocumentResponseWithContent(doc *model.Document, tags []model.DocumentTag) documentResponse {
+	resp := toDocumentResponse(doc, tags)
+	if doc.Content.Valid {
 		resp.Content = doc.Content.String
 	}
-
 	return resp
 }
 
@@ -425,9 +433,9 @@ func toDocumentResponse(doc *model.Document, tags []model.DocumentTag, includeCo
 func (h *DocumentHandler) Download(w http.ResponseWriter, r *http.Request) {
 	docUUID := chi.URLParam(r, "uuid")
 
-	doc, err := h.repo.FindByUUID(r.Context(), docUUID)
+	doc, err := h.pipeline.FindByUUID(r.Context(), docUUID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, service.ErrNotFound) {
 			errorResponse(w, http.StatusNotFound, "document not found")
 			return
 		}
@@ -494,7 +502,7 @@ func (h *DocumentHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 		tagUserID = &user.ID
 	}
 
-	tags, err := h.repo.ListDistinctTags(r.Context(), q, limit, tagUserID)
+	tags, err := h.pipeline.ListDistinctTags(r.Context(), q, limit, tagUserID)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "failed to list tags", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to list tags")

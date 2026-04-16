@@ -623,29 +623,40 @@ func TestExternalServiceRepository_ReorderPriorities(t *testing.T) {
 		require.NoError(t, repo.Create(ctx, svc))
 	}
 
-	// Reorder: svc3 first, svc1 second, svc2 third.
-	err := repo.ReorderPriorities(ctx, []int64{svc3.ID, svc1.ID, svc2.ID})
+	// Reorder: svc3 first (priority 0), svc1 second (1), svc2 third (2).
+	err := repo.ReorderPriorities(ctx, []ReorderEntry{
+		{UUID: svc3.UUID, Priority: 0},
+		{UUID: svc1.UUID, Priority: 1},
+		{UUID: svc2.UUID, Priority: 2},
+	})
 	require.NoError(t, err)
 
 	// Verify priorities via direct SQL.
 	var priority int
 	err = testPool.QueryRow(ctx,
-		`SELECT priority FROM external_services WHERE id = $1`, svc3.ID).Scan(&priority)
+		`SELECT priority FROM external_services WHERE uuid = $1`, svc3.UUID).Scan(&priority)
 	require.NoError(t, err)
 	assert.Equal(t, 0, priority, "svc3 should have priority 0")
 
 	err = testPool.QueryRow(ctx,
-		`SELECT priority FROM external_services WHERE id = $1`, svc1.ID).Scan(&priority)
+		`SELECT priority FROM external_services WHERE uuid = $1`, svc1.UUID).Scan(&priority)
 	require.NoError(t, err)
 	assert.Equal(t, 1, priority, "svc1 should have priority 1")
 
 	err = testPool.QueryRow(ctx,
-		`SELECT priority FROM external_services WHERE id = $1`, svc2.ID).Scan(&priority)
+		`SELECT priority FROM external_services WHERE uuid = $1`, svc2.UUID).Scan(&priority)
 	require.NoError(t, err)
 	assert.Equal(t, 2, priority, "svc2 should have priority 2")
 
 	t.Run("empty slice", func(t *testing.T) {
-		err := repo.ReorderPriorities(ctx, []int64{})
+		err := repo.ReorderPriorities(ctx, []ReorderEntry{})
 		require.NoError(t, err)
+	})
+
+	t.Run("unknown UUID returns error", func(t *testing.T) {
+		err := repo.ReorderPriorities(ctx, []ReorderEntry{
+			{UUID: "00000000-0000-0000-0000-000000000000", Priority: 0},
+		})
+		require.ErrorIs(t, err, ErrReorderServiceNotFound)
 	})
 }

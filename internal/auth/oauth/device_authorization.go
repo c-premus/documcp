@@ -46,7 +46,7 @@ type DeviceAuthorizationResult struct {
 // GenerateDeviceCode creates a new device authorization code (RFC 8628).
 func (s *Service) GenerateDeviceCode(ctx context.Context, params DeviceAuthorizationParams) (*DeviceAuthorizationResult, error) {
 	// Look up the client
-	client, err := s.repo.FindClientByClientID(ctx, params.ClientID)
+	client, err := s.clients.FindClientByClientID(ctx, params.ClientID)
 	if err != nil {
 		return nil, ErrInvalidClient
 	}
@@ -72,7 +72,7 @@ func (s *Service) GenerateDeviceCode(ctx context.Context, params DeviceAuthoriza
 	}
 
 	// Generate device code token
-	token, err := GenerateToken()
+	token, err := s.GenerateToken()
 	if err != nil {
 		return nil, fmt.Errorf("generating device code: %w", err)
 	}
@@ -101,7 +101,7 @@ func (s *Service) GenerateDeviceCode(ctx context.Context, params DeviceAuthoriza
 		ExpiresAt:               time.Now().Add(s.config.DeviceCodeLifetime),
 	}
 
-	if err := s.repo.CreateDeviceCode(ctx, dc); err != nil {
+	if err := s.deviceCodes.CreateDeviceCode(ctx, dc); err != nil {
 		return nil, fmt.Errorf("persisting device code: %w", err)
 	}
 
@@ -121,7 +121,7 @@ func (s *Service) GenerateDeviceCode(ctx context.Context, params DeviceAuthoriza
 // When approved, the device code scope is narrowed to the intersection of the
 // requested scope and the approving user's entitlements (admin vs regular).
 func (s *Service) AuthorizeDeviceCode(ctx context.Context, userCode string, userID int64, approved bool) error {
-	dc, err := s.repo.FindDeviceCodeByUserCode(ctx, userCode)
+	dc, err := s.deviceCodes.FindDeviceCodeByUserCode(ctx, userCode)
 	if err != nil {
 		return errors.New("invalid or expired user code")
 	}
@@ -135,33 +135,33 @@ func (s *Service) AuthorizeDeviceCode(ctx context.Context, userCode string, user
 	}
 
 	if !approved {
-		return s.repo.UpdateDeviceCodeStatus(ctx, dc.ID, model.DeviceCodeStatusDenied, &userID)
+		return s.deviceCodes.UpdateDeviceCodeStatus(ctx, dc.ID, model.DeviceCodeStatusDenied, &userID)
 	}
 
-	// Narrow scope to the approving user's entitlements.
+	// Narrow scope to what the approving user may grant to a third-party
+	// OAuth client (security.md H2: excludes `admin` and `services:write`).
+	// The grant is recorded here — at the approval boundary — not at consent
+	// render time (security.md H3).
 	scope := ""
 	if dc.Scope.Valid {
 		scope = dc.Scope.String
 	}
 	if scope != "" {
-		user, err := s.repo.FindUserByID(ctx, userID)
+		user, err := s.users.FindUserByID(ctx, userID)
 		if err != nil {
 			return fmt.Errorf("looking up approving user: %w", err)
 		}
-		// Record a time-bounded scope grant (replaces permanent scope widening).
-		userEntitlements := authscope.UserScopes(user.IsAdmin)
-		if entitled := authscope.Intersect(scope, userEntitlements); entitled != "" {
-			if grantErr := s.GrantClientScope(ctx, dc.ClientID, entitled, userID); grantErr != nil {
-				s.logger.Error("granting client scope for device flow", "error", grantErr)
-			}
-		}
-		scope = authscope.Intersect(scope, userEntitlements)
+		userCeiling := authscope.ThirdPartyGrantable(user.IsAdmin)
+		scope = authscope.Intersect(scope, userCeiling)
 		if scope == "" {
 			return errors.New("none of the requested scopes are available to your account")
 		}
+		if grantErr := s.GrantClientScope(ctx, dc.ClientID, scope, userID); grantErr != nil {
+			s.logger.Error("granting client scope for device flow", "error", grantErr)
+		}
 	}
 
-	return s.repo.UpdateDeviceCodeStatusAndScope(ctx, dc.ID, model.DeviceCodeStatusAuthorized, &userID, scope)
+	return s.deviceCodes.UpdateDeviceCodeStatusAndScope(ctx, dc.ID, model.DeviceCodeStatusAuthorized, &userID, scope)
 }
 
 // DeviceCodeError represents an error in the device code exchange flow.
@@ -184,7 +184,7 @@ type ExchangeDeviceCodeParams struct {
 // ExchangeDeviceCode polls for and exchanges a device code for tokens.
 func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceCodeParams) (*TokenResult, error) {
 	// Look up the client
-	client, err := s.repo.FindClientByClientID(ctx, params.ClientID)
+	client, err := s.clients.FindClientByClientID(ctx, params.ClientID)
 	if err != nil {
 		return nil, &DeviceCodeError{Code: "invalid_client", Description: "Invalid client"}
 	}
@@ -193,13 +193,13 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceC
 	}
 
 	// Parse the device code
-	_, deviceCodeHash, err := ParseToken(params.DeviceCode)
+	_, deviceCodeHash, err := s.ParseToken(params.DeviceCode)
 	if err != nil {
 		return nil, &DeviceCodeError{Code: "invalid_grant", Description: "Invalid device code"}
 	}
 
 	// Look up the device code
-	dc, err := s.repo.FindDeviceCodeByDeviceCode(ctx, deviceCodeHash)
+	dc, err := s.deviceCodes.FindDeviceCodeByDeviceCode(ctx, deviceCodeHash)
 	if err != nil {
 		return nil, &DeviceCodeError{Code: "invalid_grant", Description: "Invalid device code"}
 	}
@@ -220,7 +220,7 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceC
 		if elapsed < time.Duration(dc.Interval)*time.Second {
 			// Increase interval by 5 seconds, capped at 300s per RFC 8628.
 			newInterval := min(dc.Interval+5, 300)
-			_ = s.repo.UpdateDeviceCodeLastPolled(ctx, dc.ID, newInterval)
+			_ = s.deviceCodes.UpdateDeviceCodeLastPolled(ctx, dc.ID, newInterval)
 			return nil, &DeviceCodeError{
 				Code:        "slow_down",
 				Description: fmt.Sprintf("Polling too fast. Increase interval to %d seconds", newInterval),
@@ -229,7 +229,7 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceC
 	}
 
 	// Update last polled
-	_ = s.repo.UpdateDeviceCodeLastPolled(ctx, dc.ID, dc.Interval)
+	_ = s.deviceCodes.UpdateDeviceCodeLastPolled(ctx, dc.ID, dc.Interval)
 
 	switch dc.Status {
 	case model.DeviceCodeStatusPending:
@@ -241,7 +241,7 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceC
 	case model.DeviceCodeStatusAuthorized:
 		// Atomically mark as exchanged — prevents concurrent polls from minting
 		// multiple token pairs (TOCTOU race). Returns error if already consumed.
-		if err := s.repo.ExchangeDeviceCodeStatus(ctx, dc.ID); err != nil {
+		if err := s.deviceCodes.ExchangeDeviceCodeStatus(ctx, dc.ID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil, &DeviceCodeError{Code: "invalid_grant", Description: "Device code has already been used"}
 			}
@@ -257,7 +257,9 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceC
 			resource = dc.Resource.String
 		}
 
-		return s.issueTokenPair(ctx, client.ID, dc.UserID, scope, resource)
+		// Device flow tokens have no parent authorization code — pass 0
+		// so authorization_code_id stays NULL on the access token row.
+		return s.issueTokenPair(ctx, client.ID, dc.UserID, scope, resource, 0)
 	default:
 		return nil, &DeviceCodeError{Code: "invalid_grant", Description: "Device code not in valid state for exchange"}
 	}

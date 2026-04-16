@@ -99,7 +99,8 @@ func TestExternalServiceService_FindByUUID(t *testing.T) {
 		repoFn    func(ctx context.Context, uuid string) (*model.ExternalService, error)
 		wantSvc   bool
 		wantErr   bool
-		errSubstr string
+		wantIs    error  // sentinel to match via errors.Is (takes precedence over errSubstr)
+		errSubstr string // fallback: wrapper-context substring for non-sentinel paths
 	}{
 		{
 			name: "service found",
@@ -113,9 +114,9 @@ func TestExternalServiceService_FindByUUID(t *testing.T) {
 			repoFn: func(_ context.Context, _ string) (*model.ExternalService, error) {
 				return nil, sql.ErrNoRows
 			},
-			wantSvc:   false,
-			wantErr:   true,
-			errSubstr: "not found",
+			wantSvc: false,
+			wantErr: true,
+			wantIs:  ErrNotFound,
 		},
 		{
 			name: "repository error is wrapped",
@@ -139,6 +140,9 @@ func TestExternalServiceService_FindByUUID(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
+				}
+				if tt.wantIs != nil && !errors.Is(err, tt.wantIs) {
+					t.Errorf("errors.Is(err, %v) = false, err = %q", tt.wantIs, err.Error())
 				}
 				if tt.errSubstr != "" && !strings.Contains(err.Error(), tt.errSubstr) {
 					t.Errorf("error %q does not contain %q", err.Error(), tt.errSubstr)

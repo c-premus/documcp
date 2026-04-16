@@ -3,6 +3,7 @@ package oauthhandler
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,15 @@ import (
 	"github.com/c-premus/documcp/internal/model"
 )
 
+// newFormRequest constructs a token-endpoint POST carrying a
+// application/x-www-form-urlencoded body (the only content type the endpoint
+// accepts as of v0.21.0 — security.md M4).
+func newFormRequest(body string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return req
+}
+
 func TestHandler_Token(t *testing.T) {
 	t.Parallel()
 
@@ -23,9 +33,7 @@ func TestHandler_Token(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		body := `{"client_id":"a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest("client_id=a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
@@ -40,9 +48,7 @@ func TestHandler_Token(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		body := `{"grant_type":"authorization_code"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest("grant_type=authorization_code")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
@@ -57,9 +63,7 @@ func TestHandler_Token(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		body := `{"grant_type":"implicit","client_id":"a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest("grant_type=implicit&client_id=a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
@@ -70,12 +74,84 @@ func TestHandler_Token(t *testing.T) {
 		assert.Contains(t, result["error_description"], "implicit")
 	})
 
-	t.Run("returns error for invalid JSON body", func(t *testing.T) {
+	t.Run("rejects application/json with 415 (security.md M4)", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader("{invalid json"))
+		req := httptest.NewRequest(http.MethodPost, "/oauth/token",
+			strings.NewReader(`{"grant_type":"authorization_code","client_id":"cid"}`))
 		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Token(rr, req)
+
+		assert.Equal(t, http.StatusUnsupportedMediaType, rr.Code)
+		assert.Equal(t, "application/x-www-form-urlencoded", rr.Header().Get("Accept"))
+		result := decodeOAuthJSON(t, rr.Body)
+		assert.Equal(t, "invalid_request", result["error"])
+	})
+
+	t.Run("rejects missing content-type with 415", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
+
+		// No Content-Type header at all.
+		req := httptest.NewRequest(http.MethodPost, "/oauth/token",
+			strings.NewReader("grant_type=authorization_code&client_id=cid"))
+		rr := httptest.NewRecorder()
+
+		h.Token(rr, req)
+
+		assert.Equal(t, http.StatusUnsupportedMediaType, rr.Code)
+	})
+
+	t.Run("accepts form-urlencoded with charset parameter", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
+
+		req := httptest.NewRequest(http.MethodPost, "/oauth/token",
+			strings.NewReader("grant_type=authorization_code&client_id=cid"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+		rr := httptest.NewRecorder()
+
+		h.Token(rr, req)
+
+		// Dispatched — parse errors from inner handlers become 400 invalid_request.
+		assert.NotEqual(t, http.StatusUnsupportedMediaType, rr.Code)
+	})
+
+	t.Run("accepts HTTP Basic client credentials (security.md M3)", func(t *testing.T) {
+		t.Parallel()
+		var seenClientID string
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, clientID string) (*model.OAuthClient, error) {
+				seenClientID = clientID
+				return nil, errors.New("forced not-found to exit early")
+			},
+		}
+		h, _ := newHandlerWithRepo(repo)
+
+		req := newFormRequest("grant_type=authorization_code&code=1|abcdef&redirect_uri=https://example.com/cb")
+		// Basic base64("cid:sekret")
+		basic := base64.StdEncoding.EncodeToString([]byte("cid:sekret"))
+		req.Header.Set("Authorization", "Basic "+basic)
+		rr := httptest.NewRecorder()
+
+		h.Token(rr, req)
+
+		assert.Equal(t, "cid", seenClientID,
+			"Basic-auth client_id must be parsed and forwarded to the service")
+	})
+
+	t.Run("rejects dual-auth: Basic + body credentials (RFC 6749 §2.3.1)", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
+
+		req := newFormRequest(
+			"grant_type=authorization_code&code=1|abcdef&redirect_uri=https://example.com/cb" +
+				"&client_id=cid&client_secret=body_secret")
+		basic := base64.StdEncoding.EncodeToString([]byte("cid:basic_secret"))
+		req.Header.Set("Authorization", "Basic "+basic)
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
@@ -89,32 +165,12 @@ func TestHandler_Token(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		formBody := "grant_type=authorization_code&client_id=a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(formBody))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req := newFormRequest("grant_type=authorization_code&client_id=a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
 
-		// Should dispatch to authorization_code handler which requires 'code' field
-		assert.Equal(t, http.StatusBadRequest, rr.Code)
-		result := decodeOAuthJSON(t, rr.Body)
-		assert.Equal(t, "invalid_request", result["error"])
-		assert.Contains(t, result["error_description"], "code")
-	})
-
-	t.Run("parses JSON body", func(t *testing.T) {
-		t.Parallel()
-		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
-
-		body := `{"grant_type":"authorization_code","client_id":"a1b2c3d4-e5f6-7890-abcd-ef1234567890"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		rr := httptest.NewRecorder()
-
-		h.Token(rr, req)
-
-		// Should dispatch to authorization_code handler which requires 'code' field
+		// Should dispatch to authorization_code handler which requires 'code' field.
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
 		assert.Equal(t, "invalid_request", result["error"])
@@ -125,14 +181,12 @@ func TestHandler_Token(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		body := `{"grant_type":"authorization_code","client_id":"cid","code":"sometoken","redirect_uri":"https://example.com/callback"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest(
+			"grant_type=authorization_code&client_id=cid&code=sometoken&redirect_uri=https://example.com/callback")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
 
-		// The service call will fail because the code is invalid, but the dispatch happened
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
 		assert.Equal(t, "invalid_grant", result["error"])
@@ -142,14 +196,11 @@ func TestHandler_Token(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		body := `{"grant_type":"refresh_token","client_id":"cid"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest("grant_type=refresh_token&client_id=cid")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
 
-		// refresh_token field is required
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
 		assert.Equal(t, "invalid_request", result["error"])
@@ -160,14 +211,12 @@ func TestHandler_Token(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		body := `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","client_id":"cid"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest(
+			"grant_type=urn:ietf:params:oauth:grant-type:device_code&client_id=cid")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
 
-		// device_code field is required
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
 		assert.Equal(t, "invalid_request", result["error"])
@@ -178,9 +227,7 @@ func TestHandler_Token(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		body := `{}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest("")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
@@ -201,9 +248,8 @@ func TestHandler_Token_AuthorizationCode(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		body := `{"grant_type":"authorization_code","client_id":"cid","redirect_uri":"https://example.com/cb"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest(
+			"grant_type=authorization_code&client_id=cid&redirect_uri=https://example.com/cb")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
@@ -218,9 +264,7 @@ func TestHandler_Token_AuthorizationCode(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		body := `{"grant_type":"authorization_code","client_id":"cid","code":"1|abc"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest("grant_type=authorization_code&client_id=cid&code=1|abc")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
@@ -231,7 +275,7 @@ func TestHandler_Token_AuthorizationCode(t *testing.T) {
 		assert.Contains(t, result["error_description"], "redirect uri")
 	})
 
-	t.Run("returns server_error when service fails", func(t *testing.T) {
+	t.Run("returns invalid_grant when service fails", func(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
@@ -240,9 +284,8 @@ func TestHandler_Token_AuthorizationCode(t *testing.T) {
 		}
 		h, _ := newHandlerWithRepo(repo)
 
-		body := `{"grant_type":"authorization_code","client_id":"cid","code":"1|abcdef","redirect_uri":"https://example.com/cb"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest(
+			"grant_type=authorization_code&client_id=cid&code=1|abcdef&redirect_uri=https://example.com/cb")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
@@ -260,9 +303,7 @@ func TestHandler_Token_RefreshToken(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		body := `{"grant_type":"refresh_token","client_id":"cid"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest("grant_type=refresh_token&client_id=cid")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
@@ -282,9 +323,8 @@ func TestHandler_Token_RefreshToken(t *testing.T) {
 		}
 		h, _ := newHandlerWithRepo(repo)
 
-		body := `{"grant_type":"refresh_token","client_id":"cid","refresh_token":"1|tokenvalue"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest(
+			"grant_type=refresh_token&client_id=cid&refresh_token=1|tokenvalue")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
@@ -292,26 +332,6 @@ func TestHandler_Token_RefreshToken(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
 		assert.Equal(t, "invalid_grant", result["error"])
-	})
-
-	t.Run("passes form-urlencoded refresh_token fields to service", func(t *testing.T) {
-		t.Parallel()
-		repo := &mockOAuthRepo{
-			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
-				return nil, errors.New("not found")
-			},
-		}
-		h, _ := newHandlerWithRepo(repo)
-
-		formBody := "grant_type=refresh_token&client_id=cid&refresh_token=1|tokenvalue"
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(formBody))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		rr := httptest.NewRecorder()
-
-		h.Token(rr, req)
-
-		// Service was called (and returned error), proving form fields were parsed
-		assert.Equal(t, http.StatusBadRequest, rr.Code)
 	})
 }
 
@@ -322,9 +342,8 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 		t.Parallel()
 		h, _ := newHandlerWithRepo(&mockOAuthRepo{})
 
-		body := `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","client_id":"cid"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest(
+			"grant_type=urn:ietf:params:oauth:grant-type:device_code&client_id=cid")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
@@ -357,21 +376,19 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 		}
 		h, _ := newHandlerWithRepo(repo)
 
-		// We need a properly formatted token (id|random) to pass ParseToken
-		body := `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","client_id":"cid","device_code":"1|abcdefghijklmnopqrstuvwxyz012345678901234567890123456789abcdefgh"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest(
+			"grant_type=urn:ietf:params:oauth:grant-type:device_code&client_id=cid" +
+				"&device_code=1|abcdefghijklmnopqrstuvwxyz012345678901234567890123456789abcdefgh")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
 
-		// The device code flow returns authorization_pending as a DeviceCodeError
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
 		assert.Equal(t, "authorization_pending", result["error"])
 	})
 
-	t.Run("returns server_error for generic service failure", func(t *testing.T) {
+	t.Run("returns invalid_client for generic service failure", func(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
@@ -380,14 +397,13 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 		}
 		h, _ := newHandlerWithRepo(repo)
 
-		body := `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","client_id":"cid","device_code":"1|abcdefghijklmnop"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest(
+			"grant_type=urn:ietf:params:oauth:grant-type:device_code&client_id=cid" +
+				"&device_code=1|abcdefghijklmnop")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
 
-		// DeviceCodeError with invalid_client is returned as 400
 		assert.Equal(t, http.StatusBadRequest, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
 		assert.Equal(t, "invalid_client", result["error"])
@@ -409,15 +425,15 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 					ID:        1,
 					ClientID:  1,
 					Status:    model.DeviceCodeStatusPending,
-					ExpiresAt: time.Now().Add(-1 * time.Minute), // expired
+					ExpiresAt: time.Now().Add(-1 * time.Minute),
 				}, nil
 			},
 		}
 		h, _ := newHandlerWithRepo(repo)
 
-		body := `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","client_id":"cid","device_code":"1|abcdefghijklmnopqrstuvwxyz012345678901234567890123456789abcdefgh"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest(
+			"grant_type=urn:ietf:params:oauth:grant-type:device_code&client_id=cid" +
+				"&device_code=1|abcdefghijklmnopqrstuvwxyz012345678901234567890123456789abcdefgh")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
@@ -449,9 +465,9 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 		}
 		h, _ := newHandlerWithRepo(repo)
 
-		body := `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","client_id":"cid","device_code":"1|abcdefghijklmnopqrstuvwxyz012345678901234567890123456789abcdefgh"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest(
+			"grant_type=urn:ietf:params:oauth:grant-type:device_code&client_id=cid" +
+				"&device_code=1|abcdefghijklmnopqrstuvwxyz012345678901234567890123456789abcdefgh")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
@@ -496,9 +512,9 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 		}
 		h, _ := newHandlerWithRepo(repo)
 
-		body := `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","client_id":"cid","device_code":"1|abcdefghijklmnopqrstuvwxyz012345678901234567890123456789abcdefgh"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest(
+			"grant_type=urn:ietf:params:oauth:grant-type:device_code&client_id=cid" +
+				"&device_code=1|abcdefghijklmnopqrstuvwxyz012345678901234567890123456789abcdefgh")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)
@@ -513,9 +529,6 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 
 	t.Run("returns server_error when ExchangeDeviceCode returns non-DeviceCodeError", func(t *testing.T) {
 		t.Parallel()
-		// This covers the generic error path in tokenDeviceCode (not DeviceCodeError).
-		// ExchangeDeviceCode returns a non-DeviceCodeError when UpdateDeviceCodeStatus fails
-		// on an "authorized" device code (fmt.Errorf wraps the error, not &DeviceCodeError{}).
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
 				return &model.OAuthClient{
@@ -540,9 +553,9 @@ func TestHandler_Token_DeviceCode(t *testing.T) {
 		}
 		h, _ := newHandlerWithRepo(repo)
 
-		body := `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","client_id":"cid","device_code":"1|abcdefghijklmnopqrstuvwxyz012345678901234567890123456789abcdefgh"}`
-		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+		req := newFormRequest(
+			"grant_type=urn:ietf:params:oauth:grant-type:device_code&client_id=cid" +
+				"&device_code=1|abcdefghijklmnopqrstuvwxyz012345678901234567890123456789abcdefgh")
 		rr := httptest.NewRecorder()
 
 		h.Token(rr, req)

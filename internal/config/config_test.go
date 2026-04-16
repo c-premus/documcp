@@ -121,7 +121,7 @@ func TestLoad_Defaults(t *testing.T) {
 		{"Database.Host", cfg.Database.Host, "127.0.0.1"},
 		{"Database.Port", cfg.Database.Port, 5432},
 		{"Database.SSLMode", cfg.Database.SSLMode, "require"},
-		{"Database.MaxOpenConns", cfg.Database.MaxOpenConns, 25},
+		{"Database.MaxOpenConns", cfg.Database.MaxOpenConns, int32(25)},
 		{"Database.MaxIdleConns", cfg.Database.MaxIdleConns, 5},
 		{"Database.MaxLifetime", cfg.Database.MaxLifetime, 5 * time.Minute},
 
@@ -1010,6 +1010,53 @@ func TestConfig_Validate_ProductionDefaultHKDFSalt(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "HKDF_SALT must be changed from the default value") {
 		t.Errorf("error %q does not mention default HKDF salt", err.Error())
+	}
+}
+
+func TestCleanDuplicateSlashes(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"", ""},
+		{"/", "/"},
+		{"/a", "/a"},
+		{"//documcp", "/documcp"},
+		{"/foo//bar", "/foo/bar"},
+		{"///a//b///c", "/a/b/c"},
+		{"/no/change/here", "/no/change/here"},
+	}
+	for _, tt := range tests {
+		if got := cleanDuplicateSlashes(tt.in); got != tt.want {
+			t.Errorf("cleanDuplicateSlashes(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+// TestLoad_AllowedResourcesCanonicalization covers the security.md
+// informational item: an operator who leaves a trailing slash on APP_URL
+// (`https://host/`) paired with a leading-slash DOCUMCP_ENDPOINT (`/documcp`)
+// used to produce `https://host//documcp` in the RFC 8707 allowlist, which
+// then failed byte-for-byte against a canonical client-supplied resource.
+func TestLoad_AllowedResourcesCanonicalization(t *testing.T) {
+	t.Setenv("APP_URL", "https://host/")
+	t.Setenv("DOCUMCP_ENDPOINT", "/documcp")
+	t.Setenv("REDIS_ADDR", "localhost:6379")
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_DATABASE", "documcp")
+	t.Setenv("DB_USERNAME", "documcp")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := []string{"https://host/", "https://host/documcp"}
+	if len(cfg.OAuth.AllowedResources) != 2 {
+		t.Fatalf("expected 2 allowlist entries, got %#v", cfg.OAuth.AllowedResources)
+	}
+	for i, got := range cfg.OAuth.AllowedResources {
+		if got != want[i] {
+			t.Errorf("AllowedResources[%d] = %q, want %q", i, got, want[i])
+		}
 	}
 }
 

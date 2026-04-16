@@ -26,64 +26,66 @@ import (
 	"github.com/c-premus/documcp/internal/observability"
 )
 
-// Deps holds handler dependencies injected from the app layer.
-type Deps struct {
-	Version      string
-	MCPHandler   http.Handler          // nil if MCP is not configured
-	OAuthHandler *oauthhandler.Handler // nil if OAuth is not configured
-	OIDCHandler  *oidc.Handler         // nil if OIDC is not configured
-	OAuthService *oauth.Service        // for middleware (nil if OAuth not configured)
-	SessionStore sessions.Store        // for middleware (nil if sessions not configured)
-
-	// Phase 3: Document pipeline & search
-	DocumentHandler *apihandler.DocumentHandler // nil if not configured
-	SearchHandler   *apihandler.SearchHandler   // nil if search not configured
-
-	// Phase 4: External service clients & REST API
+// Handlers groups every HTTP handler mounted on the router. Any field may be
+// nil when the corresponding feature is not configured. Field names preserve
+// the "*Handler" suffix so call sites and tests don't need to distinguish
+// between handlers and other dependencies by context alone.
+type Handlers struct {
+	MCPHandler             http.Handler
+	DocumentHandler        *apihandler.DocumentHandler
+	SearchHandler          *apihandler.SearchHandler
 	ZimHandler             *apihandler.ZimHandler
 	GitTemplateHandler     *apihandler.GitTemplateHandler
 	ExternalServiceHandler *apihandler.ExternalServiceHandler
 	UserHandler            *apihandler.UserHandler
 	OAuthClientHandler     *apihandler.OAuthClientHandler
+	SSEHandler             *apihandler.SSEHandler
+	QueueHandler           *apihandler.QueueHandler
+	DashboardHandler       *apihandler.DashboardHandler
+	RiverUIHandler         http.Handler
+	AuthHandler            *apihandler.AuthHandler
+	SPAHandler             http.Handler
+	RootAssetHandler       http.Handler
+}
 
-	// Phase 7: River queue
-	SSEHandler   *apihandler.SSEHandler   // nil if not configured
-	QueueHandler *apihandler.QueueHandler // nil if not configured
+// Auth groups everything the auth middleware stack reads: the OAuth/OIDC
+// handlers mounted under /oauth + /auth, the OAuth service used by bearer
+// and session middleware, the session store, and the RFC 8707 audience
+// strings that /documcp and /api enforce.
+type Auth struct {
+	OAuthHandler *oauthhandler.Handler
+	OIDCHandler  *oidc.Handler
+	OAuthService *oauth.Service
+	SessionStore sessions.Store
+	MCPResource  string // expected audience for the /documcp MCP endpoint
+	APIResource  string // expected audience for /api/* bearer-token requests
+}
 
-	// Phase 9: Dashboard
-	DashboardHandler *apihandler.DashboardHandler // nil if not configured
+// Tuning groups operator-configured numeric limits applied to HTTP requests.
+type Tuning struct {
+	MaxBodySize      int64         // max request body size (excludes multipart)
+	RequestTimeout   time.Duration // context timeout for non-streaming requests
+	HSTSMaxAge       int           // HSTS max-age in seconds (0 to disable)
+	InternalAPIToken string        // protects /metrics + /health/ready (empty = unrestricted)
+}
 
-	// River UI (nil disables the embedded queue dashboard)
-	RiverUIHandler http.Handler
-
-	// Vue SPA
-	AuthHandler      *apihandler.AuthHandler // nil if not configured
-	SPAHandler       http.Handler            // nil if not configured
-	RootAssetHandler http.Handler            // nil if not configured
+// Deps holds handler dependencies injected from the app layer. The big
+// groups (Handlers, Auth, Tuning) are bundled to keep the top-level shape
+// navigable; the remaining flat fields are truly standalone singletons.
+type Deps struct {
+	Version  string
+	Handlers Handlers
+	Auth     Auth
+	Tuning   Tuning
 
 	// Observability
 	Metrics     *observability.Metrics // nil disables Prometheus metrics
 	OTELEnabled bool                   // enables tracing middleware
 
-	// Security
-	IsSecure bool // true when running behind TLS (reserved for future use)
-
 	// Infrastructure
-	BareRedisClient  *redis.Client       // uninstrumented client (rate limiting + readiness pings)
-	RedisClient      *redis.Client       // instrumented client (EventBus, app queries)
-	DB               handler.PoolHealthy // for readiness checks (nil disables /health/ready)
-	InternalAPIToken string              // protects /metrics and /health/ready (empty = unrestricted)
-
-	// Server tuning (populated from config)
-	MaxBodySize    int64         // max request body size in bytes (excludes multipart)
-	RequestTimeout time.Duration // context timeout for non-streaming requests
-	HSTSMaxAge     int           // HSTS max-age in seconds (0 to disable)
-
-	// RFC 8707 expected token audiences. Bearer tokens reaching these route
-	// groups must carry a matching `resource` binding (set by the AS when the
-	// client supplied a `resource` parameter at /oauth/authorize).
-	MCPResource string // expected audience for the /documcp MCP endpoint
-	APIResource string // expected audience for /api/* bearer-token requests
+	BareRedisClient *redis.Client       // uninstrumented (rate limit + readiness)
+	RedisClient     *redis.Client       // instrumented (EventBus, app queries)
+	DB              handler.PoolHealthy // readiness (nil disables /health/ready)
 }
 
 // RegisterRoutes configures all middleware and route groups on the server.
@@ -102,7 +104,7 @@ func (s *Server) registerGlobalMiddleware(deps Deps) {
 	r.Use(middleware.RequestID)
 	r.Use(RealIP(s.trustedProxies))
 	r.Use(SafeRecoverer(s.logger))
-	r.Use(SecurityHeaders(deps.HSTSMaxAge))
+	r.Use(SecurityHeaders(deps.Tuning.HSTSMaxAge))
 
 	// OpenTelemetry tracing middleware — must run before RequestLogger so the
 	// span context is available for trace_id/span_id injection into logs.
@@ -119,8 +121,8 @@ func (s *Server) registerGlobalMiddleware(deps Deps) {
 	}
 
 	r.Use(BlockSensitiveFiles)
-	r.Use(MaxBodySize(deps.MaxBodySize))
-	r.Use(TimeoutExcept(deps.RequestTimeout, "/documcp", "/api/admin/events/stream", "/api/events/stream"))
+	r.Use(MaxBodySize(deps.Tuning.MaxBodySize))
+	r.Use(TimeoutExcept(deps.Tuning.RequestTimeout, "/documcp", "/api/admin/events/stream", "/api/events/stream"))
 
 	// Cross-origin protection: blocks cross-origin POST/PUT/DELETE/PATCH using
 	// Sec-Fetch-Site (all modern browsers) with Origin fallback. GET/HEAD/OPTIONS
@@ -135,16 +137,16 @@ func (s *Server) registerInfraRoutes(deps Deps) {
 
 	// MCP endpoint — timeout excluded in global middleware (SSE streams must stay open).
 	// OAuth MUST be configured; without it, all MCP tools would be unauthenticated.
-	if deps.MCPHandler != nil && deps.OAuthService != nil {
+	if deps.Handlers.MCPHandler != nil && deps.Auth.OAuthService != nil {
 		r.Group(func(r chi.Router) {
 			r.Use(rateLimitByIP(60, time.Minute, deps.BareRedisClient))
-			r.Use(authmiddleware.BearerTokenWithAudience(deps.OAuthService, s.logger, deps.MCPResource))
+			r.Use(authmiddleware.BearerTokenWithAudience(deps.Auth.OAuthService, s.logger, deps.Auth.MCPResource))
 			r.Use(authmiddleware.RequireScope("mcp:access", s.logger))
-			r.Handle("/documcp/*", deps.MCPHandler)
-			r.Handle("/documcp", deps.MCPHandler)
+			r.Handle("/documcp/*", deps.Handlers.MCPHandler)
+			r.Handle("/documcp", deps.Handlers.MCPHandler)
 		})
 		s.logger.Info("MCP endpoint registered", "path", "/documcp")
-	} else if deps.MCPHandler != nil {
+	} else if deps.Handlers.MCPHandler != nil {
 		s.logger.Warn("MCP endpoint NOT registered: OAuth service not configured")
 	}
 
@@ -165,8 +167,8 @@ func (s *Server) registerInfraRoutes(deps Deps) {
 	// Prometheus metrics endpoint (protected by internal API token if configured)
 	if deps.Metrics != nil {
 		r.Group(func(r chi.Router) {
-			if deps.InternalAPIToken != "" {
-				r.Use(internalTokenAuth(deps.InternalAPIToken))
+			if deps.Tuning.InternalAPIToken != "" {
+				r.Use(internalTokenAuth(deps.Tuning.InternalAPIToken))
 			} else {
 				s.logger.Warn("metrics endpoint exposed without authentication (INTERNAL_API_TOKEN not set)")
 			}
@@ -176,10 +178,10 @@ func (s *Server) registerInfraRoutes(deps Deps) {
 	}
 
 	// Well-known discovery endpoints
-	if deps.OAuthHandler != nil {
-		r.Get("/.well-known/oauth-authorization-server", deps.OAuthHandler.AuthorizationServerMetadata)
-		r.Get("/.well-known/oauth-protected-resource", deps.OAuthHandler.ProtectedResourceMetadata)
-		r.Get("/.well-known/oauth-protected-resource/*", deps.OAuthHandler.ProtectedResourceMetadata)
+	if deps.Auth.OAuthHandler != nil {
+		r.Get("/.well-known/oauth-authorization-server", deps.Auth.OAuthHandler.AuthorizationServerMetadata)
+		r.Get("/.well-known/oauth-protected-resource", deps.Auth.OAuthHandler.ProtectedResourceMetadata)
+		r.Get("/.well-known/oauth-protected-resource/*", deps.Auth.OAuthHandler.ProtectedResourceMetadata)
 		s.logger.Info("OAuth well-known endpoints registered")
 	}
 }
@@ -188,48 +190,51 @@ func (s *Server) registerInfraRoutes(deps Deps) {
 func (s *Server) registerAuthRoutes(deps Deps) {
 	r := s.router
 
-	if deps.OAuthHandler != nil {
+	if deps.Auth.OAuthHandler != nil {
 		r.Route("/oauth", func(r chi.Router) {
 			// Browser-rendered form endpoints — protected by CrossOriginProtection
 			// (global middleware) plus SameSite=Lax session cookies.
-			r.Get("/authorize", deps.OAuthHandler.Authorize)
-			r.Post("/authorize/approve", deps.OAuthHandler.AuthorizeApprove)
-			r.Post("/authorize/deny", deps.OAuthHandler.AuthorizeDeny)
-			r.Get("/device", deps.OAuthHandler.DeviceVerification)
+			r.Get("/authorize", deps.Auth.OAuthHandler.Authorize)
+			r.Post("/authorize/approve", deps.Auth.OAuthHandler.AuthorizeApprove)
+			r.Post("/authorize/deny", deps.Auth.OAuthHandler.AuthorizeDeny)
+			r.Get("/device", deps.Auth.OAuthHandler.DeviceVerification)
 			r.Group(func(r chi.Router) {
 				r.Use(rateLimitByIP(10, time.Minute, deps.BareRedisClient))
-				r.Post("/device", deps.OAuthHandler.DeviceVerificationSubmit)
-				r.Post("/device/approve", deps.OAuthHandler.DeviceApprove)
+				r.Post("/device", deps.Auth.OAuthHandler.DeviceVerificationSubmit)
+				r.Post("/device/approve", deps.Auth.OAuthHandler.DeviceApprove)
 			})
 
 			// Machine-to-machine endpoints — no CSRF (clients don't have browser cookies).
+			// Two rateLimitByIP calls stack: the first bounds short bursts, the
+			// second caps sustained abuse over a longer window.
 			r.Group(func(r chi.Router) {
 				r.Use(rateLimitByIP(30, time.Minute, deps.BareRedisClient))
 				r.Use(rateLimitByIP(100, time.Hour, deps.BareRedisClient))
-				r.Post("/token", deps.OAuthHandler.Token)
-				r.Post("/revoke", deps.OAuthHandler.Revoke)
+				r.Post("/token", deps.Auth.OAuthHandler.Token)
+				r.Post("/revoke", deps.Auth.OAuthHandler.Revoke)
 			})
 
+			// Dynamic client registration — tighter per-hour + per-day caps.
 			r.Group(func(r chi.Router) {
 				r.Use(rateLimitByIP(10, time.Hour, deps.BareRedisClient))
 				r.Use(rateLimitByIP(50, 24*time.Hour, deps.BareRedisClient))
-				r.Post("/register", deps.OAuthHandler.Register)
+				r.Post("/register", deps.Auth.OAuthHandler.Register)
 			})
 
 			r.Group(func(r chi.Router) {
 				r.Use(rateLimitByIP(30, time.Minute, deps.BareRedisClient))
-				r.Post("/device/code", deps.OAuthHandler.DeviceAuthorization)
+				r.Post("/device/code", deps.Auth.OAuthHandler.DeviceAuthorization)
 			})
 		})
 		s.logger.Info("OAuth endpoints registered")
 	}
 
-	if deps.OIDCHandler != nil {
+	if deps.Auth.OIDCHandler != nil {
 		r.Route("/auth", func(r chi.Router) {
 			r.Use(rateLimitByIP(30, time.Minute, deps.BareRedisClient))
-			r.Get("/login", deps.OIDCHandler.Login)
-			r.Get("/callback", deps.OIDCHandler.Callback)
-			r.Post("/logout", deps.OIDCHandler.Logout)
+			r.Get("/login", deps.Auth.OIDCHandler.Login)
+			r.Get("/callback", deps.Auth.OIDCHandler.Callback)
+			r.Post("/logout", deps.Auth.OIDCHandler.Logout)
 		})
 		s.logger.Info("OIDC auth endpoints registered")
 	}
@@ -246,8 +251,8 @@ func (s *Server) registerAuthRoutes(deps Deps) {
 func (s *Server) registerAPIRoutes(deps Deps) {
 	s.router.Route("/api", func(r chi.Router) {
 		switch {
-		case deps.OAuthService != nil:
-			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.OAuthService, deps.SessionStore, s.logger, deps.APIResource))
+		case deps.Auth.OAuthService != nil:
+			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.Auth.OAuthService, deps.Auth.SessionStore, s.logger, deps.Auth.APIResource))
 		default:
 			r.Use(func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -259,32 +264,32 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 		}
 
 		// Auth status endpoint (no scope requirement — any authenticated user)
-		if deps.AuthHandler != nil {
+		if deps.Handlers.AuthHandler != nil {
 			r.Group(func(r chi.Router) {
 				r.Use(rateLimitByIP(60, time.Minute, deps.BareRedisClient))
-				r.Get("/auth/me", deps.AuthHandler.Me)
+				r.Get("/auth/me", deps.Handlers.AuthHandler.Me)
 			})
 		}
 
 		// User SSE endpoint (any authenticated user — server-side filtering by role)
-		if deps.SSEHandler != nil {
+		if deps.Handlers.SSEHandler != nil {
 			r.Group(func(r chi.Router) {
 				r.Use(authmiddleware.RequireScope(authscope.DocumentsRead, s.logger))
-				r.Get("/events/stream", deps.SSEHandler.UserStream)
+				r.Get("/events/stream", deps.Handlers.SSEHandler.UserStream)
 			})
 		}
 
 		// Document endpoints
-		if deps.DocumentHandler != nil {
+		if deps.Handlers.DocumentHandler != nil {
 			r.Route("/documents", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
 					r.Use(rateLimitByIP(60, time.Minute, deps.BareRedisClient))
 					r.Use(authmiddleware.RequireScope(authscope.DocumentsRead, s.logger))
-					r.Get("/", deps.DocumentHandler.List)
-					r.Get("/tags", deps.DocumentHandler.ListTags)
-					r.Get("/trash", deps.DocumentHandler.ListDeleted)
-					r.Get("/{uuid}", deps.DocumentHandler.Show)
-					r.Get("/{uuid}/download", deps.DocumentHandler.Download)
+					r.Get("/", deps.Handlers.DocumentHandler.List)
+					r.Get("/tags", deps.Handlers.DocumentHandler.ListTags)
+					r.Get("/trash", deps.Handlers.DocumentHandler.ListDeleted)
+					r.Get("/{uuid}", deps.Handlers.DocumentHandler.Show)
+					r.Get("/{uuid}/download", deps.Handlers.DocumentHandler.Download)
 				})
 
 				// Write operations: any authenticated user with documents:write scope.
@@ -292,12 +297,12 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 				r.Group(func(r chi.Router) {
 					r.Use(rateLimitByIP(30, time.Minute, deps.BareRedisClient))
 					r.Use(authmiddleware.RequireScope(authscope.DocumentsWrite, s.logger))
-					r.Post("/", deps.DocumentHandler.Upload)
-					r.Post("/analyze", deps.DocumentHandler.Analyze)
-					r.Put("/{uuid}", deps.DocumentHandler.Update)
-					r.Delete("/{uuid}", deps.DocumentHandler.Delete)
-					r.Post("/{uuid}/content", deps.DocumentHandler.ReplaceContent)
-					r.Post("/{uuid}/restore", deps.DocumentHandler.Restore)
+					r.Post("/", deps.Handlers.DocumentHandler.Upload)
+					r.Post("/analyze", deps.Handlers.DocumentHandler.Analyze)
+					r.Put("/{uuid}", deps.Handlers.DocumentHandler.Update)
+					r.Delete("/{uuid}", deps.Handlers.DocumentHandler.Delete)
+					r.Post("/{uuid}/content", deps.Handlers.DocumentHandler.ReplaceContent)
+					r.Post("/{uuid}/restore", deps.Handlers.DocumentHandler.Restore)
 				})
 
 				// Purge: admin-only (irreversible permanent deletion)
@@ -305,86 +310,86 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 					r.Use(rateLimitByIP(30, time.Minute, deps.BareRedisClient))
 					r.Use(authmiddleware.RequireScope(authscope.DocumentsWrite, s.logger))
 					r.Use(authmiddleware.RequireAdmin)
-					r.Delete("/{uuid}/purge", deps.DocumentHandler.Purge)
+					r.Delete("/{uuid}/purge", deps.Handlers.DocumentHandler.Purge)
 				})
 			})
 			s.logger.Info("document API endpoints registered")
 		}
 
 		// Search endpoints (120/min per IP)
-		if deps.SearchHandler != nil {
+		if deps.Handlers.SearchHandler != nil {
 			r.Group(func(r chi.Router) {
 				r.Use(rateLimitByIP(120, time.Minute, deps.BareRedisClient))
 				r.Use(authmiddleware.RequireScope(authscope.SearchRead, s.logger))
-				r.Get("/search", deps.SearchHandler.Search)
-				r.Get("/search/unified", deps.SearchHandler.FederatedSearch)
-				r.Get("/search/popular", deps.SearchHandler.Popular)
-				r.Get("/search/autocomplete", deps.SearchHandler.Autocomplete)
+				r.Get("/search", deps.Handlers.SearchHandler.Search)
+				r.Get("/search/unified", deps.Handlers.SearchHandler.FederatedSearch)
+				r.Get("/search/popular", deps.Handlers.SearchHandler.Popular)
+				r.Get("/search/autocomplete", deps.Handlers.SearchHandler.Autocomplete)
 			})
 			s.logger.Info("search API endpoints registered")
 		}
 
 		// ZIM archive endpoints (60/min per IP)
-		if deps.ZimHandler != nil {
+		if deps.Handlers.ZimHandler != nil {
 			r.Route("/zim/archives", func(r chi.Router) {
 				r.Use(rateLimitByIP(60, time.Minute, deps.BareRedisClient))
 				r.Use(authmiddleware.RequireScope(authscope.ZIMRead, s.logger))
-				r.Get("/", deps.ZimHandler.List)
-				r.Get("/{archive}", deps.ZimHandler.Show)
-				r.Get("/{archive}/search", deps.ZimHandler.Search)
-				r.Get("/{archive}/suggest", deps.ZimHandler.Suggest)
-				r.Get("/{archive}/articles/*", deps.ZimHandler.ReadArticle)
+				r.Get("/", deps.Handlers.ZimHandler.List)
+				r.Get("/{archive}", deps.Handlers.ZimHandler.Show)
+				r.Get("/{archive}/search", deps.Handlers.ZimHandler.Search)
+				r.Get("/{archive}/suggest", deps.Handlers.ZimHandler.Suggest)
+				r.Get("/{archive}/articles/*", deps.Handlers.ZimHandler.ReadArticle)
 			})
 			s.logger.Info("ZIM API endpoints registered")
 		}
 
 		// Git template endpoints
-		if deps.GitTemplateHandler != nil {
+		if deps.Handlers.GitTemplateHandler != nil {
 			r.Route("/git-templates", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
 					r.Use(rateLimitByIP(60, time.Minute, deps.BareRedisClient))
 					r.Use(authmiddleware.RequireScope(authscope.TemplatesRead, s.logger))
-					r.Get("/", deps.GitTemplateHandler.List)
-					r.Get("/search", deps.GitTemplateHandler.Search)
-					r.Get("/{uuid}", deps.GitTemplateHandler.Show)
-					r.Get("/{uuid}/structure", deps.GitTemplateHandler.Structure)
-					r.Get("/{uuid}/files/*", deps.GitTemplateHandler.ReadFile)
-					r.Get("/{uuid}/deployment-guide", deps.GitTemplateHandler.DeploymentGuide)
+					r.Get("/", deps.Handlers.GitTemplateHandler.List)
+					r.Get("/search", deps.Handlers.GitTemplateHandler.Search)
+					r.Get("/{uuid}", deps.Handlers.GitTemplateHandler.Show)
+					r.Get("/{uuid}/structure", deps.Handlers.GitTemplateHandler.Structure)
+					r.Get("/{uuid}/files/*", deps.Handlers.GitTemplateHandler.ReadFile)
+					r.Get("/{uuid}/deployment-guide", deps.Handlers.GitTemplateHandler.DeploymentGuide)
 				})
 
 				r.Group(func(r chi.Router) {
 					r.Use(rateLimitByIP(30, time.Minute, deps.BareRedisClient))
 					r.Use(authmiddleware.RequireScope(authscope.TemplatesWrite, s.logger))
 					r.Use(authmiddleware.RequireAdmin)
-					r.Post("/", deps.GitTemplateHandler.Create)
-					r.Put("/{uuid}", deps.GitTemplateHandler.Update)
-					r.Delete("/{uuid}", deps.GitTemplateHandler.Delete)
-					r.Post("/{uuid}/sync", deps.GitTemplateHandler.Sync)
-					r.Post("/{uuid}/download", deps.GitTemplateHandler.Download)
+					r.Post("/", deps.Handlers.GitTemplateHandler.Create)
+					r.Put("/{uuid}", deps.Handlers.GitTemplateHandler.Update)
+					r.Delete("/{uuid}", deps.Handlers.GitTemplateHandler.Delete)
+					r.Post("/{uuid}/sync", deps.Handlers.GitTemplateHandler.Sync)
+					r.Post("/{uuid}/download", deps.Handlers.GitTemplateHandler.Download)
 				})
 			})
 			s.logger.Info("Git template API endpoints registered")
 		}
 
 		// External service endpoints
-		if deps.ExternalServiceHandler != nil {
+		if deps.Handlers.ExternalServiceHandler != nil {
 			r.Route("/external-services", func(r chi.Router) {
 				r.Group(func(r chi.Router) {
 					r.Use(rateLimitByIP(60, time.Minute, deps.BareRedisClient))
 					r.Use(authmiddleware.RequireScope(authscope.ServicesRead, s.logger))
-					r.Get("/", deps.ExternalServiceHandler.List)
-					r.Get("/{uuid}", deps.ExternalServiceHandler.Show)
+					r.Get("/", deps.Handlers.ExternalServiceHandler.List)
+					r.Get("/{uuid}", deps.Handlers.ExternalServiceHandler.Show)
 				})
 
 				r.Group(func(r chi.Router) {
 					r.Use(rateLimitByIP(30, time.Minute, deps.BareRedisClient))
 					r.Use(authmiddleware.RequireScope(authscope.ServicesWrite, s.logger))
 					r.Use(authmiddleware.RequireAdmin)
-					r.Post("/", deps.ExternalServiceHandler.Create)
-					r.Put("/{uuid}", deps.ExternalServiceHandler.Update)
-					r.Delete("/{uuid}", deps.ExternalServiceHandler.Delete)
-					r.Post("/{uuid}/health-check", deps.ExternalServiceHandler.HealthCheck)
-					r.Post("/{uuid}/sync", deps.ExternalServiceHandler.Sync)
+					r.Post("/", deps.Handlers.ExternalServiceHandler.Create)
+					r.Put("/{uuid}", deps.Handlers.ExternalServiceHandler.Update)
+					r.Delete("/{uuid}", deps.Handlers.ExternalServiceHandler.Delete)
+					r.Post("/{uuid}/health-check", deps.Handlers.ExternalServiceHandler.HealthCheck)
+					r.Post("/{uuid}/sync", deps.Handlers.ExternalServiceHandler.Sync)
 				})
 			})
 			s.logger.Info("External service API endpoints registered")
@@ -396,51 +401,52 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 			r.Use(authmiddleware.RequireScope(authscope.Admin, s.logger))
 			r.Use(authmiddleware.RequireAdmin)
 
-			if deps.SSEHandler != nil {
-				r.Get("/events/stream", deps.SSEHandler.Stream)
+			if deps.Handlers.SSEHandler != nil {
+				r.Get("/events/stream", deps.Handlers.SSEHandler.Stream)
 			}
-			if deps.DashboardHandler != nil {
-				r.Get("/dashboard/stats", deps.DashboardHandler.Stats)
+			if deps.Handlers.DashboardHandler != nil {
+				r.Get("/dashboard/stats", deps.Handlers.DashboardHandler.Stats)
 			}
 
-			if deps.UserHandler != nil {
+			if deps.Handlers.UserHandler != nil {
+				// Create/Update are intentionally absent — DocuMCP is OIDC-only.
+				// User rows are provisioned by the OIDC callback on first login
+				// and synced from claims thereafter. See security.md H1.
 				r.Route("/users", func(r chi.Router) {
-					r.Get("/", deps.UserHandler.List)
-					r.Post("/", deps.UserHandler.Create)
-					r.Get("/{id}", deps.UserHandler.Show)
-					r.Put("/{id}", deps.UserHandler.Update)
-					r.Delete("/{id}", deps.UserHandler.Delete)
-					r.Post("/{id}/toggle-admin", deps.UserHandler.ToggleAdmin)
+					r.Get("/", deps.Handlers.UserHandler.List)
+					r.Get("/{id}", deps.Handlers.UserHandler.Show)
+					r.Delete("/{id}", deps.Handlers.UserHandler.Delete)
+					r.Post("/{id}/toggle-admin", deps.Handlers.UserHandler.ToggleAdmin)
 				})
 			}
 
-			if deps.DocumentHandler != nil {
-				r.Delete("/documents/purge", deps.DocumentHandler.BulkPurge)
+			if deps.Handlers.DocumentHandler != nil {
+				r.Delete("/documents/purge", deps.Handlers.DocumentHandler.BulkPurge)
 			}
-			if deps.ExternalServiceHandler != nil {
-				r.Put("/external-services/reorder", deps.ExternalServiceHandler.Reorder)
+			if deps.Handlers.ExternalServiceHandler != nil {
+				r.Put("/external-services/reorder", deps.Handlers.ExternalServiceHandler.Reorder)
 			}
-			if deps.GitTemplateHandler != nil {
-				r.Post("/git-templates/validate-url", deps.GitTemplateHandler.ValidateURL)
+			if deps.Handlers.GitTemplateHandler != nil {
+				r.Post("/git-templates/validate-url", deps.Handlers.GitTemplateHandler.ValidateURL)
 			}
 
-			if deps.OAuthClientHandler != nil {
+			if deps.Handlers.OAuthClientHandler != nil {
 				r.Route("/oauth-clients", func(r chi.Router) {
-					r.Get("/", deps.OAuthClientHandler.List)
-					r.Post("/", deps.OAuthClientHandler.Create)
-					r.Get("/{id}", deps.OAuthClientHandler.Show)
-					r.Delete("/{id}", deps.OAuthClientHandler.Delete)
-					r.Get("/{id}/scope-grants", deps.OAuthClientHandler.ListScopeGrants)
-					r.Delete("/{id}/scope-grants/{grantId}", deps.OAuthClientHandler.RevokeScopeGrant)
+					r.Get("/", deps.Handlers.OAuthClientHandler.List)
+					r.Post("/", deps.Handlers.OAuthClientHandler.Create)
+					r.Get("/{id}", deps.Handlers.OAuthClientHandler.Show)
+					r.Delete("/{id}", deps.Handlers.OAuthClientHandler.Delete)
+					r.Get("/{id}/scope-grants", deps.Handlers.OAuthClientHandler.ListScopeGrants)
+					r.Delete("/{id}/scope-grants/{grantId}", deps.Handlers.OAuthClientHandler.RevokeScopeGrant)
 				})
 			}
 
-			if deps.QueueHandler != nil {
+			if deps.Handlers.QueueHandler != nil {
 				r.Route("/queue", func(r chi.Router) {
-					r.Get("/stats", deps.QueueHandler.Stats)
-					r.Get("/failed", deps.QueueHandler.ListFailed)
-					r.Post("/failed/{id}/retry", deps.QueueHandler.RetryFailed)
-					r.Delete("/failed/{id}", deps.QueueHandler.DeleteFailed)
+					r.Get("/stats", deps.Handlers.QueueHandler.Stats)
+					r.Get("/failed", deps.Handlers.QueueHandler.ListFailed)
+					r.Post("/failed/{id}/retry", deps.Handlers.QueueHandler.RetryFailed)
+					r.Delete("/failed/{id}", deps.Handlers.QueueHandler.DeleteFailed)
 				})
 			}
 		})
@@ -456,14 +462,14 @@ func (s *Server) registerSPARoutes(deps Deps) {
 		http.Redirect(w, r, "/auth/login", http.StatusMovedPermanently)
 	})
 
-	if deps.RootAssetHandler != nil {
-		r.Get("/favicon.ico", deps.RootAssetHandler.ServeHTTP)
-		r.Get("/favicon.svg", deps.RootAssetHandler.ServeHTTP)
-		r.Get("/favicon-96x96.png", deps.RootAssetHandler.ServeHTTP)
-		r.Get("/apple-touch-icon.png", deps.RootAssetHandler.ServeHTTP)
-		r.Get("/site.webmanifest", deps.RootAssetHandler.ServeHTTP)
-		r.Get("/web-app-manifest-192x192.png", deps.RootAssetHandler.ServeHTTP)
-		r.Get("/web-app-manifest-512x512.png", deps.RootAssetHandler.ServeHTTP)
+	if deps.Handlers.RootAssetHandler != nil {
+		r.Get("/favicon.ico", deps.Handlers.RootAssetHandler.ServeHTTP)
+		r.Get("/favicon.svg", deps.Handlers.RootAssetHandler.ServeHTTP)
+		r.Get("/favicon-96x96.png", deps.Handlers.RootAssetHandler.ServeHTTP)
+		r.Get("/apple-touch-icon.png", deps.Handlers.RootAssetHandler.ServeHTTP)
+		r.Get("/site.webmanifest", deps.Handlers.RootAssetHandler.ServeHTTP)
+		r.Get("/web-app-manifest-192x192.png", deps.Handlers.RootAssetHandler.ServeHTTP)
+		r.Get("/web-app-manifest-512x512.png", deps.Handlers.RootAssetHandler.ServeHTTP)
 	}
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -471,20 +477,20 @@ func (s *Server) registerSPARoutes(deps Deps) {
 	})
 
 	// River UI — must be registered before the SPA catch-all so chi matches it first.
-	if deps.RiverUIHandler != nil {
+	if deps.Handlers.RiverUIHandler != nil {
 		r.Route("/admin/river", func(r chi.Router) {
-			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.OAuthService, deps.SessionStore, s.logger, deps.APIResource))
+			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.Auth.OAuthService, deps.Auth.SessionStore, s.logger, deps.Auth.APIResource))
 			r.Use(authmiddleware.RequireScope(authscope.Admin, s.logger))
 			r.Use(authmiddleware.RequireAdmin)
 			r.Use(riverUICSP)
-			r.Handle("/*", deps.RiverUIHandler)
+			r.Handle("/*", deps.Handlers.RiverUIHandler)
 		})
 		s.logger.Info("River UI mounted", "path", "/admin/river/*")
 	}
 
-	if deps.SPAHandler != nil {
+	if deps.Handlers.SPAHandler != nil {
 		r.Get("/admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently).ServeHTTP)
-		r.Mount("/admin/", http.StripPrefix("/admin", deps.SPAHandler))
+		r.Mount("/admin/", http.StripPrefix("/admin", deps.Handlers.SPAHandler))
 		s.logger.Info("SPA handler registered", "path", "/admin/*")
 	}
 }

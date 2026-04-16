@@ -247,7 +247,9 @@ function handleUploaded(): void {
         class="w-full sm:w-auto sm:max-w-sm"
       />
 
+      <label for="file-type-filter" class="sr-only">Filter by file type</label>
       <select
+        id="file-type-filter"
         v-model="fileTypeFilter"
         class="rounded-md border border-border-input bg-bg-surface py-1.5 pl-3 pr-8 text-sm text-text-secondary focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
       >
@@ -256,7 +258,9 @@ function handleUploaded(): void {
         </option>
       </select>
 
+      <label for="status-filter" class="sr-only">Filter by status</label>
       <select
+        id="status-filter"
         v-model="statusFilter"
         class="rounded-md border border-border-input bg-bg-surface py-1.5 pl-3 pr-8 text-sm text-text-secondary focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
       >

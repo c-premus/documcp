@@ -45,6 +45,65 @@ func (r *OAuthRepository) FindAuthorizationCodeByCode(ctx context.Context, codeH
 	return &code, nil
 }
 
+// FindAuthorizationCodeByCodeIncludingRevoked returns an authorization code
+// by hash without filtering out revoked rows. Callers must inspect
+// code.Revoked. Used for replay detection in ExchangeAuthorizationCode
+// (security.md M1): if the primary lookup fails with ErrNoRows but this
+// method returns a revoked row, the caller is presenting a previously-
+// consumed code, which is evidence of interception.
+func (r *OAuthRepository) FindAuthorizationCodeByCodeIncludingRevoked(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error) {
+	code, err := database.Get[model.OAuthAuthorizationCode](ctx, r.db,
+		`SELECT * FROM oauth_authorization_codes WHERE code = $1`, codeHash)
+	if err != nil {
+		return nil, fmt.Errorf("finding authorization code (incl revoked): %w", err)
+	}
+	return &code, nil
+}
+
+// RevokeTokenFamilyByAuthorizationCodeID revokes every access and refresh
+// token descended from the given authorization code. Used on replay
+// detection: when we discover a consumed code or refresh token is being
+// presented, we assume the lineage is compromised and invalidate every
+// in-flight token issued under that grant.
+//
+// Returns the number of access tokens marked revoked (refresh tokens are
+// counted separately inside the transaction but not returned — access-token
+// count is the interesting signal for alerting).
+func (r *OAuthRepository) RevokeTokenFamilyByAuthorizationCodeID(ctx context.Context, authCodeID int64) (int64, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("beginning token family revocation tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
+
+	// Revoke refresh tokens whose access token is in this family first —
+	// FK would cascade on delete but we only mark revoked, so we must do
+	// it explicitly. Use a correlated subquery to scope by family.
+	if _, execErr := tx.Exec(ctx,
+		`UPDATE oauth_refresh_tokens
+		   SET revoked = true, updated_at = NOW()
+		 WHERE revoked = false
+		   AND access_token_id IN (
+		       SELECT id FROM oauth_access_tokens WHERE authorization_code_id = $1
+		   )`, authCodeID); execErr != nil {
+		return 0, fmt.Errorf("revoking refresh tokens in family: %w", execErr)
+	}
+
+	tag, err := tx.Exec(ctx,
+		`UPDATE oauth_access_tokens
+		   SET revoked = true, updated_at = NOW()
+		 WHERE revoked = false AND authorization_code_id = $1`, authCodeID)
+	if err != nil {
+		return 0, fmt.Errorf("revoking access tokens in family: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("committing token family revocation: %w", err)
+	}
+
+	return tag.RowsAffected(), nil
+}
+
 // RevokeAuthorizationCode atomically marks an authorization code as revoked.
 // Returns sql.ErrNoRows if the code was already revoked (prevents double-exchange).
 func (r *OAuthRepository) RevokeAuthorizationCode(ctx context.Context, id int64) error {
@@ -68,13 +127,16 @@ func (r *OAuthRepository) RevokeAuthorizationCode(ctx context.Context, id int64)
 func (r *OAuthRepository) CreateAccessToken(ctx context.Context, token *model.OAuthAccessToken) error {
 	err := r.db.QueryRow(ctx,
 		`INSERT INTO oauth_access_tokens (
-			token, client_id, user_id, scope, resource, expires_at, revoked,
+			token, client_id, user_id, scope, resource, authorization_code_id,
+			expires_at, revoked,
 			created_at, updated_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7,
+			$1, $2, $3, $4, $5, $6,
+			$7, $8,
 			NOW(), NOW()
 		) RETURNING id, created_at, updated_at`,
-		token.Token, token.ClientID, token.UserID, token.Scope, token.Resource, token.ExpiresAt, token.Revoked,
+		token.Token, token.ClientID, token.UserID, token.Scope, token.Resource, token.AuthorizationCodeID,
+		token.ExpiresAt, token.Revoked,
 	).Scan(&token.ID, &token.CreatedAt, &token.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("creating access token: %w", err)
@@ -144,6 +206,20 @@ func (r *OAuthRepository) FindRefreshTokenByToken(ctx context.Context, tokenHash
 		`SELECT * FROM oauth_refresh_tokens WHERE token = $1 AND revoked = false AND expires_at > NOW()`, tokenHash)
 	if err != nil {
 		return nil, fmt.Errorf("finding refresh token: %w", err)
+	}
+	return &token, nil
+}
+
+// FindRefreshTokenByTokenIgnoringRevocation returns a refresh token by hash
+// without filtering by revoked or expiry. Callers must inspect the returned
+// token's flags. Used for replay detection in RefreshAccessToken
+// (security.md M2): when the primary lookup fails, a revoked hit here is
+// evidence the refresh token was intercepted after successful rotation.
+func (r *OAuthRepository) FindRefreshTokenByTokenIgnoringRevocation(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error) {
+	token, err := database.Get[model.OAuthRefreshToken](ctx, r.db,
+		`SELECT * FROM oauth_refresh_tokens WHERE token = $1`, tokenHash)
+	if err != nil {
+		return nil, fmt.Errorf("finding refresh token (incl revoked): %w", err)
 	}
 	return &token, nil
 }

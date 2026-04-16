@@ -42,7 +42,7 @@ func (s *Service) GenerateAuthorizationCode(ctx context.Context, params Generate
 		}
 	}
 
-	token, err := GenerateToken()
+	token, err := s.GenerateToken()
 	if err != nil {
 		return "", fmt.Errorf("generating authorization code: %w", err)
 	}
@@ -69,7 +69,7 @@ func (s *Service) GenerateAuthorizationCode(ctx context.Context, params Generate
 		Revoked:   false,
 	}
 
-	if err := s.repo.CreateAuthorizationCode(ctx, code); err != nil {
+	if err := s.authCodes.CreateAuthorizationCode(ctx, code); err != nil {
 		return "", fmt.Errorf("persisting authorization code: %w", err)
 	}
 
@@ -97,13 +97,13 @@ type ExchangeAuthorizationCodeParams struct {
 // ExchangeAuthorizationCode exchanges an auth code for tokens.
 func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params ExchangeAuthorizationCodeParams) (*TokenResult, error) {
 	// Parse the authorization code
-	codeID, codeHash, err := ParseToken(params.Code)
+	codeID, codeHash, err := s.ParseToken(params.Code)
 	if err != nil {
 		return nil, errors.New("invalid authorization code")
 	}
 
 	// Look up the client
-	client, err := s.repo.FindClientByClientID(ctx, params.ClientID)
+	client, err := s.clients.FindClientByClientID(ctx, params.ClientID)
 	if err != nil {
 		return nil, errors.New("invalid client credentials")
 	}
@@ -120,9 +120,15 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 		return nil, err
 	}
 
-	// Look up the authorization code by hash
-	authCode, err := s.repo.FindAuthorizationCodeByCode(ctx, codeHash)
+	// Look up the authorization code by hash. A non-revoked hit is the
+	// happy path. If the lookup fails with no-rows, dispatch to the replay
+	// detector before returning — a revoked match means the code is being
+	// replayed (security.md M1 / OAuth 2.1 §4.1.3).
+	authCode, err := s.authCodes.FindAuthorizationCodeByCode(ctx, codeHash)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			s.handleAuthCodeReusePossible(ctx, codeHash, codeID, params.ClientID)
+		}
 		return nil, errors.New("invalid authorization code")
 	}
 
@@ -169,7 +175,7 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 
 	// Atomically revoke the authorization code (one-time use).
 	// Returns sql.ErrNoRows if a concurrent request already consumed it.
-	if err := s.repo.RevokeAuthorizationCode(ctx, authCode.ID); err != nil {
+	if err := s.authCodes.RevokeAuthorizationCode(ctx, authCode.ID); err != nil {
 		return nil, errors.New("authorization code has already been used")
 	}
 
@@ -207,5 +213,28 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 		}
 	}
 
-	return s.issueTokenPair(ctx, client.ID, authCode.UserID, scope, resource)
+	return s.issueTokenPair(ctx, client.ID, authCode.UserID, scope, resource, authCode.ID)
+}
+
+// handleAuthCodeReusePossible runs when the primary code lookup misses with
+// sql.ErrNoRows. If the same hash exists with revoked=true, the code is
+// being replayed — evidence the token lineage is compromised — and every
+// access/refresh token descending from that code is revoked. Non-fatal on
+// error. Security.md M1.
+func (s *Service) handleAuthCodeReusePossible(ctx context.Context, codeHash string, codeID int64, clientID string) {
+	replayed, err := s.authCodes.FindAuthorizationCodeByCodeIncludingRevoked(ctx, codeHash)
+	if err != nil || !replayed.Revoked || replayed.ID != codeID {
+		return
+	}
+
+	revoked, famErr := s.accessTokens.RevokeTokenFamilyByAuthorizationCodeID(ctx, replayed.ID)
+	if famErr != nil {
+		s.logger.Error("revoking token family on auth-code replay",
+			"error", famErr, "auth_code_id", replayed.ID, "client_id", clientID)
+		return
+	}
+	s.logger.Warn("oauth auth-code replay detected",
+		"auth_code_id", replayed.ID, "client_id", clientID,
+		"tokens_revoked", revoked)
+	tokenReplayTotal.WithLabelValues("authcode").Inc()
 }
