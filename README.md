@@ -387,15 +387,16 @@ Every variable below is sourced from `.env.example`. "Required" means startup fa
 
 ## Running multiple replicas
 
-DocuMCP is designed to scale horizontally behind a load balancer. Three things have to be true:
+DocuMCP is designed to scale horizontally behind a load balancer. Two things have to be true:
 
 1. **Shared storage** -- set `STORAGE_DRIVER=s3` and point it at any S3-compatible service. The filesystem driver is node-local and will not work with more than one replica.
-2. **Sticky MCP sessions** -- the MCP SDK keeps session state in memory per replica, so a client that runs `initialize()` on replica A must keep landing on replica A for the rest of its session. The docker-compose file's Traefik labels set a `documcp_affinity` cookie on the `documcp` service to handle this automatically. If you deploy behind a different load balancer, enable cookie-based session affinity on the `/documcp` route (or the whole service). When a replica restarts, its sessions are gone and clients reinitialize on the next request -- the StreamableHTTP transport tolerates this.
-3. **At least one worker replica** -- scheduled jobs (document extraction, soft-delete purge, orphan cleanup, OAuth token cleanup, external-service health checks, expired scope-grant cleanup) run via River's periodic-job enqueuer. River elects a single leader across the cluster via the `river_leader` table, and only the leader enqueues periodic jobs. If every replica runs in insert-only `serve` mode (without `--with-worker`), no leader is elected and scheduled jobs never fire. Run at least one `serve --with-worker` or `worker` replica.
+2. **At least one worker replica** -- scheduled jobs (document extraction, soft-delete purge, orphan cleanup, OAuth token cleanup, external-service health checks, expired scope-grant cleanup) run via River's periodic-job enqueuer. River elects a single leader across the cluster via the `river_leader` table, and only the leader enqueues periodic jobs. If every replica runs in insert-only `serve` mode (without `--with-worker`), no leader is elected and scheduled jobs never fire. Run at least one `serve --with-worker` or `worker` replica.
+
+The MCP endpoint (`/documcp`) runs in Streamable HTTP stateless mode: every request creates a temporary session that closes after the response, so any replica can serve any request without sticky affinity. `GET /documcp` returns `405 Method Not Allowed` -- we don't offer a standalone SSE stream because our tools are pure request/response (no sampling, elicitation, or server-initiated messages). The REST and admin surfaces are stateless against Postgres and also require no affinity.
 
 Cross-replica cache invalidation is already handled: admin edits to Kiwix external services publish a message on a dedicated Redis pub/sub channel (`documcp:control:cache.kiwix.invalidate`) that all replicas subscribe to. Other caches are read-through against Postgres and don't need invalidation.
 
-Per-replica health is reported at `/health/ready` (which checks Postgres and Redis) and `documcp_mcp_active_sessions` is exposed as a Prometheus gauge so operators can detect sticky-session hot-spotting -- a large spread between `max` and `min` across replicas means one node is holding disproportionately many sessions.
+Per-replica health is reported at `/health/ready`, which checks Postgres and Redis.
 
 ## Documentation
 
