@@ -20,4 +20,8 @@ var (
 
 	// ErrInvalidURL indicates the provided URL failed validation (e.g. SSRF check).
 	ErrInvalidURL = errors.New("invalid URL")
+
+	// ErrNotDeleted indicates the caller tried to restore a document that is
+	// not in the soft-deleted state.
+	ErrNotDeleted = errors.New("document is not deleted")
 )

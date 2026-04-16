@@ -145,7 +145,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	}
 
 	// --- API Handlers ---
-	documentH := apihandler.NewDocumentHandler(documentPipeline, f.DocumentRepo, f.BlobStore, f.WorkerTempDir, logger)
+	documentH := apihandler.NewDocumentHandler(documentPipeline, f.BlobStore, f.WorkerTempDir, logger)
 	searchH := apihandler.NewSearchHandler(f.Searcher, f.SearchQueryRepo, f.DocumentRepo, logger)
 	zimH := apihandler.NewZimHandler(f.ZimArchiveRepo, &apihandler.KiwixFactoryAdapter{Factory: f.KiwixFactory}, logger)
 	gitTemplateSvc := service.NewGitTemplateService(f.GitTemplateRepo, riverClient, f.Encryptor, logger)

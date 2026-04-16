@@ -1,7 +1,6 @@
 package api
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 
 	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/service"
 )
 
 // Restore handles POST /api/documents/{uuid}/restore — restore a soft-deleted document.
@@ -23,37 +23,21 @@ func (h *DocumentHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	doc, err := h.repo.FindByUUIDIncludingDeleted(r.Context(), docUUID)
+	doc, err := h.pipeline.Restore(r.Context(), docUUID)
 	if err != nil {
-		h.logger.Error("finding document for restore", "uuid", docUUID, "error", err)
-		if errors.Is(err, sql.ErrNoRows) {
+		switch {
+		case errors.Is(err, service.ErrNotFound):
 			errorResponse(w, http.StatusNotFound, "document not found")
-			return
+		case errors.Is(err, service.ErrNotDeleted):
+			errorResponse(w, http.StatusBadRequest, "document is not deleted")
+		default:
+			h.logger.Error("restoring document", "uuid", docUUID, "error", err)
+			errorResponse(w, http.StatusInternalServerError, "failed to restore document")
 		}
-		errorResponse(w, http.StatusInternalServerError, "failed to find document")
 		return
 	}
 
-	if !doc.DeletedAt.Valid {
-		errorResponse(w, http.StatusBadRequest, "document is not deleted")
-		return
-	}
-
-	if err = h.repo.Restore(r.Context(), doc.ID); err != nil {
-		h.logger.Error("restoring document", "uuid", docUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to restore document")
-		return
-	}
-
-	// Re-fetch to get updated timestamps.
-	doc, err = h.repo.FindByUUID(r.Context(), docUUID)
-	if err != nil {
-		h.logger.Error("fetching restored document", "uuid", docUUID, "error", err)
-		errorResponse(w, http.StatusInternalServerError, "document restored but failed to fetch updated record")
-		return
-	}
-
-	tags, _ := h.repo.TagsForDocument(r.Context(), doc.ID)
+	tags, _ := h.pipeline.TagsForDocument(r.Context(), doc.ID)
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"message": "Document restored successfully.",
 		"data":    toDocumentResponse(doc, tags),
@@ -69,19 +53,12 @@ func (h *DocumentHandler) Purge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	doc, err := h.repo.FindByUUIDIncludingDeleted(r.Context(), docUUID)
+	filePath, err := h.pipeline.PurgeSingle(r.Context(), docUUID)
 	if err != nil {
-		h.logger.Error("finding document for purge", "uuid", docUUID, "error", err)
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, service.ErrNotFound) {
 			errorResponse(w, http.StatusNotFound, "document not found")
 			return
 		}
-		errorResponse(w, http.StatusInternalServerError, "failed to find document")
-		return
-	}
-
-	filePath, err := h.repo.PurgeSingle(r.Context(), doc.ID)
-	if err != nil {
 		h.logger.Error("purging document", "uuid", docUUID, "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to purge document")
 		return
@@ -112,7 +89,7 @@ func (h *DocumentHandler) BulkPurge(w http.ResponseWriter, r *http.Request) {
 
 	olderThan := time.Duration(days) * 24 * time.Hour
 
-	paths, err := h.repo.PurgeSoftDeleted(r.Context(), olderThan)
+	paths, err := h.pipeline.PurgeSoftDeleted(r.Context(), olderThan)
 	if err != nil {
 		h.logger.Error("bulk purging documents", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to purge documents")
@@ -144,7 +121,7 @@ func (h *DocumentHandler) ListDeleted(w http.ResponseWriter, r *http.Request) {
 		userID = &user.ID
 	}
 
-	docs, total, err := h.repo.ListDeleted(r.Context(), limit, offset, userID)
+	docs, total, err := h.pipeline.ListDeleted(r.Context(), limit, offset, userID)
 	if err != nil {
 		h.logger.Error("listing deleted documents", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to list deleted documents")
@@ -156,7 +133,7 @@ func (h *DocumentHandler) ListDeleted(w http.ResponseWriter, r *http.Request) {
 	for i := range docs {
 		docIDs[i] = docs[i].ID
 	}
-	tagsByDoc, tagsErr := h.repo.TagsForDocuments(r.Context(), docIDs)
+	tagsByDoc, tagsErr := h.pipeline.TagsForDocuments(r.Context(), docIDs)
 	if tagsErr != nil {
 		h.logger.Warn("batch-loading tags", "error", tagsErr)
 		tagsByDoc = map[int64][]model.DocumentTag{}

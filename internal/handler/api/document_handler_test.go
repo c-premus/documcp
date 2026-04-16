@@ -31,23 +31,39 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Mock repository implementing service.DocumentRepo (used by DocumentService)
+// Mock repository implementing service.DocumentRepo (used by DocumentService
+// when tests construct a real *DocumentService/*DocumentPipeline).
 // ---------------------------------------------------------------------------
 
 type mockDocumentRepo struct {
-	findByUUIDFn      func(ctx context.Context, uuid string) (*model.Document, error)
-	findByIDFn        func(ctx context.Context, id int64) (*model.Document, error)
-	createFn          func(ctx context.Context, doc *model.Document) error
-	updateFn          func(ctx context.Context, doc *model.Document) error
-	softDeleteFn      func(ctx context.Context, id int64) error
-	tagsForDocumentFn func(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
-	replaceTagsFn     func(ctx context.Context, documentID int64, tags []string) error
-	createVersionFn   func(ctx context.Context, version *model.DocumentVersion) error
+	findByUUIDFn                 func(ctx context.Context, uuid string) (*model.Document, error)
+	findByUUIDIncludingDeletedFn func(ctx context.Context, uuid string) (*model.Document, error)
+	findByIDFn                   func(ctx context.Context, id int64) (*model.Document, error)
+	createFn                     func(ctx context.Context, doc *model.Document) error
+	updateFn                     func(ctx context.Context, doc *model.Document) error
+	softDeleteFn                 func(ctx context.Context, id int64) error
+	restoreFn                    func(ctx context.Context, id int64) error
+	purgeSingleFn                func(ctx context.Context, id int64) (string, error)
+	purgeSoftDeletedFn           func(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
+	listFn                       func(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error)
+	listDeletedFn                func(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
+	listDistinctTagsFn           func(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error)
+	tagsForDocumentFn            func(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
+	tagsForDocumentsFn           func(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error)
+	replaceTagsFn                func(ctx context.Context, documentID int64, tags []string) error
+	createVersionFn              func(ctx context.Context, version *model.DocumentVersion) error
 }
 
 func (m *mockDocumentRepo) FindByUUID(ctx context.Context, uuid string) (*model.Document, error) {
 	if m.findByUUIDFn != nil {
 		return m.findByUUIDFn(ctx, uuid)
+	}
+	return nil, sql.ErrNoRows
+}
+
+func (m *mockDocumentRepo) FindByUUIDIncludingDeleted(ctx context.Context, uuid string) (*model.Document, error) {
+	if m.findByUUIDIncludingDeletedFn != nil {
+		return m.findByUUIDIncludingDeletedFn(ctx, uuid)
 	}
 	return nil, sql.ErrNoRows
 }
@@ -80,9 +96,58 @@ func (m *mockDocumentRepo) SoftDelete(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (m *mockDocumentRepo) Restore(ctx context.Context, id int64) error {
+	if m.restoreFn != nil {
+		return m.restoreFn(ctx, id)
+	}
+	return nil
+}
+
+func (m *mockDocumentRepo) PurgeSingle(ctx context.Context, id int64) (string, error) {
+	if m.purgeSingleFn != nil {
+		return m.purgeSingleFn(ctx, id)
+	}
+	return "", nil
+}
+
+func (m *mockDocumentRepo) PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error) {
+	if m.purgeSoftDeletedFn != nil {
+		return m.purgeSoftDeletedFn(ctx, olderThan)
+	}
+	return nil, nil
+}
+
+func (m *mockDocumentRepo) List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+	if m.listFn != nil {
+		return m.listFn(ctx, params)
+	}
+	return &repository.DocumentListResult{}, nil
+}
+
+func (m *mockDocumentRepo) ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error) {
+	if m.listDeletedFn != nil {
+		return m.listDeletedFn(ctx, limit, offset, userID)
+	}
+	return nil, 0, nil
+}
+
+func (m *mockDocumentRepo) ListDistinctTags(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error) {
+	if m.listDistinctTagsFn != nil {
+		return m.listDistinctTagsFn(ctx, prefix, limit, userID)
+	}
+	return nil, nil
+}
+
 func (m *mockDocumentRepo) TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error) {
 	if m.tagsForDocumentFn != nil {
 		return m.tagsForDocumentFn(ctx, documentID)
+	}
+	return nil, nil
+}
+
+func (m *mockDocumentRepo) TagsForDocuments(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error) {
+	if m.tagsForDocumentsFn != nil {
+		return m.tagsForDocumentsFn(ctx, documentIDs)
 	}
 	return nil, nil
 }
@@ -102,16 +167,32 @@ func (m *mockDocumentRepo) CreateVersion(ctx context.Context, version *model.Doc
 }
 
 // ---------------------------------------------------------------------------
-// Mock pipeline implementing documentPipeline interface
+// Mock pipeline implementing documentPipeline interface.
+// Combines write-path orchestration (Upload/Update/Delete/ReplaceContent) and
+// read/trash methods previously served by a separate mockHandlerRepo.
 // ---------------------------------------------------------------------------
 
 type mockPipeline struct {
+	// Pipeline write-path
 	findByUUIDFn       func(ctx context.Context, uuid string) (*model.Document, error)
 	uploadFn           func(ctx context.Context, params service.UploadDocumentParams) (*model.Document, error)
 	updateFn           func(ctx context.Context, docUUID string, params service.UpdateDocumentParams) (*model.Document, error)
 	deleteFn           func(ctx context.Context, docUUID string) error
 	replaceContentFn   func(ctx context.Context, docUUID string, params service.ReplaceContentParams) (*model.Document, error)
 	extractorRegistryV *extractor.Registry
+
+	// Read / list / tag methods
+	findByUUIDIncludingDeletedFn func(ctx context.Context, uuid string) (*model.Document, error)
+	listFn                       func(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error)
+	tagsForDocumentFn            func(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
+	tagsForDocumentsFn           func(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error)
+	listDistinctTagsFn           func(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error)
+
+	// Trash methods (service-style: UUID-based)
+	restoreFn          func(ctx context.Context, docUUID string) (*model.Document, error)
+	purgeSingleFn      func(ctx context.Context, docUUID string) (string, error)
+	purgeSoftDeletedFn func(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
+	listDeletedFn      func(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
 }
 
 func (m *mockPipeline) FindByUUID(ctx context.Context, uuid string) (*model.Document, error) {
@@ -119,6 +200,13 @@ func (m *mockPipeline) FindByUUID(ctx context.Context, uuid string) (*model.Docu
 		return m.findByUUIDFn(ctx, uuid)
 	}
 	return nil, nil
+}
+
+func (m *mockPipeline) FindByUUIDIncludingDeleted(ctx context.Context, uuid string) (*model.Document, error) {
+	if m.findByUUIDIncludingDeletedFn != nil {
+		return m.findByUUIDIncludingDeletedFn(ctx, uuid)
+	}
+	return nil, sql.ErrNoRows
 }
 
 func (m *mockPipeline) ReplaceContent(ctx context.Context, docUUID string, params service.ReplaceContentParams) (*model.Document, error) {
@@ -153,92 +241,67 @@ func (m *mockPipeline) ExtractorRegistry() *extractor.Registry {
 	return m.extractorRegistryV
 }
 
-// ---------------------------------------------------------------------------
-// Mock handler-level repo implementing documentRepo interface
-// ---------------------------------------------------------------------------
-
-type mockHandlerRepo struct {
-	listFn                       func(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error)
-	findByUUIDFn                 func(ctx context.Context, uuid string) (*model.Document, error)
-	findByUUIDIncludingDeletedFn func(ctx context.Context, uuid string) (*model.Document, error)
-	tagsForDocumentFn            func(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
-	tagsForDocumentsFn           func(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error)
-	restoreFn                    func(ctx context.Context, id int64) error
-	purgeSingleFn                func(ctx context.Context, id int64) (string, error)
-	purgeSoftDeletedFn           func(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
-	listDeletedFn                func(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
-	listDistinctTagsFn           func(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error)
-}
-
-func (m *mockHandlerRepo) List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
+func (m *mockPipeline) List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error) {
 	if m.listFn != nil {
 		return m.listFn(ctx, params)
 	}
 	return &repository.DocumentListResult{}, nil
 }
 
-func (m *mockHandlerRepo) FindByUUID(ctx context.Context, uuid string) (*model.Document, error) {
-	if m.findByUUIDFn != nil {
-		return m.findByUUIDFn(ctx, uuid)
-	}
-	return nil, sql.ErrNoRows
-}
-
-func (m *mockHandlerRepo) FindByUUIDIncludingDeleted(ctx context.Context, uuid string) (*model.Document, error) {
-	if m.findByUUIDIncludingDeletedFn != nil {
-		return m.findByUUIDIncludingDeletedFn(ctx, uuid)
-	}
-	return nil, sql.ErrNoRows
-}
-
-func (m *mockHandlerRepo) TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error) {
+func (m *mockPipeline) TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error) {
 	if m.tagsForDocumentFn != nil {
 		return m.tagsForDocumentFn(ctx, documentID)
 	}
 	return nil, nil
 }
 
-func (m *mockHandlerRepo) TagsForDocuments(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error) {
+func (m *mockPipeline) TagsForDocuments(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error) {
 	if m.tagsForDocumentsFn != nil {
 		return m.tagsForDocumentsFn(ctx, documentIDs)
 	}
 	return map[int64][]model.DocumentTag{}, nil
 }
 
-func (m *mockHandlerRepo) Restore(ctx context.Context, id int64) error {
-	if m.restoreFn != nil {
-		return m.restoreFn(ctx, id)
+func (m *mockPipeline) ListDistinctTags(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error) {
+	if m.listDistinctTagsFn != nil {
+		return m.listDistinctTagsFn(ctx, prefix, limit, userID)
 	}
-	return nil
+	return []string{}, nil
 }
 
-func (m *mockHandlerRepo) PurgeSingle(ctx context.Context, id int64) (string, error) {
+func (m *mockPipeline) Restore(ctx context.Context, docUUID string) (*model.Document, error) {
+	if m.restoreFn != nil {
+		return m.restoreFn(ctx, docUUID)
+	}
+	return nil, service.ErrNotFound
+}
+
+func (m *mockPipeline) PurgeSingle(ctx context.Context, docUUID string) (string, error) {
 	if m.purgeSingleFn != nil {
-		return m.purgeSingleFn(ctx, id)
+		return m.purgeSingleFn(ctx, docUUID)
 	}
 	return "", nil
 }
 
-func (m *mockHandlerRepo) PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error) {
+func (m *mockPipeline) PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error) {
 	if m.purgeSoftDeletedFn != nil {
 		return m.purgeSoftDeletedFn(ctx, olderThan)
 	}
 	return nil, nil
 }
 
-func (m *mockHandlerRepo) ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error) {
+func (m *mockPipeline) ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error) {
 	if m.listDeletedFn != nil {
 		return m.listDeletedFn(ctx, limit, offset, userID)
 	}
 	return nil, 0, nil
 }
 
-func (m *mockHandlerRepo) ListDistinctTags(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error) {
-	if m.listDistinctTagsFn != nil {
-		return m.listDistinctTagsFn(ctx, prefix, limit, userID)
-	}
-	return []string{}, nil
-}
+// mockHandlerRepo is an alias retained so existing tests that configure
+// read/list/trash methods on a bare struct continue to compile. After the
+// service-everything refactor the handler has a single pipeline dependency;
+// mockPipeline already carries every field the old mockHandlerRepo had.
+type mockHandlerRepo = mockPipeline
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -274,9 +337,9 @@ func newTestDocument(uuid string) *model.Document {
 	}
 }
 
-// newDocumentHandlerForTest creates a DocumentHandler backed by a mock service-level
-// repo. The pipeline is a real *service.DocumentPipeline backed by the mock.
-// The handler repo is a mockHandlerRepo with TagsForDocument wired through.
+// newDocumentHandlerForTest creates a DocumentHandler backed by a mock
+// service-level repo. The pipeline is a real *service.DocumentPipeline
+// (embedding *DocumentService, so all service methods promote through).
 func newDocumentHandlerForTest(t *testing.T, mockRepo *mockDocumentRepo) *DocumentHandler {
 	t.Helper()
 	docService := service.NewDocumentService(mockRepo, testLogger())
@@ -288,21 +351,28 @@ func newDocumentHandlerForTest(t *testing.T, mockRepo *mockDocumentRepo) *Docume
 	t.Cleanup(func() { _ = blob.Close() })
 	pipeline := service.NewDocumentPipeline(docService, nil, nil, blob, t.TempDir(), 0)
 	return &DocumentHandler{
-		pipeline: pipeline,
-		repo: &mockHandlerRepo{
-			tagsForDocumentFn: mockRepo.tagsForDocumentFn,
-		},
+		pipeline:      pipeline,
 		blob:          blob,
 		workerTempDir: t.TempDir(),
 		logger:        testLogger(),
 	}
 }
 
-// newTestHandler creates a DocumentHandler using mock pipeline and mock repo directly.
-func newTestHandler(p *mockPipeline, r *mockHandlerRepo) *DocumentHandler {
+// newTestHandler creates a DocumentHandler using a mock pipeline directly.
+// The second arg is accepted for legacy test call sites; when non-nil, any
+// function fields it carries are merged into p (p's fields take precedence).
+func newTestHandler(p *mockPipeline, extra ...*mockPipeline) *DocumentHandler {
+	if p == nil {
+		p = &mockPipeline{}
+	}
+	for _, r := range extra {
+		if r == nil {
+			continue
+		}
+		mergeMockPipeline(p, r)
+	}
 	return &DocumentHandler{
 		pipeline: p,
-		repo:     r,
 		logger:   testLogger(),
 	}
 }
@@ -310,19 +380,60 @@ func newTestHandler(p *mockPipeline, r *mockHandlerRepo) *DocumentHandler {
 // newTestHandlerWithBlob wires a DocumentHandler with an FSBlob rooted at
 // storagePath (which must already exist). Used by download / purge tests
 // that need the handler to read or delete real on-disk content.
-func newTestHandlerWithBlob(t *testing.T, p *mockPipeline, r *mockHandlerRepo, storagePath string) *DocumentHandler {
+func newTestHandlerWithBlob(t *testing.T, p, extra *mockPipeline, storagePath string) *DocumentHandler {
 	t.Helper()
 	blob, err := storage.NewFSBlob(storagePath)
 	if err != nil {
 		t.Fatalf("NewFSBlob: %v", err)
 	}
 	t.Cleanup(func() { _ = blob.Close() })
+	if p == nil {
+		p = &mockPipeline{}
+	}
+	if extra != nil {
+		mergeMockPipeline(p, extra)
+	}
 	return &DocumentHandler{
 		pipeline:      p,
-		repo:          r,
 		blob:          blob,
 		workerTempDir: t.TempDir(),
 		logger:        testLogger(),
+	}
+}
+
+// mergeMockPipeline copies any function fields set on src into dst that dst
+// does not already have. Kept small on purpose — covers the legacy fields
+// tests configured on the old mockHandlerRepo side of newTestHandler calls.
+func mergeMockPipeline(dst, src *mockPipeline) {
+	if dst.findByUUIDFn == nil {
+		dst.findByUUIDFn = src.findByUUIDFn
+	}
+	if dst.findByUUIDIncludingDeletedFn == nil {
+		dst.findByUUIDIncludingDeletedFn = src.findByUUIDIncludingDeletedFn
+	}
+	if dst.listFn == nil {
+		dst.listFn = src.listFn
+	}
+	if dst.tagsForDocumentFn == nil {
+		dst.tagsForDocumentFn = src.tagsForDocumentFn
+	}
+	if dst.tagsForDocumentsFn == nil {
+		dst.tagsForDocumentsFn = src.tagsForDocumentsFn
+	}
+	if dst.listDistinctTagsFn == nil {
+		dst.listDistinctTagsFn = src.listDistinctTagsFn
+	}
+	if dst.restoreFn == nil {
+		dst.restoreFn = src.restoreFn
+	}
+	if dst.purgeSingleFn == nil {
+		dst.purgeSingleFn = src.purgeSingleFn
+	}
+	if dst.purgeSoftDeletedFn == nil {
+		dst.purgeSoftDeletedFn = src.purgeSoftDeletedFn
+	}
+	if dst.listDeletedFn == nil {
+		dst.listDeletedFn = src.listDeletedFn
 	}
 }
 
@@ -983,7 +1094,6 @@ func newDocumentHandlerWithExtractor(t *testing.T, mockRepo *mockDocumentRepo, e
 	pipeline := service.NewDocumentPipeline(docService, registry, nil, blob, workerTmp, 0)
 	return &DocumentHandler{
 		pipeline:      pipeline,
-		repo:          &mockHandlerRepo{},
 		blob:          blob,
 		workerTempDir: workerTmp,
 		logger:        testLogger(),
@@ -1218,7 +1328,7 @@ func TestDocumentHandler_Download(t *testing.T) {
 
 		repo := &mockHandlerRepo{
 			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return nil, sql.ErrNoRows
+				return nil, service.ErrNotFound
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
@@ -1718,18 +1828,16 @@ func TestNewDocumentHandler(t *testing.T) {
 		t.Parallel()
 
 		p := &mockPipeline{}
-		r := &mockHandlerRepo{}
 		blob, err := storage.NewFSBlob(t.TempDir())
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = blob.Close() })
 		workerTmp := t.TempDir()
 		l := testLogger()
 
-		h := NewDocumentHandler(p, r, blob, workerTmp, l)
+		h := NewDocumentHandler(p, blob, workerTmp, l)
 
 		assert.NotNil(t, h)
 		assert.Equal(t, p, h.pipeline)
-		assert.Equal(t, r, h.repo)
 		assert.Equal(t, blob, h.blob)
 		assert.Equal(t, workerTmp, h.workerTempDir)
 		assert.Equal(t, l, h.logger)
@@ -1901,20 +2009,11 @@ func TestDocumentHandler_Restore(t *testing.T) {
 	t.Run("restores a soft-deleted document successfully", func(t *testing.T) {
 		t.Parallel()
 
-		deletedDoc := newTestDocument("restore-uuid")
-		deletedDoc.DeletedAt = sql.NullTime{Time: time.Now(), Valid: true}
-
 		restoredDoc := newTestDocument("restore-uuid")
 		restoredDoc.DeletedAt = sql.NullTime{Valid: false}
 
 		repo := &mockHandlerRepo{
-			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return deletedDoc, nil
-			},
-			restoreFn: func(_ context.Context, _ int64) error {
-				return nil
-			},
-			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+			restoreFn: func(_ context.Context, _ string) (*model.Document, error) {
 				return restoredDoc, nil
 			},
 			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
@@ -1937,12 +2036,12 @@ func TestDocumentHandler_Restore(t *testing.T) {
 		assert.Equal(t, "restore-uuid", data["uuid"])
 	})
 
-	t.Run("returns 404 when document not found", func(t *testing.T) {
+	t.Run("returns 404 when service returns ErrNotFound", func(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockHandlerRepo{
-			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return nil, sql.ErrNoRows
+			restoreFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return nil, service.ErrNotFound
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
@@ -1959,37 +2058,12 @@ func TestDocumentHandler_Restore(t *testing.T) {
 		assert.Equal(t, "document not found", body["message"])
 	})
 
-	t.Run("returns 500 when FindByUUIDIncludingDeleted fails with non-ErrNoRows", func(t *testing.T) {
+	t.Run("returns 400 when service returns ErrNotDeleted", func(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockHandlerRepo{
-			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return nil, errors.New("database error")
-			},
-		}
-		h := newTestHandler(&mockPipeline{}, repo)
-
-		req := httptest.NewRequest(http.MethodPost, "/api/documents/err/restore", http.NoBody)
-		req = chiContext(req, map[string]string{"uuid": "err"})
-		req = withAdminUser(req)
-		rr := httptest.NewRecorder()
-
-		h.Restore(rr, req)
-
-		assert.Equal(t, http.StatusInternalServerError, rr.Code)
-		body := decodeJSONBody(t, rr.Body)
-		assert.Equal(t, "failed to find document", body["message"])
-	})
-
-	t.Run("returns 400 when document is not deleted", func(t *testing.T) {
-		t.Parallel()
-
-		doc := newTestDocument("not-deleted-uuid")
-		doc.DeletedAt = sql.NullTime{Valid: false}
-
-		repo := &mockHandlerRepo{
-			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return doc, nil
+			restoreFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return nil, service.ErrNotDeleted
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
@@ -2006,24 +2080,18 @@ func TestDocumentHandler_Restore(t *testing.T) {
 		assert.Equal(t, "document is not deleted", body["message"])
 	})
 
-	t.Run("returns 500 when Restore repo call fails", func(t *testing.T) {
+	t.Run("returns 500 when Restore returns unclassified error", func(t *testing.T) {
 		t.Parallel()
 
-		doc := newTestDocument("restore-fail-uuid")
-		doc.DeletedAt = sql.NullTime{Time: time.Now(), Valid: true}
-
 		repo := &mockHandlerRepo{
-			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return doc, nil
-			},
-			restoreFn: func(_ context.Context, _ int64) error {
-				return errors.New("restore failed")
+			restoreFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return nil, errors.New("database error")
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/documents/restore-fail-uuid/restore", http.NoBody)
-		req = chiContext(req, map[string]string{"uuid": "restore-fail-uuid"})
+		req := httptest.NewRequest(http.MethodPost, "/api/documents/err/restore", http.NoBody)
+		req = chiContext(req, map[string]string{"uuid": "err"})
 		req = withAdminUser(req)
 		rr := httptest.NewRecorder()
 
@@ -2032,37 +2100,6 @@ func TestDocumentHandler_Restore(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, rr.Code)
 		body := decodeJSONBody(t, rr.Body)
 		assert.Equal(t, "failed to restore document", body["message"])
-	})
-
-	t.Run("returns 500 when re-fetch after restore fails", func(t *testing.T) {
-		t.Parallel()
-
-		doc := newTestDocument("refetch-fail-uuid")
-		doc.DeletedAt = sql.NullTime{Time: time.Now(), Valid: true}
-
-		repo := &mockHandlerRepo{
-			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return doc, nil
-			},
-			restoreFn: func(_ context.Context, _ int64) error {
-				return nil
-			},
-			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return nil, errors.New("re-fetch failed")
-			},
-		}
-		h := newTestHandler(&mockPipeline{}, repo)
-
-		req := httptest.NewRequest(http.MethodPost, "/api/documents/refetch-fail-uuid/restore", http.NoBody)
-		req = chiContext(req, map[string]string{"uuid": "refetch-fail-uuid"})
-		req = withAdminUser(req)
-		rr := httptest.NewRecorder()
-
-		h.Restore(rr, req)
-
-		assert.Equal(t, http.StatusInternalServerError, rr.Code)
-		body := decodeJSONBody(t, rr.Body)
-		assert.Equal(t, "document restored but failed to fetch updated record", body["message"])
 	})
 }
 
@@ -2076,13 +2113,8 @@ func TestDocumentHandler_Purge(t *testing.T) {
 	t.Run("purges document successfully without file", func(t *testing.T) {
 		t.Parallel()
 
-		doc := newTestDocument("purge-uuid")
-
 		repo := &mockHandlerRepo{
-			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return doc, nil
-			},
-			purgeSingleFn: func(_ context.Context, _ int64) (string, error) {
+			purgeSingleFn: func(_ context.Context, _ string) (string, error) {
 				return "", nil
 			},
 		}
@@ -2109,13 +2141,8 @@ func TestDocumentHandler_Purge(t *testing.T) {
 		filePath := filepath.Join(subDir, "to-delete.md")
 		require.NoError(t, os.WriteFile(filePath, []byte("delete me"), 0o600))
 
-		doc := newTestDocument("purge-file-uuid")
-
 		repo := &mockHandlerRepo{
-			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return doc, nil
-			},
-			purgeSingleFn: func(_ context.Context, _ int64) (string, error) {
+			purgeSingleFn: func(_ context.Context, _ string) (string, error) {
 				return "markdown/to-delete.md", nil
 			},
 		}
@@ -2133,12 +2160,12 @@ func TestDocumentHandler_Purge(t *testing.T) {
 		assert.True(t, os.IsNotExist(err), "file should be deleted from disk")
 	})
 
-	t.Run("returns 404 when document not found", func(t *testing.T) {
+	t.Run("returns 404 when service returns ErrNotFound", func(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockHandlerRepo{
-			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return nil, sql.ErrNoRows
+			purgeSingleFn: func(_ context.Context, _ string) (string, error) {
+				return "", service.ErrNotFound
 			},
 		}
 		h := newTestHandler(&mockPipeline{}, repo)
@@ -2153,35 +2180,11 @@ func TestDocumentHandler_Purge(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, rr.Code)
 	})
 
-	t.Run("returns 500 when FindByUUIDIncludingDeleted errors", func(t *testing.T) {
-		t.Parallel()
-
-		repo := &mockHandlerRepo{
-			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return nil, errors.New("db error")
-			},
-		}
-		h := newTestHandler(&mockPipeline{}, repo)
-
-		req := httptest.NewRequest(http.MethodDelete, "/api/documents/err/purge", http.NoBody)
-		req = chiContext(req, map[string]string{"uuid": "err"})
-		req = withAdminUser(req)
-		rr := httptest.NewRecorder()
-
-		h.Purge(rr, req)
-
-		assert.Equal(t, http.StatusInternalServerError, rr.Code)
-	})
-
 	t.Run("returns 500 when PurgeSingle fails", func(t *testing.T) {
 		t.Parallel()
 
-		doc := newTestDocument("purge-err-uuid")
 		repo := &mockHandlerRepo{
-			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
-				return doc, nil
-			},
-			purgeSingleFn: func(_ context.Context, _ int64) (string, error) {
+			purgeSingleFn: func(_ context.Context, _ string) (string, error) {
 				return "", errors.New("purge failed")
 			},
 		}
@@ -3599,16 +3602,20 @@ func TestDocumentHandler_Restore_OwnershipEnforcement(t *testing.T) {
 	t.Parallel()
 
 	// deletedDoc returns a repo serving a soft-deleted document owned by ownerID.
+	// The handler's ownership check calls FindByUUIDIncludingDeleted; the
+	// service's Restore is simulated by restoreFn returning the restored row.
 	deletedDoc := func(ownerID int64) *mockHandlerRepo {
 		doc := newTestDocument("test-uuid")
 		doc.UserID = sql.NullInt64{Int64: ownerID, Valid: true}
 		doc.DeletedAt = sql.NullTime{Time: time.Now().Add(-time.Hour), Valid: true}
+		restored := newTestDocument("test-uuid")
+		restored.UserID = sql.NullInt64{Int64: ownerID, Valid: true}
 		return &mockHandlerRepo{
 			findByUUIDIncludingDeletedFn: func(_ context.Context, _ string) (*model.Document, error) {
 				return doc, nil
 			},
-			restoreFn: func(_ context.Context, _ int64) error {
-				return nil
+			restoreFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return restored, nil
 			},
 			tagsForDocumentFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
 				return nil, nil
@@ -3620,10 +3627,6 @@ func TestDocumentHandler_Restore_OwnershipEnforcement(t *testing.T) {
 		t.Parallel()
 
 		repo := deletedDoc(42)
-		// FindByUUID (not IncludingDeleted) is called after restore to re-fetch.
-		repo.findByUUIDFn = func(_ context.Context, _ string) (*model.Document, error) {
-			return newTestDocument("test-uuid"), nil
-		}
 		h := newTestHandler(&mockPipeline{}, repo)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/documents/test-uuid/restore", http.NoBody)
