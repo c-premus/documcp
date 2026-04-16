@@ -18,7 +18,7 @@ DocuMCP gives AI agents structured access to your documentation via MCP tools an
 - **External Integrations** -- Kiwix ZIM archives (federated article search) and Git template repositories.
 - **Background Jobs** -- [River](https://riverqueue.com/) Postgres-native job queue with 7 worker types, 3 priority queues, and 6 periodic schedules.
 - **Admin UI** -- Vue 3 + TypeScript SPA for managing documents, users, OAuth clients, external services, and queue status.
-- **Observability** -- OpenTelemetry tracing with automatic instrumentation for database queries (otelpgx), Redis commands (redisotel), and outbound HTTP (otelhttp). Prometheus metrics (19 collectors covering HTTP, database pool, Redis pool, search, and queue). Structured logging with `slog` (trace/span ID injection). Optional Sentry/GlitchTip error tracking. See [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) for architecture and configuration.
+- **Observability** -- OpenTelemetry tracing with automatic instrumentation for database queries (otelpgx), Redis commands (redisotel), and outbound HTTP (otelhttp). Prometheus metrics covering HTTP, database pool, Redis pool, search, queue, and OAuth token replay. Structured logging with `slog` (trace/span ID injection). Optional Sentry/GlitchTip error tracking. See [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) for architecture and configuration.
 - **OIDC Authentication** -- User login via any OpenID Connect provider.
 
 ## Quick Start
@@ -109,7 +109,7 @@ golangci-lint run                    # Lint (v2.11.4)
 ```bash
 cd frontend
 npm ci
-npm run build              # OpenAPI codegen + vue-tsc + Vite build -> web/frontend/dist/
+npm run build              # vue-tsc + Vite build -> web/frontend/dist/
 npm run dev                # Dev server with HMR
 npm run test               # Vitest
 npm run lint               # vue-tsc + ESLint
@@ -121,6 +121,7 @@ npm run lint               # vue-tsc + ESLint
 cmd/documcp/             Entry point (serve, worker, migrate, version, health)
 internal/
   app/                   App lifecycle (Foundation + ServerApp + WorkerApp)
+  archive/               Shared zip/tar.gz builder with path-traversal guard
   auth/oauth/            OAuth 2.1 server (PKCE, device flow, dynamic registration)
   auth/oidc/             OIDC client for user authentication
   client/kiwix/          ZIM archive reader (Kiwix)
@@ -142,6 +143,7 @@ internal/
   security/              Path traversal and SSRF guards
   server/                HTTP server setup and routing (chi v5)
   service/               Business logic orchestration
+  storage/               Blob storage abstraction (FSBlob + S3Blob via gocloud.dev)
   stringutil/            Shared string utilities
   testutil/              Test helpers and fixtures
 frontend/                Vue 3 + TypeScript SPA source (admin panel)
