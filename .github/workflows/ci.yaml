@@ -122,7 +122,10 @@ jobs:
         run: cd frontend && npm ci
 
       - name: Audit dependencies
-        run: cd frontend && npm audit --omit=dev --audit-level=high
+        # Includes devDependencies (vite, vitest, openapi-ts, eslint, etc.) so
+        # build-tool supply-chain compromise is visible. --audit-level=high keeps
+        # the gate at the same severity bar.
+        run: cd frontend && npm audit --audit-level=high
 
       - name: Type check
         run: cd frontend && npx vue-tsc --noEmit

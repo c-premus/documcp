@@ -28,6 +28,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
 
+      # Renovate will SHA-pin this on the next run (pinDigests: true).
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.7.0
+
       - name: Log in to GHCR
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
         with:
@@ -92,6 +96,23 @@ jobs:
           subject-name: ${{ env.GHCR_IMAGE }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+
+      # Sigstore keyless signing — uses the workflow's OIDC token to obtain a
+      # short-lived Fulcio cert, signs the image digest, records the signature
+      # to the public Rekor transparency log. Verifiable with:
+      #   cosign verify <image>@<digest> \
+      #     --certificate-identity-regexp 'https://github\.com/c-premus/documcp/' \
+      #     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
+      # GHCR: signature pushed as a referrer manifest in the registry.
+      # Docker Hub: --upload=false records the signature in Rekor only — the
+      # registry-side referrer manifest is skipped because Docker Hub has no
+      # public API to GC orphan manifests once a tag rolls off (same constraint
+      # the attest-build-provenance step above documents).
+      - name: Sign GHCR image
+        run: cosign sign --yes ${{ env.GHCR_IMAGE }}@${{ steps.push.outputs.digest }}
+
+      - name: Sign Docker Hub image
+        run: cosign sign --yes --upload=false docker.io/${{ env.DOCKERHUB_IMAGE }}@${{ steps.push.outputs.digest }}
 
       # Docker Hub tag retention. We can't prune untagged manifests from here:
       # the "Advanced Image Management" API (/v2/namespaces/.../images) was

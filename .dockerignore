@@ -10,6 +10,11 @@ coverage.html
 
 # Dependencies (re-downloaded in container)
 vendor/
+**/node_modules/
+
+# Test fixtures (real PDFs/DOCX in package-local testdata dirs — not needed
+# in the runtime image; the Go builder stage doesn't run tests)
+**/testdata/
 
 # Environment and secrets
 .env
