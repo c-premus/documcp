@@ -14,13 +14,12 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov'],
       include: ['src/**/*.{ts,vue}'],
-      exclude: ['src/api/sdk/**', 'src/api/generated/**', 'src/**/__tests__/**', 'src/main.ts'],
-      // Ratcheted after WP2 test sprint. Target: 70/60/60/70.
+      exclude: ['src/**/__tests__/**', 'src/main.ts'],
       thresholds: {
-        statements: 39,
-        branches: 33,
-        functions: 33,
-        lines: 39,
+        statements: 47,
+        branches: 41,
+        functions: 34,
+        lines: 47,
       },
     },
   },

@@ -2444,8 +2444,8 @@ paths:
       tags: [Admin]
       summary: Reorder external services by priority
       description: |
-        Accepts an array of service IDs in the desired priority order.
-        Priority is assigned monotonically from the array index.
+        Accepts an array of {uuid, priority} pairs. Each entry sets the
+        priority column for the named service. UUIDs must be distinct.
       security:
         - bearerAuth: []
         - cookieAuth: []
@@ -2455,12 +2455,17 @@ paths:
           application/json:
             schema:
               type: object
-              required: [service_ids]
+              required: [order]
               properties:
-                service_ids:
+                order:
                   type: array
-                  items: { type: integer, format: int64 }
                   minItems: 1
+                  items:
+                    type: object
+                    required: [uuid, priority]
+                    properties:
+                      uuid: { type: string, format: uuid }
+                      priority: { type: integer, minimum: 0 }
       responses:
         "200":
           description: Reorder applied

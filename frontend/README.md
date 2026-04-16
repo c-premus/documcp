@@ -7,7 +7,7 @@ Vue 3 + TypeScript SPA for managing DocuMCP. Built with Vite, Tailwind CSS v4, a
 ```bash
 npm ci                 # Install dependencies
 npm run dev            # Vite dev server with HMR
-npm run build          # OpenAPI codegen + vue-tsc + Vite build
+npm run build          # vue-tsc + Vite build
 npm run test           # Vitest
 npm run test:coverage  # Tests with coverage thresholds
 npm run lint           # vue-tsc + ESLint
@@ -17,13 +17,13 @@ npm run format         # Prettier write
 
 ## API Client
 
-The API client is auto-generated from `docs/contracts/openapi.yaml` using `@hey-api/openapi-ts`. Run `npm run build` to regenerate after spec changes. Generated files are in `src/api/generated/` and excluded from linting.
+Stores call the backend through `src/api/helpers.ts` (`apiFetch`). DTO shapes are hand-declared in each store against `docs/contracts/openapi.yaml`.
 
 ## Project Structure
 
 ```
 src/
-  api/            Generated API client + wrapper
+  api/            apiFetch wrapper + shared helpers
   auth/           Auth guard (OIDC session check)
   components/
     layout/       AppLayout, Sidebar, Header, Notifications

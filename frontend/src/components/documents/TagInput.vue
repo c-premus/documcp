@@ -74,7 +74,8 @@ function handleKeydown(event: KeyboardEvent): void {
     activeIndex.value = Math.max(activeIndex.value - 1, 0)
   } else if (event.key === 'Enter' && activeIndex.value >= 0) {
     event.preventDefault()
-    selectSuggestion(suggestions.value[activeIndex.value])
+    const selected = suggestions.value[activeIndex.value]
+    if (selected !== undefined) selectSuggestion(selected)
   } else if (event.key === 'Escape') {
     showDropdown.value = false
     activeIndex.value = -1

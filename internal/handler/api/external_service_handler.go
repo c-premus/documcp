@@ -12,12 +12,13 @@ import (
 
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/queue"
+	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/service"
 )
 
 // externalServiceReorderer reorders external services by priority.
 type externalServiceReorderer interface {
-	ReorderPriorities(ctx context.Context, serviceIDs []int64) error
+	ReorderPriorities(ctx context.Context, entries []repository.ReorderEntry) error
 }
 
 // externalServiceJobInserter enqueues background jobs. Defined where consumed.
@@ -360,10 +361,16 @@ func (h *ExternalServiceHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// reorderEntryRequest is one entry in the Reorder request body.
+type reorderEntryRequest struct {
+	UUID     string `json:"uuid"`
+	Priority int    `json:"priority"`
+}
+
 // Reorder handles PUT /api/admin/external-services/reorder -- update priority ordering.
 func (h *ExternalServiceHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ServiceIDs []int64 `json:"service_ids"`
+		Order []reorderEntryRequest `json:"order"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -371,12 +378,35 @@ func (h *ExternalServiceHandler) Reorder(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if len(body.ServiceIDs) == 0 {
-		errorResponse(w, http.StatusBadRequest, "service_ids is required")
+	if len(body.Order) == 0 {
+		errorResponse(w, http.StatusBadRequest, "order is required")
 		return
 	}
 
-	if err := h.reorderer.ReorderPriorities(r.Context(), body.ServiceIDs); err != nil {
+	entries := make([]repository.ReorderEntry, 0, len(body.Order))
+	seen := make(map[string]struct{}, len(body.Order))
+	for _, entry := range body.Order {
+		if entry.UUID == "" {
+			errorResponse(w, http.StatusBadRequest, "each entry must have a uuid")
+			return
+		}
+		if entry.Priority < 0 {
+			errorResponse(w, http.StatusBadRequest, "priority must be non-negative")
+			return
+		}
+		if _, dup := seen[entry.UUID]; dup {
+			errorResponse(w, http.StatusBadRequest, "duplicate uuid in order")
+			return
+		}
+		seen[entry.UUID] = struct{}{}
+		entries = append(entries, repository.ReorderEntry{UUID: entry.UUID, Priority: entry.Priority})
+	}
+
+	if err := h.reorderer.ReorderPriorities(r.Context(), entries); err != nil {
+		if errors.Is(err, repository.ErrReorderServiceNotFound) {
+			errorResponse(w, http.StatusBadRequest, "one or more services not found")
+			return
+		}
 		h.logger.Error("reordering external services", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to reorder external services")
 		return

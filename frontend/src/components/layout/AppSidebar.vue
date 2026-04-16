@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { TransitionRoot, TransitionChild, Dialog, DialogPanel } from '@headlessui/vue'
 import {
@@ -18,63 +18,48 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import { useSSEStore } from '@/stores/sse'
 import { useSidebar } from '@/composables/useSidebar'
-
-interface NavItem {
-  readonly name: string
-  readonly to: string
-  readonly icon: typeof HomeIcon
-}
+import { useAppVersion } from '@/composables/useAppVersion'
+import SidebarNav from './SidebarNav.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
 const sse = useSSEStore()
 const sidebar = useSidebar()
 const logoSrc = `${import.meta.env.BASE_URL}logo-concept-1-transparent.svg`
-const appVersion = ref('')
+const { version: appVersion } = useAppVersion()
 
-onMounted(async () => {
-  try {
-    const res = await fetch('/health')
-    if (res.ok) {
-      const data = await res.json()
-      if (data.version) appVersion.value = data.version
-    }
-  } catch {
-    // Version display is non-critical
-  }
-})
-
-const mainNavItems: readonly NavItem[] = [
-  { name: 'Dashboard', to: '/dashboard', icon: HomeIcon },
-  { name: 'API Docs', to: '/api-docs', icon: BookOpenIcon },
-]
-
-const documentNavItems: readonly NavItem[] = [
-  { name: 'Document List', to: '/documents', icon: DocumentTextIcon },
-  { name: 'Trash', to: '/documents/trash', icon: TrashIcon },
-]
-
-const contentNavItems: readonly NavItem[] = [
-  { name: 'ZIM Archives', to: '/zim-archives', icon: ArchiveBoxIcon },
-  { name: 'Git Templates', to: '/git-templates', icon: CodeBracketIcon },
-]
-
-const adminNavItems: readonly NavItem[] = [
-  { name: 'Users', to: '/users', icon: UserGroupIcon },
-  { name: 'OAuth Clients', to: '/oauth-clients', icon: KeyIcon },
-  { name: 'External Services', to: '/external-services', icon: ServerIcon },
-  { name: 'Queue', to: '/queue', icon: QueueListIcon },
-]
-
-function isActive(path: string): boolean {
-  if (path === '/documents') {
-    return (
-      route.path === '/documents' ||
-      (route.path.startsWith('/documents/') && !route.path.startsWith('/documents/trash'))
-    )
-  }
-  return route.path.startsWith(path)
-}
+const navGroups = [
+  {
+    items: [
+      { name: 'Dashboard', to: '/dashboard', icon: HomeIcon },
+      { name: 'API Docs', to: '/api-docs', icon: BookOpenIcon },
+    ],
+  },
+  {
+    label: 'Documents',
+    items: [
+      { name: 'Document List', to: '/documents', icon: DocumentTextIcon },
+      { name: 'Trash', to: '/documents/trash', icon: TrashIcon },
+    ],
+  },
+  {
+    label: 'Content Sources',
+    items: [
+      { name: 'ZIM Archives', to: '/zim-archives', icon: ArchiveBoxIcon },
+      { name: 'Git Templates', to: '/git-templates', icon: CodeBracketIcon },
+    ],
+  },
+  {
+    label: 'Administration',
+    adminOnly: true,
+    items: [
+      { name: 'Users', to: '/users', icon: UserGroupIcon },
+      { name: 'OAuth Clients', to: '/oauth-clients', icon: KeyIcon },
+      { name: 'External Services', to: '/external-services', icon: ServerIcon },
+      { name: 'Queue', to: '/queue', icon: QueueListIcon },
+    ],
+  },
+] as const
 
 watch(
   () => route.path,
@@ -86,7 +71,6 @@ watch(
   <!-- Mobile Drawer -->
   <TransitionRoot as="template" :show="sidebar.open.value">
     <Dialog as="div" class="relative z-40 lg:hidden" @close="sidebar.close()">
-      <!-- Backdrop -->
       <TransitionChild
         as="template"
         enter="transition-opacity ease-linear duration-300"
@@ -99,7 +83,6 @@ watch(
         <div class="fixed inset-0 bg-black/40" aria-hidden="true" />
       </TransitionChild>
 
-      <!-- Sliding panel -->
       <div class="fixed inset-0 flex">
         <TransitionChild
           as="template"
@@ -113,7 +96,6 @@ watch(
           <DialogPanel
             class="relative flex w-72 max-w-[85vw] flex-col bg-bg-surface-alt border-r border-border-default"
           >
-            <!-- Drawer header row -->
             <div class="flex items-center justify-between px-4 py-4 border-b border-border-default">
               <div class="flex items-center gap-3">
                 <img :src="logoSrc" alt="" aria-hidden="true" class="h-8 w-8 shrink-0" />
@@ -129,100 +111,10 @@ watch(
               </button>
             </div>
 
-            <!-- Nav content -->
             <div class="flex-1 overflow-y-auto py-4">
-              <!-- Main -->
-              <ul class="space-y-1 px-3">
-                <li v-for="item in mainNavItems" :key="item.to">
-                  <router-link
-                    :to="item.to"
-                    class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
-                    :class="
-                      isActive(item.to)
-                        ? 'bg-bg-active text-text-primary'
-                        : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
-                    "
-                    :aria-current="isActive(item.to) ? 'page' : undefined"
-                  >
-                    <component :is="item.icon" class="h-5 w-5 shrink-0" />
-                    {{ item.name }}
-                  </router-link>
-                </li>
-              </ul>
-
-              <!-- Documents -->
-              <div class="my-4 mx-3 border-t border-border-default" />
-              <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted">
-                Documents
-              </p>
-              <ul class="space-y-1 px-3">
-                <li v-for="item in documentNavItems" :key="item.to">
-                  <router-link
-                    :to="item.to"
-                    class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
-                    :class="
-                      isActive(item.to)
-                        ? 'bg-bg-active text-text-primary'
-                        : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
-                    "
-                    :aria-current="isActive(item.to) ? 'page' : undefined"
-                  >
-                    <component :is="item.icon" class="h-5 w-5 shrink-0" />
-                    {{ item.name }}
-                  </router-link>
-                </li>
-              </ul>
-
-              <!-- Content Sources -->
-              <div class="my-4 mx-3 border-t border-border-default" />
-              <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted">
-                Content Sources
-              </p>
-              <ul class="space-y-1 px-3">
-                <li v-for="item in contentNavItems" :key="item.to">
-                  <router-link
-                    :to="item.to"
-                    class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
-                    :class="
-                      isActive(item.to)
-                        ? 'bg-bg-active text-text-primary'
-                        : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
-                    "
-                    :aria-current="isActive(item.to) ? 'page' : undefined"
-                  >
-                    <component :is="item.icon" class="h-5 w-5 shrink-0" />
-                    {{ item.name }}
-                  </router-link>
-                </li>
-              </ul>
-
-              <!-- Administration -->
-              <template v-if="auth.isAdmin">
-                <div class="my-4 mx-3 border-t border-border-default" />
-                <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted">
-                  Administration
-                </p>
-                <ul class="space-y-1 px-3">
-                  <li v-for="item in adminNavItems" :key="item.to">
-                    <router-link
-                      :to="item.to"
-                      class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
-                      :class="
-                        isActive(item.to)
-                          ? 'bg-bg-active text-text-primary'
-                          : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
-                      "
-                      :aria-current="isActive(item.to) ? 'page' : undefined"
-                    >
-                      <component :is="item.icon" class="h-5 w-5 shrink-0" />
-                      {{ item.name }}
-                    </router-link>
-                  </li>
-                </ul>
-              </template>
+              <SidebarNav :groups="navGroups" />
             </div>
 
-            <!-- Status footer -->
             <div
               class="border-t border-border-default px-4 py-3 flex items-center justify-between text-xs text-text-muted"
             >
@@ -248,98 +140,9 @@ watch(
     class="hidden lg:flex w-64 fixed top-16 bottom-0 left-0 bg-bg-surface-alt border-r border-border-default flex-col"
   >
     <div class="flex-1 overflow-y-auto py-4">
-      <!-- Main -->
-      <ul class="space-y-1 px-3">
-        <li v-for="item in mainNavItems" :key="item.to">
-          <router-link
-            :to="item.to"
-            class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
-            :class="
-              isActive(item.to)
-                ? 'bg-bg-active text-text-primary'
-                : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
-            "
-            :aria-current="isActive(item.to) ? 'page' : undefined"
-          >
-            <component :is="item.icon" class="h-5 w-5 shrink-0" />
-            {{ item.name }}
-          </router-link>
-        </li>
-      </ul>
-
-      <!-- Documents -->
-      <div class="my-4 mx-3 border-t border-border-default" />
-      <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted">
-        Documents
-      </p>
-      <ul class="space-y-1 px-3">
-        <li v-for="item in documentNavItems" :key="item.to">
-          <router-link
-            :to="item.to"
-            class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
-            :class="
-              isActive(item.to)
-                ? 'bg-bg-active text-text-primary'
-                : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
-            "
-            :aria-current="isActive(item.to) ? 'page' : undefined"
-          >
-            <component :is="item.icon" class="h-5 w-5 shrink-0" />
-            {{ item.name }}
-          </router-link>
-        </li>
-      </ul>
-
-      <!-- Content Sources -->
-      <div class="my-4 mx-3 border-t border-border-default" />
-      <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted">
-        Content Sources
-      </p>
-      <ul class="space-y-1 px-3">
-        <li v-for="item in contentNavItems" :key="item.to">
-          <router-link
-            :to="item.to"
-            class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
-            :class="
-              isActive(item.to)
-                ? 'bg-bg-active text-text-primary'
-                : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
-            "
-            :aria-current="isActive(item.to) ? 'page' : undefined"
-          >
-            <component :is="item.icon" class="h-5 w-5 shrink-0" />
-            {{ item.name }}
-          </router-link>
-        </li>
-      </ul>
-
-      <!-- Administration -->
-      <template v-if="auth.isAdmin">
-        <div class="my-4 mx-3 border-t border-border-default" />
-        <p class="px-6 mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted">
-          Administration
-        </p>
-        <ul class="space-y-1 px-3">
-          <li v-for="item in adminNavItems" :key="item.to">
-            <router-link
-              :to="item.to"
-              class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
-              :class="
-                isActive(item.to)
-                  ? 'bg-bg-active text-text-primary'
-                  : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
-              "
-              :aria-current="isActive(item.to) ? 'page' : undefined"
-            >
-              <component :is="item.icon" class="h-5 w-5 shrink-0" />
-              {{ item.name }}
-            </router-link>
-          </li>
-        </ul>
-      </template>
+      <SidebarNav :groups="navGroups" />
     </div>
 
-    <!-- Status footer -->
     <div
       class="border-t border-border-default px-4 py-3 flex items-center justify-between text-xs text-text-muted"
     >
