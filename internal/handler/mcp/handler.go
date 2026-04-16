@@ -255,10 +255,16 @@ func New(cfg Config) *Handler {
 	// The SDK v1.4.1 requires Accept: application/json, text/event-stream on all
 	// requests. We wrap with a middleware that adds text/event-stream when missing
 	// so Claude.ai clients that only send Accept: application/json still work.
+	//
+	// Stateless mode: each POST creates a temporary session that closes after
+	// the response. No sticky session affinity required — any replica can serve
+	// any request. GET returns 405 (no standalone SSE stream). Our tools are
+	// pure request/response RPC; we do not use sampling, elicitation, or any
+	// server-initiated message that would require stateful sessions.
 	streamableHandler := mcp.NewStreamableHTTPHandler(func(_ *http.Request) *mcp.Server {
 		return mcpServer
 	}, &mcp.StreamableHTTPOptions{
-		Stateless: false,
+		Stateless: true,
 	})
 	h.httpHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		accept := r.Header.Get("Accept")
@@ -284,18 +290,6 @@ func (h *Handler) Close() {
 	if n > 0 {
 		h.logger.Info("closed MCP sessions", "count", n)
 	}
-}
-
-// ActiveSessionCount returns the number of MCP sessions currently held by
-// this replica's in-memory session store. Used as the source for the
-// documcp_mcp_active_sessions gauge so operators can detect hot-spotting
-// across replicas behind a sticky-session load balancer.
-func (h *Handler) ActiveSessionCount() int {
-	var n int
-	for range h.server.Sessions() {
-		n++
-	}
-	return n
 }
 
 // kiwixFactoryAdapter wraps *kiwix.ClientFactory to satisfy kiwixClientFactory.

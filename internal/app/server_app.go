@@ -24,7 +24,6 @@ import (
 	apihandler "github.com/c-premus/documcp/internal/handler/api"
 	mcphandler "github.com/c-premus/documcp/internal/handler/mcp"
 	oauthhandler "github.com/c-premus/documcp/internal/handler/oauth"
-	"github.com/c-premus/documcp/internal/observability"
 	"github.com/c-premus/documcp/internal/queue"
 	"github.com/c-premus/documcp/internal/server"
 	"github.com/c-premus/documcp/internal/service"
@@ -208,10 +207,6 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	mcpCfg.KiwixFactory = f.KiwixFactory
 	mcpCfg.Searcher = f.Searcher
 	mcpH := mcphandler.New(mcpCfg)
-
-	// Register the per-replica MCP session gauge so operators can observe
-	// session distribution across sticky-session-routed replicas.
-	observability.RegisterMCPSessionGauge(mcpH.ActiveSessionCount)
 
 	// --- HTTP Server ---
 	trustedProxies, err := config.ParseCIDRs(cfg.Server.TrustedProxies)
