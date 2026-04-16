@@ -1,7 +1,6 @@
 {
   "metadata": {
-    "generated_from": "Go MCP SDK handler implementation",
-    "generated_at": "2026-03-30",
+    "maintenance": "Hand-maintained. Mirrors internal/handler/mcp/tools_*.go and internal/dto/mcp.go; update this file in the same change as any tool contract modification.",
     "protocol_version": "2024-11-05",
     "sdk": "github.com/modelcontextprotocol/go-sdk",
     "source_files": {
