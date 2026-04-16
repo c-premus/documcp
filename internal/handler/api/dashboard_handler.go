@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/c-premus/documcp/internal/queue"
 )
 
@@ -70,51 +72,68 @@ func NewDashboardHandler(
 	}
 }
 
-// Stats handles GET /api/admin/dashboard/stats.
+// Stats handles GET /api/admin/dashboard/stats. The six count queries fan out
+// concurrently — they are independent reads and each hits Postgres once.
 func (h *DashboardHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	docs := h.countOrZero(ctx, "documents", func(ctx context.Context) (int, error) {
-		if h.docRepo == nil {
-			return 0, nil
-		}
-		return h.docRepo.Count(ctx)
+	var docs, users, oauthClients, extServices, zimArchives, gitTemplates int
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		docs = h.countOrZero(gctx, "documents", func(ctx context.Context) (int, error) {
+			if h.docRepo == nil {
+				return 0, nil
+			}
+			return h.docRepo.Count(ctx)
+		})
+		return nil
 	})
-
-	users := h.countOrZero(ctx, "users", func(ctx context.Context) (int, error) {
-		if h.userRepo == nil {
-			return 0, nil
-		}
-		return h.userRepo.CountUsers(ctx)
+	g.Go(func() error {
+		users = h.countOrZero(gctx, "users", func(ctx context.Context) (int, error) {
+			if h.userRepo == nil {
+				return 0, nil
+			}
+			return h.userRepo.CountUsers(ctx)
+		})
+		return nil
 	})
-
-	oauthClients := h.countOrZero(ctx, "oauth_clients", func(ctx context.Context) (int, error) {
-		if h.oauthClientRepo == nil {
-			return 0, nil
-		}
-		return h.oauthClientRepo.CountClients(ctx)
+	g.Go(func() error {
+		oauthClients = h.countOrZero(gctx, "oauth_clients", func(ctx context.Context) (int, error) {
+			if h.oauthClientRepo == nil {
+				return 0, nil
+			}
+			return h.oauthClientRepo.CountClients(ctx)
+		})
+		return nil
 	})
-
-	extServices := h.countOrZero(ctx, "external_services", func(ctx context.Context) (int, error) {
-		if h.extSvcRepo == nil {
-			return 0, nil
-		}
-		return h.extSvcRepo.Count(ctx)
+	g.Go(func() error {
+		extServices = h.countOrZero(gctx, "external_services", func(ctx context.Context) (int, error) {
+			if h.extSvcRepo == nil {
+				return 0, nil
+			}
+			return h.extSvcRepo.Count(ctx)
+		})
+		return nil
 	})
-
-	zimArchives := h.countOrZero(ctx, "zim_archives", func(ctx context.Context) (int, error) {
-		if h.zimRepo == nil {
-			return 0, nil
-		}
-		return h.zimRepo.Count(ctx)
+	g.Go(func() error {
+		zimArchives = h.countOrZero(gctx, "zim_archives", func(ctx context.Context) (int, error) {
+			if h.zimRepo == nil {
+				return 0, nil
+			}
+			return h.zimRepo.Count(ctx)
+		})
+		return nil
 	})
-
-	gitTemplates := h.countOrZero(ctx, "git_templates", func(ctx context.Context) (int, error) {
-		if h.gitTemplateRepo == nil {
-			return 0, nil
-		}
-		return h.gitTemplateRepo.Count(ctx)
+	g.Go(func() error {
+		gitTemplates = h.countOrZero(gctx, "git_templates", func(ctx context.Context) (int, error) {
+			if h.gitTemplateRepo == nil {
+				return 0, nil
+			}
+			return h.gitTemplateRepo.Count(ctx)
+		})
+		return nil
 	})
+	_ = g.Wait() // countOrZero swallows per-query errors; Wait cannot return.
 
 	resp := map[string]any{
 		"documents":         docs,

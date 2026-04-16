@@ -29,7 +29,7 @@ type RefreshTokenParams struct {
 // RefreshAccessToken exchanges a refresh token for new tokens (rotation).
 func (s *Service) RefreshAccessToken(ctx context.Context, params RefreshTokenParams) (*TokenResult, error) {
 	// Parse the refresh token
-	_, tokenHash, err := ParseToken(params.RefreshToken)
+	_, tokenHash, err := s.ParseToken(params.RefreshToken)
 	if err != nil {
 		return nil, errors.New("refresh token not found")
 	}

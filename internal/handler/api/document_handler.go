@@ -167,9 +167,12 @@ func (h *DocumentHandler) Show(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tags, _ := h.repo.TagsForDocument(r.Context(), doc.ID)
-	includeContent := r.URL.Query().Get("include_content") == "true"
+	resp := toDocumentResponse(doc, tags)
+	if r.URL.Query().Get("include_content") == "true" {
+		resp = toDocumentResponseWithContent(doc, tags)
+	}
 	jsonResponse(w, http.StatusOK, map[string]any{
-		"data": toDocumentResponse(doc, tags, includeContent),
+		"data": resp,
 	})
 }
 
@@ -394,9 +397,10 @@ func (h *DocumentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // toDocumentResponse converts a model.Document and its tags to a response DTO.
-// Pass includeContent=true to populate the Content field (omitted by default — can be large).
-func toDocumentResponse(doc *model.Document, tags []model.DocumentTag, includeContent ...bool) documentResponse {
-	resp := documentResponse{
+// The Content field is always omitted — it can be large. Use
+// toDocumentResponseWithContent to include it.
+func toDocumentResponse(doc *model.Document, tags []model.DocumentTag) documentResponse {
+	return documentResponse{
 		UUID:        doc.UUID,
 		Title:       doc.Title,
 		Description: nullStringValue(doc.Description),
@@ -413,11 +417,15 @@ func toDocumentResponse(doc *model.Document, tags []model.DocumentTag, includeCo
 		UpdatedAt:   dto.FormatNullTime(doc.UpdatedAt),
 		ProcessedAt: dto.FormatNullTime(doc.ProcessedAt),
 	}
+}
 
-	if len(includeContent) > 0 && includeContent[0] && doc.Content.Valid {
+// toDocumentResponseWithContent is toDocumentResponse with the Content field
+// populated when the document has body content available.
+func toDocumentResponseWithContent(doc *model.Document, tags []model.DocumentTag) documentResponse {
+	resp := toDocumentResponse(doc, tags)
+	if doc.Content.Valid {
 		resp.Content = doc.Content.String
 	}
-
 	return resp
 }
 

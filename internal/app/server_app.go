@@ -61,7 +61,6 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	if err != nil {
 		return nil, fmt.Errorf("deriving HMAC key: %w", err)
 	}
-	oauth.SetTokenHMACKey(hmacKey)
 
 	// --- EventBus (Redis-backed for cross-instance SSE delivery) ---
 	eventBus := queue.NewRedisEventBus(context.Background(), f.RedisClient, logger)
@@ -114,7 +113,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	rs.ExtractWorker.Pipeline = documentPipeline
 	rs.ExtractWorker.Metrics = f.Metrics
 
-	oauthService := oauth.NewService(f.OAuthRepo, cfg.OAuth, cfg.App.URL, logger)
+	oauthService := oauth.NewService(f.OAuthRepo, cfg.OAuth, cfg.App.URL, logger, hmacKey)
 	externalServiceSvc := service.NewExternalServiceService(
 		f.ExternalServiceRepo,
 		f.ZimArchiveRepo,
@@ -268,7 +267,6 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		RiverUIHandler:         riverUIHandler,
 		Metrics:                f.Metrics,
 		OTELEnabled:            cfg.OTEL.Enabled,
-		IsSecure:               cfg.App.Env == "production" || cfg.Server.TLSEnabled,
 		DB:                     &server.PgxPoolHealth{Pool: f.PgxPool},
 		InternalAPIToken:       cfg.App.InternalAPIToken,
 		MaxBodySize:            cfg.Server.MaxBodySize,

@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
@@ -64,6 +65,12 @@ type Config struct {
 	AppURL       string // used as post_logout_redirect_uri
 }
 
+// gobRegisterOnce ensures session-stored types are registered with
+// encoding/gob exactly once before any handler is created. Registration is an
+// explicit side of New rather than a package init() so the registration is
+// tied to OIDC being actually configured.
+var gobRegisterOnce sync.Once
+
 // New creates a new OIDC Handler. It discovers the provider configuration
 // from the well-known endpoint, or uses manually configured endpoints when
 // OIDC_AUTHORIZATION_URL and OIDC_TOKEN_URL are set (REQ-AUTH-003).
@@ -72,6 +79,11 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 	if cfg.OIDCCfg.ProviderURL == "" || cfg.OIDCCfg.ClientID == "" {
 		return nil, nil
 	}
+
+	// gorilla/sessions uses gob encoding. Register types stored in sessions.
+	gobRegisterOnce.Do(func() {
+		gob.Register(map[string]any{})
+	})
 
 	// Validate operator-configured URLs before any outbound HTTP. Private RFC-1918
 	// ranges are allowed for homelab / internal Authentik deployments, matching
@@ -575,7 +587,3 @@ func generateState() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-func init() {
-	// gorilla/sessions uses gob encoding. Register types stored in sessions.
-	gob.Register(map[string]any{})
-}

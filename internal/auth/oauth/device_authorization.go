@@ -72,7 +72,7 @@ func (s *Service) GenerateDeviceCode(ctx context.Context, params DeviceAuthoriza
 	}
 
 	// Generate device code token
-	token, err := GenerateToken()
+	token, err := s.GenerateToken()
 	if err != nil {
 		return nil, fmt.Errorf("generating device code: %w", err)
 	}
@@ -193,7 +193,7 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceC
 	}
 
 	// Parse the device code
-	_, deviceCodeHash, err := ParseToken(params.DeviceCode)
+	_, deviceCodeHash, err := s.ParseToken(params.DeviceCode)
 	if err != nil {
 		return nil, &DeviceCodeError{Code: "invalid_grant", Description: "Invalid device code"}
 	}

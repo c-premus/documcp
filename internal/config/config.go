@@ -151,7 +151,7 @@ type DatabaseConfig struct {
 	Username           string        `mapstructure:"db_username"`
 	Password           string        `mapstructure:"db_password"`
 	SSLMode            string        `mapstructure:"db_sslmode"`
-	MaxOpenConns       int           `mapstructure:"db_max_open_conns"`
+	MaxOpenConns       int32         `mapstructure:"db_max_open_conns"`
 	MaxIdleConns       int           `mapstructure:"db_max_idle_conns"`
 	MaxLifetime        time.Duration `mapstructure:"db_max_lifetime"`
 	PgxMinConns        int32         `mapstructure:"db_pgx_min_conns"`
@@ -529,7 +529,7 @@ func Load() (*Config, error) {
 		Username:           v.GetString("db_username"),
 		Password:           v.GetString("db_password"),
 		SSLMode:            v.GetString("db_sslmode"),
-		MaxOpenConns:       v.GetInt("db_max_open_conns"),
+		MaxOpenConns:       clampInt32(v.GetInt("db_max_open_conns")),
 		MaxIdleConns:       v.GetInt("db_max_idle_conns"),
 		MaxLifetime:        v.GetDuration("db_max_lifetime"),
 		PgxMinConns:        clampInt32(v.GetInt("db_pgx_min_conns")),
@@ -728,17 +728,17 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	if c.Server.TLSEnabled && c.Server.TLSPort == c.Server.Port {
 		errs = append(errs, "TLS_PORT and SERVER_PORT must be different when TLS is enabled")
 	}
-	if c.Database.MaxOpenConns > 0 && c.Database.MaxIdleConns > c.Database.MaxOpenConns {
+	if c.Database.MaxOpenConns > 0 && c.Database.MaxIdleConns > int(c.Database.MaxOpenConns) {
 		errs = append(errs, "DB_MAX_IDLE_CONNS must not exceed DB_MAX_OPEN_CONNS")
 	}
-	if c.Database.PgxMinConns > 0 && int(c.Database.PgxMinConns) > c.Database.MaxOpenConns {
+	if c.Database.PgxMinConns > 0 && c.Database.PgxMinConns > c.Database.MaxOpenConns {
 		errs = append(errs, "DB_PGX_MIN_CONNS must not exceed DB_MAX_OPEN_CONNS")
 	}
 	if c.Redis.PoolSize < 0 {
 		errs = append(errs, "REDIS_POOL_SIZE must be non-negative")
 	}
 	totalWorkers := c.Queue.HighWorkers + c.Queue.DefaultWorkers + c.Queue.LowWorkers
-	if c.Database.MaxOpenConns > 0 && totalWorkers > 2*c.Database.MaxOpenConns {
+	if c.Database.MaxOpenConns > 0 && totalWorkers > 2*int(c.Database.MaxOpenConns) {
 		errs = append(errs, fmt.Sprintf(
 			"total queue workers (%d) exceed 2× DB_MAX_OPEN_CONNS (%d); increase pool or reduce workers",
 			totalWorkers, c.Database.MaxOpenConns))

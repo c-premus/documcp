@@ -30,7 +30,7 @@ func (s *Service) RevokeToken(ctx context.Context, params RevokeTokenParams) err
 	}
 
 	// Parse the token. Per RFC 7009, return success even for invalid tokens.
-	_, tokenHash, ok := parseTokenOrZero(params.Token)
+	_, tokenHash, ok := s.parseTokenOrZero(params.Token)
 	if !ok {
 		return nil
 	}

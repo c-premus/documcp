@@ -316,7 +316,7 @@ func newHandlerWithRepo(repo *mockOAuthRepo) (*Handler, *mockSessionStore) {
 
 func newHandlerWithRepoAndConfig(repo *mockOAuthRepo, oauthCfg config.OAuthConfig) (*Handler, *mockSessionStore) {
 	store := newMockSessionStore()
-	svc := oauth.NewService(repo, oauthCfg, "https://example.com", testutil.DiscardLogger())
+	svc := oauth.NewService(repo, oauthCfg, "https://example.com", testutil.DiscardLogger(), nil)
 	h := New(Config{
 		Service:      svc,
 		SessionStore: store,

@@ -262,7 +262,7 @@ func newTestOAuthService(repo *mockOAuthRepo) *oauth.Service {
 		DeviceCodeLifetime:   10 * time.Minute,
 		DeviceCodeInterval:   5 * time.Second,
 	}
-	return oauth.NewService(repo, cfg, "https://example.com", nil)
+	return oauth.NewService(repo, cfg, "https://example.com", nil, nil)
 }
 
 // okHandler is a simple handler that writes 200 OK. Used as the "next"
@@ -397,7 +397,7 @@ func TestBearerToken(t *testing.T) {
 		t.Parallel()
 
 		// Generate a real token pair to get a consistent hash
-		tokenPair, err := oauth.GenerateToken()
+		tokenPair, err := newTestOAuthService(nil).GenerateToken()
 		if err != nil {
 			t.Fatalf("GenerateToken: %v", err)
 		}
@@ -450,7 +450,7 @@ func TestBearerToken(t *testing.T) {
 	t.Run("loads user into context when token has user ID", func(t *testing.T) {
 		t.Parallel()
 
-		tokenPair, err := oauth.GenerateToken()
+		tokenPair, err := newTestOAuthService(nil).GenerateToken()
 		if err != nil {
 			t.Fatalf("GenerateToken: %v", err)
 		}
@@ -1152,7 +1152,7 @@ func TestBearerOrSession(t *testing.T) {
 
 		store := sessions.NewCookieStore([]byte("test-secret"))
 
-		tokenPair, err := oauth.GenerateToken()
+		tokenPair, err := newTestOAuthService(nil).GenerateToken()
 		if err != nil {
 			t.Fatalf("GenerateToken: %v", err)
 		}
@@ -1207,7 +1207,7 @@ func TestBearerOrSession(t *testing.T) {
 
 		store := sessions.NewCookieStore([]byte("test-secret"))
 
-		tokenPair, err := oauth.GenerateToken()
+		tokenPair, err := newTestOAuthService(nil).GenerateToken()
 		if err != nil {
 			t.Fatalf("GenerateToken: %v", err)
 		}
@@ -1280,7 +1280,7 @@ func TestBearerOrSession(t *testing.T) {
 
 		store := sessions.NewCookieStore([]byte("test-secret"))
 
-		tokenPair, err := oauth.GenerateToken()
+		tokenPair, err := newTestOAuthService(nil).GenerateToken()
 		if err != nil {
 			t.Fatalf("GenerateToken: %v", err)
 		}
