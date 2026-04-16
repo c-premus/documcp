@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -179,21 +180,41 @@ func (r *ExternalServiceRepository) Count(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-// ReorderPriorities updates the priority column for each service based on
-// its position in the provided ID slice (index 0 = priority 0, etc.).
-func (r *ExternalServiceRepository) ReorderPriorities(ctx context.Context, serviceIDs []int64) error {
+// ReorderEntry pairs an external service UUID with its new priority value.
+type ReorderEntry struct {
+	UUID     string
+	Priority int
+}
+
+// ErrReorderServiceNotFound is returned when a UUID in the reorder payload
+// does not match any external service. Wrapped, so callers should use
+// errors.Is to detect it.
+var ErrReorderServiceNotFound = errors.New("external service not found")
+
+// ReorderPriorities sets the priority of each external service named in the
+// entries slice. Runs in a single transaction; fails fast on any UUID that
+// doesn't resolve (wraps ErrReorderServiceNotFound).
+func (r *ExternalServiceRepository) ReorderPriorities(ctx context.Context, entries []ReorderEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("beginning reorder transaction: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
 
-	for priority, id := range serviceIDs {
-		if _, err := tx.Exec(ctx,
-			`UPDATE external_services SET priority = $1, updated_at = NOW() WHERE id = $2`,
-			priority, id,
-		); err != nil {
-			return fmt.Errorf("updating priority for service %d: %w", id, err)
+	for _, entry := range entries {
+		ct, err := tx.Exec(ctx,
+			`UPDATE external_services SET priority = $1, updated_at = NOW() WHERE uuid = $2`,
+			entry.Priority, entry.UUID,
+		)
+		if err != nil {
+			return fmt.Errorf("updating priority for service %s: %w", entry.UUID, err)
+		}
+		if ct.RowsAffected() == 0 {
+			return fmt.Errorf("%w: %s", ErrReorderServiceNotFound, entry.UUID)
 		}
 	}
 

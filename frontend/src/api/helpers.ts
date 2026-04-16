@@ -15,10 +15,18 @@ export class ApiError extends Error {
 /**
  * Shared fetch wrapper used by all Pinia stores. Throws {@link ApiError}
  * on non-2xx responses so callers can inspect `error.status`.
+ *
+ * On 401, redirects to the OIDC login page before throwing — handles
+ * mid-session token/session expiry for any store call. The auth store's
+ * `fetchUser` probe uses raw `fetch` directly (a 401 there is expected
+ * and means "not yet authenticated", handled by the router guard).
  */
 export async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, options)
   if (!res.ok) {
+    if (res.status === 401) {
+      window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname)
+    }
     const body = await res.json().catch(() => ({ message: res.statusText }))
     const msg = (body?.message || res.statusText).slice(0, 200)
     throw new ApiError(res.status, msg)

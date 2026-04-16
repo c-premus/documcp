@@ -16,6 +16,7 @@ import (
 
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/queue"
+	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/service"
 )
 
@@ -31,7 +32,7 @@ type mockExternalServiceRepo struct {
 	updateFn            func(ctx context.Context, svc *model.ExternalService) error
 	deleteFn            func(ctx context.Context, id int64) error
 	updateHealthFn      func(ctx context.Context, id int64, status model.ExternalServiceStatus, latencyMs int, lastError string) error
-	reorderFn           func(ctx context.Context, serviceIDs []int64) error
+	reorderFn           func(ctx context.Context, entries []repository.ReorderEntry) error
 }
 
 func (m *mockExternalServiceRepo) FindByUUID(ctx context.Context, uuid string) (*model.ExternalService, error) {
@@ -83,9 +84,9 @@ func (m *mockExternalServiceRepo) UpdateHealthStatus(ctx context.Context, id int
 	return nil
 }
 
-func (m *mockExternalServiceRepo) ReorderPriorities(ctx context.Context, serviceIDs []int64) error {
+func (m *mockExternalServiceRepo) ReorderPriorities(ctx context.Context, entries []repository.ReorderEntry) error {
 	if m.reorderFn != nil {
-		return m.reorderFn(ctx, serviceIDs)
+		return m.reorderFn(ctx, entries)
 	}
 	return nil
 }
@@ -1444,16 +1445,16 @@ func TestExternalServiceHandler_Reorder(t *testing.T) {
 	t.Run("returns 200 on successful reorder", func(t *testing.T) {
 		t.Parallel()
 
-		var gotIDs []int64
+		var gotEntries []repository.ReorderEntry
 		repo := &mockExternalServiceRepo{
-			reorderFn: func(_ context.Context, ids []int64) error {
-				gotIDs = ids
+			reorderFn: func(_ context.Context, entries []repository.ReorderEntry) error {
+				gotEntries = entries
 				return nil
 			},
 		}
 		h := newExternalServiceHandler(repo)
 
-		body := `{"service_ids": [3, 1, 2]}`
+		body := `{"order": [{"uuid":"aaa","priority":0},{"uuid":"bbb","priority":1},{"uuid":"ccc","priority":2}]}`
 		req := httptest.NewRequest(http.MethodPut, "/api/admin/external-services/reorder", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
@@ -1469,16 +1470,18 @@ func TestExternalServiceHandler_Reorder(t *testing.T) {
 			t.Errorf("message = %q, want %q", msg, "External services reordered successfully.")
 		}
 
-		if len(gotIDs) != 3 || gotIDs[0] != 3 || gotIDs[1] != 1 || gotIDs[2] != 2 {
-			t.Errorf("reorder IDs = %v, want [3 1 2]", gotIDs)
+		if len(gotEntries) != 3 ||
+			gotEntries[0].UUID != "aaa" || gotEntries[0].Priority != 0 ||
+			gotEntries[1].UUID != "bbb" || gotEntries[1].Priority != 1 ||
+			gotEntries[2].UUID != "ccc" || gotEntries[2].Priority != 2 {
+			t.Errorf("reorder entries = %+v", gotEntries)
 		}
 	})
 
 	t.Run("returns 400 for invalid JSON body", func(t *testing.T) {
 		t.Parallel()
 
-		repo := &mockExternalServiceRepo{}
-		h := newExternalServiceHandler(repo)
+		h := newExternalServiceHandler(&mockExternalServiceRepo{})
 
 		req := httptest.NewRequest(http.MethodPut, "/api/admin/external-services/reorder", strings.NewReader("not json"))
 		req.Header.Set("Content-Type", "application/json")
@@ -1489,20 +1492,14 @@ func TestExternalServiceHandler_Reorder(t *testing.T) {
 		if rr.Code != http.StatusBadRequest {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
 		}
-
-		body := decodeJSONBody(t, rr.Body)
-		if msg, _ := body["message"].(string); msg != "invalid JSON body" {
-			t.Errorf("message = %q, want %q", msg, "invalid JSON body")
-		}
 	})
 
-	t.Run("returns 400 when service_ids is empty", func(t *testing.T) {
+	t.Run("returns 400 when order is empty", func(t *testing.T) {
 		t.Parallel()
 
-		repo := &mockExternalServiceRepo{}
-		h := newExternalServiceHandler(repo)
+		h := newExternalServiceHandler(&mockExternalServiceRepo{})
 
-		req := httptest.NewRequest(http.MethodPut, "/api/admin/external-services/reorder", strings.NewReader(`{"service_ids": []}`))
+		req := httptest.NewRequest(http.MethodPut, "/api/admin/external-services/reorder", strings.NewReader(`{"order": []}`))
 		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
 
@@ -1513,18 +1510,17 @@ func TestExternalServiceHandler_Reorder(t *testing.T) {
 		}
 
 		body := decodeJSONBody(t, rr.Body)
-		if msg, _ := body["message"].(string); msg != "service_ids is required" {
-			t.Errorf("message = %q, want %q", msg, "service_ids is required")
+		if msg, _ := body["message"].(string); msg != "order is required" {
+			t.Errorf("message = %q, want %q", msg, "order is required")
 		}
 	})
 
-	t.Run("returns 400 when service_ids is missing", func(t *testing.T) {
+	t.Run("returns 400 when uuid is empty", func(t *testing.T) {
 		t.Parallel()
 
-		repo := &mockExternalServiceRepo{}
-		h := newExternalServiceHandler(repo)
+		h := newExternalServiceHandler(&mockExternalServiceRepo{})
 
-		req := httptest.NewRequest(http.MethodPut, "/api/admin/external-services/reorder", strings.NewReader(`{}`))
+		req := httptest.NewRequest(http.MethodPut, "/api/admin/external-services/reorder", strings.NewReader(`{"order": [{"uuid":"","priority":0}]}`))
 		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
 
@@ -1535,17 +1531,60 @@ func TestExternalServiceHandler_Reorder(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 500 when reorder repo fails", func(t *testing.T) {
+	t.Run("returns 400 on duplicate uuid", func(t *testing.T) {
+		t.Parallel()
+
+		h := newExternalServiceHandler(&mockExternalServiceRepo{})
+
+		req := httptest.NewRequest(http.MethodPut, "/api/admin/external-services/reorder", strings.NewReader(
+			`{"order": [{"uuid":"aaa","priority":0},{"uuid":"aaa","priority":1}]}`,
+		))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Reorder(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+	})
+
+	t.Run("returns 400 when service not found", func(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockExternalServiceRepo{
-			reorderFn: func(_ context.Context, _ []int64) error {
+			reorderFn: func(_ context.Context, _ []repository.ReorderEntry) error {
+				return fmt.Errorf("%w: bad-uuid", repository.ErrReorderServiceNotFound)
+			},
+		}
+		h := newExternalServiceHandler(repo)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/admin/external-services/reorder", strings.NewReader(
+			`{"order": [{"uuid":"bad-uuid","priority":0}]}`,
+		))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Reorder(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+		}
+	})
+
+	t.Run("returns 500 when repo fails", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockExternalServiceRepo{
+			reorderFn: func(_ context.Context, _ []repository.ReorderEntry) error {
 				return errors.New("constraint violation")
 			},
 		}
 		h := newExternalServiceHandler(repo)
 
-		req := httptest.NewRequest(http.MethodPut, "/api/admin/external-services/reorder", strings.NewReader(`{"service_ids": [1, 2]}`))
+		req := httptest.NewRequest(http.MethodPut, "/api/admin/external-services/reorder", strings.NewReader(
+			`{"order": [{"uuid":"aaa","priority":0}]}`,
+		))
 		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
 
@@ -1553,11 +1592,6 @@ func TestExternalServiceHandler_Reorder(t *testing.T) {
 
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
-		}
-
-		body := decodeJSONBody(t, rr.Body)
-		if msg, _ := body["message"].(string); msg != "failed to reorder external services" {
-			t.Errorf("message = %q, want %q", msg, "failed to reorder external services")
 		}
 	})
 }

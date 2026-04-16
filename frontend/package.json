@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "openapi-ts && vue-tsc -b && vite build",
+    "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -13,8 +13,7 @@
     "lint": "vue-tsc --noEmit && eslint .",
     "lint:fix": "eslint . --fix && prettier --write src/",
     "format": "prettier --write src/",
-    "format:check": "prettier --check src/",
-    "generate-api": "openapi-ts"
+    "format:check": "prettier --check src/"
   },
   "dependencies": {
     "@headlessui/vue": "^1.7.23",
@@ -32,7 +31,6 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@hey-api/openapi-ts": "0.96.0",
     "@tailwindcss/forms": "0.5.11",
     "@tailwindcss/typography": "0.5.19",
     "@tailwindcss/vite": "4.2.2",

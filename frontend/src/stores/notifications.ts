@@ -1,13 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { SSEEvent } from '@/composables/useSSE'
+import type { SSEEvent } from '@/stores/sse'
 
 export interface Notification {
-  id: string
-  type: 'success' | 'error' | 'info' | 'warning'
-  title: string
-  message?: string
-  timestamp: Date
+  readonly id: string
+  readonly type: 'success' | 'error' | 'info' | 'warning'
+  readonly title: string
+  readonly message?: string
+  readonly timestamp: Date
 }
 
 export const useNotificationsStore = defineStore('notifications', () => {

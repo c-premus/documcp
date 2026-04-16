@@ -234,16 +234,20 @@ describe('externalServices store', () => {
   })
 
   describe('reorderServices', () => {
-    it('PUTs service_ids to reorder endpoint', async () => {
+    it('PUTs order entries to reorder endpoint', async () => {
       stubFetch({ message: 'Reordered' })
 
       const store = useExternalServicesStore()
-      const result = await store.reorderServices([3, 1, 2])
+      const order = [
+        { uuid: 'aaa', priority: 0 },
+        { uuid: 'bbb', priority: 1 },
+      ]
+      const result = await store.reorderServices(order)
 
       expect(fetch).toHaveBeenCalledWith('/api/admin/external-services/reorder', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ service_ids: [3, 1, 2] }),
+        body: JSON.stringify({ order }),
       })
       expect(result).toEqual({ message: 'Reordered' })
     })
@@ -252,7 +256,7 @@ describe('externalServices store', () => {
       stubFetch({ message: 'Forbidden' }, false)
 
       const store = useExternalServicesStore()
-      await expect(store.reorderServices([1, 2])).rejects.toThrow('Forbidden')
+      await expect(store.reorderServices([{ uuid: 'x', priority: 0 }])).rejects.toThrow('Forbidden')
 
       expect(store.error).toBe('Forbidden')
     })

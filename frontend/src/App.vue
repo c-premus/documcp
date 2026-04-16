@@ -3,7 +3,6 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
-auth.fetchUser()
 </script>
 
 <template>

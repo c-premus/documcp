@@ -187,14 +187,16 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
     }
   }
 
-  async function reorderServices(serviceIds: number[]): Promise<MessageResponse> {
+  async function reorderServices(
+    order: ReadonlyArray<{ readonly uuid: string; readonly priority: number }>,
+  ): Promise<MessageResponse> {
     loading.value = true
     error.value = null
     try {
       const response = await apiFetch<MessageResponse>('/api/admin/external-services/reorder', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ service_ids: serviceIds }),
+        body: JSON.stringify({ order }),
       })
       return response
     } catch (e) {

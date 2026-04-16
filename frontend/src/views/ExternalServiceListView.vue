@@ -170,9 +170,9 @@ async function handleMovePriority(
   reordered[currentIndex] = target
   reordered[targetIndex] = temp
 
-  const serviceIds = reordered.map((s) => s.priority)
+  const order = reordered.map((s, i) => ({ uuid: s.uuid, priority: i }))
   try {
-    await store.reorderServices(serviceIds)
+    await store.reorderServices(order)
     toast.success('Service order updated')
     fetchServices()
   } catch {
@@ -405,7 +405,9 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
     <div class="flex flex-wrap items-center gap-2 sm:gap-4 mb-4">
       <h1 class="text-2xl font-bold text-text-primary">External Services</h1>
 
+      <label for="service-type-filter" class="sr-only">Filter by service type</label>
       <select
+        id="service-type-filter"
         v-model="typeFilter"
         class="rounded-md border-border-input bg-bg-surface text-text-secondary shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400 sm:text-sm"
       >

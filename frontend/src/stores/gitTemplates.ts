@@ -32,9 +32,9 @@ export interface GitTemplateFile {
 }
 
 export interface TreeItem {
-  name: string
-  path: string
-  type: 'file' | 'directory'
+  readonly name: string
+  readonly path: string
+  readonly type: 'file' | 'directory'
   children?: TreeItem[]
 }
 
