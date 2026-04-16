@@ -17,7 +17,7 @@
   "server": {
     "name": "DocuMCP Server",
     "version": "1.0.0",
-    "instructions": "Documentation knowledge base with full-text search.\n\n**Unified Search**\n- `unified_search` - Search across ALL sources (documents, templates, archives, wikis) in one request. Use for discovery; type-specific tools for deep search.\n\n**Documents**\n- `list_documents` - List all accessible documents with optional filters (file type, status). Paginated.\n- `search_documents` - Full-text search with filters (file type, tags). Returns metadata and snippets.\n- `read_document` - Retrieve document content by UUID. Supports `summary_only` and `max_paragraphs`.\n- `create_document` - Create text-based documents (markdown or html). Binary formats (pdf, docx, xlsx, epub) must be uploaded via the REST API. Auto-indexed for search.\n- `update_document` - Modify title, description, tags, or visibility.\n- `delete_document` - Remove documents (ownership required).\n\n**ZIM Archives** (offline documentation: DevDocs, Wikipedia, Stack Exchange)\n- `list_zim_archives` - List available archives with category/language filters.\n- `search_zim` - Search within an archive. `suggest` matches titles, `fulltext` searches content.\n- `read_zim_article` - Retrieve article content. Supports `summary_only` and `max_paragraphs`.\n\n**Git Templates** (project bootstrapping: CLAUDE.md, Memory Bank)\n- `list_git_templates` - List available templates with category filter.\n- `search_git_templates` - Full-text search across README files and metadata.\n- `get_template_structure` - View folder tree, essential files, and required variables.\n- `get_template_file` - Retrieve file content with optional variable substitution.\n- `get_deployment_guide` - Get deployment instructions with all essential files.\n- `download_template` - Download a complete template as a base64-encoded archive (zip or tar.gz). Reduces deployment from ~45 API calls to 1.\n\n**Prompts**\n- `document_analysis` - Analyze documents (summarize, compare, extract, assess). Supports multiple documents.\n- `search_query_builder` - Query construction assistance.\n- `knowledge_base_builder` - Guide document creation and organization.\n- `git_template_setup` - Template discovery, preview, and deployment.\n- `zim_research` - Research across ZIM archives.\n- `cross_source_research` - Research across all sources (Documents, ZIM, Git Templates).\n\n**Availability**: ZIM tools require Kiwix service configuration. Git Template tools are enabled by default. Document tools are always available. Configure services in Admin panel under External Services.\n\n**Access Control**: Document modifications require ownership. Public documents are readable by all.",
+    "instructions": "Documentation knowledge base with full-text search.\n\n**Unified Search**\n- `unified_search` - Discovery search across ALL sources (documents, templates, archives, wikis) in one request. Returns a single page of top-ranked results; pagination is not supported. Response includes per-source totals so callers can drill into a type-specific tool for deep search.\n\n**Documents**\n- `list_documents` - List all accessible documents with optional filters (file type, status). Paginated.\n- `search_documents` - Full-text search with filters (file type, tags). Returns metadata and snippets.\n- `read_document` - Retrieve document content by UUID. Supports `summary_only` and `max_paragraphs`.\n- `create_document` - Create text-based documents (markdown or html). Binary formats (pdf, docx, xlsx, epub) must be uploaded via the REST API. Auto-indexed for search.\n- `update_document` - Modify title, description, tags, or visibility.\n- `delete_document` - Remove documents (ownership required).\n\n**ZIM Archives** (offline documentation: DevDocs, Wikipedia, Stack Exchange)\n- `list_zim_archives` - List available archives with category/language filters.\n- `search_zim` - Search within an archive. `suggest` matches titles, `fulltext` searches content.\n- `read_zim_article` - Retrieve article content. Supports `summary_only` and `max_paragraphs`.\n\n**Git Templates** (project bootstrapping: CLAUDE.md, Memory Bank)\n- `list_git_templates` - List available templates with category filter.\n- `search_git_templates` - Full-text search across README files and metadata.\n- `get_template_structure` - View folder tree, essential files, and required variables.\n- `get_template_file` - Retrieve file content with optional variable substitution.\n- `get_deployment_guide` - Get deployment instructions with all essential files.\n- `download_template` - Download a complete template as a base64-encoded archive (zip or tar.gz). Reduces deployment from ~45 API calls to 1.\n\n**Prompts**\n- `document_analysis` - Analyze documents (summarize, compare, extract, assess). Supports multiple documents.\n- `search_query_builder` - Query construction assistance.\n- `knowledge_base_builder` - Guide document creation and organization.\n- `git_template_setup` - Template discovery, preview, and deployment.\n- `zim_research` - Research across ZIM archives.\n- `cross_source_research` - Research across all sources (Documents, ZIM, Git Templates).\n\n**Availability**: ZIM tools require Kiwix service configuration. Git Template tools are enabled by default. Document tools are always available. Configure services in Admin panel under External Services.\n\n**Access Control**: Document modifications require ownership. Public documents are readable by all.",
     "pagination": {
       "default_length": 100,
       "max_length": 100,
@@ -28,7 +28,7 @@
     {
       "name": "unified_search",
       "title": "Unified Search",
-      "description": "Search across ALL content types in a single request: Documents, Git Templates, and ZIM Archives.\n\nReturns results ranked by relevance with a `source` field indicating the content type. Use for discovery -- then use type-specific tools (search_documents, search_zim, search_git_templates) for deep content search with full filter options.\n\n**Sources** (filter with `types` param):\n- `document` -- Uploaded documents (PDF, DOCX, XLSX, HTML, EPUB, Markdown)\n- `git_template` -- Git template README and metadata\n- `zim_archive` -- ZIM archive metadata (DevDocs, Wikipedia, Stack Exchange)",
+      "description": "Discovery search across ALL content types in a single request: Documents, Git Templates, ZIM Archives, and ZIM article content.\n\nReturns a single page of top-ranked results merged across sources with a `source` field indicating the content type. **Pagination is not supported** -- the Kiwix article fan-out cannot honor an offset, so every call returns the top results from scratch. To walk the full result set, use the type-specific tools which all support paginated deep search: `search_documents` (FTS across uploaded documents), `search_zim` (deep search inside a specific ZIM archive), or `search_git_templates` (FTS across template READMEs, metadata, and file contents).\n\nThe response includes a `totals` object with the true pre-limit match count per source (document, git_template, zim_archive) so callers can see how many matches exist in each source before choosing which type-specific tool to drill into. `zim_article` totals are not reported because Kiwix Serve does not expose a total match count.\n\n**Sources** (filter with `types` param):\n- `document` -- Uploaded documents (PDF, DOCX, XLSX, HTML, EPUB, Markdown)\n- `git_template` -- Git template README and metadata\n- `zim_archive` -- ZIM archive metadata (DevDocs, Wikipedia, Stack Exchange)\n- `zim_article` -- ZIM archive article content (searched via Kiwix). Results include `archive` and `path` fields for follow-up with `read_zim_article`.",
       "annotations": {
         "readOnlyHint": true,
         "idempotentHint": true
@@ -46,7 +46,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Filter to specific content types: document, git_template, zim_archive. Omit to search all."
+            "description": "Filter to specific content types: document, git_template, zim_archive, zim_article. Omit to search all."
           },
           "limit": {
             "type": "integer",
@@ -54,12 +54,6 @@
             "maximum": 100,
             "default": 20,
             "description": "Max results across all sources (default 20)"
-          },
-          "offset": {
-            "type": "integer",
-            "minimum": 0,
-            "default": 0,
-            "description": "Pagination offset (default 0)"
           }
         },
         "required": [
@@ -70,7 +64,7 @@
         "type": "text",
         "contentType": "application/json",
         "schema": {
-          "description": "JSON object with: success (boolean), query (string), results (array of {uuid, source, title, description, relevance_score, metadata}), total (integer), sources_searched (array of strings), processing_time_ms (number), hint (string)"
+          "description": "JSON object with: success (boolean), query (string), results (array of {source, uuid, title, description, score, archive, path}), returned (integer: number of results in this page, post score-sort and limit truncation), totals (object: pre-limit match count per FTS source -- keys document, git_template, zim_archive; zim_article omitted because Kiwix does not report totals), sources_searched (array of strings), processing_time_ms (number), hint (string: points callers at type-specific tools for paginated deep search)"
         }
       }
     },

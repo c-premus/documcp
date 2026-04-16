@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -408,8 +409,8 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 		if !resp.Success {
 			t.Fatal("expected Success=true")
 		}
-		if resp.Total < 2 {
-			t.Fatalf("Total = %d, want >= 2", resp.Total)
+		if resp.Returned < 2 {
+			t.Fatalf("Returned = %d, want >= 2", resp.Returned)
 		}
 
 		// Document (score 1.0) should sort before Kiwix article (score 0.5).
@@ -557,8 +558,8 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 		if !resp.Success {
 			t.Fatal("expected Success=true")
 		}
-		if resp.Total != 1 {
-			t.Fatalf("Total = %d, want 1", resp.Total)
+		if resp.Returned != 1 {
+			t.Fatalf("Returned = %d, want 1", resp.Returned)
 		}
 		if resp.Results[0].Source != "zim_article" {
 			t.Errorf("Results[0].Source = %q, want %q", resp.Results[0].Source, "zim_article")
@@ -620,6 +621,99 @@ func TestHandleUnifiedSearchFanOut(t *testing.T) {
 
 		if !slices.Contains(resp.SourcesSearched, "zim_article") {
 			t.Errorf("SourcesSearched = %v, expected to contain %q", resp.SourcesSearched, "zim_article")
+		}
+	})
+
+	// Regression guard for docs/audit/api-design.md finding 7a.
+	//
+	// Prior behavior: Total was len(allResults) after truncation (a lie),
+	// and Offset was plumbed through but Kiwix fan-out ignored it, so "page 2"
+	// silently returned FTS page 2 plus Kiwix page 1 again.
+	//
+	// Fixed behavior: Returned is the honest page size. Totals carries the
+	// pre-limit match count per FTS source (from COUNT(*) OVER (PARTITION BY
+	// source)). zim_article is absent from Totals by design — Kiwix Serve
+	// does not report totals. Hint points callers at the type-specific tools
+	// that do support pagination.
+	t.Run("audit 7a: honest totals + hint, no offset", func(t *testing.T) {
+		t.Parallel()
+
+		s := &mockSearcher{
+			federatedSearchFn: func(_ context.Context, params search.FederatedSearchParams) (*search.FederatedSearchResponse, error) {
+				if params.Offset != 0 {
+					t.Errorf("FederatedSearch called with Offset = %d, want 0 (offset dropped from unified_search)", params.Offset)
+				}
+				return &search.FederatedSearchResponse{
+					Hits: []search.SearchResult{
+						makeMCPHit(map[string]any{
+							"uuid":          "doc-001",
+							"title":         "A Doc",
+							"description":   "doc",
+							"_federation":   map[string]any{"indexUid": search.IndexDocuments},
+							"_rankingScore": 1.0,
+						}),
+					},
+					SourceTotals: map[string]int64{
+						search.IndexDocuments:    42, // 42 documents matched pre-LIMIT
+						search.IndexGitTemplates: 7,  // 7 templates matched
+						search.IndexZimArchives:  3,  // 3 ZIM archives matched
+					},
+				}, nil
+			},
+		}
+
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{searcher: s})
+		h.federatedSearchTimeout = 3 * time.Second
+
+		_, resp, err := h.handleUnifiedSearch(ctx, nil, dto.UnifiedSearchInput{
+			Query: "test",
+			Types: []string{"document", "git_template", "zim_archive"},
+			Limit: 1,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !resp.Success {
+			t.Fatal("expected Success=true")
+		}
+
+		// Returned reflects the single result after limit=1 truncation.
+		if resp.Returned != 1 {
+			t.Errorf("Returned = %d, want 1", resp.Returned)
+		}
+
+		// Totals carries the pre-limit per-source match counts.
+		if got := resp.Totals["document"]; got != 42 {
+			t.Errorf("Totals[document] = %d, want 42", got)
+		}
+		if got := resp.Totals["git_template"]; got != 7 {
+			t.Errorf("Totals[git_template] = %d, want 7", got)
+		}
+		if got := resp.Totals["zim_archive"]; got != 3 {
+			t.Errorf("Totals[zim_archive] = %d, want 3", got)
+		}
+
+		// zim_article is intentionally absent from Totals — Kiwix does not
+		// report a total match count.
+		if _, present := resp.Totals["zim_article"]; present {
+			t.Errorf("Totals should not include zim_article (Kiwix cannot report totals): %v", resp.Totals)
+		}
+
+		// Hint points callers at the paginating tools.
+		if resp.Hint == "" {
+			t.Error("Hint should be populated on a successful unified_search")
+		}
+		for _, name := range []string{"search_documents", "search_zim", "search_git_templates"} {
+			if !strings.Contains(resp.Hint, name) {
+				t.Errorf("Hint should mention %q; got %q", name, resp.Hint)
+			}
 		}
 	})
 }

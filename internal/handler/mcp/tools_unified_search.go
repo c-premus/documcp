@@ -32,13 +32,23 @@ type unifiedSearchResult struct {
 }
 
 type unifiedSearchResponse struct {
-	Success          bool                  `json:"success"`
-	Message          string                `json:"message,omitempty"`
-	Query            string                `json:"query"`
-	Results          []unifiedSearchResult `json:"results"`
-	Total            int                   `json:"total"`
-	SourcesSearched  []string              `json:"sources_searched"`
-	ProcessingTimeMs int                   `json:"processing_time_ms"`
+	Success bool                  `json:"success"`
+	Message string                `json:"message,omitempty"`
+	Query   string                `json:"query"`
+	Results []unifiedSearchResult `json:"results"`
+	// Returned is the number of results in this response — the merged page
+	// after score-sort and limit truncation. For per-source match counts
+	// see Totals.
+	Returned int `json:"returned"`
+	// Totals reports the pre-limit match count per FTS source
+	// (document, git_template, zim_archive) when that source was searched.
+	// zim_article is omitted — Kiwix Serve does not report a total match
+	// count and counting per-archive would defeat the fan-out.
+	Totals           map[string]int64 `json:"totals,omitempty"`
+	SourcesSearched  []string         `json:"sources_searched"`
+	ProcessingTimeMs int              `json:"processing_time_ms"`
+	// Hint points callers at the tool(s) that support paginated deep search.
+	Hint string `json:"hint,omitempty"`
 }
 
 // --- Tool registration ---
@@ -47,11 +57,22 @@ type unifiedSearchResponse struct {
 func (h *Handler) registerUnifiedSearchTool() {
 	mcp.AddTool(h.server, &mcp.Tool{
 		Name: "unified_search",
-		Description: "Search across ALL content types in a single request: Documents, Git Templates, " +
-			"ZIM Archives, and ZIM article content.\n\n" +
-			"Returns results ranked by relevance with a `source` field indicating the content type. " +
-			"Use for discovery -- then use type-specific tools (search_documents, search_zim, " +
-			"search_git_templates) for deep content search with full filter options.\n\n" +
+		Description: "Discovery search across ALL content types in a single request: " +
+			"Documents, Git Templates, ZIM Archives, and ZIM article content.\n\n" +
+			"Returns a single page of top-ranked results merged across sources with " +
+			"a `source` field indicating the content type. **Pagination is not " +
+			"supported** — the Kiwix article fan-out cannot honor an offset, so " +
+			"every call returns the top results from scratch. To walk the full " +
+			"result set, use the type-specific tools which all support paginated " +
+			"deep search: `search_documents` (FTS across uploaded documents), " +
+			"`search_zim` (deep search inside a specific ZIM archive), or " +
+			"`search_git_templates` (FTS across template READMEs, metadata, and " +
+			"file contents).\n\n" +
+			"The response includes a `totals` object with the true pre-limit match " +
+			"count per source (document, git_template, zim_archive) so callers can " +
+			"see how many matches exist in each source before choosing which " +
+			"type-specific tool to drill into. `zim_article` totals are not " +
+			"reported because Kiwix Serve does not expose a total match count.\n\n" +
 			"**Sources** (filter with `types` param):\n" +
 			"- `document` -- Uploaded documents (PDF, DOCX, XLSX, HTML, EPUB, Markdown)\n" +
 			"- `git_template` -- Git template README and metadata\n" +
@@ -84,7 +105,7 @@ func (h *Handler) handleUnifiedSearch(
 			Message:         "Search service not configured",
 			Query:           input.Query,
 			Results:         []unifiedSearchResult{},
-			Total:           0,
+			Returned:        0,
 			SourcesSearched: []string{},
 		}, nil
 	}
@@ -147,8 +168,9 @@ func (h *Handler) handleUnifiedSearch(
 	start := time.Now()
 
 	type ftsResult struct {
-		results []unifiedSearchResult
-		err     error
+		results      []unifiedSearchResult
+		sourceTotals map[string]int64
+		err          error
 	}
 	type kiwixResult struct {
 		results  []unifiedSearchResult
@@ -168,7 +190,6 @@ func (h *Handler) handleUnifiedSearch(
 			Query:    input.Query,
 			Indexes:  indexes,
 			Limit:    limit,
-			Offset:   int64(input.Offset),
 			UserID:   fedUserID,
 			IsPublic: fedIsPublic,
 			IsAdmin:  fedIsAdmin,
@@ -187,7 +208,7 @@ func (h *Handler) handleUnifiedSearch(
 				Score:       sr.Score,
 			})
 		}
-		ftsCh <- ftsResult{results: results}
+		ftsCh <- ftsResult{results: results, sourceTotals: resp.SourceTotals}
 	}()
 
 	// Launch Kiwix fan-out.
@@ -232,15 +253,37 @@ func (h *Handler) handleUnifiedSearch(
 		sourcesSearched = []string{"zim_article"}
 	}
 
+	// Build per-source totals for the FTS sources that were queried.
+	// zim_article is intentionally omitted — Kiwix Serve does not expose
+	// a total match count, and per-archive counting would defeat the fan-out.
+	// queriedIndexes already lists only the FTS sources (document,
+	// git_template, zim_archive); zim_article has no FTS index.
+	var totals map[string]int64
+	if !skipFTS {
+		totals = make(map[string]int64, len(queriedIndexes))
+		for _, idx := range queriedIndexes {
+			totals[indexToSource(idx)] = mr.sourceTotals[idx]
+		}
+	}
+
 	return nil, unifiedSearchResponse{
 		Success:          true,
 		Query:            input.Query,
 		Results:          allResults,
-		Total:            len(allResults),
+		Returned:         len(allResults),
+		Totals:           totals,
 		SourcesSearched:  sourcesSearched,
 		ProcessingTimeMs: processingMs,
+		Hint:             unifiedSearchHint,
 	}, nil
 }
+
+// unifiedSearchHint tells callers where to paginate. unified_search is
+// discovery-only — the Kiwix fan-out cannot honor an offset, so the tool
+// never walks past the first merged page.
+const unifiedSearchHint = "unified_search returns a single page of top-ranked " +
+	"results. For paginated deep search use search_documents, search_zim, or " +
+	"search_git_templates with the same query."
 
 // searchKiwixArchives fans out search queries to all searchable Kiwix archives
 // in parallel. Archives with fulltext index use fulltext search; others fall

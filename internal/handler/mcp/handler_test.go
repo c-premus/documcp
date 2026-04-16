@@ -2498,8 +2498,8 @@ func TestHandleUnifiedSearchResults(t *testing.T) {
 		if !resp.Success {
 			t.Fatal("expected Success=true")
 		}
-		if resp.Total != 1 {
-			t.Fatalf("Total = %d, want 1", resp.Total)
+		if resp.Returned != 1 {
+			t.Fatalf("Returned = %d, want 1", resp.Returned)
 		}
 		if resp.Results[0].Source != "document" {
 			t.Errorf("Source = %q, want %q", resp.Results[0].Source, "document")

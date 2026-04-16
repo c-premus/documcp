@@ -50,9 +50,25 @@ type SearchResponse struct {
 
 // FederatedSearchResponse holds results from a multi-index search.
 type FederatedSearchResponse struct {
-	Hits             []SearchResult
-	EstimatedTotal   int64
+	Hits           []SearchResult
+	EstimatedTotal int64
+	// SourceTotals carries the pre-LIMIT match count per source index UID
+	// (e.g. IndexDocuments, IndexGitTemplates, IndexZimArchives). Sources
+	// with zero matches are absent — callers that need them to appear
+	// should seed their result map with the queried index UIDs.
+	SourceTotals     map[string]int64
 	ProcessingTimeMs int64
+}
+
+// sqlSourceToIndex maps the SQL `source` column value emitted by each
+// federated union arm to its index UID. The SQL uses the MCP-facing
+// singular form; SourceTotals keys are normalized to the plural index
+// UID so callers can look up by the same Indexes they passed in
+// FederatedSearchParams.
+var sqlSourceToIndex = map[string]string{
+	"document":     IndexDocuments,
+	"zim_archive":  IndexZimArchives,
+	"git_template": IndexGitTemplates,
 }
 
 // SearchParams holds parameters for searching a single index.
@@ -180,7 +196,9 @@ func (s *Searcher) FederatedSearch(ctx context.Context, params FederatedSearchPa
 	}
 
 	sql := fmt.Sprintf(`
-		SELECT uuid, title, description, source, rank, extra, COUNT(*) OVER () AS total
+		SELECT uuid, title, description, source, rank, extra,
+		       COUNT(*) OVER () AS total,
+		       COUNT(*) OVER (PARTITION BY source) AS source_total
 		FROM (%s) federated
 		ORDER BY rank DESC
 		LIMIT $%d OFFSET $%d`,
@@ -197,14 +215,26 @@ func (s *Searcher) FederatedSearch(ctx context.Context, params FederatedSearchPa
 
 	var hits []SearchResult
 	var total int64
+	sourceTotals := map[string]int64{}
 	for rows.Next() {
 		var r SearchResult
 		var extra map[string]any
-		if err := rows.Scan(&r.UUID, &r.Title, &r.Description, &r.Source, &r.Score, &extra, &total); err != nil {
+		var sourceTotal int64
+		if err := rows.Scan(&r.UUID, &r.Title, &r.Description, &r.Source, &r.Score, &extra, &total, &sourceTotal); err != nil {
 			return nil, fmt.Errorf("scanning federated result: %w", err)
 		}
 		r.Extra = extra
 		hits = append(hits, r)
+		// The SQL source column emits the MCP-facing singular name
+		// ('document', 'zim_archive', 'git_template') while the rest of
+		// this package keys caller-facing maps by the plural index UID
+		// (IndexDocuments="documents", etc.). Translate so SourceTotals
+		// keys match the Indexes the caller passed in FederatedSearchParams.
+		if idx, ok := sqlSourceToIndex[r.Source]; ok {
+			if _, seen := sourceTotals[idx]; !seen {
+				sourceTotals[idx] = sourceTotal
+			}
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterating federated results: %w", err)
@@ -222,6 +252,7 @@ func (s *Searcher) FederatedSearch(ctx context.Context, params FederatedSearchPa
 	return &FederatedSearchResponse{
 		Hits:             hits,
 		EstimatedTotal:   total,
+		SourceTotals:     sourceTotals,
 		ProcessingTimeMs: elapsed.Milliseconds(),
 	}, nil
 }
