@@ -1,7 +1,9 @@
 package handler_test
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,13 +11,13 @@ import (
 	"github.com/c-premus/documcp/internal/handler"
 )
 
-// mockPoolHealth implements handler.PoolHealthy for testing.
-type mockPoolHealth struct {
-	healthy bool
+// stubPinger implements handler.DependencyPinger for testing.
+type stubPinger struct {
+	err error
 }
 
-func (m *mockPoolHealth) IsHealthy() bool {
-	return m.healthy
+func (s *stubPinger) Ping(_ context.Context) error {
+	return s.err
 }
 
 func TestReadinessHandler_NilDB(t *testing.T) {
@@ -51,7 +53,7 @@ func TestReadinessHandler_NilDB(t *testing.T) {
 func TestReadinessHandler_DBHealthy(t *testing.T) {
 	t.Parallel()
 
-	h := handler.NewReadinessHandler("2.0.0", &mockPoolHealth{healthy: true}, nil)
+	h := handler.NewReadinessHandler("2.0.0", &stubPinger{}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -78,7 +80,7 @@ func TestReadinessHandler_DBHealthy(t *testing.T) {
 func TestReadinessHandler_DBUnhealthy(t *testing.T) {
 	t.Parallel()
 
-	h := handler.NewReadinessHandler("3.0.0", &mockPoolHealth{healthy: false}, nil)
+	h := handler.NewReadinessHandler("3.0.0", &stubPinger{err: errors.New("connection refused")}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -99,6 +101,36 @@ func TestReadinessHandler_DBUnhealthy(t *testing.T) {
 	}
 	if resp.Services["postgres"] != "unhealthy" {
 		t.Errorf("postgres = %q, want %q", resp.Services["postgres"], "unhealthy")
+	}
+}
+
+func TestReadinessHandler_RedisUnhealthy(t *testing.T) {
+	t.Parallel()
+
+	h := handler.NewReadinessHandler("4.0.0",
+		&stubPinger{},
+		&stubPinger{err: errors.New("redis down")},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/ready", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+
+	var resp handler.ReadinessResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+
+	if resp.Services["postgres"] != "healthy" {
+		t.Errorf("postgres = %q, want %q", resp.Services["postgres"], "healthy")
+	}
+	if resp.Services["redis"] != "unhealthy" {
+		t.Errorf("redis = %q, want %q", resp.Services["redis"], "unhealthy")
 	}
 }
 

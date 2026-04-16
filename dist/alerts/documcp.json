@@ -1,0 +1,139 @@
+{
+  "apiVersion": 1,
+  "groups": [
+    {
+      "orgId": 1,
+      "name": "documcp",
+      "folder": "DocuMCP",
+      "interval": "30s",
+      "rules": [
+        {
+          "uid": "documcp_no_river_leader",
+          "title": "DocuMCP — no River leader",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "datasourceUid": "prometheus",
+              "relativeTimeRange": {
+                "from": 300,
+                "to": 0
+              },
+              "model": {
+                "refId": "A",
+                "expr": "documcp_river_leader_active",
+                "instant": true
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "type": "query",
+                    "evaluator": {
+                      "type": "eq",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "A"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "5m",
+          "annotations": {
+            "summary": "No River leader for 5 minutes",
+            "description": "documcp_river_leader_active = 0 — no DocuMCP replica holds the River leadership lease. Periodic jobs (oauth token cleanup, orphan file cleanup, soft-delete purge, scope grant cleanup) are not firing. Check that at least one replica runs with --with-worker or as a worker pod, and that the postgres river_leader table is reachable."
+          },
+          "labels": {
+            "severity": "critical",
+            "service": "documcp"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "documcp_readiness_failing",
+          "title": "DocuMCP — readiness failing",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "datasourceUid": "prometheus",
+              "relativeTimeRange": {
+                "from": 300,
+                "to": 0
+              },
+              "model": {
+                "refId": "A",
+                "expr": "documcp_ready",
+                "instant": true
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "type": "query",
+                    "evaluator": {
+                      "type": "eq",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "A"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "2m",
+          "annotations": {
+            "summary": "DocuMCP readiness failing for 2 minutes",
+            "description": "documcp_ready = 0 — the self-collecting readiness gauge reports that Postgres or Redis is not responding to Ping on the uninstrumented pool. Check /health/ready JSON response for the specific dependency status; inspect documcp_db_open_connections and documcp_redis_pool_misses_total for corroboration."
+          },
+          "labels": {
+            "severity": "critical",
+            "service": "documcp"
+          },
+          "isPaused": false
+        }
+      ]
+    }
+  ]
+}

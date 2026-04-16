@@ -274,7 +274,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		OTELEnabled:     cfg.OTEL.Enabled,
 		BareRedisClient: f.BareRedisClient,
 		RedisClient:     f.RedisClient,
-		DB:              &server.PgxPoolHealth{Pool: f.PgxPool},
+		DB:              &server.PgxPoolPinger{Pool: f.BarePgxPool},
 	})
 
 	logger.Info("HTTP server configured",

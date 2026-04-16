@@ -143,8 +143,8 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Generate Grafana dashboard
+      - name: Generate Grafana dashboard and alerts
         run: cd grafana && npm ci && npm run generate
 
-      - name: Verify dashboard is up-to-date
-        run: git diff --exit-code dist/documcp.json
+      - name: Verify dashboard and alerts are up-to-date
+        run: git diff --exit-code dist/documcp.json dist/alerts/documcp.json
