@@ -509,7 +509,7 @@ func (s *Searcher) trigramFallbackDocuments(ctx context.Context, params SearchPa
 			   ) AS extra,
 			   0::bigint AS total
 		FROM documents d
-		WHERE d.title %%%% $1
+		WHERE d.title %% $1
 		  AND d.deleted_at IS NULL
 		  %s
 		ORDER BY rank DESC
