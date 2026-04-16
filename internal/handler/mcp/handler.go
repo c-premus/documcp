@@ -80,7 +80,7 @@ const faviconDataURI = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy
 const serverInstructions = `Documentation knowledge base with full-text search.
 
 **Unified Search**
-- ` + "`unified_search`" + ` - Search across ALL sources in one request: documents, git templates, ZIM archive metadata, AND ZIM article content (via Kiwix fan-out). Use for discovery; type-specific tools for deep search.
+- ` + "`unified_search`" + ` - Discovery search across ALL sources in one request: documents, git templates, ZIM archive metadata, AND ZIM article content (via Kiwix fan-out). Returns a single page of top-ranked results; pagination is not supported. The response includes ` + "`totals`" + ` per FTS source so callers can see how many matches exist before drilling into a type-specific tool for paginated deep search.
 
 **Documents**
 - ` + "`list_documents`" + ` - List all accessible documents with optional filters (file type, status). Paginated.

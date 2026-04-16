@@ -121,9 +121,14 @@ type DownloadTemplateInput struct {
 // --- Unified Search ---.
 
 // UnifiedSearchInput holds parameters for searching across all content sources.
+//
+// unified_search is a discovery tool. It returns a single page of top-ranked
+// results merged across sources; pagination is not supported because the
+// Kiwix fan-out cannot honor an offset. Callers that need to walk the full
+// result set should use the type-specific tools (search_documents, search_zim,
+// search_git_templates).
 type UnifiedSearchInput struct {
-	Query  string   `json:"query" jsonschema:"Search text (1-255 characters),required"`
-	Types  []string `json:"types,omitempty" jsonschema:"Filter to specific content types: document, git_template, zim_archive, zim_article"`
-	Limit  int      `json:"limit,omitempty" jsonschema:"Max results across all sources (default 20, max 100)"`
-	Offset int      `json:"offset,omitempty" jsonschema:"Pagination offset (default 0)"`
+	Query string   `json:"query" jsonschema:"Search text (1-255 characters),required"`
+	Types []string `json:"types,omitempty" jsonschema:"Filter to specific content types: document, git_template, zim_archive, zim_article"`
+	Limit int      `json:"limit,omitempty" jsonschema:"Max results across all sources (default 20, max 100)"`
 }
