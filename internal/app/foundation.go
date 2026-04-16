@@ -49,6 +49,13 @@ type Foundation struct {
 	RedisClient *redis.Client
 	Metrics     *observability.Metrics
 
+	// BarePgxPool is an uninstrumented database pool (no otelpgx tracer).
+	// Used by readiness probes and the River leader gauge collector — both
+	// are high-frequency, low-value to trace, and Ping on the main pool
+	// generates ping + pool.acquire spans on every call. Hardcoded small
+	// (MaxConns=2, MinConns=1); not for application queries.
+	BarePgxPool *pgxpool.Pool
+
 	// BareRedisClient is an uninstrumented Redis client (no redisotel).
 	// Used for rate limiting (httprate-redis TxPipeline) and readiness
 	// health checks — both are high-frequency, low-value to trace.
@@ -112,7 +119,7 @@ type Foundation struct {
 func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	logger := newLogger(cfg.App.Env, cfg.App.Debug, os.Stdout)
 
-	pgxPool, err := newDatabasePool(cfg, logger)
+	pgxPool, barePgxPool, err := newDatabasePools(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -120,6 +127,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	var initOK bool
 	defer func() {
 		if !initOK {
+			barePgxPool.Close()
 			pgxPool.Close()
 		}
 	}()
@@ -183,7 +191,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		}
 	}()
 
-	obs, err := newObservability(context.Background(), cfg, pgxPool, redisClient, searcher, logger)
+	obs, err := newObservability(context.Background(), cfg, pgxPool, barePgxPool, redisClient, bareRedisClient, searcher, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -196,6 +204,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		Config:              cfg,
 		Logger:              logger,
 		PgxPool:             pgxPool,
+		BarePgxPool:         barePgxPool,
 		RedisClient:         redisClient,
 		BareRedisClient:     bareRedisClient,
 		Metrics:             obs.Metrics,
@@ -219,10 +228,12 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	}, nil
 }
 
-// newDatabasePool initializes the pgxpool used by repositories, River, and
-// goose migrations.
-func newDatabasePool(cfg *config.Config, logger *slog.Logger) (*pgxpool.Pool, error) {
-	pool, err := database.NewPgxPool(
+// newDatabasePools initializes the instrumented pool used by repositories,
+// River, and goose migrations, and a parallel uninstrumented bare pool used
+// by readiness probes and the River leader gauge collector. Both share the
+// same DSN; only the bare pool skips otelpgx to keep probe paths trace-free.
+func newDatabasePools(cfg *config.Config, logger *slog.Logger) (mainPool, barePool *pgxpool.Pool, err error) {
+	mainPool, err = database.NewPgxPool(
 		context.Background(),
 		cfg.DatabaseDSN(),
 		cfg.Database.MaxOpenConns,
@@ -231,15 +242,22 @@ func newDatabasePool(cfg *config.Config, logger *slog.Logger) (*pgxpool.Pool, er
 		cfg.Database.PgxMaxConnIdleTime,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("initializing database pool: %w", err)
+		return nil, nil, fmt.Errorf("initializing database pool: %w", err)
 	}
+
+	barePool, err = database.NewBarePgxPool(context.Background(), cfg.DatabaseDSN())
+	if err != nil {
+		mainPool.Close()
+		return nil, nil, fmt.Errorf("initializing bare database pool: %w", err)
+	}
+
 	logger.Info("database connected",
 		"host", cfg.Database.Host,
 		"database", cfg.Database.Database,
 		"max_conns", cfg.Database.MaxOpenConns,
 		"min_conns", cfg.Database.PgxMinConns,
 	)
-	return pool, nil
+	return mainPool, barePool, nil
 }
 
 // newRedisClients creates the instrumented main client (EventBus, app
@@ -441,8 +459,8 @@ type observabilityBundle struct {
 func newObservability(
 	ctx context.Context,
 	cfg *config.Config,
-	pool *pgxpool.Pool,
-	redisClient *redis.Client,
+	pool, barePool *pgxpool.Pool,
+	redisClient, bareRedisClient *redis.Client,
 	searcher *search.Searcher,
 	logger *slog.Logger,
 ) (observabilityBundle, error) {
@@ -450,6 +468,8 @@ func newObservability(
 	observability.RegisterDBMetrics(pool)
 	observability.RegisterRedisMetrics(redisClient)
 	observability.RegisterDocumentCount(pool)
+	observability.RegisterReadinessGauge(barePool, bareRedisClient)
+	observability.RegisterRiverLeaderGauge(barePool)
 	searcher.SetMetrics(metrics)
 	logger.Info("Prometheus metrics registered")
 
@@ -533,6 +553,9 @@ func (f *Foundation) Close() {
 		if err := f.RedisClient.Close(); err != nil {
 			f.Logger.Error("closing redis client", "error", err)
 		}
+	}
+	if f.BarePgxPool != nil {
+		f.BarePgxPool.Close()
 	}
 	if f.PgxPool != nil {
 		f.PgxPool.Close()
