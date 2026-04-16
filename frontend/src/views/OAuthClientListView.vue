@@ -2,8 +2,6 @@
 import { ref, watch, computed, h } from 'vue'
 import { RouterLink } from 'vue-router'
 import { toast } from 'vue-sonner'
-import { formatDistanceToNow } from 'date-fns'
-import { TrashIcon } from '@heroicons/vue/24/outline'
 import type { ColumnDef } from '@tanstack/vue-table'
 
 import { apiFetch } from '@/api/helpers'
@@ -12,7 +10,10 @@ import Pagination from '../components/shared/Pagination.vue'
 import SearchInput from '../components/shared/SearchInput.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
+import TruncatedText from '../components/shared/TruncatedText.vue'
+import RelativeTimeCell from '../components/shared/RelativeTimeCell.vue'
 import OAuthClientCreateModal from '../components/oauth/OAuthClientCreateModal.vue'
+import OAuthClientRowActions from '../components/oauth/OAuthClientRowActions.vue'
 import SecretDisplayModal from '../components/oauth/SecretDisplayModal.vue'
 
 import type { OAuthClient } from '../stores/oauthClients'
@@ -151,14 +152,8 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     header: 'Client ID',
     enableSorting: false,
     meta: { className: 'hidden lg:table-cell' },
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      return h(
-        'span',
-        { class: 'block max-w-[12rem] truncate font-mono text-xs', title: value },
-        value,
-      )
-    },
+    cell: ({ getValue }) =>
+      h(TruncatedText, { value: getValue<string>(), mono: true, maxWidth: 'max-w-[12rem]' }),
   },
   {
     accessorKey: 'grant_types',
@@ -188,54 +183,35 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     header: 'Auth Method',
     enableSorting: false,
     meta: { className: 'hidden lg:table-cell' },
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      return value.replace(/_/g, ' ')
-    },
+    cell: ({ getValue }) => getValue<string>().replace(/_/g, ' '),
   },
   {
     accessorKey: 'created_at',
     header: 'Created',
     enableSorting: true,
     meta: { className: 'w-36 hidden md:table-cell' },
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      return formatDistanceToNow(new Date(value), { addSuffix: true })
-    },
+    cell: ({ getValue }) => h(RelativeTimeCell, { value: getValue<string>() }),
   },
   {
     accessorKey: 'last_used_at',
     header: 'Last Used',
     enableSorting: true,
     meta: { className: 'w-36 hidden md:table-cell' },
-    cell: ({ getValue }) => {
-      const value = getValue<string | null>()
-      if (!value) return '—'
-      return formatDistanceToNow(new Date(value), { addSuffix: true })
-    },
+    cell: ({ getValue }) =>
+      h(RelativeTimeCell, { value: getValue<string | null>() ?? null, fallback: '—' }),
   },
   {
     id: 'actions',
     header: 'Actions',
     enableSorting: false,
     meta: { className: 'w-20' },
-    cell: ({ row }) => {
-      const client = row.original
-      return h(
-        'button',
-        {
-          type: 'button',
-          class: 'cursor-pointer text-text-muted hover:text-red-600 dark:hover:text-red-400',
-          title: `Delete client ${client.client_name}`,
-          'aria-label': `Delete client ${client.client_name}`,
-          onClick: (event: MouseEvent) => {
-            event.stopPropagation()
-            deleteTarget.value = client
-          },
+    cell: ({ row }) =>
+      h(OAuthClientRowActions, {
+        client: row.original,
+        onDelete: (client: OAuthClient) => {
+          deleteTarget.value = client
         },
-        [h(TrashIcon, { class: 'h-5 w-5' })],
-      )
-    },
+      }),
   },
 ]
 </script>

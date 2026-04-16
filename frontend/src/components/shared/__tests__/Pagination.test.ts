@@ -107,4 +107,38 @@ describe('Pagination', () => {
     expect(pageEmits).toBeTruthy()
     expect(pageEmits![0]).toEqual([1])
   })
+
+  it('renders 20 as a selectable page size', () => {
+    const wrapper = mountPagination({ page: 1, perPage: 20, total: 100 })
+
+    const values = wrapper.findAll('option').map((o) => o.attributes('value'))
+    expect(values).toContain('20')
+  })
+
+  it('selects the current perPage value in the dropdown', () => {
+    const wrapper = mountPagination({ page: 1, perPage: 20, total: 100 })
+
+    const select = wrapper.find('select').element as HTMLSelectElement
+    expect(select.value).toBe('20')
+  })
+
+  it('keeps the dropdown selected when perPage is an off-list value', () => {
+    // 17 isn't in PAGE_SIZE_OPTIONS — the select must still reflect it,
+    // not render blank (regression guard for the OAuth clients view).
+    const wrapper = mountPagination({ page: 1, perPage: 17, total: 100 })
+
+    const select = wrapper.find('select').element as HTMLSelectElement
+    expect(select.value).toBe('17')
+
+    const values = wrapper.findAll('option').map((o) => o.attributes('value'))
+    expect(values).toContain('17')
+  })
+
+  it('keeps options sorted when a custom perPage is injected', () => {
+    const wrapper = mountPagination({ page: 1, perPage: 17, total: 100 })
+
+    const values = wrapper.findAll('option').map((o) => Number(o.attributes('value')))
+    const sorted = [...values].sort((a, b) => a - b)
+    expect(values).toEqual(sorted)
+  })
 })

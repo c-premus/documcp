@@ -1,25 +1,30 @@
 <script setup lang="ts">
 import { ref, watch, computed, h } from 'vue'
 import { toast } from 'vue-sonner'
-import {
-  PencilSquareIcon,
-  TrashIcon,
-  ArrowUpIcon,
-  ArrowDownIcon,
-  HeartIcon,
-  ArrowPathIcon,
-} from '@heroicons/vue/24/outline'
-import { Switch } from '@headlessui/vue'
 import type { ColumnDef } from '@tanstack/vue-table'
 
 import DataTable from '../components/shared/DataTable.vue'
 import Pagination from '../components/shared/Pagination.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
+import CategoryBadge from '../components/shared/CategoryBadge.vue'
+import TruncatedText from '../components/shared/TruncatedText.vue'
+import ToggleCell from '../components/shared/ToggleCell.vue'
+import PriorityReorder from '../components/shared/PriorityReorder.vue'
 import ExternalServiceModal from '../components/external-services/ExternalServiceModal.vue'
+import ExternalServiceRowActions from '../components/external-services/ExternalServiceRowActions.vue'
 
 import { useExternalServicesStore } from '../stores/externalServices'
 import type { ExternalService } from '../stores/externalServices'
+
+const TYPE_PALETTE: Readonly<Record<string, string>> = {
+  kiwix: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+}
+
+const HEALTH_PALETTE: Readonly<Record<string, string>> = {
+  healthy: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
+  unhealthy: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+}
 
 const store = useExternalServicesStore()
 
@@ -146,11 +151,13 @@ async function handleHealthCheck(service: ExternalService): Promise<void> {
   }
 }
 
+const sortedByPriority = computed(() => [...store.services].sort((a, b) => a.priority - b.priority))
+
 async function handleMovePriority(
   service: ExternalService,
   direction: 'up' | 'down',
 ): Promise<void> {
-  const sorted = [...store.services].sort((a, b) => a.priority - b.priority)
+  const sorted = sortedByPriority.value
   const currentIndex = sorted.findIndex((s) => s.uuid === service.uuid)
   if (currentIndex === -1) {
     return
@@ -180,24 +187,15 @@ async function handleMovePriority(
   }
 }
 
-function healthStatusStyle(status: string): { bg: string; text: string } {
-  switch (status) {
-    case 'healthy':
-      return { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-800 dark:text-green-300' }
-    case 'unhealthy':
-      return { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-800 dark:text-red-300' }
-    default:
-      return { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-800 dark:text-gray-300' }
-  }
+function canMoveUp(service: ExternalService): boolean {
+  const sorted = sortedByPriority.value
+  return sorted.findIndex((s) => s.uuid === service.uuid) > 0
 }
 
-function typeBadgeStyle(type: string): { bg: string; text: string } {
-  switch (type) {
-    case 'kiwix':
-      return { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-800 dark:text-blue-300' }
-    default:
-      return { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-800 dark:text-gray-300' }
-  }
+function canMoveDown(service: ExternalService): boolean {
+  const sorted = sortedByPriority.value
+  const idx = sorted.findIndex((s) => s.uuid === service.uuid)
+  return idx !== -1 && idx < sorted.length - 1
 }
 
 const columns: ColumnDef<ExternalService, unknown>[] = [
@@ -211,190 +209,65 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
     header: 'Type',
     enableSorting: false,
     meta: { className: 'w-28 hidden sm:table-cell' },
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      const style = typeBadgeStyle(value)
-      return h(
-        'span',
-        {
-          class: `inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${style.bg} ${style.text}`,
-        },
-        value,
-      )
-    },
+    cell: ({ getValue }) => h(CategoryBadge, { value: getValue<string>(), palette: TYPE_PALETTE }),
   },
   {
     accessorKey: 'base_url',
     header: 'Base URL',
     enableSorting: false,
     meta: { className: 'hidden lg:table-cell' },
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      return h('span', { class: 'block max-w-xs truncate font-mono text-xs', title: value }, value)
-    },
+    cell: ({ getValue }) => h(TruncatedText, { value: getValue<string>(), mono: true }),
   },
   {
     accessorKey: 'status',
     header: 'Health',
     enableSorting: false,
     meta: { className: 'w-28' },
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      const style = healthStatusStyle(value)
-      return h(
-        'span',
-        {
-          class: `inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${style.bg} ${style.text}`,
-        },
-        value,
-      )
-    },
+    cell: ({ getValue }) =>
+      h(CategoryBadge, { value: getValue<string>(), palette: HEALTH_PALETTE }),
   },
   {
     accessorKey: 'priority',
     header: 'Priority',
     enableSorting: true,
     meta: { className: 'w-28 hidden md:table-cell' },
-    cell: ({ row }) => {
-      const service = row.original
-      return h('div', { class: 'flex items-center gap-1' }, [
-        h('span', { class: 'text-sm tabular-nums' }, String(service.priority)),
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'text-text-disabled hover:text-indigo-600 dark:hover:text-indigo-400 p-0.5',
-            title: 'Move up',
-            'aria-label': 'Move up',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              handleMovePriority(service, 'up')
-            },
-          },
-          [h(ArrowUpIcon, { class: 'h-4 w-4' })],
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'text-text-disabled hover:text-indigo-600 dark:hover:text-indigo-400 p-0.5',
-            title: 'Move down',
-            'aria-label': 'Move down',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              handleMovePriority(service, 'down')
-            },
-          },
-          [h(ArrowDownIcon, { class: 'h-4 w-4' })],
-        ),
-      ])
-    },
+    cell: ({ row }) =>
+      h(PriorityReorder, {
+        priority: row.original.priority,
+        canMoveUp: canMoveUp(row.original),
+        canMoveDown: canMoveDown(row.original),
+        onUp: () => handleMovePriority(row.original, 'up'),
+        onDown: () => handleMovePriority(row.original, 'down'),
+      }),
   },
   {
     accessorKey: 'is_enabled',
     header: 'Enabled',
     enableSorting: false,
     meta: { className: 'w-20 hidden sm:table-cell' },
-    cell: ({ row }) => {
-      const service = row.original
-      return h(
-        Switch,
-        {
-          modelValue: service.is_enabled,
-          class: [
-            'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2',
-            service.is_enabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600',
-          ],
-          onClick: (event: MouseEvent) => {
-            event.stopPropagation()
-          },
-          'onUpdate:modelValue': () => {
-            handleToggleEnabled(service)
-          },
-        },
-        {
-          default: () =>
-            h('span', {
-              class: [
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                service.is_enabled ? 'translate-x-5' : 'translate-x-0',
-              ],
-            }),
-        },
-      )
-    },
+    cell: ({ row }) =>
+      h(ToggleCell, {
+        modelValue: row.original.is_enabled,
+        label: `Toggle ${row.original.name} enabled`,
+        'onUpdate:modelValue': () => handleToggleEnabled(row.original),
+      }),
   },
   {
     id: 'actions',
     header: 'Actions',
     enableSorting: false,
     meta: { className: 'w-36' },
-    cell: ({ row }) => {
-      const service = row.original
-      const isSyncing = syncingUUIDs.value.has(service.uuid)
-      const canSync = service.type === 'kiwix'
-      return h('div', { class: 'flex items-center gap-2' }, [
-        canSync
-          ? h(
-              'button',
-              {
-                type: 'button',
-                class: `text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400 ${isSyncing ? 'opacity-50 cursor-not-allowed' : ''}`,
-                title: 'Sync now',
-                'aria-label': 'Sync now',
-                disabled: isSyncing,
-                onClick: (event: MouseEvent) => {
-                  event.stopPropagation()
-                  if (!isSyncing) handleSync(service)
-                },
-              },
-              [h(ArrowPathIcon, { class: `h-5 w-5 ${isSyncing ? 'animate-spin' : ''}` })],
-            )
-          : null,
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'text-text-muted hover:text-green-600 dark:hover:text-green-400',
-            title: 'Health check',
-            'aria-label': 'Health check',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              handleHealthCheck(service)
-            },
-          },
-          [h(HeartIcon, { class: 'h-5 w-5' })],
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
-            title: 'Edit service',
-            'aria-label': 'Edit service',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              openEditModal(service)
-            },
-          },
-          [h(PencilSquareIcon, { class: 'h-5 w-5' })],
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
-            title: 'Delete service',
-            'aria-label': 'Delete service',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              deleteTarget.value = service
-            },
-          },
-          [h(TrashIcon, { class: 'h-5 w-5' })],
-        ),
-      ])
-    },
+    cell: ({ row }) =>
+      h(ExternalServiceRowActions, {
+        service: row.original,
+        syncing: syncingUUIDs.value.has(row.original.uuid),
+        onSync: handleSync,
+        onHealthCheck: handleHealthCheck,
+        onEdit: openEditModal,
+        onDelete: (service: ExternalService) => {
+          deleteTarget.value = service
+        },
+      }),
   },
 ]
 </script>

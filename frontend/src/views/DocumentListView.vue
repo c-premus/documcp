@@ -2,8 +2,7 @@
 import { ref, watch, computed, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
-import { formatDistanceToNow } from 'date-fns'
-import { EyeIcon, TrashIcon, PencilSquareIcon } from '@heroicons/vue/24/outline'
+import { TrashIcon } from '@heroicons/vue/24/outline'
 import type { ColumnDef } from '@tanstack/vue-table'
 
 import { useDocumentsStore } from '../stores/documents'
@@ -14,8 +13,13 @@ import StatusBadge from '../components/shared/StatusBadge.vue'
 import SearchInput from '../components/shared/SearchInput.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
+import FileSizeCell from '../components/shared/FileSizeCell.vue'
+import RelativeTimeCell from '../components/shared/RelativeTimeCell.vue'
+import FileTypeCell from '../components/shared/FileTypeCell.vue'
+import VisibilityCell from '../components/shared/VisibilityCell.vue'
 import UploadModal from '../components/documents/UploadModal.vue'
 import DocumentEditModal from '../components/documents/DocumentEditModal.vue'
+import DocumentRowActions from '../components/documents/DocumentRowActions.vue'
 
 const FILE_TYPE_OPTIONS = [
   'All',
@@ -47,17 +51,20 @@ const hasActiveFilters = computed(
   () => search.value !== '' || fileTypeFilter.value !== 'All' || statusFilter.value !== 'All',
 )
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+function handleEdit(doc: Document): void {
+  editTarget.value = doc
+  showEditModal.value = true
 }
 
-const baseColumns: ColumnDef<Document, unknown>[] = [
+function handleView(doc: Document): void {
+  router.push(`/documents/${doc.uuid}`)
+}
+
+function handleDelete(doc: Document): void {
+  deleteTarget.value = doc
+}
+
+const columns: ColumnDef<Document, unknown>[] = [
   {
     accessorKey: 'title',
     header: 'Title',
@@ -68,108 +75,50 @@ const baseColumns: ColumnDef<Document, unknown>[] = [
     header: 'Type',
     enableSorting: true,
     meta: { className: 'w-28 hidden sm:table-cell' },
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      return value.toUpperCase()
-    },
+    cell: ({ getValue }) => h(FileTypeCell, { value: getValue<string>() }),
   },
   {
     accessorKey: 'status',
     header: 'Status',
     enableSorting: true,
     meta: { className: 'w-28' },
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      return h(StatusBadge, { status: value })
-    },
+    cell: ({ getValue }) => h(StatusBadge, { status: getValue<string>() }),
   },
   {
     accessorKey: 'is_public',
     header: 'Visibility',
     enableSorting: false,
     meta: { className: 'w-28 hidden md:table-cell' },
-    cell: ({ getValue }) => {
-      const isPublic = getValue<boolean>()
-      return h(StatusBadge, { status: isPublic ? 'public' : 'private' })
-    },
+    cell: ({ getValue }) => h(VisibilityCell, { isPublic: getValue<boolean>() }),
   },
   {
     accessorKey: 'file_size',
     header: 'Size',
     enableSorting: true,
     meta: { className: 'w-24 hidden sm:table-cell' },
-    cell: ({ getValue }) => {
-      const value = getValue<number>()
-      return formatFileSize(value)
-    },
+    cell: ({ getValue }) => h(FileSizeCell, { bytes: getValue<number>() }),
   },
   {
     accessorKey: 'created_at',
     header: 'Created',
     enableSorting: true,
     meta: { className: 'w-36 hidden md:table-cell' },
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      return formatDistanceToNow(new Date(value), { addSuffix: true })
-    },
+    cell: ({ getValue }) => h(RelativeTimeCell, { value: getValue<string>() }),
+  },
+  {
+    id: 'actions',
+    header: 'Actions',
+    enableSorting: false,
+    meta: { className: 'w-20' },
+    cell: ({ row }) =>
+      h(DocumentRowActions, {
+        document: row.original,
+        onEdit: handleEdit,
+        onView: handleView,
+        onDelete: handleDelete,
+      }),
   },
 ]
-
-const actionsColumn: ColumnDef<Document, unknown> = {
-  id: 'actions',
-  header: 'Actions',
-  enableSorting: false,
-  meta: { className: 'w-20' },
-  cell: ({ row }) => {
-    return h('div', { class: 'flex items-center gap-2' }, [
-      h(
-        'button',
-        {
-          type: 'button',
-          class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
-          title: 'Edit document',
-          'aria-label': 'Edit document',
-          onClick: (event: MouseEvent) => {
-            event.stopPropagation()
-            editTarget.value = row.original
-            showEditModal.value = true
-          },
-        },
-        [h(PencilSquareIcon, { class: 'h-5 w-5' })],
-      ),
-      h(
-        'button',
-        {
-          type: 'button',
-          class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
-          title: 'View document',
-          'aria-label': 'View document',
-          onClick: (event: MouseEvent) => {
-            event.stopPropagation()
-            router.push(`/documents/${row.original.uuid}`)
-          },
-        },
-        [h(EyeIcon, { class: 'h-5 w-5' })],
-      ),
-      h(
-        'button',
-        {
-          type: 'button',
-          class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
-          title: 'Delete document',
-          'aria-label': 'Delete document',
-          onClick: (event: MouseEvent) => {
-            event.stopPropagation()
-            deleteTarget.value = row.original
-          },
-        },
-        [h(TrashIcon, { class: 'h-5 w-5' })],
-      ),
-    ])
-  },
-}
-
-const columns: ColumnDef<Document, unknown>[] = [...baseColumns, actionsColumn]
 
 function fetchData(): void {
   const offset = (page.value - 1) * perPage.value

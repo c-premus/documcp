@@ -12,11 +12,21 @@ const emit = defineEmits<{
   'update:perPage': [perPage: number]
 }>()
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
+const PAGE_SIZE_OPTIONS = [10, 20, 25, 50] as const
 
 const pageSizeId = useId()
 const totalPages = computed(() => Math.max(1, Math.ceil(props.total / props.perPage)))
-const showPerPage = computed(() => props.total > PAGE_SIZE_OPTIONS[0])
+
+// Always include the current perPage in the rendered options so the <select>
+// never renders blank on an off-list value.
+const visibleOptions = computed(() => {
+  if (PAGE_SIZE_OPTIONS.includes(props.perPage as (typeof PAGE_SIZE_OPTIONS)[number])) {
+    return [...PAGE_SIZE_OPTIONS]
+  }
+  return [...PAGE_SIZE_OPTIONS, props.perPage].sort((a, b) => a - b)
+})
+
+const showPerPage = computed(() => props.total > visibleOptions.value[0]!)
 
 const rangeStart = computed(() => {
   if (props.total === 0) {
@@ -69,7 +79,7 @@ function handlePerPageChange(event: Event): void {
             class="rounded-md border border-border-input bg-bg-surface py-1 pl-2 pr-8 text-sm text-text-secondary focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
             @change="handlePerPageChange"
           >
-            <option v-for="size in PAGE_SIZE_OPTIONS" :key="size" :value="size">
+            <option v-for="size in visibleOptions" :key="size" :value="size">
               {{ size }}
             </option>
           </select>

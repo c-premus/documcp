@@ -2,19 +2,27 @@
 import { ref, computed, watch, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
-import { formatDistanceToNow } from 'date-fns'
-import { TrashIcon, ArrowPathIcon, PencilSquareIcon } from '@heroicons/vue/24/outline'
 import type { ColumnDef } from '@tanstack/vue-table'
 
 import DataTable from '../components/shared/DataTable.vue'
 import Pagination from '../components/shared/Pagination.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
+import CategoryBadge from '../components/shared/CategoryBadge.vue'
+import TruncatedText from '../components/shared/TruncatedText.vue'
+import RelativeTimeCell from '../components/shared/RelativeTimeCell.vue'
 import GitTemplateCreateModal from '../components/git-templates/GitTemplateCreateModal.vue'
 import GitTemplateEditModal from '../components/git-templates/GitTemplateEditModal.vue'
+import GitTemplateRowActions from '../components/git-templates/GitTemplateRowActions.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useGitTemplatesStore } from '../stores/gitTemplates'
 import type { GitTemplate } from '../stores/gitTemplates'
+
+const CATEGORY_PALETTE: Readonly<Record<string, string>> = {
+  claude: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300',
+  'memory-bank': 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  project: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+}
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -103,15 +111,6 @@ function handleCreateSaved(): void {
   fetchData()
 }
 
-function categoryBadgeClasses(category: string): string {
-  const styles: Readonly<Record<string, string>> = {
-    claude: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300',
-    'memory-bank': 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
-    project: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
-  }
-  return styles[category] ?? 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300'
-}
-
 const baseColumns: ColumnDef<GitTemplate, unknown>[] = [
   {
     accessorKey: 'name',
@@ -128,16 +127,7 @@ const baseColumns: ColumnDef<GitTemplate, unknown>[] = [
       if (value === undefined || value === '') {
         return '-'
       }
-      return h(
-        'span',
-        {
-          class: [
-            'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize',
-            categoryBadgeClasses(value),
-          ],
-        },
-        value,
-      )
+      return h(CategoryBadge, { value, palette: CATEGORY_PALETTE })
     },
   },
   {
@@ -145,33 +135,23 @@ const baseColumns: ColumnDef<GitTemplate, unknown>[] = [
     header: 'Repository',
     enableSorting: false,
     meta: { className: 'hidden lg:table-cell' },
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      return h('span', { class: 'block max-w-xs truncate font-mono text-xs', title: value }, value)
-    },
+    cell: ({ getValue }) => h(TruncatedText, { value: getValue<string>(), mono: true }),
   },
   {
     accessorKey: 'branch',
     header: 'Branch',
     enableSorting: false,
     meta: { className: 'w-24 hidden md:table-cell' },
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      return h('span', { class: 'font-mono text-xs text-text-muted' }, value)
-    },
+    cell: ({ getValue }) =>
+      h('span', { class: 'font-mono text-xs text-text-muted' }, getValue<string>()),
   },
   {
     accessorKey: 'last_synced_at',
     header: 'Last Sync',
     enableSorting: true,
     meta: { className: 'w-36 hidden md:table-cell' },
-    cell: ({ getValue }) => {
-      const value = getValue<string | undefined>()
-      if (value === undefined || value === '') {
-        return 'Never'
-      }
-      return formatDistanceToNow(new Date(value), { addSuffix: true })
-    },
+    cell: ({ getValue }) =>
+      h(RelativeTimeCell, { value: getValue<string | undefined>() ?? null, fallback: 'Never' }),
   },
   {
     accessorKey: 'file_count',
@@ -186,58 +166,18 @@ const actionsColumn: ColumnDef<GitTemplate, unknown> = {
   header: 'Actions',
   enableSorting: false,
   meta: { className: 'w-20' },
-  cell: ({ row }) => {
-    const template = row.original
-    const isSyncing = syncingUuids.value.has(template.uuid)
-    return h('div', { class: 'flex items-center gap-2' }, [
-      h(
-        'button',
-        {
-          type: 'button',
-          class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
-          title: 'Edit template',
-          'aria-label': 'Edit template',
-          onClick: (event: MouseEvent) => {
-            event.stopPropagation()
-            editTarget.value = template
-          },
-        },
-        [h(PencilSquareIcon, { class: 'h-5 w-5' })],
-      ),
-      h(
-        'button',
-        {
-          type: 'button',
-          class: [
-            'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
-            isSyncing ? 'animate-spin' : '',
-          ],
-          title: 'Sync template',
-          'aria-label': 'Sync template',
-          disabled: isSyncing,
-          onClick: (event: MouseEvent) => {
-            event.stopPropagation()
-            handleSync(template)
-          },
-        },
-        [h(ArrowPathIcon, { class: 'h-5 w-5' })],
-      ),
-      h(
-        'button',
-        {
-          type: 'button',
-          class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
-          title: 'Delete template',
-          'aria-label': 'Delete template',
-          onClick: (event: MouseEvent) => {
-            event.stopPropagation()
-            deleteTarget.value = template
-          },
-        },
-        [h(TrashIcon, { class: 'h-5 w-5' })],
-      ),
-    ])
-  },
+  cell: ({ row }) =>
+    h(GitTemplateRowActions, {
+      template: row.original,
+      syncing: syncingUuids.value.has(row.original.uuid),
+      onEdit: (template: GitTemplate) => {
+        editTarget.value = template
+      },
+      onSync: handleSync,
+      onDelete: (template: GitTemplate) => {
+        deleteTarget.value = template
+      },
+    }),
 }
 
 const columns = computed(() => (auth.isAdmin ? [...baseColumns, actionsColumn] : baseColumns))
