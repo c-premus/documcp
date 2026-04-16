@@ -31,7 +31,10 @@ func NewWorkerApp(f *Foundation) (*WorkerApp, error) {
 	logger := f.Logger
 
 	// --- EventBus (Redis-backed for cross-instance event delivery) ---
-	eventBus := queue.NewRedisEventBus(context.Background(), f.RedisClient, logger)
+	eventBus, err := queue.NewRedisEventBus(context.Background(), f.RedisClient, logger)
+	if err != nil {
+		return nil, fmt.Errorf("redis event bus: %w", err)
+	}
 	var eventBusOK bool
 	defer func() {
 		if !eventBusOK {

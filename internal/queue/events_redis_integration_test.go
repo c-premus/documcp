@@ -62,13 +62,12 @@ func TestMain(m *testing.M) {
 func newTestBus(t *testing.T) *RedisEventBus {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	bus := NewRedisEventBus(ctx, testRedisClient, testutil.DiscardLogger())
+	bus, err := NewRedisEventBus(ctx, testRedisClient, testutil.DiscardLogger())
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		bus.Close()
 		cancel()
 	})
-	// Allow the background goroutine to subscribe to Redis.
-	time.Sleep(100 * time.Millisecond)
 	return bus
 }
 
@@ -163,8 +162,8 @@ func TestRedisEventBus_Unsubscribe(t *testing.T) {
 }
 
 func TestRedisEventBus_Close(t *testing.T) {
-	bus := NewRedisEventBus(t.Context(), testRedisClient, testutil.DiscardLogger())
-	time.Sleep(100 * time.Millisecond)
+	bus, err := NewRedisEventBus(t.Context(), testRedisClient, testutil.DiscardLogger())
+	require.NoError(t, err)
 
 	ch1 := bus.Subscribe("sub-1")
 	ch2 := bus.Subscribe("sub-2")
@@ -179,22 +178,27 @@ func TestRedisEventBus_Close(t *testing.T) {
 
 func TestRedisEventBus_DropsSlowSubscriber(t *testing.T) {
 	bus := newTestBus(t)
-	bus.Subscribe("slow")
+	slowCh := bus.Subscribe("slow")
+	require.NotNil(t, slowCh)
 
 	// Fill the subscriber buffer completely.
 	for i := range eventBusBufferSize {
 		bus.Publish(Event{Type: EventJobDispatched, JobID: int64(i)})
 	}
 
-	// Wait for all events to propagate through Redis.
-	time.Sleep(500 * time.Millisecond)
+	// Wait for Redis to deliver enough events that the subscriber buffer is
+	// saturated. Any further publish must overflow the non-blocking send in
+	// fanOut and be counted as dropped.
+	require.Eventually(t, func() bool {
+		return len(slowCh) == cap(slowCh)
+	}, 5*time.Second, 10*time.Millisecond, "slow subscriber buffer should fill")
 
-	// The 65th event should be dropped.
+	// The next publish can't fit — fanOut should drop it.
 	bus.Publish(Event{Type: EventJobFailed, JobID: 999})
-	time.Sleep(500 * time.Millisecond)
 
-	assert.GreaterOrEqual(t, bus.dropped.Load(), int64(1),
-		"at least one event should have been dropped for the slow subscriber")
+	require.Eventually(t, func() bool {
+		return bus.dropped.Load() >= 1
+	}, 5*time.Second, 10*time.Millisecond, "at least one event should have been dropped")
 }
 
 func TestRedisEventBus_EventSerialization(t *testing.T) {
