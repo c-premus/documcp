@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -106,6 +107,17 @@ func (s *sseRecorder) waitForFirstWrite(t *testing.T) {
 	}
 }
 
+// waitForBodyContains polls the recorded body until substr is present.
+// Used to replace wall-clock "let events flush" sleeps with a deterministic
+// signal tied to the actual output the test is about to assert on.
+func (s *sseRecorder) waitForBodyContains(t *testing.T, substr string) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		return strings.Contains(s.body(), substr)
+	}, 2*time.Second, 5*time.Millisecond,
+		"timed out waiting for body to contain %q", substr)
+}
+
 // ---------------------------------------------------------------------------
 // publishUntilReady publishes sentinel events to the EventBus until the
 // recorder receives its first write, then publishes the real events.
@@ -131,14 +143,13 @@ func publishUntilReady(t *testing.T, eb *queue.EventBus, rec *sseRecorder, event
 
 	rec.waitForFirstWrite(t)
 
-	// Handler is now subscribed and processing. Publish real events.
+	// Handler is now subscribed and processing. Publish real events and wait
+	// for each to land in the recorded body so the caller doesn't have to
+	// sleep.
 	for i := range events {
 		eb.Publish(events[i])
-		time.Sleep(5 * time.Millisecond)
+		rec.waitForBodyContains(t, fmt.Sprintf("\"job_id\":%d", events[i].JobID))
 	}
-
-	// Allow time for events to be flushed.
-	time.Sleep(50 * time.Millisecond)
 }
 
 // ---------------------------------------------------------------------------
@@ -525,7 +536,10 @@ func TestSSEHandler_UserStream(t *testing.T) {
 		// Send events: one with UserID=0 (scheduler), one with UserID=99.
 		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "scheduler_job", JobID: 1, UserID: 0, Timestamp: time.Now()}
 		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "user_job", JobID: 2, UserID: 99, Timestamp: time.Now()}
-		time.Sleep(50 * time.Millisecond)
+
+		// user_job is published second; once it shows up, scheduler_job has
+		// already been written (FIFO handler loop).
+		rec.waitForBodyContains(t, "user_job")
 
 		cancel()
 		<-done
@@ -557,7 +571,7 @@ func TestSSEHandler_UserStream(t *testing.T) {
 		rec.waitForFirstWrite(t)
 
 		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "my_job", JobID: 1, UserID: 42, Timestamp: time.Now()}
-		time.Sleep(50 * time.Millisecond)
+		rec.waitForBodyContains(t, "my_job")
 
 		cancel()
 		<-done
@@ -591,7 +605,10 @@ func TestSSEHandler_UserStream(t *testing.T) {
 		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "scheduler_job", JobID: 1, UserID: 0, Timestamp: time.Now()}
 		// Also send a matching event so the handler processes both before cancel.
 		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "own_job", JobID: 2, UserID: 42, Timestamp: time.Now()}
-		time.Sleep(50 * time.Millisecond)
+
+		// own_job follows scheduler_job in the channel. When it's visible, the
+		// scheduler_job filter has already run.
+		rec.waitForBodyContains(t, "own_job")
 
 		cancel()
 		<-done
@@ -626,7 +643,8 @@ func TestSSEHandler_UserStream(t *testing.T) {
 		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "other_user_job", JobID: 1, UserID: 99, Timestamp: time.Now()}
 		// Own event to confirm filtering.
 		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "own_job", JobID: 2, UserID: 42, Timestamp: time.Now()}
-		time.Sleep(50 * time.Millisecond)
+
+		rec.waitForBodyContains(t, "own_job")
 
 		cancel()
 		<-done

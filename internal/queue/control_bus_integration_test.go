@@ -31,9 +31,8 @@ func TestControlBus_PublishReceive(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Allow the subscription to register in Redis.
-	time.Sleep(50 * time.Millisecond)
-
+	// Subscribe confirmed the Redis SUBSCRIBE synchronously, so Publish is
+	// safe to call immediately.
 	err = bus.Publish(context.Background(), "test.publish", []byte("hello"))
 	require.NoError(t, err)
 
@@ -68,16 +67,14 @@ func TestControlBus_TopicIsolation(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	time.Sleep(50 * time.Millisecond)
-
 	require.NoError(t, bus.Publish(context.Background(), "test.wanted", nil))
 	require.NoError(t, bus.Publish(context.Background(), "test.wanted", nil))
 	require.NoError(t, bus.Publish(context.Background(), "test.other", nil))
 
-	time.Sleep(100 * time.Millisecond)
-
-	require.EqualValues(t, 2, wantedCount.Load(), "wanted topic should receive its messages")
-	require.EqualValues(t, 1, otherCount.Load(), "other topic should receive its own messages only")
+	require.Eventually(t, func() bool {
+		return wantedCount.Load() == 2 && otherCount.Load() == 1
+	}, 2*time.Second, 10*time.Millisecond,
+		"wanted topic should receive 2 messages; other topic should receive 1")
 }
 
 // TestControlBus_HandlerPanicRecovered verifies that a panicking handler
@@ -103,19 +100,18 @@ func TestControlBus_HandlerPanicRecovered(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	time.Sleep(50 * time.Millisecond)
-
 	require.NoError(t, bus.Publish(context.Background(), "test.panic", []byte("boom")))
-	time.Sleep(50 * time.Millisecond)
 
 	// After a panic-triggering message, a follow-up message should still
 	// reach the handler — the goroutine must survive.
 	require.NoError(t, bus.Publish(context.Background(), "test.panic", []byte("ok")))
-	time.Sleep(100 * time.Millisecond)
 
-	mu.Lock()
-	defer mu.Unlock()
-	require.Equal(t, 2, calls, "second message should be delivered after panic recovery")
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return calls == 2
+	}, 2*time.Second, 10*time.Millisecond,
+		"second message should be delivered after panic recovery")
 }
 
 // TestControlBus_CloseCancelsSubscriptions verifies that Close releases the
