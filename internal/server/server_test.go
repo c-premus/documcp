@@ -574,7 +574,7 @@ func TestRegisterRoutes_AdminLoginRedirect(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func stubOAuthService() *oauth.Service {
-	return oauth.NewService(nil, config.OAuthConfig{}, "http://localhost", slog.Default())
+	return oauth.NewService(nil, config.OAuthConfig{}, "http://localhost", slog.Default(), nil)
 }
 
 func TestRegisterRoutes_MCPHandler(t *testing.T) {

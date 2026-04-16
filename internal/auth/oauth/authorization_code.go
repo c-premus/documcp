@@ -42,7 +42,7 @@ func (s *Service) GenerateAuthorizationCode(ctx context.Context, params Generate
 		}
 	}
 
-	token, err := GenerateToken()
+	token, err := s.GenerateToken()
 	if err != nil {
 		return "", fmt.Errorf("generating authorization code: %w", err)
 	}
@@ -97,7 +97,7 @@ type ExchangeAuthorizationCodeParams struct {
 // ExchangeAuthorizationCode exchanges an auth code for tokens.
 func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params ExchangeAuthorizationCodeParams) (*TokenResult, error) {
 	// Parse the authorization code
-	codeID, codeHash, err := ParseToken(params.Code)
+	codeID, codeHash, err := s.ParseToken(params.Code)
 	if err != nil {
 		return nil, errors.New("invalid authorization code")
 	}

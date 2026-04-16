@@ -121,7 +121,7 @@ func TestLoad_Defaults(t *testing.T) {
 		{"Database.Host", cfg.Database.Host, "127.0.0.1"},
 		{"Database.Port", cfg.Database.Port, 5432},
 		{"Database.SSLMode", cfg.Database.SSLMode, "require"},
-		{"Database.MaxOpenConns", cfg.Database.MaxOpenConns, 25},
+		{"Database.MaxOpenConns", cfg.Database.MaxOpenConns, int32(25)},
 		{"Database.MaxIdleConns", cfg.Database.MaxIdleConns, 5},
 		{"Database.MaxLifetime", cfg.Database.MaxLifetime, 5 * time.Minute},
 

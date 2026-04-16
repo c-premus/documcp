@@ -106,7 +106,7 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	pgxPool, err := database.NewPgxPool(
 		context.Background(),
 		cfg.DatabaseDSN(),
-		int32(min(cfg.Database.MaxOpenConns, 1<<31-1)), //nolint:gosec // config value is bounded by validation
+		cfg.Database.MaxOpenConns,
 		cfg.Database.PgxMinConns,
 		cfg.Database.PgxMaxConnLifetime,
 		cfg.Database.PgxMaxConnIdleTime,
@@ -461,7 +461,7 @@ func RunMigrationsOnly(cfg *config.Config) error {
 	pgxPool, err := database.NewPgxPool(
 		context.Background(),
 		cfg.DatabaseDSN(),
-		int32(min(cfg.Database.MaxOpenConns, 1<<31-1)), //nolint:gosec // config value is bounded by validation
+		cfg.Database.MaxOpenConns,
 		cfg.Database.PgxMinConns,
 		cfg.Database.PgxMaxConnLifetime,
 		cfg.Database.PgxMaxConnIdleTime,

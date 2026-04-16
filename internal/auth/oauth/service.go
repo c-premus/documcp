@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -86,15 +87,30 @@ type Service struct {
 	config config.OAuthConfig
 	appURL string
 	logger *slog.Logger
+
+	// hmacKey is the server-side key for HMAC-SHA256 token hashing. When
+	// non-empty, token hashes are keyed, preventing offline brute-force if
+	// the database is compromised. When nil, falls back to plain SHA-256
+	// (still safe for high-entropy tokens).
+	hmacKey []byte
+
+	// hmacWarnOnce ensures the SHA-256 fallback warning logs only once per
+	// service instance when hmacKey is nil.
+	hmacWarnOnce sync.Once
 }
 
-// NewService creates a new OAuth service.
-func NewService(repo OAuthRepo, oauthCfg config.OAuthConfig, appURL string, logger *slog.Logger) *Service {
+// NewService creates a new OAuth service. hmacKey keys token hashing when
+// non-empty; pass nil to fall back to plain SHA-256 (appropriate for tests).
+func NewService(repo OAuthRepo, oauthCfg config.OAuthConfig, appURL string, logger *slog.Logger, hmacKey []byte) *Service {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Service{
-		repo:   repo,
-		config: oauthCfg,
-		appURL: appURL,
-		logger: logger,
+		repo:    repo,
+		config:  oauthCfg,
+		appURL:  appURL,
+		logger:  logger,
+		hmacKey: hmacKey,
 	}
 }
 
@@ -187,7 +203,7 @@ type TokenResult struct {
 
 // ValidateAccessToken validates a bearer token and returns the access token model.
 func (s *Service) ValidateAccessToken(ctx context.Context, bearerToken string) (*model.OAuthAccessToken, error) {
-	id, tokenHash, err := ParseToken(bearerToken)
+	id, tokenHash, err := s.ParseToken(bearerToken)
 	if err != nil {
 		return nil, errors.New("invalid token format")
 	}
@@ -245,7 +261,7 @@ func (s *Service) issueTokenPair(ctx context.Context, clientID int64, userID sql
 	}
 
 	// Generate access token
-	accessTokenPair, err := GenerateToken()
+	accessTokenPair, err := s.GenerateToken()
 	if err != nil {
 		return nil, fmt.Errorf("generating access token: %w", err)
 	}
@@ -270,7 +286,7 @@ func (s *Service) issueTokenPair(ctx context.Context, clientID int64, userID sql
 	accessTokenPair.SetID(accessToken.ID)
 
 	// Generate refresh token
-	refreshTokenPair, err := GenerateToken()
+	refreshTokenPair, err := s.GenerateToken()
 	if err != nil {
 		return nil, fmt.Errorf("generating refresh token: %w", err)
 	}
@@ -296,9 +312,3 @@ func (s *Service) issueTokenPair(ctx context.Context, clientID int64, userID sql
 	}, nil
 }
 
-// parseTokenOrZero attempts to parse a token string into its ID and hash.
-// Returns false if the token is malformed.
-func parseTokenOrZero(plaintext string) (id int64, hash string, ok bool) {
-	id, hash, err := ParseToken(plaintext)
-	return id, hash, err == nil
-}

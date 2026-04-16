@@ -2,6 +2,11 @@ package oauthhandler
 
 import "html/template"
 
+// UserCodePlaceholder is the display shape shown in the device verification
+// input and referenced in tests. A change here must be mirrored in the 9-char
+// `GenerateUserCode` output width (4 chars + "-" + 4 chars).
+const UserCodePlaceholder = "XXXX-XXXX"
+
 // consentTmpl renders the OAuth authorization consent screen.
 var consentTmpl = template.Must(template.New("consent").Parse(`<!DOCTYPE html>
 <html lang="en">
@@ -79,7 +84,7 @@ button:focus-visible{outline-color:#818cf8}
 <h1>Device Authorization</h1>
 <form method="POST" action="/oauth/device">
 <label for="user_code">Enter the code shown on your device:</label>
-<input id="user_code" type="text" name="user_code" value="{{.}}" maxlength="9" placeholder="XXXX-XXXX" autocomplete="off" required>
+<input id="user_code" type="text" name="user_code" value="{{.}}" maxlength="9" placeholder="` + UserCodePlaceholder + `" autocomplete="off" required>
 <br><br>
 <button type="submit">Continue</button>
 </form>

@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/c-premus/documcp/internal/auth/oauth"
 	"github.com/c-premus/documcp/internal/queue"
 	"github.com/c-premus/documcp/internal/service"
 )
@@ -40,17 +39,10 @@ func NewWorkerApp(f *Foundation) (*WorkerApp, error) {
 		}
 	}()
 
-	// Token HMAC key — needed by workers that process token-related jobs.
-	sessionSecret := f.Config.OAuth.SessionSecret
-	if sessionSecret != "" {
-		hmacKey, err := deriveKey([]byte(sessionSecret), f.Config.OAuth.HKDFSalt, "oauth-token-hmac")
-		if err != nil {
-			return nil, fmt.Errorf("deriving token HMAC key: %w", err)
-		}
-		oauth.SetTokenHMACKey(hmacKey)
-	}
-
 	// --- River Workers + Client (full worker mode) ---
+	// Workers operate on the OAuth repository directly (cleanup, reconciliation).
+	// No queue worker currently parses or generates bearer tokens, so no
+	// oauth.Service (and no HMAC key) is required in worker-only mode.
 	rs, err := buildRiverClient(f, eventBus, false)
 	if err != nil {
 		return nil, err

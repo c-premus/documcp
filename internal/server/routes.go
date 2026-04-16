@@ -65,9 +65,6 @@ type Deps struct {
 	Metrics     *observability.Metrics // nil disables Prometheus metrics
 	OTELEnabled bool                   // enables tracing middleware
 
-	// Security
-	IsSecure bool // true when running behind TLS (reserved for future use)
-
 	// Infrastructure
 	BareRedisClient  *redis.Client       // uninstrumented client (rate limiting + readiness pings)
 	RedisClient      *redis.Client       // instrumented client (EventBus, app queries)
@@ -203,6 +200,8 @@ func (s *Server) registerAuthRoutes(deps Deps) {
 			})
 
 			// Machine-to-machine endpoints — no CSRF (clients don't have browser cookies).
+			// Two rateLimitByIP calls stack: the first bounds short bursts, the
+			// second caps sustained abuse over a longer window.
 			r.Group(func(r chi.Router) {
 				r.Use(rateLimitByIP(30, time.Minute, deps.BareRedisClient))
 				r.Use(rateLimitByIP(100, time.Hour, deps.BareRedisClient))
@@ -210,6 +209,7 @@ func (s *Server) registerAuthRoutes(deps Deps) {
 				r.Post("/revoke", deps.OAuthHandler.Revoke)
 			})
 
+			// Dynamic client registration — tighter per-hour + per-day caps.
 			r.Group(func(r chi.Router) {
 				r.Use(rateLimitByIP(10, time.Hour, deps.BareRedisClient))
 				r.Use(rateLimitByIP(50, 24*time.Hour, deps.BareRedisClient))

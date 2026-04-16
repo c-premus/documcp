@@ -212,7 +212,7 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 		assert.Contains(t, result["verification_uri_complete"].(string), "https://example.com/oauth/device?user_code=")
 	})
 
-	t.Run("user_code follows XXXX-XXXX format", func(t *testing.T) {
+	t.Run("user_code follows "+UserCodePlaceholder+" format", func(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
@@ -240,7 +240,7 @@ func TestHandler_DeviceAuthorization(t *testing.T) {
 		require.Equal(t, http.StatusOK, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
 		userCode := result["user_code"].(string)
-		assert.Len(t, userCode, 9, "user_code should be 9 characters (XXXX-XXXX)")
+		assert.Len(t, userCode, len(UserCodePlaceholder), "user_code should be 9 characters ("+UserCodePlaceholder+")")
 		assert.Equal(t, "-", string(userCode[4]), "user_code should have dash at position 4")
 	})
 

@@ -288,18 +288,19 @@ func testConfig() config.OAuthConfig {
 }
 
 func testService(repo OAuthRepo) *Service {
-	return NewService(repo, testConfig(), "https://app.example.com", slog.Default())
+	return NewService(repo, testConfig(), "https://app.example.com", slog.Default(), nil)
 }
 
 func testServiceWithConfig(repo OAuthRepo, cfg config.OAuthConfig) *Service {
-	return NewService(repo, cfg, "https://app.example.com", slog.Default())
+	return NewService(repo, cfg, "https://app.example.com", slog.Default(), nil)
 }
 
-// makeTokenPlaintext generates a real token via GenerateToken, assigns it an ID,
-// and returns the full plaintext string "id|random" along with the hash.
+// makeTokenPlaintext generates a real token via the test service, assigns it
+// an ID, and returns the full plaintext string "id|random" along with the hash.
 func makeTokenPlaintext(t *testing.T, id int64) (plaintext, hash string) {
 	t.Helper()
-	tp, err := GenerateToken()
+	svc := testService(nil)
+	tp, err := svc.GenerateToken()
 	require.NoError(t, err)
 	hash = tp.Hash
 	tp.SetID(id)
@@ -730,7 +731,7 @@ func TestGenerateAuthorizationCode(t *testing.T) {
 		assert.NotEmpty(t, plaintext)
 
 		// Parse the returned token
-		id, hash, parseErr := ParseToken(plaintext)
+		id, hash, parseErr := svc.ParseToken(plaintext)
 		require.NoError(t, parseErr)
 		assert.Equal(t, int64(10), id)
 		assert.Equal(t, capturedCode.Code, hash, "hash stored in DB should match parsed hash")
@@ -3263,9 +3264,9 @@ func TestIssueTokenPair(t *testing.T) {
 		assert.True(t, refreshCreated)
 
 		// Both tokens should be parseable
-		_, _, err = ParseToken(result.AccessToken)
+		_, _, err = svc.ParseToken(result.AccessToken)
 		require.NoError(t, err)
-		_, _, err = ParseToken(result.RefreshToken)
+		_, _, err = svc.ParseToken(result.RefreshToken)
 		require.NoError(t, err)
 	})
 
