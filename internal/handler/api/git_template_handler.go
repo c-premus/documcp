@@ -274,7 +274,7 @@ func (h *GitTemplateHandler) Sync(w http.ResponseWriter, r *http.Request) {
 func (h *GitTemplateHandler) Structure(w http.ResponseWriter, r *http.Request) {
 	tmplUUID := chi.URLParam(r, "uuid")
 
-	structure, err := h.service.GetStructure(r.Context(), tmplUUID)
+	structure, err := h.service.Structure(r.Context(), tmplUUID)
 	if err != nil {
 		h.handleServiceError(w, err, "getting template structure", "uuid", tmplUUID)
 		return
@@ -335,7 +335,7 @@ func (h *GitTemplateHandler) ReadFile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := h.service.GetFile(r.Context(), tmplUUID, filePath, variables)
+	result, err := h.service.File(r.Context(), tmplUUID, filePath, variables)
 	if err != nil {
 		h.handleServiceError(w, err, "reading template file", "uuid", tmplUUID, "path", filePath)
 		return
@@ -365,7 +365,7 @@ func (h *GitTemplateHandler) DeploymentGuide(w http.ResponseWriter, r *http.Requ
 	variablesJSON := r.URL.Query().Get("variables")
 	variables, _ := gitclient.ParseVariablesJSON(variablesJSON)
 
-	guide, err := h.service.GetDeploymentGuide(r.Context(), tmplUUID, variables)
+	guide, err := h.service.DeploymentGuide(r.Context(), tmplUUID, variables)
 	if err != nil {
 		h.handleServiceError(w, err, "generating deployment guide", "uuid", tmplUUID)
 		return

@@ -167,9 +167,9 @@ func (s *GitTemplateService) List(ctx context.Context, category string, limit, o
 	return templates, total, nil
 }
 
-// GetStructure resolves the template, loads its files, and extracts the file
+// Structure resolves the template, loads its files, and extracts the file
 // tree, essential files, and variable placeholders.
-func (s *GitTemplateService) GetStructure(ctx context.Context, tmplUUID string) (*TemplateStructure, error) {
+func (s *GitTemplateService) Structure(ctx context.Context, tmplUUID string) (*TemplateStructure, error) {
 	tmpl, err := s.FindByUUID(ctx, tmplUUID)
 	if err != nil {
 		return nil, fmt.Errorf("finding git template for structure: %w", err)
@@ -216,9 +216,9 @@ func (s *GitTemplateService) GetStructure(ctx context.Context, tmplUUID string) 
 	}, nil
 }
 
-// GetFile retrieves a single template file by path, optionally applying
+// File retrieves a single template file by path, optionally applying
 // variable substitution to its content.
-func (s *GitTemplateService) GetFile(ctx context.Context, tmplUUID, path string, variables map[string]string) (*FileResult, error) {
+func (s *GitTemplateService) File(ctx context.Context, tmplUUID, path string, variables map[string]string) (*FileResult, error) {
 	tmpl, err := s.FindByUUID(ctx, tmplUUID)
 	if err != nil {
 		return nil, fmt.Errorf("finding git template for file read: %w", err)
@@ -246,9 +246,9 @@ func (s *GitTemplateService) GetFile(ctx context.Context, tmplUUID, path string,
 	}, nil
 }
 
-// GetDeploymentGuide generates a deployment guide containing all essential
+// DeploymentGuide generates a deployment guide containing all essential
 // files with optional variable substitution applied.
-func (s *GitTemplateService) GetDeploymentGuide(ctx context.Context, tmplUUID string, variables map[string]string) (*DeploymentGuide, error) {
+func (s *GitTemplateService) DeploymentGuide(ctx context.Context, tmplUUID string, variables map[string]string) (*DeploymentGuide, error) {
 	tmpl, err := s.FindByUUID(ctx, tmplUUID)
 	if err != nil {
 		return nil, fmt.Errorf("finding git template for deployment guide: %w", err)
