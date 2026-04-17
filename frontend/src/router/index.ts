@@ -90,12 +90,6 @@ const router = createRouter({
       component: () => import('@/views/QueueView.vue'),
       meta: { title: 'Queue', requiresAdmin: true },
     },
-    {
-      path: '/api-docs',
-      name: 'api-docs',
-      component: () => import('@/views/ApiDocsView.vue'),
-      meta: { title: 'API Docs' },
-    },
   ],
 })
 

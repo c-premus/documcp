@@ -212,7 +212,6 @@ describe('DashboardView', () => {
       expect(wrapper.text()).toContain('Documents')
       expect(wrapper.text()).toContain('ZIM Archives')
       expect(wrapper.text()).toContain('Git Templates')
-      expect(wrapper.text()).toContain('API Docs')
     })
   })
 })

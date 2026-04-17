@@ -6,6 +6,7 @@ interface NavItem {
   readonly name: string
   readonly to: string
   readonly icon: object
+  readonly external?: boolean
 }
 
 interface NavGroup {
@@ -20,6 +21,11 @@ defineProps<{
 
 const route = useRoute()
 const auth = useAuthStore()
+
+const linkClasses =
+  'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer'
+const idleClasses = 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
+const activeClasses = 'bg-bg-active text-text-primary'
 
 function isActive(path: string): boolean {
   if (path === '/documents') {
@@ -44,14 +50,20 @@ function isActive(path: string): boolean {
       </p>
       <ul class="space-y-1 px-3">
         <li v-for="item in group.items" :key="item.to">
+          <a
+            v-if="item.external"
+            :href="item.to"
+            target="_blank"
+            rel="noopener noreferrer"
+            :class="[linkClasses, idleClasses]"
+          >
+            <component :is="item.icon" class="h-5 w-5 shrink-0" />
+            {{ item.name }}
+          </a>
           <router-link
+            v-else
             :to="item.to"
-            class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
-            :class="
-              isActive(item.to)
-                ? 'bg-bg-active text-text-primary'
-                : 'text-text-muted hover:bg-bg-hover hover:text-text-primary'
-            "
+            :class="[linkClasses, isActive(item.to) ? activeClasses : idleClasses]"
             :aria-current="isActive(item.to) ? 'page' : undefined"
           >
             <component :is="item.icon" class="h-5 w-5 shrink-0" />

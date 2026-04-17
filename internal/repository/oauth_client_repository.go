@@ -185,6 +185,33 @@ func (r *OAuthRepository) FindActiveScopeGrants(ctx context.Context, clientID in
 	return grants, nil
 }
 
+// ScopeGrantWithUser carries a scope grant alongside the granter's identity
+// fields. Used by the admin scope-grants listing so the UI can render a real
+// email instead of "User #N". Email and Name are nullable to cover the case
+// where the granter's user row was deleted after the grant was recorded.
+type ScopeGrantWithUser struct {
+	model.OAuthClientScopeGrant
+	GrantedByEmail sql.NullString `db:"granted_by_email"`
+	GrantedByName  sql.NullString `db:"granted_by_name"`
+}
+
+// FindActiveScopeGrantsWithUsers returns non-expired grants for a client with
+// the granter's email and name joined in. LEFT JOIN so a grant whose granter
+// was deleted still surfaces (with NULL user fields).
+func (r *OAuthRepository) FindActiveScopeGrantsWithUsers(ctx context.Context, clientID int64) ([]ScopeGrantWithUser, error) {
+	rows, err := database.Select[ScopeGrantWithUser](ctx, r.db,
+		`SELECT g.id, g.client_id, g.scope, g.granted_by, g.granted_at, g.expires_at, g.created_at, g.updated_at,
+			u.email AS granted_by_email, u.name AS granted_by_name
+		FROM oauth_client_scope_grants g
+		LEFT JOIN users u ON u.id = g.granted_by
+		WHERE g.client_id = $1 AND (g.expires_at IS NULL OR g.expires_at > NOW())
+		ORDER BY g.granted_at`, clientID)
+	if err != nil {
+		return nil, fmt.Errorf("finding active scope grants with users for client %d: %w", clientID, err)
+	}
+	return rows, nil
+}
+
 // DeleteScopeGrant removes a scope grant by ID. Returns sql.ErrNoRows if not found.
 func (r *OAuthRepository) DeleteScopeGrant(ctx context.Context, id int64) error {
 	tag, err := r.db.Exec(ctx,

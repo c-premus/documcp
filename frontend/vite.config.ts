@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
+import { copyFileSync } from 'fs'
 
 // Vite rewrites all "/" paths in HTML to "/admin/" due to the base config.
 // Favicons, icons, and the web app manifest must be served at the root
@@ -29,8 +30,27 @@ function rootAssets() {
   }
 }
 
+// copyOpenAPISpec copies the canonical OpenAPI spec into public/ so Vite
+// bundles it into dist/. The Go server then embeds dist/ and serves it at
+// /openapi.yaml (see web/frontend/handler.go rootAssetAllowlist). Keeping the
+// canonical source at docs/contracts/openapi.yaml and deriving the build copy
+// avoids a committed duplicate drifting from the contract.
+function copyOpenAPISpec() {
+  const src = resolve(__dirname, '../docs/contracts/openapi.yaml')
+  const dest = resolve(__dirname, 'public/openapi.yaml')
+  return {
+    name: 'copy-openapi-spec',
+    buildStart() {
+      copyFileSync(src, dest)
+    },
+    configureServer() {
+      copyFileSync(src, dest)
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [vue(), tailwindcss(), rootAssets()],
+  plugins: [vue(), tailwindcss(), rootAssets(), copyOpenAPISpec()],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

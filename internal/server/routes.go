@@ -470,6 +470,7 @@ func (s *Server) registerSPARoutes(deps Deps) {
 		r.Get("/site.webmanifest", deps.Handlers.RootAssetHandler.ServeHTTP)
 		r.Get("/web-app-manifest-192x192.png", deps.Handlers.RootAssetHandler.ServeHTTP)
 		r.Get("/web-app-manifest-512x512.png", deps.Handlers.RootAssetHandler.ServeHTTP)
+		r.Get("/openapi.yaml", deps.Handlers.RootAssetHandler.ServeHTTP)
 	}
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {

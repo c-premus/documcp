@@ -90,6 +90,15 @@ func nullStringValue(s sql.NullString) string {
 	return s.String
 }
 
+// nullStringPtr returns a *string from a sql.NullString — nil when invalid,
+// so the JSON encoder serializes the field as `null` rather than an empty string.
+func nullStringPtr(s sql.NullString) *string {
+	if !s.Valid {
+		return nil
+	}
+	return &s.String
+}
+
 // nullInt64Value returns the int64 value from a sql.NullInt64, or 0 if null.
 func nullInt64Value(n sql.NullInt64) int64 {
 	if !n.Valid {
