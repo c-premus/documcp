@@ -1,1 +1,0 @@
-import{H as e,Kt as t,Xt as n,p as r,x as i}from"./runtime-core.esm-bundler-4LFy1H3S.js";var a=[`title`],o=i({__name:`TruncatedText`,props:{value:{},mono:{type:Boolean,default:!1},maxWidth:{default:`max-w-xs`}},setup(i){return(o,s)=>(e(),r(`span`,{class:t([`block truncate`,[i.maxWidth,i.mono?`font-mono text-xs`:``]]),title:i.value},n(i.value),11,a))}});export{o as t};

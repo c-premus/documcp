@@ -1,1 +1,0 @@
-import{H as e,Xt as t,l as n,p as r,x as i}from"./runtime-core.esm-bundler-4LFy1H3S.js";var a=i({__name:`FileTypeCell`,props:{value:{}},setup(i){let a=i,o=n(()=>a.value.toUpperCase());return(n,i)=>(e(),r(`span`,null,t(o.value),1))}});export{a as t};

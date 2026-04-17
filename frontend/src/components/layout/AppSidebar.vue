@@ -30,10 +30,7 @@ const { version: appVersion } = useAppVersion()
 
 const navGroups = [
   {
-    items: [
-      { name: 'Dashboard', to: '/dashboard', icon: HomeIcon },
-      { name: 'API Docs', to: '/api-docs', icon: BookOpenIcon },
-    ],
+    items: [{ name: 'Dashboard', to: '/dashboard', icon: HomeIcon }],
   },
   {
     label: 'Documents',
@@ -58,6 +55,10 @@ const navGroups = [
       { name: 'External Services', to: '/external-services', icon: ServerIcon },
       { name: 'Queue', to: '/queue', icon: QueueListIcon },
     ],
+  },
+  {
+    label: 'Reference',
+    items: [{ name: 'OpenAPI Spec', to: '/openapi.yaml', icon: BookOpenIcon, external: true }],
   },
 ] as const
 
