@@ -2428,6 +2428,88 @@ func TestHandleSearchDocumentsResults(t *testing.T) {
 		}
 	})
 
+	t.Run("include_snippets=true populates snippet and propagates WithSnippets", func(t *testing.T) {
+		t.Parallel()
+		var capturedParams search.SearchParams
+		s := &mockSearcher{
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+				capturedParams = params
+				return &search.SearchResponse{
+					Hits: []search.SearchResult{
+						makeHit(map[string]any{
+							"uuid":    "snippet-doc",
+							"title":   "With Snippet",
+							"snippet": "the **quick** brown fox",
+						}),
+					},
+				}, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{searcher: s})
+
+		_, resp, err := h.handleSearchDocuments(ctx, nil, dto.SearchDocumentsInput{
+			Query:           "quick",
+			IncludeSnippets: true,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !capturedParams.WithSnippets {
+			t.Error("SearchParams.WithSnippets = false, want true when IncludeSnippets=true")
+		}
+		if resp.Results[0].Snippet != "the **quick** brown fox" {
+			t.Errorf("Snippet = %q, want %q", resp.Results[0].Snippet, "the **quick** brown fox")
+		}
+	})
+
+	t.Run("include_snippets=false omits snippet field even when searcher returns one", func(t *testing.T) {
+		t.Parallel()
+		var capturedParams search.SearchParams
+		s := &mockSearcher{
+			searchFn: func(_ context.Context, params search.SearchParams) (*search.SearchResponse, error) {
+				capturedParams = params
+				return &search.SearchResponse{
+					Hits: []search.SearchResult{
+						makeHit(map[string]any{
+							"uuid":    "no-snippet-doc",
+							"title":   "No Snippet Requested",
+							"snippet": "should be dropped",
+						}),
+					},
+				}, nil
+			},
+		}
+		h := newHandlerWithMocks(struct {
+			docSvc   *mockDocumentService
+			docRepo  *mockDocumentRepo
+			zimRepo  *mockZimArchiveRepo
+			gitRepo  *mockGitTemplateRepo
+			kiwixC   *mockKiwixClient
+			searcher *mockSearcher
+		}{searcher: s})
+
+		_, resp, err := h.handleSearchDocuments(ctx, nil, dto.SearchDocumentsInput{
+			Query:           "quick",
+			IncludeSnippets: false,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if capturedParams.WithSnippets {
+			t.Error("SearchParams.WithSnippets = true, want false when IncludeSnippets=false")
+		}
+		if resp.Results[0].Snippet != "" {
+			t.Errorf("Snippet = %q, want empty string", resp.Results[0].Snippet)
+		}
+	})
+
 	t.Run("invalid file_type filter is silently ignored", func(t *testing.T) {
 		t.Parallel()
 		var capturedParams search.SearchParams

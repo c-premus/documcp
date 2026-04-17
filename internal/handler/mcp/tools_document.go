@@ -35,6 +35,7 @@ type documentSearchResult struct {
 	Description   string   `json:"description,omitempty"`
 	Tags          []string `json:"tags,omitempty"`
 	ContentLength float64  `json:"content_length,omitempty"`
+	Snippet       string   `json:"snippet,omitempty"`
 	Content       string   `json:"content,omitempty"`
 }
 
@@ -301,9 +302,10 @@ func (h *Handler) handleSearchDocuments(
 
 	// Build structured search params.
 	params := search.SearchParams{
-		Query:    input.Query,
-		IndexUID: search.IndexDocuments,
-		Limit:    limit,
+		Query:        input.Query,
+		IndexUID:     search.IndexDocuments,
+		Limit:        limit,
+		WithSnippets: input.IncludeSnippets,
 	}
 	if input.FileType != "" && isValidFileType(input.FileType) {
 		params.FileType = input.FileType
@@ -339,6 +341,9 @@ func (h *Handler) handleSearchDocuments(
 			FileType:      search.ExtraString(sr.Extra, "file_type"),
 			Tags:          search.ExtraStringSlice(sr.Extra, "tags"),
 			ContentLength: search.ExtraFloat64(sr.Extra, "word_count"),
+		}
+		if input.IncludeSnippets {
+			result.Snippet = search.ExtraString(sr.Extra, "snippet")
 		}
 		if input.IncludeContent {
 			result.Content = search.ExtraString(sr.Extra, "content")

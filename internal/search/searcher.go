@@ -89,6 +89,11 @@ type SearchParams struct {
 	UserID   *int64   // access control
 	IsPublic *bool    // access control
 	IsAdmin  bool     // skip visibility filter
+
+	// WithSnippets toggles ts_headline fragment extraction on the documents
+	// index. Off by default because ts_headline scans the full content of
+	// every hit — a 100-row page over 10 MB documents is expensive.
+	WithSnippets bool
 }
 
 // FederatedSearchParams holds parameters for searching across multiple indexes.
@@ -271,7 +276,7 @@ func (s *Searcher) searchDocuments(ctx context.Context, query string, params Sea
 				   'is_public', d.is_public,
 				   'status', d.status,
 				   'created_at', COALESCE(to_char(d.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), ''),
-				   'updated_at', COALESCE(to_char(d.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')
+				   'updated_at', COALESCE(to_char(d.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')%s
 			   ) AS extra,
 			   COUNT(*) OVER () AS total
 		FROM documents d
@@ -280,7 +285,7 @@ func (s *Searcher) searchDocuments(ctx context.Context, query string, params Sea
 		  %s
 		ORDER BY rank DESC
 		LIMIT $%d OFFSET $%d`,
-		tsConfig, tsConfig, where, argIdx, argIdx+1,
+		tsConfig, snippetSelectFragment(params.WithSnippets), tsConfig, where, argIdx, argIdx+1,
 	)
 
 	allArgs := append([]any{query}, args...)
@@ -489,6 +494,22 @@ func (s *Searcher) SearchGitTemplateFiles(ctx context.Context, query string, lim
 	return results, nil
 }
 
+// snippetSelectFragment returns the JSONB key fragment (leading comma, no
+// trailing comma) that adds a ts_headline-generated snippet into the extra
+// object, or the empty string when snippets are disabled. The fragment
+// assumes $1 is the query and is used inline in searchDocuments /
+// trigramFallbackDocuments. Uses markdown `**` markers so downstream LLM
+// clients render the match highlight without HTML parsing.
+func snippetSelectFragment(enabled bool) string {
+	if !enabled {
+		return ""
+	}
+	return fmt.Sprintf(`,
+				   'snippet', ts_headline('%s', COALESCE(d.content, ''), websearch_to_tsquery('%s', $1),
+					   'StartSel=**, StopSel=**, MaxFragments=2, MaxWords=20, MinWords=5')`,
+		tsConfig, tsConfig)
+}
+
 // buildDocumentFilters builds WHERE clauses and args for document search filters.
 // Returns (where string, args, next arg index).
 func (s *Searcher) buildDocumentFilters(params SearchParams, startIdx int) (where string, filterArgs []any, nextIdx int) {
@@ -536,7 +557,7 @@ func (s *Searcher) trigramFallbackDocuments(ctx context.Context, params SearchPa
 				   'word_count', COALESCE(d.word_count, 0),
 				   'content', COALESCE(d.content, ''),
 				   'is_public', d.is_public,
-				   'status', d.status
+				   'status', d.status%s
 			   ) AS extra,
 			   0::bigint AS total
 		FROM documents d
@@ -545,7 +566,7 @@ func (s *Searcher) trigramFallbackDocuments(ctx context.Context, params SearchPa
 		  %s
 		ORDER BY rank DESC
 		LIMIT $%d`,
-		where, argIdx,
+		snippetSelectFragment(params.WithSnippets), where, argIdx,
 	)
 
 	allArgs := append([]any{params.Query}, args...)
