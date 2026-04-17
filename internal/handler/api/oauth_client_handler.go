@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/service"
 )
 
@@ -18,7 +19,7 @@ type oauthClientRepo interface {
 	CreateClient(ctx context.Context, client *model.OAuthClient) error
 	FindClientByID(ctx context.Context, id int64) (*model.OAuthClient, error)
 	DeleteClient(ctx context.Context, id int64) error
-	FindActiveScopeGrants(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error)
+	FindActiveScopeGrantsWithUsers(ctx context.Context, clientID int64) ([]repository.ScopeGrantWithUser, error)
 	DeleteScopeGrant(ctx context.Context, id int64) error
 }
 
@@ -201,11 +202,13 @@ func toOAuthClientResponse(c *model.OAuthClient) oauthClientResponse {
 
 // scopeGrantResponse is the JSON representation of a scope grant.
 type scopeGrantResponse struct {
-	ID        int64   `json:"id"`
-	Scope     string  `json:"scope"`
-	GrantedBy int64   `json:"granted_by"`
-	GrantedAt string  `json:"granted_at"`
-	ExpiresAt *string `json:"expires_at"`
+	ID             int64   `json:"id"`
+	Scope          string  `json:"scope"`
+	GrantedBy      int64   `json:"granted_by"`
+	GrantedByEmail *string `json:"granted_by_email"`
+	GrantedByName  *string `json:"granted_by_name"`
+	GrantedAt      string  `json:"granted_at"`
+	ExpiresAt      *string `json:"expires_at"`
 }
 
 // ListScopeGrants handles GET /api/admin/oauth-clients/{id}/scope-grants.
@@ -221,7 +224,7 @@ func (h *OAuthClientHandler) ListScopeGrants(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	grants, err := h.repo.FindActiveScopeGrants(r.Context(), clientID)
+	grants, err := h.repo.FindActiveScopeGrantsWithUsers(r.Context(), clientID)
 	if err != nil {
 		h.logger.Error("listing scope grants", "client_id", clientID, "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to list scope grants")
@@ -231,11 +234,13 @@ func (h *OAuthClientHandler) ListScopeGrants(w http.ResponseWriter, r *http.Requ
 	out := make([]scopeGrantResponse, len(grants))
 	for i := range grants {
 		out[i] = scopeGrantResponse{
-			ID:        grants[i].ID,
-			Scope:     grants[i].Scope,
-			GrantedBy: grants[i].GrantedBy,
-			GrantedAt: grants[i].GrantedAt.Format("2006-01-02T15:04:05Z07:00"),
-			ExpiresAt: nullTimePtr(grants[i].ExpiresAt),
+			ID:             grants[i].ID,
+			Scope:          grants[i].Scope,
+			GrantedBy:      grants[i].GrantedBy,
+			GrantedByEmail: nullStringPtr(grants[i].GrantedByEmail),
+			GrantedByName:  nullStringPtr(grants[i].GrantedByName),
+			GrantedAt:      grants[i].GrantedAt.Format("2006-01-02T15:04:05Z07:00"),
+			ExpiresAt:      nullTimePtr(grants[i].ExpiresAt),
 		}
 	}
 

@@ -3884,6 +3884,12 @@ components:
           type: integer
           format: int64
           description: User ID of the admin who approved the grant.
+        granted_by_email:
+          type: [string, "null"]
+          description: Email of the granter, or null if the user row has since been deleted.
+        granted_by_name:
+          type: [string, "null"]
+          description: Display name of the granter, or null if the user row has since been deleted.
         granted_at: { type: string, format: date-time }
         expires_at:
           type: [string, "null"]

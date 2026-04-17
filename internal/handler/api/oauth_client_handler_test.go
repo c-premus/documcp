@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/c-premus/documcp/internal/model"
+	"github.com/c-premus/documcp/internal/repository"
 	"github.com/c-premus/documcp/internal/service"
 	"github.com/c-premus/documcp/internal/testutil"
 )
@@ -23,12 +24,12 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockOAuthClientRepo struct {
-	listClientsFn           func(ctx context.Context, query string, limit, offset int) ([]model.OAuthClient, int, error)
-	createClientFn          func(ctx context.Context, client *model.OAuthClient) error
-	findClientByIDFn        func(ctx context.Context, id int64) (*model.OAuthClient, error)
-	deleteClientFn          func(ctx context.Context, id int64) error
-	findActiveScopeGrantsFn func(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error)
-	deleteScopeGrantFn      func(ctx context.Context, id int64) error
+	listClientsFn                    func(ctx context.Context, query string, limit, offset int) ([]model.OAuthClient, int, error)
+	createClientFn                   func(ctx context.Context, client *model.OAuthClient) error
+	findClientByIDFn                 func(ctx context.Context, id int64) (*model.OAuthClient, error)
+	deleteClientFn                   func(ctx context.Context, id int64) error
+	findActiveScopeGrantsWithUsersFn func(ctx context.Context, clientID int64) ([]repository.ScopeGrantWithUser, error)
+	deleteScopeGrantFn               func(ctx context.Context, id int64) error
 }
 
 func (m *mockOAuthClientRepo) ListClients(ctx context.Context, query string, limit, offset int) ([]model.OAuthClient, int, error) {
@@ -59,9 +60,9 @@ func (m *mockOAuthClientRepo) DeleteClient(ctx context.Context, id int64) error 
 	return nil
 }
 
-func (m *mockOAuthClientRepo) FindActiveScopeGrants(ctx context.Context, clientID int64) ([]model.OAuthClientScopeGrant, error) {
-	if m.findActiveScopeGrantsFn != nil {
-		return m.findActiveScopeGrantsFn(ctx, clientID)
+func (m *mockOAuthClientRepo) FindActiveScopeGrantsWithUsers(ctx context.Context, clientID int64) ([]repository.ScopeGrantWithUser, error) {
+	if m.findActiveScopeGrantsWithUsersFn != nil {
+		return m.findActiveScopeGrantsWithUsersFn(ctx, clientID)
 	}
 	return nil, nil
 }
@@ -547,4 +548,91 @@ func TestToOAuthClientResponse_AllBranches(t *testing.T) {
 			t.Errorf("UpdatedAt = %q, want %q", resp.UpdatedAt, wantTime)
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Tests: ListScopeGrants
+// ---------------------------------------------------------------------------
+
+// TestOAuthClientHandler_ListScopeGrants_IncludesGranterIdentity is a
+// regression guard for the bug where the admin UI rendered "User #1" because
+// the handler only emitted the raw granted_by integer. The fix LEFT JOINs
+// users so email and name ride along with each grant; this test asserts both
+// fields reach the JSON envelope.
+func TestOAuthClientHandler_ListScopeGrants_IncludesGranterIdentity(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	repo := &mockOAuthClientRepo{
+		findClientByIDFn: func(_ context.Context, id int64) (*model.OAuthClient, error) {
+			return &model.OAuthClient{ID: id, ClientID: "client-1"}, nil
+		},
+		findActiveScopeGrantsWithUsersFn: func(_ context.Context, _ int64) ([]repository.ScopeGrantWithUser, error) {
+			return []repository.ScopeGrantWithUser{
+				{
+					OAuthClientScopeGrant: model.OAuthClientScopeGrant{
+						ID:        10,
+						ClientID:  1,
+						Scope:     "documents:read",
+						GrantedBy: 42,
+						GrantedAt: now,
+					},
+					GrantedByEmail: sql.NullString{String: "alice@example.com", Valid: true},
+					GrantedByName:  sql.NullString{String: "Alice Admin", Valid: true},
+				},
+				{
+					// Deleted granter — user row gone, fields NULL.
+					OAuthClientScopeGrant: model.OAuthClientScopeGrant{
+						ID:        11,
+						ClientID:  1,
+						Scope:     "documents:read",
+						GrantedBy: 99,
+						GrantedAt: now,
+					},
+				},
+			}, nil
+		},
+	}
+
+	h := newTestOAuthClientHandler(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/oauth-clients/1/scope-grants", http.NoBody)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rec := httptest.NewRecorder()
+
+	h.ListScopeGrants(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var body struct {
+		Data []scopeGrantResponse `json:"data"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	if len(body.Data) != 2 {
+		t.Fatalf("got %d grants, want 2", len(body.Data))
+	}
+
+	if body.Data[0].GrantedByEmail == nil || *body.Data[0].GrantedByEmail != "alice@example.com" {
+		t.Errorf("GrantedByEmail[0] = %v, want alice@example.com", body.Data[0].GrantedByEmail)
+	}
+	if body.Data[0].GrantedByName == nil || *body.Data[0].GrantedByName != "Alice Admin" {
+		t.Errorf("GrantedByName[0] = %v, want Alice Admin", body.Data[0].GrantedByName)
+	}
+
+	// Deleted granter: granted_by integer still present, email + name null.
+	if body.Data[1].GrantedBy != 99 {
+		t.Errorf("GrantedBy[1] = %d, want 99", body.Data[1].GrantedBy)
+	}
+	if body.Data[1].GrantedByEmail != nil {
+		t.Errorf("GrantedByEmail[1] = %v, want nil (deleted user)", *body.Data[1].GrantedByEmail)
+	}
+	if body.Data[1].GrantedByName != nil {
+		t.Errorf("GrantedByName[1] = %v, want nil (deleted user)", *body.Data[1].GrantedByName)
+	}
 }
