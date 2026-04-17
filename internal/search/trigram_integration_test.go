@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -170,6 +171,71 @@ func TestFederatedSearch_SourceTotals(t *testing.T) {
 	if got != 3 {
 		t.Errorf("SourceTotals[%q] = %d, want 3", search.IndexDocuments, got)
 	}
+}
+
+// TestSearch_WithSnippets is a regression guard for the wire bug where
+// SearchDocumentsInput.IncludeSnippets was advertised in the contract and
+// accepted by the MCP handler but never threaded through to SQL. Before the
+// fix, the extra jsonb omitted the "snippet" key entirely regardless of the
+// caller's request. This test exercises the real ts_headline path end to end.
+func TestSearch_WithSnippets(t *testing.T) {
+	ctx := context.Background()
+
+	if _, err := testPool.Exec(ctx, "TRUNCATE TABLE documents CASCADE"); err != nil {
+		t.Fatalf("truncating documents: %v", err)
+	}
+
+	// Body chosen so ts_headline has enough context to emit a fragment —
+	// MinWords=5 means short bodies produce no headline.
+	insertIndexedDocument(ctx, t, "snip-doc",
+		"kubernetes primer",
+		"This document covers kubernetes deployment strategies including rolling updates, blue-green patterns, and canary releases across multiple clusters.")
+
+	s := search.NewSearcher(testPool, slog.Default())
+
+	t.Run("WithSnippets=true emits a ts_headline fragment in Extra", func(t *testing.T) {
+		resp, err := s.Search(ctx, search.SearchParams{
+			Query:        "kubernetes",
+			IndexUID:     search.IndexDocuments,
+			Limit:        10,
+			IsAdmin:      true,
+			WithSnippets: true,
+		})
+		if err != nil {
+			t.Fatalf("Search returned error: %v", err)
+		}
+		if len(resp.Hits) == 0 {
+			t.Fatal("expected at least 1 hit")
+		}
+		snippet := search.ExtraString(resp.Hits[0].Extra, "snippet")
+		if snippet == "" {
+			t.Fatal("snippet empty; want ts_headline fragment")
+		}
+		// Markdown highlight markers prove ts_headline ran with the
+		// configured StartSel/StopSel, not some default HTML path.
+		if !strings.Contains(snippet, "**kubernetes**") {
+			t.Errorf("snippet %q does not contain **kubernetes** highlight", snippet)
+		}
+	})
+
+	t.Run("WithSnippets=false omits the snippet key entirely", func(t *testing.T) {
+		resp, err := s.Search(ctx, search.SearchParams{
+			Query:        "kubernetes",
+			IndexUID:     search.IndexDocuments,
+			Limit:        10,
+			IsAdmin:      true,
+			WithSnippets: false,
+		})
+		if err != nil {
+			t.Fatalf("Search returned error: %v", err)
+		}
+		if len(resp.Hits) == 0 {
+			t.Fatal("expected at least 1 hit")
+		}
+		if _, ok := resp.Hits[0].Extra["snippet"]; ok {
+			t.Errorf("Extra contains snippet key when WithSnippets=false; got %q", resp.Hits[0].Extra["snippet"])
+		}
+	})
 }
 
 // insertIndexedDocument writes a minimal indexed document row. Status is set
