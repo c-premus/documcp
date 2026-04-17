@@ -447,7 +447,7 @@ func TestSecurityHeaders_SetsAllHeaders(t *testing.T) {
 		"X-XSS-Protection":        "0",
 		"Referrer-Policy":         "strict-origin-when-cross-origin",
 		"Permissions-Policy":      "camera=(), microphone=(), geolocation=()",
-		"Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' https://fonts.scalar.com; connect-src 'self' https://api.scalar.com; form-action 'self'; frame-ancestors 'none'",
+		"Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'",
 	}
 
 	for header, expected := range want {

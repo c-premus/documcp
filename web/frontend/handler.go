@@ -14,7 +14,9 @@ var distFS embed.FS
 
 // rootAssetAllowlist is the set of static files served at the root without
 // authentication. Browsers and external clients (e.g. Claude.ai) expect these
-// at well-known paths outside the SPA mount.
+// at well-known paths outside the SPA mount. openapi.yaml is the canonical
+// public REST contract and is kept unauthenticated so consumers can fetch it
+// without credentials.
 var rootAssetAllowlist = map[string]bool{
 	"/favicon.ico":                  true,
 	"/favicon.svg":                  true,
@@ -23,12 +25,14 @@ var rootAssetAllowlist = map[string]bool{
 	"/site.webmanifest":             true,
 	"/web-app-manifest-192x192.png": true,
 	"/web-app-manifest-512x512.png": true,
+	"/openapi.yaml":                 true,
 }
 
 // rootAssetContentTypes overrides Content-Type for extensions not reliably
 // present in all system MIME databases (e.g. CI containers).
 var rootAssetContentTypes = map[string]string{
 	".webmanifest": "application/manifest+json",
+	".yaml":        "application/yaml",
 }
 
 // RootAssetHandler returns an http.Handler that serves whitelisted static

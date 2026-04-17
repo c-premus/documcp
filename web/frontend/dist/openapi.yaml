@@ -1,0 +1,4309 @@
+openapi: "3.1.0"
+info:
+  title: DocuMCP API
+  description: |
+    Documentation management through REST API and OAuth 2.1.
+
+    DocuMCP serves documentation through REST endpoints and the Model Context Protocol (MCP),
+    enabling AI agents to access and search your knowledge base. It processes PDF, DOCX, XLSX,
+    HTML, EPUB, and Markdown documents, provides full-text search via PostgreSQL, and authenticates
+    via OIDC with RFC 7591 dynamic client registration support.
+
+    ## Authentication
+
+    All `/api/*` endpoints require either a Bearer token (OAuth 2.1) or a session
+    cookie. Only the health and discovery endpoints (`/health`, `/health/ready`,
+    `/.well-known/*`) are unauthenticated. Bearer tokens are additionally bound
+    to an audience (`resource` claim, RFC 8707) — tokens without the correct
+    audience are rejected with `401 Unauthorized`.
+
+    OAuth 2.1 supports:
+    - **Authorization Code** with mandatory PKCE (S256) for public clients
+    - **Refresh Token** for long-lived sessions
+    - **Device Code** (RFC 8628) for CLI tools
+
+    ## Rate Limiting
+
+    | Limiter           | Limit                          | Applies To                        |
+    |-------------------|--------------------------------|-----------------------------------|
+    | `search`          | 120/min per user or IP         | Search and autocomplete endpoints |
+    | `api-read`        | 60/min per user or IP          | General API read operations       |
+    | `api-write`       | 30/min per user or IP          | Document/template write operations|
+    | `oauth-token`     | 30/min + 100/hour per IP       | Token endpoint                    |
+    | `oauth-register`  | 10/hour + 50/day per IP        | Client registration               |
+    | `oauth-authorize` | 30/min per IP                  | Authorization endpoint            |
+    | `oauth-device`    | 30/min per IP                  | Device authorization endpoint     |
+    | `admin`           | 60/min per user or IP          | Admin panel operations            |
+
+    ## Response Envelopes
+
+    **Success:** `{ data, meta? }`
+
+    **Error:** `{ error: "<StatusText>", message: "<details>" }`
+
+    **Paginated:** `{ data[], meta: { total, limit, offset } }`
+
+    **OAuth error:** `{ error, error_description }` (RFC 6749)
+  version: "1.0.0"
+  contact:
+    name: DocuMCP
+  license:
+    name: MIT
+
+servers:
+  - url: "{baseUrl}"
+    description: DocuMCP server
+    variables:
+      baseUrl:
+        default: "http://localhost:8080"
+
+tags:
+  - name: Health
+    description: Health check endpoints for monitoring
+  - name: Authentication
+    description: Session-user introspection for the SPA
+  - name: Search
+    description: Full-text search and autocomplete across documents
+  - name: Documents
+    description: Document CRUD and file management
+  - name: ZIM Archives
+    description: Access ZIM archive documentation (DevDocs, Wikipedia, Stack Exchange)
+  - name: Git Templates
+    description: |
+      Manage Git-based project templates. Only text files are synced from
+      repositories — binary files (PDFs, images, compiled artifacts) are
+      automatically excluded. Per-file limit: 1 MB, total: 10 MB.
+  - name: External Services
+    description: |
+      Configure connections to external knowledge sources (Kiwix, etc.).
+      Read access is scope-gated (`services:read`); mutations require admin
+      role plus `services:write`.
+  - name: Events
+    description: |
+      Real-time job-queue events via Server-Sent Events. All authenticated
+      users subscribe via `/api/events/stream` — admins see every event,
+      non-admins see only events where `user_id` matches theirs.
+  - name: OAuth
+    description: OAuth 2.1 authorization server endpoints
+  - name: Admin
+    description: |
+      Administrative operations. All routes below require the `admin` scope
+      and admin role. Rate limit: `admin` (60/min).
+  - name: Observability
+    description: Internal metrics and deep health checks
+
+paths:
+  # ---------------------------------------------------------------------------
+  # Health
+  # ---------------------------------------------------------------------------
+  /api/health:
+    get:
+      operationId: healthBasic
+      tags: [Health]
+      summary: Basic health check
+      description: |
+        Fast health check for load balancers and uptime monitoring.
+        Returns 200 OK if the application is running. No authentication required.
+      responses:
+        "200":
+          description: Application is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthBasicResponse"
+
+  /api/health/deep:
+    get:
+      operationId: healthDeep
+      tags: [Observability]
+      summary: Deep health check
+      description: |
+        Comprehensive health check testing all dependencies (database, Redis,
+        filesystem, queue). Protected by the `internal` middleware --
+        requires the `INTERNAL_API_TOKEN` bearer token when configured.
+      security:
+        - internalToken: []
+      responses:
+        "200":
+          description: All checks passed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthDeepResponse"
+        "401":
+          $ref: "#/components/responses/InternalUnauthorized"
+        "503":
+          description: One or more checks failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthDeepResponse"
+
+  /metrics:
+    get:
+      operationId: prometheusMetrics
+      tags: [Observability]
+      summary: Prometheus metrics
+      description: |
+        Exposes application metrics in Prometheus text format for scraping.
+        Protected by the `internal` middleware -- requires the `INTERNAL_API_TOKEN`
+        bearer token when configured.
+      security:
+        - internalToken: []
+      responses:
+        "200":
+          description: Prometheus metrics payload
+          content:
+            "text/plain; version=0.0.4":
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/InternalUnauthorized"
+
+  # ---------------------------------------------------------------------------
+  # Search
+  # ---------------------------------------------------------------------------
+  /api/search:
+    get:
+      operationId: searchDocuments
+      tags: [Search]
+      summary: Search documents
+      description: |
+        Full-text search with facets, filters, and highlighting via PostgreSQL full-text search.
+        Public endpoint (no authentication required). Rate limit: `search` (120/min).
+
+        **Required scope:** `search:read`
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search query string
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+        - name: file_type
+          in: query
+          description: Filter by document file type
+          schema:
+            type: string
+            enum: [pdf, docx, xlsx, html, markdown, epub]
+        - name: tags
+          in: query
+          description: Filter by tags (documents must match ALL specified tags)
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: limit
+          in: query
+          description: Maximum results to return (default 20)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of results to skip for pagination
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/search/popular:
+    get:
+      operationId: popularSearches
+      tags: [Search]
+      summary: Popular searches
+      description: |
+        Returns the most popular search queries. Public endpoint. Rate limit: `search` (120/min).
+
+        **Required scope:** `search:read`
+      responses:
+        "200":
+          description: Popular search queries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            query:
+                              type: string
+                            count:
+                              type: integer
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/search/autocomplete:
+    get:
+      operationId: autocompleteSearch
+      tags: [Search]
+      summary: Autocomplete search suggestions
+      description: |
+        Returns document title suggestions for autocomplete. Requires authentication.
+        Rate limit: `search` (120/min).
+
+        **Required scope:** `search:read`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: query
+          in: query
+          required: true
+          description: Search prefix (minimum 2 characters)
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 100
+        - name: limit
+          in: query
+          description: Maximum number of suggestions (default 5)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+            default: 5
+      responses:
+        "200":
+          description: Autocomplete suggestions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          suggestions:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                text:
+                                  type: string
+                                highlighted:
+                                  type: string
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/search/unified:
+    get:
+      operationId: unifiedSearch
+      tags: [Search]
+      summary: Unified search
+      description: |
+        Search across all content types (documents, git templates, ZIM archives)
+        in a single request. Requires authentication.
+        Rate limit: `search` (120/min).
+
+        **Required scope:** `search:read`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search query text
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+        - name: types
+          in: query
+          description: Filter to specific content types (max 4)
+          schema:
+            type: array
+            maxItems: 4
+            items:
+              type: string
+              enum: [document, git_template, zim_archive]
+          style: form
+          explode: true
+        - name: limit
+          in: query
+          description: Maximum results to return (default 20)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Pagination offset (default 0)
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Unified search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnifiedSearchResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  # ---------------------------------------------------------------------------
+  # Documents
+  # ---------------------------------------------------------------------------
+  /api/documents:
+    get:
+      operationId: listDocuments
+      tags: [Documents]
+      summary: List documents
+      description: |
+        Retrieve a paginated list of documents. Requires authentication.
+        Rate limit: `api-read` (60/min).
+
+        **Required scope:** `documents:read`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number (default 1)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          description: Items per page (default 15, max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 15
+        - name: file_type
+          in: query
+          description: Filter by document file type
+          schema:
+            type: string
+            enum: [pdf, docx, xlsx, html, markdown, epub]
+      responses:
+        "200":
+          description: Paginated list of documents
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Document"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+    post:
+      operationId: createDocument
+      tags: [Documents]
+      summary: Create document
+      description: |
+        Upload and process a new document. Supports PDF, DOCX, XLSX, HTML, EPUB, and Markdown.
+        Maximum file size: 50 MB. Requires authentication. The document is owned
+        by the uploading user. Rate limit: `api-write` (30/min).
+
+        **Required scope:** `documents:write`
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, title]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: "Document file (PDF, DOCX, XLSX, HTML, EPUB, Markdown). Max 50 MB."
+                title:
+                  type: string
+                  maxLength: 255
+                  description: Document title
+                description:
+                  type: [string, "null"]
+                  description: Optional document description
+                is_public:
+                  type: boolean
+                  default: false
+                  description: Whether the document is publicly accessible
+                tags:
+                  type: array
+                  items:
+                    type: string
+                    maxLength: 100
+                  description: Tags for categorization
+      responses:
+        "201":
+          description: Document created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Document"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/documents/tags:
+    get:
+      operationId: listDocumentTags
+      tags: [Documents]
+      summary: List distinct tags
+      description: |
+        Returns distinct document tags matching an optional prefix. Used for autocomplete.
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `documents:read`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          description: Tag prefix filter
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum tags to return (default 20, max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: List of tags
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: string
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/documents/trash:
+    get:
+      operationId: listDeletedDocuments
+      tags: [Documents]
+      summary: List deleted documents
+      description: |
+        Returns documents that have been soft-deleted (moved to trash).
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `documents:read`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum results to return (default 50, max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          description: Number of results to skip for pagination
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Paginated list of deleted documents
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Document"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/documents/{document}:
+    parameters:
+      - name: document
+        in: path
+        required: true
+        description: Document UUID
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+    get:
+      operationId: showDocument
+      tags: [Documents]
+      summary: Show document
+      description: |
+        Retrieve a specific document by UUID. Requires authentication.
+        Rate limit: `api-read` (60/min).
+
+        **Required scope:** `documents:read`
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Document details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Document"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+    put:
+      operationId: updateDocument
+      tags: [Documents]
+      summary: Update document
+      description: |
+        Update document metadata. Requires authentication. Non-admin users must
+        own the document; admins may update any document. Rate limit:
+        `api-write` (30/min).
+
+        **Required scope:** `documents:write`
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  maxLength: 255
+                  description: Updated document title
+                description:
+                  type: string
+                  description: Updated description
+                is_public:
+                  type: boolean
+                  description: Updated public visibility
+                tags:
+                  type: array
+                  items:
+                    type: string
+                    maxLength: 100
+                  description: Replaces all existing tags
+      responses:
+        "200":
+          description: Document updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Document"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+    delete:
+      operationId: deleteDocument
+      tags: [Documents]
+      summary: Delete document
+      description: |
+        Soft-delete a document. Requires authentication. Non-admin users must
+        own the document; admins may delete any document. Rate limit:
+        `api-write` (30/min).
+
+        **Required scope:** `documents:write`
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Document deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiSuccessEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/documents/{document}/content:
+    parameters:
+      - name: document
+        in: path
+        required: true
+        description: Document UUID
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+    post:
+      operationId: replaceDocumentContent
+      tags: [Documents]
+      summary: Replace document content
+      description: |
+        Replaces the file content of an existing document. The document is re-processed
+        for text extraction. Metadata (title, description, tags, visibility) is preserved.
+        Requires authentication. Rate limit: `api-write` (30/min).
+
+        **Required scope:** `documents:write`
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: "Replacement file (PDF, DOCX, XLSX, HTML, EPUB, Markdown). Max 50 MB."
+      responses:
+        "200":
+          description: Content replaced
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Document"
+                      message:
+                        type: string
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorEnvelope"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/documents/{document}/download:
+    parameters:
+      - name: document
+        in: path
+        required: true
+        description: Document UUID
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: downloadDocument
+      tags: [Documents]
+      summary: Download document file
+      description: |
+        Download the original document file. Requires authentication.
+        Rate limit: 10 downloads per minute.
+
+        **Required scope:** `documents:read`
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Binary file download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/documents/{document}/purge:
+    parameters:
+      - name: document
+        in: path
+        required: true
+        description: Document UUID
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+    delete:
+      operationId: purgeDocument
+      tags: [Documents]
+      summary: Permanently delete document
+      description: |
+        Permanently removes a soft-deleted document and its file from disk.
+        This action cannot be undone. Requires authentication and admin role.
+        Rate limit: `api-write` (30/min).
+
+        **Required scope:** `documents:write` + admin role
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Document permanently deleted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/documents/{document}/restore:
+    parameters:
+      - name: document
+        in: path
+        required: true
+        description: Document UUID
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+    post:
+      operationId: restoreDocument
+      tags: [Documents]
+      summary: Restore document from trash
+      description: |
+        Restores a soft-deleted document, making it active again.
+        Requires authentication. Rate limit: `api-write` (30/min).
+
+        **Required scope:** `documents:write`
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Document restored
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Document"
+                      message:
+                        type: string
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/documents/analyze:
+    post:
+      operationId: analyzeDocument
+      tags: [Documents]
+      summary: Analyze document
+      description: |
+        Upload a file for analysis and receive metadata suggestions including title,
+        description, tags, language, word count, and estimated reading time.
+        Requires authentication. Rate limit: 10 analyses per minute.
+
+        **Required scope:** `documents:write`
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: "Document file to analyze (PDF, DOCX, XLSX, HTML, EPUB, Markdown, TXT). Max 50 MB."
+      responses:
+        "200":
+          description: Analysis results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: true
+                  suggestions:
+                    $ref: "#/components/schemas/DocumentAnalysisSuggestions"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          description: Analysis failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    const: false
+                  message:
+                    type: string
+
+  # ---------------------------------------------------------------------------
+  # Admin
+  # ---------------------------------------------------------------------------
+  /api/admin/documents/purge:
+    delete:
+      operationId: bulkPurgeDocuments
+      tags: [Admin]
+      summary: Bulk purge deleted documents
+      description: |
+        Permanently removes all soft-deleted documents older than the specified threshold.
+        Requires authentication and admin role. Rate limit: `admin` (10/min).
+
+        **Required scope:** `admin`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: older_than_days
+          in: query
+          description: Minimum age in days for purge (default 30)
+          schema:
+            type: integer
+            minimum: 0
+            default: 30
+      responses:
+        "200":
+          description: Documents purged
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          purged_count:
+                            type: integer
+                      message:
+                        type: string
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  # ---------------------------------------------------------------------------
+  # ZIM Archives
+  # ---------------------------------------------------------------------------
+  /api/zim/archives:
+    get:
+      operationId: listZimArchives
+      tags: [ZIM Archives]
+      summary: List ZIM archives
+      description: |
+        Retrieve a paginated list of available ZIM archives.
+        Requires authentication. Rate limit: `search` (120/min).
+
+        **Required scope:** `zim:read`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: query
+          in: query
+          description: Search query to filter archives by name or title
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+        - name: category
+          in: query
+          description: Filter by archive category
+          schema:
+            type: string
+            enum: [devdocs, wikipedia, stack_exchange, other]
+        - name: language
+          in: query
+          description: Filter by language code (ISO 639-1, 2 characters)
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+        - name: per_page
+          in: query
+          description: Items per page (default 15, max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 15
+      responses:
+        "200":
+          description: Paginated list of ZIM archives
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ZimArchive"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/zim/archives/{archive}:
+    parameters:
+      - name: archive
+        in: path
+        required: true
+        description: Archive name identifier
+        schema:
+          type: string
+        example: devdocs.io_python_3.12
+
+    get:
+      operationId: showZimArchive
+      tags: [ZIM Archives]
+      summary: Show ZIM archive
+      description: |
+        Retrieve details of a specific ZIM archive by name.
+        Requires authentication. Rate limit: `search` (120/min).
+
+        **Required scope:** `zim:read`
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Archive details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/ZimArchive"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/zim/archives/{archive}/search:
+    parameters:
+      - name: archive
+        in: path
+        required: true
+        description: Archive name identifier
+        schema:
+          type: string
+        example: devdocs.io_laravel_11
+
+    get:
+      operationId: searchZimArticles
+      tags: [ZIM Archives]
+      summary: Search ZIM articles
+      description: |
+        Full-text search within a ZIM archive's articles.
+        Requires authentication. Rate limit: `search` (120/min).
+
+        **Required scope:** `zim:read`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Full-text search query for article content
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+        - name: limit
+          in: query
+          description: Maximum results to return (default 20, max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ZimArticleSearchResult"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/zim/archives/{archive}/suggest:
+    parameters:
+      - name: archive
+        in: path
+        required: true
+        description: Archive name identifier
+        schema:
+          type: string
+        example: devdocs.io_laravel_11
+
+    get:
+      operationId: suggestZimArticles
+      tags: [ZIM Archives]
+      summary: Suggest ZIM articles
+      description: |
+        Title autocomplete/suggestions for a ZIM archive.
+        Requires authentication. Rate limit: `search` (120/min).
+
+        **Required scope:** `zim:read`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search term for title autocomplete (minimum 2 characters)
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 255
+        - name: limit
+          in: query
+          description: Maximum suggestions to return (default 10, max 50)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        "200":
+          description: Article suggestions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ZimArticleSearchResult"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/zim/archives/{archive}/articles/{path}:
+    parameters:
+      - name: archive
+        in: path
+        required: true
+        description: Archive name identifier
+        schema:
+          type: string
+        example: devdocs.io_laravel_11
+      - name: path
+        in: path
+        required: true
+        description: Article path within the archive (may contain slashes)
+        schema:
+          type: string
+        example: middleware.html
+
+    get:
+      operationId: readZimArticle
+      tags: [ZIM Archives]
+      summary: Read ZIM article
+      description: |
+        Retrieve the full content of a specific article from a ZIM archive.
+        Requires authentication. Rate limit: `search` (120/min).
+
+        **Required scope:** `zim:read`
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Article content
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/ZimArticle"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+  # ---------------------------------------------------------------------------
+  /api/git-templates:
+    get:
+      operationId: listGitTemplates
+      tags: [Git Templates]
+      summary: List Git templates
+      description: |
+        Retrieve a list of available Git templates.
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `templates:read`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: category
+          in: query
+          description: Filter by template category
+          schema:
+            type: string
+            enum: [claude, memory-bank, project]
+        - name: limit
+          in: query
+          description: Maximum templates to return (default 50, max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: List of Git templates
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/GitTemplate"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+    post:
+      operationId: registerGitTemplate
+      tags: [Git Templates]
+      summary: Register a new Git template
+      description: |
+        Register a Git repository as a template source. A sync job is dispatched
+        automatically. Only text files are extracted — binary files (PDFs, images,
+        compiled artifacts) are excluded. Per-file limit: 1 MB, total: 10 MB.
+        Requires authentication and admin role.
+        Rate limit: `api-write` (30/min).
+
+        **Required scope:** `templates:write` + admin role
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, repository_url, category]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                  description: Human-readable name for the template
+                repository_url:
+                  type: string
+                  format: uri
+                  maxLength: 500
+                  description: HTTPS URL of the Git repository
+                description:
+                  type: [string, "null"]
+                  maxLength: 1000
+                  description: Description of the template purpose
+                branch:
+                  type: string
+                  maxLength: 100
+                  default: main
+                  pattern: "^[a-zA-Z0-9._/-]+$"
+                  description: Git branch to use
+                git_token:
+                  type: [string, "null"]
+                  maxLength: 500
+                  description: Personal access token for private repositories (stored encrypted)
+                category:
+                  type: string
+                  enum: [claude, memory-bank, project]
+                  description: Template category
+                tags:
+                  type: [array, "null"]
+                  maxItems: 20
+                  items:
+                    type: string
+                    maxLength: 50
+                  description: Tags for categorization and search
+                is_public:
+                  type: [boolean, "null"]
+                  default: false
+                  description: Whether the template is publicly visible
+      responses:
+        "201":
+          description: Template registered
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/GitTemplate"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/git-templates/search:
+    get:
+      operationId: searchGitTemplates
+      tags: [Git Templates]
+      summary: Search Git templates
+      description: |
+        Full-text search across template README files and metadata.
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `templates:read`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+        - name: category
+          in: query
+          description: Filter by template category
+          schema:
+            type: string
+            enum: [claude, memory-bank, project]
+        - name: limit
+          in: query
+          description: Maximum results (default 10, max 50)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          hits:
+                            type: array
+                            items:
+                              type: object
+                              description: Search hit with highlights
+                          total:
+                            type: integer
+                          processing_time_ms:
+                            type: integer
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/git-templates/{template}:
+    parameters:
+      - name: template
+        in: path
+        required: true
+        description: Template UUID
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+    get:
+      operationId: showGitTemplate
+      tags: [Git Templates]
+      summary: Show Git template
+      description: |
+        Retrieve a specific Git template by UUID.
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `templates:read`
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Template details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/GitTemplate"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+    put:
+      operationId: updateGitTemplate
+      tags: [Git Templates]
+      summary: Update Git template
+      description: |
+        Update Git template metadata.
+        Requires authentication and ownership or admin role.
+        Rate limit: `api-write` (30/min).
+
+        **Required scope:** `templates:write` + admin role
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                description:
+                  type: [string, "null"]
+                  maxLength: 1000
+                repository_url:
+                  type: string
+                  format: uri
+                  maxLength: 500
+                branch:
+                  type: string
+                  maxLength: 100
+                  pattern: "^[a-zA-Z0-9._/-]+$"
+                git_token:
+                  type: [string, "null"]
+                  maxLength: 500
+                  description: Pass null to remove the token
+                category:
+                  type: string
+                  enum: [claude, memory-bank, project]
+                tags:
+                  type: [array, "null"]
+                  maxItems: 20
+                  items:
+                    type: string
+                    maxLength: 50
+                is_public:
+                  type: [boolean, "null"]
+                is_enabled:
+                  type: [boolean, "null"]
+      responses:
+        "200":
+          description: Template updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/GitTemplate"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+    delete:
+      operationId: deleteGitTemplate
+      tags: [Git Templates]
+      summary: Delete Git template
+      description: |
+        Soft-delete a Git template and remove cloned repository files.
+        Requires authentication and ownership or admin role.
+        Rate limit: `api-write` (30/min).
+
+        **Required scope:** `templates:write` + admin role
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Template deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiSuccessEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/git-templates/{template}/sync:
+    parameters:
+      - name: template
+        in: path
+        required: true
+        description: Template UUID
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+    post:
+      operationId: syncGitTemplate
+      tags: [Git Templates]
+      summary: Trigger template sync
+      description: |
+        Re-sync the template from its Git repository to fetch latest changes.
+        Only text files are extracted — binary files are excluded.
+        Requires authentication. Rate limit: `api-write` (30/min).
+
+        **Required scope:** `templates:write` + admin role
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Template synced
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/GitTemplate"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          description: Sync failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorEnvelope"
+
+  /api/git-templates/{template}/structure:
+    parameters:
+      - name: template
+        in: path
+        required: true
+        description: Template UUID
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+    get:
+      operationId: getGitTemplateStructure
+      tags: [Git Templates]
+      summary: Get template structure
+      description: |
+        Retrieve the file tree structure of a Git template.
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `templates:read`
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Template file structure
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/GitTemplateStructure"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/git-templates/{template}/files/{path}:
+    parameters:
+      - name: template
+        in: path
+        required: true
+        description: Template UUID
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      - name: path
+        in: path
+        required: true
+        description: File path within the template (may contain slashes)
+        schema:
+          type: string
+        example: CLAUDE.md
+
+    get:
+      operationId: getGitTemplateFile
+      tags: [Git Templates]
+      summary: Get template file
+      description: |
+        Retrieve a specific file from a Git template.
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `templates:read`
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: File metadata and content
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          file:
+                            $ref: "#/components/schemas/GitTemplateFile"
+                          content:
+                            type: string
+                            description: File content (with variable substitution if provided)
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/git-templates/{template}/deployment-guide:
+    parameters:
+      - name: template
+        in: path
+        required: true
+        description: Template UUID
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+    get:
+      operationId: getGitTemplateDeploymentGuide
+      tags: [Git Templates]
+      summary: Get deployment guide
+      description: |
+        Generate a deployment guide for a Git template with optional variable substitution.
+        Requires authentication. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `templates:read`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: variables
+          in: query
+          description: Key-value pairs for variable substitution
+          schema:
+            type: object
+            additionalProperties:
+              type: string
+          style: deepObject
+          explode: true
+      responses:
+        "200":
+          description: Deployment guide
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/DeploymentGuide"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  /api/git-templates/{template}/download:
+    parameters:
+      - name: template
+        in: path
+        required: true
+        description: Template UUID
+        schema:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+    post:
+      operationId: downloadGitTemplate
+      tags: [Git Templates]
+      summary: Download template archive
+      description: |
+        Download a complete template as a zip or tar.gz archive with optional variable
+        substitution. Returns the archive as base64-encoded content. Contains text
+        files only — binary files are excluded during sync.
+        Requires authentication. Rate limit: `api-write` (30/min).
+
+        **Required scope:** `templates:write` + admin role
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                format:
+                  type: [string, "null"]
+                  enum: [tar.gz, zip]
+                  default: zip
+                  description: Archive format
+                variables:
+                  type: [object, "null"]
+                  additionalProperties:
+                    type: string
+                    maxLength: 1000
+                  description: Key-value pairs for placeholder substitution in template files
+      responses:
+        "200":
+          description: Template archive (base64 encoded)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          filename:
+                            type: string
+                          format:
+                            type: string
+                            enum: [zip, tar.gz]
+                          size_bytes:
+                            type: integer
+                          file_count:
+                            type: integer
+                          archive_base64:
+                            type: string
+                            description: Base64-encoded archive content
+                          unresolved_variables:
+                            type: array
+                            items:
+                              type: string
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Archive generation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorEnvelope"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  # ---------------------------------------------------------------------------
+  # External Services
+  # ---------------------------------------------------------------------------
+  /api/external-services:
+    get:
+      operationId: listExternalServices
+      tags: [External Services]
+      summary: List external services
+      description: |
+        Returns all configured external knowledge sources (Kiwix endpoints
+        today; additional types may be added). Rate limit: `api-read` (60/min).
+
+        **Required scope:** `services:read`
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string, enum: [unknown, healthy, unhealthy] }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: Paginated list of external services
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ExternalService" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
+
+    post:
+      operationId: createExternalService
+      tags: [External Services]
+      summary: Create external service
+      description: |
+        Registers a new external service. Admin only. If `type` is `kiwix`,
+        a sync job is enqueued immediately and the cached client is
+        invalidated across replicas. Rate limit: `api-write` (30/min).
+
+        **Required scope:** `services:write` + admin role
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, type, base_url]
+              properties:
+                name: { type: string }
+                type: { type: string, enum: [kiwix] }
+                base_url: { type: string, format: uri }
+                api_key: { type: string }
+                config: { type: string, description: Opaque JSON configuration string }
+                priority: { type: integer, default: 0 }
+      responses:
+        "201":
+          description: External service created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/ExternalService" }
+                      message: { type: string }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
+
+  /api/external-services/{uuid}:
+    parameters:
+      - name: uuid
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+
+    get:
+      operationId: showExternalService
+      tags: [External Services]
+      summary: Get external service
+      description: |
+        Returns a single external service by UUID. Rate limit: `api-read` (60/min).
+
+        **Required scope:** `services:read`
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: External service
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/ExternalService" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
+
+    put:
+      operationId: updateExternalService
+      tags: [External Services]
+      summary: Update external service
+      description: |
+        Partial update. Any fields omitted are left untouched. Admin only.
+        Environment-managed services reject mutations. If the service type is
+        `kiwix`, a sync job is enqueued on save and the cached client is
+        invalidated across replicas. Rate limit: `api-write` (30/min).
+
+        **Required scope:** `services:write` + admin role
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                base_url: { type: string, format: uri }
+                api_key: { type: string }
+                config: { type: string }
+                priority: { type: integer }
+                is_enabled: { type: boolean }
+      responses:
+        "200":
+          description: External service updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/ExternalService" }
+                      message: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
+
+    delete:
+      operationId: deleteExternalService
+      tags: [External Services]
+      summary: Delete external service
+      description: |
+        Hard-deletes an external service. Environment-managed services reject
+        the request with 403. Rate limit: `api-write` (30/min).
+
+        **Required scope:** `services:write` + admin role
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: External service deleted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      message: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
+
+  /api/external-services/{uuid}/health-check:
+    parameters:
+      - name: uuid
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: externalServiceHealthCheck
+      tags: [External Services]
+      summary: Trigger health check
+      description: |
+        Returns the current health state. Scheduled background checks update
+        the state automatically; this endpoint is a placeholder for on-demand
+        checks once per-type client resolution is wired. Rate limit:
+        `api-write` (30/min).
+
+        **Required scope:** `services:write` + admin role
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Health status snapshot
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/ExternalService" }
+                      message: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
+
+  /api/external-services/{uuid}/sync:
+    parameters:
+      - name: uuid
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: externalServiceSync
+      tags: [External Services]
+      summary: Trigger on-demand sync
+      description: |
+        Enqueues a background sync job. Currently only `kiwix` services
+        support sync. Returns 400 when the service type does not support
+        syncing, 503 when the queue is unavailable. Rate limit:
+        `api-write` (30/min).
+
+        **Required scope:** `services:write` + admin role
+      security:
+        - bearerAuth: []
+      responses:
+        "202":
+          description: Sync queued
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      message: { type: string }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
+        "503":
+          description: Queue not available
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  # ---------------------------------------------------------------------------
+  # Authentication + Events
+  # ---------------------------------------------------------------------------
+  /api/auth/me:
+    get:
+      operationId: authMe
+      tags: [Authentication]
+      summary: Current authenticated user
+      description: |
+        Returns the session-user or bearer-token-user profile used by the SPA
+        to render role-conditional UI. Rate limit: `api-read` (60/min).
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Authenticated user profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [id, email, name, is_admin]
+                        properties:
+                          id: { type: integer, format: int64 }
+                          email: { type: string, format: email }
+                          name: { type: string }
+                          is_admin: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
+
+  /api/events/stream:
+    get:
+      operationId: userEventStream
+      tags: [Events]
+      summary: Subscribe to user-scoped event stream
+      description: |
+        Server-Sent Events stream. Admins receive every queue event; non-admins
+        receive only events whose `user_id` equals their own. Heartbeats are
+        emitted as SSE comments (`: heartbeat`). Reconnect cadence is
+        advertised via the initial `retry: 5000` frame.
+
+        The subscription is refused with `503 Service Unavailable` when the
+        server-side subscriber cap (100) is reached.
+
+        **Required scope:** `documents:read`
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: SSE stream. Each `data:` frame is a JSON-encoded `Event`.
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "503":
+          description: Too many concurrent subscribers
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  # ---------------------------------------------------------------------------
+  # Admin
+  #
+  # All routes below require `admin` scope + admin role. Rate limit: `admin`
+  # (60/min). The `/api/admin/documents/purge` bulk-delete operation is
+  # documented alongside the other Documents routes (see above).
+  # ---------------------------------------------------------------------------
+  /api/admin/dashboard/stats:
+    get:
+      operationId: adminDashboardStats
+      tags: [Admin]
+      summary: Aggregate admin dashboard statistics
+      description: |
+        Returns entity counts for the admin dashboard. Individual counters
+        fail-soft to zero on repository error; the request as a whole never
+        fails on missing data. Queue counts are included when River is
+        available.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Dashboard stats snapshot
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/DashboardStats" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
+
+  /api/admin/events/stream:
+    get:
+      operationId: adminEventStream
+      tags: [Admin]
+      summary: Unfiltered admin event stream
+      description: |
+        Server-Sent Events stream with no per-user filtering. The
+        subscription is refused with `503 Service Unavailable` when the
+        server-side subscriber cap (100) is reached.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: SSE stream. Each `data:` frame is a JSON-encoded `Event`.
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503":
+          description: Too many concurrent subscribers
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
+  /api/admin/users:
+    get:
+      operationId: adminListUsers
+      tags: [Admin]
+      summary: List users
+      description: |
+        Paginated list of DocuMCP users. Supports free-text search on name
+        and email via the `q` query parameter.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: Paginated list of users
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
+
+  /api/admin/users/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      operationId: adminShowUser
+      tags: [Admin]
+      summary: Get user
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Single user
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+    delete:
+      operationId: adminDeleteUser
+      tags: [Admin]
+      summary: Delete user
+      description: |
+        Hard-deletes a user. The calling admin may not delete their own
+        account (returns 400). Associated OAuth tokens cascade via database
+        foreign keys.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: User deleted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      message: { type: string }
+        "400":
+          description: Cannot delete own account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/admin/users/{id}/toggle-admin:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      operationId: adminToggleUser
+      tags: [Admin]
+      summary: Flip admin flag on a user
+      description: |
+        Flips `is_admin`. When `OIDC_ADMIN_GROUPS` is configured, this toggle
+        is effectively read-only: group membership re-syncs `is_admin` on
+        every login. The toggle is useful in `OIDC_BOOTSTRAP_ADMIN_EMAIL`
+        mode (no group claim at the IdP). The calling admin may not toggle
+        their own account (returns 400).
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/User" }
+        "400":
+          description: Cannot change own admin status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/admin/external-services/reorder:
+    put:
+      operationId: adminReorderExternalServices
+      tags: [Admin]
+      summary: Reorder external services by priority
+      description: |
+        Accepts an array of {uuid, priority} pairs. Each entry sets the
+        priority column for the named service. UUIDs must be distinct.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order]
+              properties:
+                order:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [uuid, priority]
+                    properties:
+                      uuid: { type: string, format: uuid }
+                      priority: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: Reorder applied
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      message: { type: string }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/git-templates/validate-url:
+    post:
+      operationId: adminValidateTemplateURL
+      tags: [Admin]
+      summary: Validate a Git template repository URL
+      description: |
+        Dry-run validation of a repository URL against the SSRF allowlist.
+        Returns `{valid: false, error: ...}` with HTTP 200 when the URL is
+        rejected — the outer HTTP envelope does not use 4xx because this is
+        a lookup, not a state mutation.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri }
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [valid]
+                properties:
+                  valid: { type: boolean }
+                  error: { type: string, description: Present when `valid=false`. }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/oauth-clients:
+    get:
+      operationId: adminListOAuthClients
+      tags: [Admin]
+      summary: List OAuth clients
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: Paginated list of clients
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/OAuthClient" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+    post:
+      operationId: adminCreateOAuthClient
+      tags: [Admin]
+      summary: Create OAuth client
+      description: |
+        Admin-provisioned OAuth client. The request body mirrors RFC 7591
+        dynamic registration — admins can set the initial scope directly
+        rather than going through consent. The plaintext `client_secret` is
+        returned once in the response and never again.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [client_name, redirect_uris]
+              properties:
+                client_name: { type: string }
+                redirect_uris:
+                  type: array
+                  items: { type: string, format: uri }
+                  maxItems: 10
+                grant_types:
+                  type: array
+                  items:
+                    type: string
+                    enum: [authorization_code, refresh_token, urn:ietf:params:oauth:grant-type:device_code]
+                token_endpoint_auth_method:
+                  type: string
+                  enum: [client_secret_basic, client_secret_post, none]
+                scope: { type: string }
+      responses:
+        "201":
+          description: Client created. `client_secret` will not be shown again.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [id, client_id, client_secret, client_name]
+                        properties:
+                          id: { type: integer, format: int64 }
+                          client_id: { type: string }
+                          client_secret: { type: string }
+                          client_name: { type: string }
+                      message: { type: string }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/oauth-clients/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      operationId: adminShowOAuthClient
+      tags: [Admin]
+      summary: Get OAuth client
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Single client
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/OAuthClient" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+    delete:
+      operationId: adminDeleteOAuthClient
+      tags: [Admin]
+      summary: Delete OAuth client
+      description: |
+        Hard-deletes a client. Cascades into issued tokens, refresh tokens,
+        authorization codes, device codes, and scope grants.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "204":
+          description: Client deleted
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/admin/oauth-clients/{id}/scope-grants:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      operationId: adminListScopeGrants
+      tags: [Admin]
+      summary: List active scope grants for a client
+      description: |
+        Returns non-expired scope grants for the given client. Scope grants
+        record time-bounded user consent to expand a client's effective
+        scope beyond its registered base scope.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Scope grants
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/ScopeGrant" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/admin/oauth-clients/{id}/scope-grants/{grantId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+      - name: grantId
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+    delete:
+      operationId: adminRevokeScopeGrant
+      tags: [Admin]
+      summary: Revoke scope grant
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "204":
+          description: Grant revoked
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/admin/queue/stats:
+    get:
+      operationId: adminQueueStats
+      tags: [Admin]
+      summary: Queue state counts
+      description: Aggregate River queue state counts.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Queue stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/QueueStats" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/queue/failed:
+    get:
+      operationId: adminListFailedJobs
+      tags: [Admin]
+      summary: List failed jobs
+      description: |
+        Jobs in `discarded`, `cancelled`, or `retryable` states.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        "200":
+          description: Failed jobs
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/FailedJob" }
+                      meta:
+                        type: object
+                        properties:
+                          count: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/queue/failed/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+    delete:
+      operationId: adminCancelFailedJob
+      tags: [Admin]
+      summary: Cancel a failed job
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Job cancelled
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          id: { type: integer, format: int64 }
+                          state: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/admin/queue/failed/{id}/retry:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      operationId: adminRetryFailedJob
+      tags: [Admin]
+      summary: Retry a failed job
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Job retried
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          id: { type: integer, format: int64 }
+                          state: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------------------------------------------------------------------
+  # OAuth 2.1
+  # ---------------------------------------------------------------------------
+  /.well-known/oauth-authorization-server:
+    get:
+      operationId: oauthDiscovery
+      tags: [OAuth]
+      summary: OAuth Authorization Server Metadata
+      description: |
+        RFC 8414: Returns OAuth Authorization Server Metadata, including supported
+        endpoints, grant types, response types, and PKCE methods.
+      responses:
+        "200":
+          description: Server metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthServerMetadata"
+        "404":
+          description: Metadata endpoint disabled
+
+  /.well-known/oauth-protected-resource/{path}:
+    parameters:
+      - name: path
+        in: path
+        required: false
+        description: Optional path suffix identifying the specific protected resource (e.g., `documcp`)
+        schema:
+          type: string
+        allowEmptyValue: true
+
+    get:
+      operationId: oauthProtectedResourceMetadata
+      tags: [OAuth]
+      summary: OAuth Protected Resource Metadata
+      description: |
+        RFC 9728: Returns protected resource metadata, enabling MCP clients to
+        discover the authorization server location and required scopes.
+      responses:
+        "200":
+          description: Protected resource metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  resource:
+                    type: string
+                    format: uri
+                  authorization_servers:
+                    type: array
+                    items:
+                      type: string
+                      format: uri
+                  scopes_supported:
+                    type: array
+                    items:
+                      type: string
+                  bearer_methods_supported:
+                    type: array
+                    items:
+                      type: string
+        "404":
+          description: Metadata endpoint disabled
+
+  /oauth/register:
+    post:
+      operationId: oauthRegisterClient
+      tags: [OAuth]
+      summary: Dynamic Client Registration
+      description: |
+        RFC 7591: Register a new OAuth client dynamically. When authentication is
+        required (production default), only admin users may register clients.
+        Rate limit: `oauth-register` (10/hour + 50/day per IP).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [client_name, redirect_uris]
+              properties:
+                client_name:
+                  type: string
+                  maxLength: 255
+                  description: Human-readable client name
+                redirect_uris:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    format: uri
+                  description: Array of valid redirect URIs
+                grant_types:
+                  type: [array, "null"]
+                  items:
+                    type: string
+                    enum: [authorization_code, refresh_token, "urn:ietf:params:oauth:grant-type:device_code"]
+                  description: Grant types the client will use
+                response_types:
+                  type: [array, "null"]
+                  items:
+                    type: string
+                    enum: [code]
+                  description: Response types the client will use
+                scope:
+                  type: [string, "null"]
+                  description: Space-separated list of requested scopes
+                token_endpoint_auth_method:
+                  type: [string, "null"]
+                  enum: [none, client_secret_post]
+                  description: Authentication method for the token endpoint
+                software_id:
+                  type: [string, "null"]
+                  maxLength: 255
+                  description: Identifier for the client software
+                software_version:
+                  type: [string, "null"]
+                  maxLength: 100
+                  description: Version of the client software
+      responses:
+        "201":
+          description: Client registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthClientRegistrationResponse"
+        "400":
+          description: Invalid client metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "401":
+          description: Authentication required
+        "403":
+          description: Insufficient permissions
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+
+  /oauth/authorize:
+    get:
+      operationId: oauthAuthorize
+      tags: [OAuth]
+      summary: Authorization endpoint
+      description: |
+        OAuth 2.1: Authorization endpoint. Shows consent screen to authenticated user.
+        Public clients MUST use PKCE with S256. Requires user authentication (redirects
+        to login if not authenticated). Rate limit: `oauth-authorize` (30/min per IP).
+      parameters:
+        - name: response_type
+          in: query
+          required: true
+          description: Must be "code" for authorization code flow
+          schema:
+            type: string
+            enum: [code]
+        - name: client_id
+          in: query
+          required: true
+          description: The client identifier issued during registration
+          schema:
+            type: string
+        - name: redirect_uri
+          in: query
+          required: true
+          description: URI to redirect to after authorization
+          schema:
+            type: string
+            format: uri
+        - name: state
+          in: query
+          required: true
+          description: CSRF protection token (minimum 8 characters)
+          schema:
+            type: string
+            minLength: 8
+        - name: scope
+          in: query
+          description: Space-separated list of requested scopes
+          schema:
+            type: [string, "null"]
+        - name: code_challenge
+          in: query
+          description: PKCE code challenge (required for public clients)
+          schema:
+            type: [string, "null"]
+        - name: code_challenge_method
+          in: query
+          description: PKCE method (must be S256)
+          schema:
+            type: [string, "null"]
+            enum: [S256]
+      responses:
+        "200":
+          description: Consent screen (HTML)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to login page
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+
+  /oauth/authorize/approve:
+    post:
+      operationId: oauthAuthorizeApprove
+      tags: [OAuth]
+      summary: Approve authorization
+      description: |
+        OAuth 2.1: Handle user consent. Generates an authorization code and redirects
+        to the client's redirect URI. Requires active session. Form submitted from
+        the consent screen. Rate limit: `oauth-authorize` (30/min per IP).
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [client_id, redirect_uri, nonce]
+              properties:
+                client_id:
+                  type: string
+                  description: The client identifier
+                redirect_uri:
+                  type: string
+                  format: uri
+                  description: The redirect URI for the callback
+                scope:
+                  type: [string, "null"]
+                  description: Space-separated list of approved scopes
+                state:
+                  type: [string, "null"]
+                  description: CSRF protection state parameter
+                code_challenge:
+                  type: [string, "null"]
+                  description: PKCE code challenge
+                code_challenge_method:
+                  type: [string, "null"]
+                  enum: [S256]
+                  description: PKCE method
+                nonce:
+                  type: string
+                  format: uuid
+                  description: Authorization request nonce to prevent TOCTOU attacks
+      responses:
+        "302":
+          description: Redirect to client with authorization code
+          headers:
+            Location:
+              description: Redirect URI with `code` and optional `state` query parameters
+              schema:
+                type: string
+                format: uri
+        "400":
+          description: Invalid or expired request
+        "401":
+          description: User not authenticated
+        "429":
+          description: Too many requests
+
+  /oauth/token:
+    post:
+      operationId: oauthToken
+      tags: [OAuth]
+      summary: Token endpoint
+      description: |
+        OAuth 2.1: Exchange authorization code, refresh token, or device code for
+        access tokens. Rate limit: `oauth-token` (30/min + 100/hour per IP).
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type, client_id]
+              properties:
+                grant_type:
+                  type: string
+                  enum: [authorization_code, refresh_token, "urn:ietf:params:oauth:grant-type:device_code"]
+                  description: The grant type being used
+                client_id:
+                  type: string
+                  description: The client identifier
+                client_secret:
+                  type: [string, "null"]
+                  description: Client secret (required for confidential clients)
+                code:
+                  type: string
+                  description: Authorization code (required for authorization_code grant)
+                redirect_uri:
+                  type: string
+                  format: uri
+                  description: Redirect URI used in the authorization request (required for authorization_code grant)
+                code_verifier:
+                  type: [string, "null"]
+                  description: PKCE code verifier (required if code_challenge was used)
+                refresh_token:
+                  type: string
+                  description: Refresh token (required for refresh_token grant)
+                scope:
+                  type: [string, "null"]
+                  description: Space-separated scopes (cannot exceed original scope)
+                device_code:
+                  type: string
+                  description: Device code (required for device_code grant)
+      responses:
+        "200":
+          description: Token issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthTokenResponse"
+        "400":
+          description: Invalid request or unsupported grant type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+
+  /oauth/revoke:
+    post:
+      operationId: oauthRevoke
+      tags: [OAuth]
+      summary: Revoke token
+      description: |
+        RFC 7009: Revoke an access token or refresh token. Always returns 200 per
+        the specification, even if the token was already revoked or invalid.
+        Rate limit: `oauth-token` (30/min + 100/hour per IP).
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [token, client_id]
+              properties:
+                token:
+                  type: string
+                  description: The token to revoke
+                client_id:
+                  type: string
+                  description: The client identifier
+                client_secret:
+                  type: [string, "null"]
+                  description: Client secret (required for confidential clients)
+                token_type_hint:
+                  type: [string, "null"]
+                  enum: [access_token, refresh_token]
+                  description: Hint about the type of token
+      responses:
+        "200":
+          description: Token revoked (empty body on success)
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+
+  /oauth/device/code:
+    post:
+      operationId: oauthDeviceAuthorization
+      tags: [OAuth]
+      summary: Device Authorization
+      description: |
+        RFC 8628: Request device authorization. Returns a device code and user code
+        for the user to enter at the verification URI. Rate limit: `oauth-device`
+        (30/min per IP).
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [client_id]
+              properties:
+                client_id:
+                  type: string
+                  description: The client identifier
+                scope:
+                  type: [string, "null"]
+                  description: Space-separated list of requested scopes
+      responses:
+        "200":
+          description: Device authorization response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthDeviceAuthorizationResponse"
+        "400":
+          description: Invalid client
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+
+  /oauth/device:
+    get:
+      operationId: oauthDeviceVerificationPage
+      tags: [OAuth]
+      summary: Device verification page
+      description: |
+        RFC 8628: Displays a form for the user to enter the user code shown on their
+        device. Redirects to login if not authenticated. Rate limit: `oauth-device-verify`
+        (5/min + 30/hour per IP).
+      parameters:
+        - name: user_code
+          in: query
+          description: Pre-fill the user code input
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Device verification form (HTML)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to login page
+        "429":
+          description: Too many requests
+
+    post:
+      operationId: oauthDeviceVerificationSubmit
+      tags: [OAuth]
+      summary: Submit device user code
+      description: |
+        RFC 8628: Validates the user code and shows device consent screen.
+        Rate limit: `oauth-device-verify` (5/min + 30/hour per IP).
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [user_code]
+              properties:
+                user_code:
+                  type: string
+                  maxLength: 9
+                  description: User code displayed on the device
+      responses:
+        "200":
+          description: Device consent screen or error view (HTML)
+          content:
+            text/html:
+              schema:
+                type: string
+        "302":
+          description: Redirect to login page
+        "429":
+          description: Too many requests
+
+  /oauth/device/approve:
+    post:
+      operationId: oauthDeviceApprove
+      tags: [OAuth]
+      summary: Approve or deny device authorization
+      description: |
+        RFC 8628: Approve or deny device authorization. Requires active session.
+        Form submitted from the device consent screen.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [user_code, approve]
+              properties:
+                user_code:
+                  type: string
+                  maxLength: 9
+                  description: User code displayed on the device
+                approve:
+                  type: string
+                  enum: [approve, deny]
+                  description: Whether to approve or deny
+      responses:
+        "200":
+          description: Success or error view (HTML)
+          content:
+            text/html:
+              schema:
+                type: string
+        "401":
+          description: User not authenticated
+
+# =============================================================================
+# Components
+# =============================================================================
+components:
+  # ---------------------------------------------------------------------------
+  # Schemas
+  # ---------------------------------------------------------------------------
+  schemas:
+    # --- Envelopes ---
+    ApiSuccessEnvelope:
+      type: object
+      properties:
+        data:
+          description: Response payload
+        meta:
+          type: object
+          description: Optional metadata (contents vary by endpoint)
+
+    ApiErrorEnvelope:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: HTTP status text (e.g. "Bad Request", "Not Found")
+        message:
+          type: string
+          description: Human-readable error detail
+
+    PaginatedEnvelope:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {}
+        meta:
+          type: object
+          required: [total, limit, offset]
+          properties:
+            total:
+              type: integer
+            limit:
+              type: integer
+            offset:
+              type: integer
+
+    OAuthErrorResponse:
+      type: object
+      description: OAuth error response (RFC 6749)
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Error code
+          example: invalid_request
+        error_description:
+          type: string
+          description: Human-readable error description
+          example: The request is missing a required parameter.
+
+    # --- Resources ---
+    Document:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: [string, "null"]
+        file_type:
+          type: string
+          enum: [pdf, docx, xlsx, html, markdown, epub]
+        file_size:
+          type: integer
+          description: File size in bytes
+        has_file:
+          type: boolean
+          description: Whether the original file exists on disk
+        mime_type:
+          type: string
+        word_count:
+          type: [integer, "null"]
+        is_public:
+          type: boolean
+        status:
+          type: string
+          description: Processing status
+        error_message:
+          type:
+            - string
+            - 'null'
+          description: Error details when status is failed
+        content_hash:
+          type: [string, "null"]
+        tags:
+          type: array
+          items:
+            type: string
+        user:
+          $ref: "#/components/schemas/User"
+        created_at:
+          type: [string, "null"]
+          format: date-time
+        updated_at:
+          type: [string, "null"]
+          format: date-time
+        processed_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: When content extraction completed
+
+    User:
+      type: object
+      required: [id, name, email, is_admin]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        oidc_sub:
+          type: string
+          description: OpenID Connect subject claim. Empty for legacy pre-v0.21.0 rows.
+        oidc_provider:
+          type: string
+          description: Provider identifier (e.g. hostname of the issuer).
+        email_verified_at:
+          type: string
+          format: date-time
+          description: Empty string when the ID token did not carry `email_verified=true`.
+        is_admin:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ZimArchive:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        title:
+          type: string
+        description:
+          type: [string, "null"]
+        language:
+          type: [string, "null"]
+        category:
+          type: [string, "null"]
+          enum: [devdocs, wikipedia, stack_exchange, other]
+        creator:
+          type: [string, "null"]
+        publisher:
+          type: [string, "null"]
+        article_count:
+          type: [integer, "null"]
+        media_count:
+          type: [integer, "null"]
+        file_size:
+          type: [integer, "null"]
+          description: File size in bytes
+        file_size_human:
+          type: [string, "null"]
+        tags:
+          type: [array, "null"]
+          items:
+            type: string
+        last_synced_at:
+          type: [string, "null"]
+          format: date-time
+
+    ZimArticle:
+      type: object
+      properties:
+        archive_name:
+          type: string
+        path:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        mime_type:
+          type: string
+
+    ZimArticleSearchResult:
+      type: object
+      properties:
+        archive_name:
+          type: string
+        title:
+          type: string
+        path:
+          type: string
+        snippet:
+          type: [string, "null"]
+        score:
+          type: [number, "null"]
+
+    GitTemplate:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: [string, "null"]
+        repository_url:
+          type: string
+          format: uri
+        branch:
+          type: string
+        category:
+          type: string
+          enum: [claude, memory-bank, project]
+        tags:
+          type: [array, "null"]
+          items:
+            type: string
+        is_public:
+          type: boolean
+        is_enabled:
+          type: boolean
+        status:
+          type: string
+          description: "Sync status (e.g., pending, syncing, synced, failed)"
+        error_message:
+          type: [string, "null"]
+        file_count:
+          type: integer
+        total_size_bytes:
+          type: integer
+        total_size_human:
+          type: string
+        last_synced_at:
+          type: [string, "null"]
+          format: date-time
+        last_commit_sha:
+          type: [string, "null"]
+        created_at:
+          type: [string, "null"]
+          format: date-time
+        updated_at:
+          type: [string, "null"]
+          format: date-time
+
+    GitTemplateFile:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        path:
+          type: string
+        filename:
+          type: string
+        extension:
+          type: [string, "null"]
+        size_bytes:
+          type: integer
+        size_human:
+          type: string
+        is_essential:
+          type: boolean
+        content_hash:
+          type: [string, "null"]
+        variables:
+          type: [array, "null"]
+          items:
+            type: string
+        created_at:
+          type: [string, "null"]
+          format: date-time
+        updated_at:
+          type: [string, "null"]
+          format: date-time
+
+    GitTemplateStructure:
+      type: object
+      properties:
+        template_uuid:
+          type: string
+          format: uuid
+        template_name:
+          type: string
+        file_count:
+          type: integer
+        total_size_bytes:
+          type: integer
+        total_size_human:
+          type: string
+        essential_files:
+          type: array
+          items:
+            type: string
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitTemplateFile"
+        directories:
+          type: array
+          items:
+            type: string
+
+    DeploymentGuide:
+      type: object
+      properties:
+        template_uuid:
+          type: string
+          format: uuid
+        template_name:
+          type: string
+        essential_files:
+          type: object
+          additionalProperties:
+            type: string
+          description: Map of essential file paths to their content
+        memory_bank_files:
+          type: object
+          additionalProperties:
+            type: string
+          description: Map of memory bank file paths to their content
+        variables_used:
+          type: array
+          items:
+            type: string
+        variables_provided:
+          type: object
+          additionalProperties:
+            type: string
+        variables_missing:
+          type: array
+          items:
+            type: string
+
+    DocumentAnalysisSuggestions:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        language:
+          type: string
+        word_count:
+          type: integer
+        estimated_reading_time:
+          type: string
+
+    UnifiedSearchResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/UnifiedSearchResult"
+        meta:
+          type: object
+          properties:
+            query:
+              type: string
+            total:
+              type: integer
+            processing_time_ms:
+              type: number
+            limit:
+              type: integer
+            offset:
+              type: integer
+
+    UnifiedSearchResult:
+      type: object
+      properties:
+        uuid:
+          type: string
+        source:
+          type: string
+          enum: [document, git_template, zim_archive]
+        title:
+          type: string
+        description:
+          type: [string, "null"]
+        relevance_score:
+          type: number
+        metadata:
+          type: object
+          additionalProperties: true
+
+    SearchResponse:
+      type: object
+      description: PostgreSQL FTS search results
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            description: Normalized search hit
+        meta:
+          type: object
+          properties:
+            query:
+              type: string
+            total:
+              type: integer
+            processing_time_ms:
+              type: number
+            limit:
+              type: integer
+            offset:
+              type: integer
+
+    # --- Admin resources ---
+    ExternalService:
+      type: object
+      required: [uuid, name, type, base_url, status]
+      properties:
+        uuid: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        type:
+          type: string
+          enum: [kiwix]
+        base_url: { type: string, format: uri }
+        priority: { type: integer }
+        status:
+          type: string
+          enum: [unknown, healthy, unhealthy]
+        is_enabled: { type: boolean }
+        is_env_managed:
+          type: boolean
+          description: |
+            True when the service was provisioned from environment variables.
+            Env-managed services reject mutations with 403.
+        error_count: { type: integer }
+        consecutive_failures: { type: integer }
+        last_error: { type: string }
+        last_error_at: { type: string, format: date-time }
+        last_check_at: { type: string, format: date-time }
+        last_latency_ms: { type: integer, format: int64 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    OAuthClient:
+      type: object
+      required: [id, client_id, client_name, redirect_uris, grant_types, token_endpoint_auth_method]
+      properties:
+        id: { type: integer, format: int64 }
+        client_id: { type: string }
+        client_name: { type: string }
+        redirect_uris:
+          type: array
+          items: { type: string, format: uri }
+        grant_types:
+          type: array
+          items: { type: string }
+        response_types:
+          type: array
+          items: { type: string }
+        token_endpoint_auth_method:
+          type: string
+          enum: [client_secret_basic, client_secret_post, none]
+        scope:
+          type: string
+          description: Base registration scope. Effective scope at runtime is `base ∪ active scope grants`.
+        last_used_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ScopeGrant:
+      type: object
+      required: [id, scope, granted_by, granted_at]
+      properties:
+        id: { type: integer, format: int64 }
+        scope: { type: string }
+        granted_by:
+          type: integer
+          format: int64
+          description: User ID of the admin who approved the grant.
+        granted_by_email:
+          type: [string, "null"]
+          description: Email of the granter, or null if the user row has since been deleted.
+        granted_by_name:
+          type: [string, "null"]
+          description: Display name of the granter, or null if the user row has since been deleted.
+        granted_at: { type: string, format: date-time }
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: Null when `OAUTH_SCOPE_GRANT_TTL=0` (no-expiry grants).
+
+    DashboardStats:
+      type: object
+      required: [documents, users, oauth_clients, external_services, zim_archives, git_templates]
+      properties:
+        documents: { type: integer }
+        users: { type: integer }
+        oauth_clients: { type: integer }
+        external_services: { type: integer }
+        zim_archives: { type: integer }
+        git_templates: { type: integer }
+        queue:
+          type: object
+          description: Present only when River is available. Counters on repository failure fall back to zero.
+          properties:
+            pending: { type: integer, description: "`available + retryable` River states." }
+            completed: { type: integer, description: "Currently `running` (name preserved for SPA compatibility)." }
+            failed: { type: integer, description: "`discarded + cancelled`." }
+
+    QueueStats:
+      type: object
+      required: [available, running, retryable, discarded, cancelled]
+      properties:
+        available: { type: integer }
+        running: { type: integer }
+        retryable: { type: integer }
+        discarded: { type: integer }
+        cancelled: { type: integer }
+
+    FailedJob:
+      type: object
+      required: [id, kind, queue, state, attempt, max_attempts, created_at]
+      properties:
+        id: { type: integer, format: int64 }
+        kind:
+          type: string
+          description: Job kind (e.g. `document.extract`, `kiwix.sync`).
+        queue: { type: string }
+        state:
+          type: string
+          enum: [discarded, cancelled, retryable]
+        attempt: { type: integer }
+        max_attempts: { type: integer }
+        created_at: { type: string, format: date-time }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              at: { type: string, format: date-time }
+              attempt: { type: integer }
+              error: { type: string }
+              trace: { type: string }
+
+    Event:
+      type: object
+      description: |
+        Queue lifecycle event delivered on the SSE streams. Admins subscribed
+        via `/api/admin/events/stream` receive every event; users subscribed
+        via `/api/events/stream` see only events with a matching `user_id`
+        (or nothing, when `user_id=0` — those are scheduler-originated
+        jobs, admin-only by design).
+      required: [type, job_kind, job_id, queue, timestamp]
+      properties:
+        type:
+          type: string
+          description: Event type (e.g. `job.started`, `job.completed`, `job.failed`).
+        job_kind: { type: string }
+        job_id: { type: integer, format: int64 }
+        queue: { type: string }
+        attempt: { type: integer }
+        error: { type: string }
+        timestamp: { type: string, format: date-time }
+        user_id:
+          type: integer
+          format: int64
+          description: Owning user (zero for scheduler jobs). Non-admins see only their own.
+        doc_uuid:
+          type: string
+          description: Populated for document-pipeline events so SPA clients can target UI updates.
+
+    # --- Health ---
+    HealthBasicResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy]
+        version:
+          type: string
+          description: Application version from build metadata
+        timestamp:
+          type: string
+          format: date-time
+        application:
+          type: string
+        environment:
+          type: string
+
+    HealthDeepResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded]
+        timestamp:
+          type: string
+          format: date-time
+        application:
+          type: string
+        environment:
+          type: string
+        checks:
+          type: object
+          properties:
+            database:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [healthy, unhealthy]
+                latency_ms:
+                  type: number
+                connection:
+                  type: string
+                error:
+                  type: string
+            redis:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [healthy, unhealthy]
+                latency_ms:
+                  type: number
+                error:
+                  type: string
+            filesystem:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [healthy, unhealthy]
+                writable:
+                  type: boolean
+                error:
+                  type: string
+            queue:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [healthy, unhealthy]
+                driver:
+                  type: string
+                active_supervisors:
+                  type: integer
+                error:
+                  type: string
+
+    # --- OAuth responses ---
+    OAuthServerMetadata:
+      type: object
+      properties:
+        issuer:
+          type: string
+          format: uri
+        authorization_endpoint:
+          type: string
+          format: uri
+        token_endpoint:
+          type: string
+          format: uri
+        revocation_endpoint:
+          type: string
+          format: uri
+        registration_endpoint:
+          type: string
+          format: uri
+        device_authorization_endpoint:
+          type: string
+          format: uri
+        response_types_supported:
+          type: array
+          items:
+            type: string
+        grant_types_supported:
+          type: array
+          items:
+            type: string
+        token_endpoint_auth_methods_supported:
+          type: array
+          items:
+            type: string
+        code_challenge_methods_supported:
+          type: array
+          items:
+            type: string
+        scopes_supported:
+          type: array
+          items:
+            type: string
+        protected_resources:
+          type: array
+          items:
+            type: string
+            format: uri
+
+    OAuthClientRegistrationResponse:
+      type: object
+      properties:
+        client_id:
+          type: string
+        client_id_issued_at:
+          type: integer
+          description: Unix timestamp of client registration
+        client_name:
+          type: string
+        redirect_uris:
+          type: array
+          items:
+            type: string
+            format: uri
+        grant_types:
+          type: array
+          items:
+            type: string
+        response_types:
+          type: array
+          items:
+            type: string
+        token_endpoint_auth_method:
+          type: string
+        scope:
+          type: [string, "null"]
+        client_secret:
+          type: string
+          description: Only included for confidential clients (token_endpoint_auth_method != none)
+        client_secret_expires_at:
+          type: integer
+          description: Unix timestamp when secret expires (0 = never). Only for confidential clients.
+
+    OAuthTokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          description: Token lifetime in seconds
+        refresh_token:
+          type: [string, "null"]
+        scope:
+          type: [string, "null"]
+
+    OAuthDeviceAuthorizationResponse:
+      type: object
+      required: [device_code, user_code, verification_uri, expires_in, interval]
+      properties:
+        device_code:
+          type: string
+        user_code:
+          type: string
+          description: Code for the user to enter at the verification URI
+        verification_uri:
+          type: string
+          format: uri
+        verification_uri_complete:
+          type: string
+          format: uri
+          description: Verification URI with user_code pre-filled
+        expires_in:
+          type: integer
+          description: Device code lifetime in seconds (default 900)
+        interval:
+          type: integer
+          description: Polling interval in seconds
+
+  # ---------------------------------------------------------------------------
+  # Responses
+  # ---------------------------------------------------------------------------
+  responses:
+    Unauthenticated:
+      description: |
+        Authentication required. The `WWW-Authenticate` header indicates the
+        required scheme and (for MCP bearer-token requests) the OAuth
+        authorization server metadata URL per RFC 9728. Clients use this to
+        discover the authorization server and obtain a token.
+      headers:
+        WWW-Authenticate:
+          description: |
+            RFC 6750 bearer challenge. For audience-bound endpoints (MCP, API)
+            the header includes `error` and `error_description` when a token is
+            present but invalid (e.g. `Bearer error="invalid_token",
+            error_description="audience mismatch"`).
+          schema:
+            type: string
+          example: 'Bearer realm="documcp"'
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorEnvelope"
+          example:
+            error: Unauthorized
+            message: authentication required
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorEnvelope"
+          example:
+            error: Forbidden
+            message: insufficient scope
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorEnvelope"
+          example:
+            error: Not Found
+            message: resource not found
+
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorEnvelope"
+          example:
+            error: Unprocessable Entity
+            message: title exceeds maximum length of 255
+
+    RateLimitExceeded:
+      description: Too many requests
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorEnvelope"
+          example:
+            error: Too Many Requests
+            message: rate limit exceeded
+      headers:
+        Retry-After:
+          description: Seconds until the rate limit resets
+          schema:
+            type: integer
+
+    InternalUnauthorized:
+      description: Valid INTERNAL_API_TOKEN bearer token required
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Unauthorized
+              message:
+                type: string
+                example: Valid bearer token required.
+
+  # ---------------------------------------------------------------------------
+  # Security Schemes
+  # ---------------------------------------------------------------------------
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Bearer token obtained via OAuth 2.1 flow
+
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: documcp_session
+      description: Session cookie for browser-based OAuth consent flows
+
+    internalToken:
+      type: http
+      scheme: bearer
+      description: |
+        Static INTERNAL_API_TOKEN for observability endpoints (/metrics, /api/health/deep).
+        When INTERNAL_API_TOKEN is not configured, access is unrestricted.
+
+    oauth2:
+      type: oauth2
+      description: |
+        OAuth 2.1 with PKCE (S256 required for public clients).
+        Supports authorization_code, refresh_token, and device_code grants.
+      flows:
+        authorizationCode:
+          authorizationUrl: /oauth/authorize
+          tokenUrl: /oauth/token
+          refreshUrl: /oauth/token
+          scopes:
+            mcp:access: Access the MCP endpoint
+            documents:read: Read documents and search
+            documents:write: "Create, update, and delete documents"
+            search:read: Search across all indexes
+            zim:read: Read ZIM archives and articles
+            templates:read: Read Git templates and files
+            templates:write: "Create, update, and delete Git templates"
+            services:read: Read external service configuration
+            services:write: Manage external services
+            admin: Full administrative access

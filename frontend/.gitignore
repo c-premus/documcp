@@ -13,6 +13,10 @@ dist-ssr
 coverage
 *.local
 
+# Build-copy of the canonical OpenAPI spec (docs/contracts/openapi.yaml).
+# Written by the copy-openapi-spec Vite plugin on build/dev start.
+public/openapi.yaml
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

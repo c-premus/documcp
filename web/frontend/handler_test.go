@@ -150,6 +150,12 @@ func TestRootAssetHandler(t *testing.T) {
 			wantContentType: "image/png",
 		},
 		{
+			name:            "openapi.yaml returns 200 with application/yaml",
+			path:            "/openapi.yaml",
+			wantStatus:      http.StatusOK,
+			wantContentType: "application/yaml",
+		},
+		{
 			name:            "non-allowlisted path returns 404",
 			path:            "/index.html",
 			wantStatus:      http.StatusNotFound,

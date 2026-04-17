@@ -127,13 +127,6 @@ const quickLinks: readonly QuickLink[] = [
     color: 'text-emerald-600 dark:text-emerald-400',
     route: '/git-templates',
   },
-  {
-    label: 'API Docs',
-    description: 'REST API reference',
-    icon: BookOpenIcon,
-    color: 'text-purple-600 dark:text-purple-400',
-    route: '/api-docs',
-  },
 ] as const
 
 async function fetchStats(): Promise<void> {

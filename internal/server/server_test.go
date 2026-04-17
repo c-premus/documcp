@@ -749,6 +749,7 @@ func TestRegisterRoutes_RootAssetHandler(t *testing.T) {
 		"/site.webmanifest",
 		"/web-app-manifest-192x192.png",
 		"/web-app-manifest-512x512.png",
+		"/openapi.yaml",
 	}
 
 	for _, path := range paths {
