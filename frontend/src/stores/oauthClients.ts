@@ -20,6 +20,8 @@ export interface ScopeGrant {
   readonly id: number
   readonly scope: string
   readonly granted_by: number
+  readonly granted_by_email: string | null
+  readonly granted_by_name: string | null
   readonly granted_at: string
   readonly expires_at: string | null
 }

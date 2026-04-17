@@ -28,6 +28,10 @@ function formatRelative(dateString: string | null): string {
   return formatDistanceToNow(new Date(dateString), { addSuffix: true })
 }
 
+function formatGranter(grant: ScopeGrant): string {
+  return grant.granted_by_email || grant.granted_by_name || `User #${grant.granted_by}`
+}
+
 async function loadClient(id: number): Promise<void> {
   try {
     await Promise.all([store.fetchClient(id), store.fetchScopeGrants(id)])
@@ -77,7 +81,7 @@ const grantColumns: ColumnDef<ScopeGrant, unknown>[] = [
     accessorKey: 'granted_by',
     header: 'Granted By',
     enableSorting: false,
-    cell: ({ getValue }) => `User #${getValue<number>()}`,
+    cell: ({ row }) => formatGranter(row.original),
   },
   {
     accessorKey: 'granted_at',
