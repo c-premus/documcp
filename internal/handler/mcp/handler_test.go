@@ -3,6 +3,7 @@ package mcphandler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"strings"
@@ -1256,7 +1257,7 @@ func TestHandleListGitTemplates(t *testing.T) {
 						Name:           "Claude Template",
 						Description:    sql.NullString{String: "CLAUDE.md setup", Valid: true},
 						Category:       sql.NullString{String: "claude", Valid: true},
-						Tags:           sql.NullString{String: `["ai","claude"]`, Valid: true},
+						Tags:           json.RawMessage(`["ai","claude"]`),
 						FileCount:      5,
 						TotalSizeBytes: 1024,
 						Status:         model.GitTemplateStatusSynced,

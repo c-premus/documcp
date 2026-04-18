@@ -1,7 +1,7 @@
 package model
 
 import (
-	"database/sql"
+	"encoding/json"
 	"testing"
 )
 
@@ -10,28 +10,28 @@ func TestZimArchive_ParseTags(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		tags    sql.NullString
+		tags    json.RawMessage
 		want    []string
 		wantErr bool
 	}{
 		{
 			name: "null tags",
-			tags: sql.NullString{Valid: false},
+			tags: nil,
 			want: nil,
 		},
 		{
 			name: "empty array",
-			tags: sql.NullString{String: `[]`, Valid: true},
+			tags: json.RawMessage(`[]`),
 			want: []string{},
 		},
 		{
 			name: "multiple tags",
-			tags: sql.NullString{String: `["wikipedia","english","nopic"]`, Valid: true},
+			tags: json.RawMessage(`["wikipedia","english","nopic"]`),
 			want: []string{"wikipedia", "english", "nopic"},
 		},
 		{
 			name:    "invalid JSON",
-			tags:    sql.NullString{String: `{bad`, Valid: true},
+			tags:    json.RawMessage(`{bad`),
 			wantErr: true,
 		},
 	}

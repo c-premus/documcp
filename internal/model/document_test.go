@@ -1,7 +1,7 @@
 package model
 
 import (
-	"database/sql"
+	"encoding/json"
 	"testing"
 )
 
@@ -10,7 +10,7 @@ func TestDocument_ParseMetadata(t *testing.T) {
 
 	t.Run("null metadata returns nil", func(t *testing.T) {
 		t.Parallel()
-		d := &Document{Metadata: sql.NullString{Valid: false}}
+		d := &Document{Metadata: nil}
 		var dest map[string]any
 		if err := d.ParseMetadata(&dest); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -22,10 +22,7 @@ func TestDocument_ParseMetadata(t *testing.T) {
 
 	t.Run("valid JSON object", func(t *testing.T) {
 		t.Parallel()
-		d := &Document{Metadata: sql.NullString{
-			String: `{"author":"Jane","pages":42}`,
-			Valid:  true,
-		}}
+		d := &Document{Metadata: json.RawMessage(`{"author":"Jane","pages":42}`)}
 		var dest map[string]any
 		if err := d.ParseMetadata(&dest); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -40,7 +37,7 @@ func TestDocument_ParseMetadata(t *testing.T) {
 
 	t.Run("invalid JSON", func(t *testing.T) {
 		t.Parallel()
-		d := &Document{Metadata: sql.NullString{String: `{bad`, Valid: true}}
+		d := &Document{Metadata: json.RawMessage(`{bad`)}
 		var dest map[string]any
 		if err := d.ParseMetadata(&dest); err == nil {
 			t.Fatal("expected error for invalid JSON")
@@ -53,7 +50,7 @@ func TestDocumentVersion_ParseMetadata(t *testing.T) {
 
 	t.Run("null metadata returns nil", func(t *testing.T) {
 		t.Parallel()
-		dv := &DocumentVersion{Metadata: sql.NullString{Valid: false}}
+		dv := &DocumentVersion{Metadata: nil}
 		var dest map[string]any
 		if err := dv.ParseMetadata(&dest); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -65,10 +62,7 @@ func TestDocumentVersion_ParseMetadata(t *testing.T) {
 
 	t.Run("valid JSON", func(t *testing.T) {
 		t.Parallel()
-		dv := &DocumentVersion{Metadata: sql.NullString{
-			String: `{"version":2}`,
-			Valid:  true,
-		}}
+		dv := &DocumentVersion{Metadata: json.RawMessage(`{"version":2}`)}
 		var dest map[string]any
 		if err := dv.ParseMetadata(&dest); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -80,7 +74,7 @@ func TestDocumentVersion_ParseMetadata(t *testing.T) {
 
 	t.Run("invalid JSON", func(t *testing.T) {
 		t.Parallel()
-		dv := &DocumentVersion{Metadata: sql.NullString{String: `bad`, Valid: true}}
+		dv := &DocumentVersion{Metadata: json.RawMessage(`bad`)}
 		var dest map[string]any
 		if err := dv.ParseMetadata(&dest); err == nil {
 			t.Fatal("expected error")

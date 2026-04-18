@@ -5,7 +5,9 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -387,7 +389,7 @@ func TestDocumentRepository_CreateVersion(t *testing.T) {
 				Version:    tt.version,
 				FilePath:   tt.filePath,
 				Content:    sql.NullString{String: tt.content, Valid: true},
-				Metadata:   sql.NullString{String: tt.metadata, Valid: true},
+				Metadata:   json.RawMessage(tt.metadata),
 			}
 
 			if err := repo.CreateVersion(ctx, ver); err != nil {
@@ -415,8 +417,20 @@ func TestDocumentRepository_CreateVersion(t *testing.T) {
 			if !found.Content.Valid || found.Content.String != tt.content {
 				t.Errorf("Content = %q, want %q", found.Content.String, tt.content)
 			}
-			if !found.Metadata.Valid || found.Metadata.String != tt.metadata {
-				t.Errorf("Metadata = %q, want %q", found.Metadata.String, tt.metadata)
+			// JSONB normalizes whitespace on storage; compare structurally.
+			if len(found.Metadata) == 0 {
+				t.Errorf("Metadata empty, want %q", tt.metadata)
+			} else {
+				var got, want any
+				if err := json.Unmarshal(found.Metadata, &got); err != nil {
+					t.Fatalf("unmarshaling stored metadata: %v", err)
+				}
+				if err := json.Unmarshal([]byte(tt.metadata), &want); err != nil {
+					t.Fatalf("unmarshaling expected metadata: %v", err)
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Errorf("Metadata = %v, want %v", got, want)
+				}
 			}
 			if !found.CreatedAt.Valid {
 				t.Error("CreatedAt is not set")

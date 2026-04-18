@@ -197,7 +197,7 @@ func TestToGitTemplateResponse(t *testing.T) {
 			RepositoryURL: "https://example.com",
 			Branch:        "main",
 			Status:        model.GitTemplateStatusSynced,
-			Tags:          sql.NullString{String: `["go","docker","k8s"]`, Valid: true},
+			Tags:          json.RawMessage(`["go","docker","k8s"]`),
 		}
 
 		resp := toGitTemplateResponse(gt)
@@ -242,7 +242,7 @@ func TestToGitTemplateResponse(t *testing.T) {
 			RepositoryURL: "https://example.com",
 			Branch:        "main",
 			Status:        model.GitTemplateStatusSynced,
-			Tags:          sql.NullString{String: "not json", Valid: true},
+			Tags:          json.RawMessage(`not json`),
 		}
 
 		resp := toGitTemplateResponse(gt)

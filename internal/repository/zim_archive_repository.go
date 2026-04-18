@@ -254,14 +254,13 @@ func (r *ZimArchiveRepository) ToggleSearchable(ctx context.Context, id int64) e
 // UpsertFromCatalog inserts or updates a ZIM archive from a catalog sync entry.
 // On conflict by name, it updates the mutable fields and sets last_synced_at.
 func (r *ZimArchiveRepository) UpsertFromCatalog(ctx context.Context, serviceID int64, entry ZimArchiveUpsert) error {
-	var tagsJSON *string
+	var tagsJSON []byte
 	if len(entry.Tags) > 0 {
 		b, err := json.Marshal(entry.Tags)
 		if err != nil {
 			return fmt.Errorf("marshaling tags for zim archive %q: %w", entry.Name, err)
 		}
-		s := string(b)
-		tagsJSON = &s
+		tagsJSON = b
 	}
 
 	_, err := r.db.Exec(ctx,
