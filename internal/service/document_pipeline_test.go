@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -799,6 +800,119 @@ func TestDocumentPipeline_ProcessDocument_Success(t *testing.T) {
 	}
 	if !updatedDoc.ProcessedAt.Valid {
 		t.Error("expected ProcessedAt to be set")
+	}
+}
+
+// TestDocumentPipeline_ProcessDocument_PersistsMetadata confirms that
+// extractor-emitted metadata is marshaled to JSON and written to
+// doc.Metadata, bridging the v0.21.x gap where result.Metadata was
+// dropped on the floor.
+func TestDocumentPipeline_ProcessDocument_PersistsMetadata(t *testing.T) {
+	t.Parallel()
+
+	storagePath := t.TempDir()
+	seedProcessDocFile(t, storagePath)
+	var updatedDoc *model.Document
+	repo := &mockDocumentRepo{
+		findByIDFn: func(_ context.Context, _ int64) (*model.Document, error) {
+			return &model.Document{
+				ID:       10,
+				UUID:     "meta-persist",
+				FilePath: "docs/test.md",
+				MIMEType: "text/markdown",
+				Status:   model.DocumentStatusUploaded,
+			}, nil
+		},
+		updateFn: func(_ context.Context, doc *model.Document) error {
+			updatedDoc = doc
+			return nil
+		},
+	}
+
+	ext := &mockExtractor{
+		supportsFn: func(mime string) bool { return mime == "text/markdown" },
+		extractFn: func(_ context.Context, _ string) (*extractor.ExtractedContent, error) {
+			return &extractor.ExtractedContent{
+				Content:   "body",
+				WordCount: 1,
+				Metadata: map[string]any{
+					"title":    "A Book",
+					"creator":  "An Author",
+					"subjects": []string{"science", "history"},
+				},
+			}, nil
+		},
+	}
+	registry := extractor.NewRegistry(ext)
+
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
+	pipeline := newPipelineAt(t, svc, registry, nil, storagePath)
+
+	if err := pipeline.ProcessDocument(context.Background(), 10); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if updatedDoc == nil {
+		t.Fatal("expected document update")
+	}
+	if len(updatedDoc.Metadata) == 0 {
+		t.Fatal("expected metadata to be persisted, got empty")
+	}
+	var got map[string]any
+	if err := json.Unmarshal(updatedDoc.Metadata, &got); err != nil {
+		t.Fatalf("unmarshaling persisted metadata: %v", err)
+	}
+	if got["title"] != "A Book" {
+		t.Errorf("title = %v, want A Book", got["title"])
+	}
+	if got["creator"] != "An Author" {
+		t.Errorf("creator = %v, want An Author", got["creator"])
+	}
+}
+
+// TestDocumentPipeline_ProcessDocument_NilMetadataWhenEmpty confirms
+// that an extractor returning no metadata produces a nil metadata column
+// (not a JSON `null` literal or empty-object payload).
+func TestDocumentPipeline_ProcessDocument_NilMetadataWhenEmpty(t *testing.T) {
+	t.Parallel()
+
+	storagePath := t.TempDir()
+	seedProcessDocFile(t, storagePath)
+	var updatedDoc *model.Document
+	repo := &mockDocumentRepo{
+		findByIDFn: func(_ context.Context, _ int64) (*model.Document, error) {
+			return &model.Document{
+				ID:       11,
+				UUID:     "meta-nil",
+				FilePath: "docs/test.md",
+				MIMEType: "text/markdown",
+				Status:   model.DocumentStatusUploaded,
+			}, nil
+		},
+		updateFn: func(_ context.Context, doc *model.Document) error {
+			updatedDoc = doc
+			return nil
+		},
+	}
+
+	ext := &mockExtractor{
+		supportsFn: func(mime string) bool { return mime == "text/markdown" },
+		extractFn: func(_ context.Context, _ string) (*extractor.ExtractedContent, error) {
+			return &extractor.ExtractedContent{Content: "body", WordCount: 1}, nil
+		},
+	}
+	registry := extractor.NewRegistry(ext)
+
+	svc := NewDocumentService(repo, testutil.DiscardLogger())
+	pipeline := newPipelineAt(t, svc, registry, nil, storagePath)
+
+	if err := pipeline.ProcessDocument(context.Background(), 11); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if updatedDoc == nil {
+		t.Fatal("expected document update")
+	}
+	if updatedDoc.Metadata != nil {
+		t.Errorf("Metadata = %q, want nil", string(updatedDoc.Metadata))
 	}
 }
 

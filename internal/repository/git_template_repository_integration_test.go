@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"testing"
 
 	"github.com/c-premus/documcp/internal/testutil"
@@ -76,7 +77,7 @@ func TestGitTemplateRepository_Create(t *testing.T) {
 			IsEnabled:     true,
 			Description:   sql.NullString{String: "A template with optional fields", Valid: true},
 			Category:      sql.NullString{String: "backend", Valid: true},
-			Tags:          sql.NullString{String: `["go","api"]`, Valid: true},
+			Tags:          json.RawMessage(`["go","api"]`),
 		}
 
 		err := repo.Create(ctx, tmplOpt)
@@ -89,9 +90,38 @@ func TestGitTemplateRepository_Create(t *testing.T) {
 		assert.Equal(t, "A template with optional fields", found.Description.String)
 		assert.True(t, found.Category.Valid)
 		assert.Equal(t, "backend", found.Category.String)
-		assert.True(t, found.Tags.Valid)
-		assert.Equal(t, `["go","api"]`, found.Tags.String)
+		require.NotEmpty(t, found.Tags)
+		assert.JSONEq(t, `["go","api"]`, string(found.Tags))
 	})
+}
+
+// TestGitTemplateRepository_TagsContributeToSearchVector is a regression
+// guard for the migration 000017 STORED search_vector rebuild on
+// git_templates. Mirrors the zim_archives guard.
+func TestGitTemplateRepository_TagsContributeToSearchVector(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewGitTemplateRepository(testPool, testutil.DiscardLogger(), nil)
+
+	tmpl := &model.GitTemplate{
+		UUID:          testUUID("git-tmpl-fts-tags"),
+		Name:          "Unrelated Name",
+		Slug:          "unrelated-name",
+		RepositoryURL: "https://example.com/repo",
+		Branch:        "main",
+		Status:        model.GitTemplateStatusPending,
+		IsEnabled:     true,
+		Tags:          json.RawMessage(`["kubernetes","helm"]`),
+	}
+	require.NoError(t, repo.Create(ctx, tmpl))
+
+	var hitName string
+	err := testPool.QueryRow(ctx,
+		`SELECT name FROM git_templates
+		 WHERE search_vector @@ to_tsquery('documcp_english', 'kubernetes')`,
+	).Scan(&hitName)
+	require.NoError(t, err, "tag-only FTS query should return the seeded row")
+	assert.Equal(t, "Unrelated Name", hitName)
 }
 
 func TestGitTemplateRepository_FindByUUID(t *testing.T) {

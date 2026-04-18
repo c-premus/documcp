@@ -27,9 +27,9 @@ type GitTemplate struct {
 	Branch         string            `db:"branch" json:"branch"`
 	GitToken       sql.NullString    `db:"git_token" json:"-"`
 	ReadmeContent  sql.NullString    `db:"readme_content" json:"readme_content"`
-	Manifest       sql.NullString    `db:"manifest" json:"manifest"`
+	Manifest       json.RawMessage   `db:"manifest" json:"manifest,omitempty"`
 	Category       sql.NullString    `db:"category" json:"category"`
-	Tags           sql.NullString    `db:"tags" json:"tags"`
+	Tags           json.RawMessage   `db:"tags" json:"tags,omitempty"`
 	UserID         sql.NullInt64     `db:"user_id" json:"user_id"`
 	IsPublic       bool              `db:"is_public" json:"is_public"`
 	IsEnabled      bool              `db:"is_enabled" json:"is_enabled"`
@@ -46,24 +46,26 @@ type GitTemplate struct {
 	DeletedAt      sql.NullTime      `db:"deleted_at" json:"deleted_at"`
 }
 
-// ParseTags decodes the JSON tags string into a string slice.
+// ParseTags decodes the JSONB tags column into a string slice.
+// Returns (nil, nil) when tags is absent.
 func (gt *GitTemplate) ParseTags() ([]string, error) {
-	if !gt.Tags.Valid {
+	if len(gt.Tags) == 0 {
 		return nil, nil
 	}
 	var tags []string
-	if err := json.Unmarshal([]byte(gt.Tags.String), &tags); err != nil {
+	if err := json.Unmarshal(gt.Tags, &tags); err != nil {
 		return nil, fmt.Errorf("unmarshaling git template tags: %w", err)
 	}
 	return tags, nil
 }
 
-// ParseManifest decodes the JSON manifest string into the provided destination.
+// ParseManifest decodes the JSONB manifest column into the provided destination.
+// Returns nil when manifest is absent.
 func (gt *GitTemplate) ParseManifest(dest any) error {
-	if !gt.Manifest.Valid {
+	if len(gt.Manifest) == 0 {
 		return nil
 	}
-	if err := json.Unmarshal([]byte(gt.Manifest.String), dest); err != nil {
+	if err := json.Unmarshal(gt.Manifest, dest); err != nil {
 		return fmt.Errorf("unmarshaling git template manifest: %w", err)
 	}
 	return nil

@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -178,7 +179,7 @@ func TestToSyncTemplate(t *testing.T) {
 				Branch:        "main",
 				GitToken:      sql.NullString{String: "ghp_secret", Valid: true},
 				Category:      sql.NullString{String: "web", Valid: true},
-				Tags:          sql.NullString{String: `["go","api"]`, Valid: true},
+				Tags:          json.RawMessage(`["go","api"]`),
 				LastCommitSHA: sql.NullString{String: "abc123def", Valid: true},
 			},
 			check: func(t *testing.T, r git.SyncTemplate) {
@@ -209,7 +210,7 @@ func TestToSyncTemplate(t *testing.T) {
 				Category:      sql.NullString{Valid: false},
 				GitToken:      sql.NullString{Valid: false},
 				LastCommitSHA: sql.NullString{Valid: false},
-				Tags:          sql.NullString{Valid: false},
+				Tags:          nil,
 			},
 			check: func(t *testing.T, r git.SyncTemplate) {
 				t.Helper()
@@ -229,7 +230,7 @@ func TestToSyncTemplate(t *testing.T) {
 				Slug:          "tmpl2",
 				RepositoryURL: "https://example.com/repo2",
 				Branch:        "dev",
-				Tags:          sql.NullString{String: `["alpha","beta","gamma"]`, Valid: true},
+				Tags:          json.RawMessage(`["alpha","beta","gamma"]`),
 			},
 			check: func(t *testing.T, r git.SyncTemplate) {
 				t.Helper()
@@ -237,7 +238,7 @@ func TestToSyncTemplate(t *testing.T) {
 			},
 		},
 		{
-			name: "empty tags string",
+			name: "empty tags (zero-length RawMessage)",
 			input: model.GitTemplate{
 				ID:            3,
 				UUID:          "uuid-3",
@@ -245,7 +246,7 @@ func TestToSyncTemplate(t *testing.T) {
 				Slug:          "tmpl3",
 				RepositoryURL: "https://example.com/repo3",
 				Branch:        "main",
-				Tags:          sql.NullString{String: "", Valid: true},
+				Tags:          json.RawMessage{},
 			},
 			check: func(t *testing.T, r git.SyncTemplate) {
 				t.Helper()
@@ -261,13 +262,13 @@ func TestToSyncTemplate(t *testing.T) {
 				Slug:          "tmpl4",
 				RepositoryURL: "https://example.com/repo4",
 				Branch:        "main",
-				Tags:          sql.NullString{String: `not-json`, Valid: true},
+				Tags:          json.RawMessage(`not-json`),
 			},
 			wantErr:   true,
 			errSubstr: "parsing tags for template 4",
 		},
 		{
-			name: "nil tags (Valid=false)",
+			name: "nil tags",
 			input: model.GitTemplate{
 				ID:            5,
 				UUID:          "uuid-5",
@@ -275,7 +276,7 @@ func TestToSyncTemplate(t *testing.T) {
 				Slug:          "tmpl5",
 				RepositoryURL: "https://example.com/repo5",
 				Branch:        "main",
-				Tags:          sql.NullString{Valid: false},
+				Tags:          nil,
 			},
 			check: func(t *testing.T, r git.SyncTemplate) {
 				t.Helper()

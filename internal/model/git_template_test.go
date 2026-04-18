@@ -2,6 +2,7 @@ package model
 
 import (
 	"database/sql"
+	"encoding/json"
 	"testing"
 )
 
@@ -10,28 +11,28 @@ func TestGitTemplate_ParseTags(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		tags    sql.NullString
+		tags    json.RawMessage
 		want    []string
 		wantErr bool
 	}{
 		{
 			name: "null tags",
-			tags: sql.NullString{Valid: false},
+			tags: nil,
 			want: nil,
 		},
 		{
 			name: "empty array",
-			tags: sql.NullString{String: `[]`, Valid: true},
+			tags: json.RawMessage(`[]`),
 			want: []string{},
 		},
 		{
 			name: "multiple tags",
-			tags: sql.NullString{String: `["go","template","docker"]`, Valid: true},
+			tags: json.RawMessage(`["go","template","docker"]`),
 			want: []string{"go", "template", "docker"},
 		},
 		{
 			name:    "invalid JSON",
-			tags:    sql.NullString{String: `not-json`, Valid: true},
+			tags:    json.RawMessage(`not-json`),
 			wantErr: true,
 		},
 	}
@@ -73,7 +74,7 @@ func TestGitTemplate_ParseManifest(t *testing.T) {
 
 	t.Run("null manifest", func(t *testing.T) {
 		t.Parallel()
-		gt := &GitTemplate{Manifest: sql.NullString{Valid: false}}
+		gt := &GitTemplate{Manifest: nil}
 		var dest map[string]any
 		if err := gt.ParseManifest(&dest); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -85,10 +86,7 @@ func TestGitTemplate_ParseManifest(t *testing.T) {
 
 	t.Run("valid manifest", func(t *testing.T) {
 		t.Parallel()
-		gt := &GitTemplate{Manifest: sql.NullString{
-			String: `{"name":"my-template","version":"1.0"}`,
-			Valid:  true,
-		}}
+		gt := &GitTemplate{Manifest: json.RawMessage(`{"name":"my-template","version":"1.0"}`)}
 		var dest map[string]any
 		if err := gt.ParseManifest(&dest); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -100,7 +98,7 @@ func TestGitTemplate_ParseManifest(t *testing.T) {
 
 	t.Run("invalid JSON", func(t *testing.T) {
 		t.Parallel()
-		gt := &GitTemplate{Manifest: sql.NullString{String: `{bad`, Valid: true}}
+		gt := &GitTemplate{Manifest: json.RawMessage(`{bad`)}
 		var dest map[string]any
 		if err := gt.ParseManifest(&dest); err == nil {
 			t.Fatal("expected error")

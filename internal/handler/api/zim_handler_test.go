@@ -267,7 +267,7 @@ func TestToZimArchiveResponse(t *testing.T) {
 			Name:     "tagged",
 			Title:    "Tagged",
 			Language: "eng",
-			Tags:     sql.NullString{String: `["wikipedia","science"]`, Valid: true},
+			Tags:     json.RawMessage(`["wikipedia","science"]`),
 		}
 
 		resp := toZimArchiveResponse(za)
@@ -308,7 +308,7 @@ func TestToZimArchiveResponse(t *testing.T) {
 			Name:     "bad-tags",
 			Title:    "Bad Tags",
 			Language: "eng",
-			Tags:     sql.NullString{String: "not-json", Valid: true},
+			Tags:     json.RawMessage(`not-json`),
 		}
 
 		resp := toZimArchiveResponse(za)

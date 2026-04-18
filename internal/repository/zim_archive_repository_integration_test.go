@@ -85,8 +85,8 @@ func TestZimArchiveRepository_UpsertFromCatalog(t *testing.T) {
 	assert.True(t, found.CreatedAt.Valid)
 	assert.True(t, found.UpdatedAt.Valid)
 
-	// Verify tags stored as JSON.
-	assert.True(t, found.Tags.Valid)
+	// Verify tags stored as JSONB.
+	require.NotEmpty(t, found.Tags)
 	tags, err := found.ParseTags()
 	require.NoError(t, err)
 	assert.Equal(t, []string{"wiki", "encyclopedia"}, tags)
@@ -145,8 +145,40 @@ func TestZimArchiveRepository_UpsertFromCatalog(t *testing.T) {
 		assert.False(t, found.Creator.Valid)
 		assert.False(t, found.Publisher.Valid)
 		assert.False(t, found.Favicon.Valid)
-		assert.False(t, found.Tags.Valid)
+		assert.Empty(t, found.Tags)
 	})
+}
+
+// TestZimArchiveRepository_TagsContributeToSearchVector is a regression
+// guard for the migration 000016 STORED search_vector rebuild. The old
+// regexp_replace hack was replaced with a CASE + jsonb_typeof + ::text
+// expression that feeds tag tokens into the tsvector at weight C.
+// If a future change to the STORED expression silently drops tag
+// tokens, this test fails.
+func TestZimArchiveRepository_TagsContributeToSearchVector(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	svc := createTestExternalService(ctx, t)
+	repo := NewZimArchiveRepository(testPool, testutil.DiscardLogger())
+
+	entry := ZimArchiveUpsert{
+		Name:     "Test Archive",
+		Title:    "Unrelated Title",
+		Language: "en",
+		Tags:     []string{"offline", "encyclopedia"},
+	}
+	require.NoError(t, repo.UpsertFromCatalog(ctx, svc.ID, entry))
+
+	// Query via FTS against a tag-only token that appears nowhere in
+	// title/description/creator. Hit must come from the JSONB tag
+	// contribution to the STORED expression.
+	var hitName string
+	err := testPool.QueryRow(ctx,
+		`SELECT name FROM zim_archives
+		 WHERE search_vector @@ to_tsquery('documcp_english', 'offline')`,
+	).Scan(&hitName)
+	require.NoError(t, err, "tag-only FTS query should return the seeded row")
+	assert.Equal(t, "Test Archive", hitName)
 }
 
 func TestZimArchiveRepository_List(t *testing.T) {

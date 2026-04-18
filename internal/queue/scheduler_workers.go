@@ -504,8 +504,8 @@ func (w *HealthCheckServicesWorker) Work(ctx context.Context, job *river.Job[Hea
 // toSyncTemplate converts a model.GitTemplate to the git.SyncTemplate type.
 func toSyncTemplate(t model.GitTemplate) (git.SyncTemplate, error) {
 	var tags []string
-	if t.Tags.Valid && t.Tags.String != "" {
-		if err := json.Unmarshal([]byte(t.Tags.String), &tags); err != nil {
+	if len(t.Tags) > 0 {
+		if err := json.Unmarshal(t.Tags, &tags); err != nil {
 			return git.SyncTemplate{}, fmt.Errorf("parsing tags for template %d: %w", t.ID, err)
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -280,7 +281,8 @@ func (p *DocumentPipeline) ReplaceContent(ctx context.Context, docUUID string, p
 		return nil, fmt.Errorf("%w: actual bytes %d exceeds limit of %d", ErrFileTooLarge, written, p.maxUploadSize)
 	}
 
-	// Reset document fields for re-processing.
+	// Reset document fields for re-processing. Clears metadata so the worker
+	// repopulates from the re-extracted result.
 	doc.FilePath = key
 	doc.FileSize = written
 	doc.FileType = fileType
@@ -291,6 +293,7 @@ func (p *DocumentPipeline) ReplaceContent(ctx context.Context, docUUID string, p
 	doc.WordCount = sql.NullInt64{}
 	doc.ProcessedAt = sql.NullTime{}
 	doc.ErrorMessage = sql.NullString{}
+	doc.Metadata = nil
 
 	if err = p.repo.Update(ctx, doc); err != nil {
 		return nil, fmt.Errorf("updating document after content replacement: %w", err)
@@ -347,6 +350,22 @@ func (p *DocumentPipeline) ProcessDocument(ctx context.Context, docID int64) err
 	doc.ProcessedAt = sql.NullTime{Time: now, Valid: true}
 	doc.Status = model.DocumentStatusIndexed
 	doc.ErrorMessage = sql.NullString{}
+
+	// Persist extractor-emitted metadata (title, creator, subjects, page count,
+	// sheet names, etc.) to the JSONB column. Non-fatal on marshal error:
+	// extraction success must not depend on the metadata map round-tripping,
+	// and json.Marshal on map[string]any can fail for exotic value types.
+	if len(result.Metadata) > 0 {
+		if meta, marshalErr := json.Marshal(result.Metadata); marshalErr == nil {
+			doc.Metadata = meta
+		} else {
+			p.logger.Warn("marshaling extracted metadata",
+				"doc_uuid", doc.UUID, "error", marshalErr)
+			doc.Metadata = nil
+		}
+	} else {
+		doc.Metadata = nil
+	}
 
 	if err := p.repo.Update(ctx, doc); err != nil {
 		return fmt.Errorf("updating document %d after extraction: %w", docID, err)
