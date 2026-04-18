@@ -408,7 +408,7 @@ func (s *GitTemplateService) Create(ctx context.Context, input CreateGitTemplate
 		if err != nil {
 			return nil, fmt.Errorf("marshaling tags: %w", err)
 		}
-		tmpl.Tags = sql.NullString{String: string(tagsJSON), Valid: true}
+		tmpl.Tags = tagsJSON
 	}
 
 	if err := s.repo.Create(ctx, tmpl); err != nil {
@@ -461,7 +461,7 @@ func (s *GitTemplateService) Update(ctx context.Context, tmplUUID string, input 
 		if jsonErr != nil {
 			return nil, fmt.Errorf("marshaling tags for update: %w", jsonErr)
 		}
-		tmpl.Tags = sql.NullString{String: string(tagsJSON), Valid: true}
+		tmpl.Tags = tagsJSON
 	}
 	if input.IsPublic != nil {
 		tmpl.IsPublic = *input.IsPublic
