@@ -218,18 +218,19 @@ func TestEPUBExtractor_Extract(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		opts         epubOpts
-		wantContains []string
-		wantNotEmpty bool
+		name                 string
+		opts                 epubOpts
+		wantContentContains  []string
+		wantMetadataContains map[string]string
+		wantNotEmpty         bool
 	}{
 		{
 			name: "single chapter extracted",
 			opts: epubOpts{
 				chapters: []string{"<p>Hello from EPUB chapter one.</p>"},
 			},
-			wantContains: []string{"Hello from EPUB chapter one."},
-			wantNotEmpty: true,
+			wantContentContains: []string{"Hello from EPUB chapter one."},
+			wantNotEmpty:        true,
 		},
 		{
 			name: "multiple chapters in spine order",
@@ -240,11 +241,14 @@ func TestEPUBExtractor_Extract(t *testing.T) {
 					"<p>CCC third chapter content.</p>",
 				},
 			},
-			wantContains: []string{"AAA first chapter", "BBB second chapter", "CCC third chapter"},
-			wantNotEmpty: true,
+			wantContentContains: []string{"AAA first chapter", "BBB second chapter", "CCC third chapter"},
+			wantNotEmpty:        true,
 		},
 		{
-			name: "metadata extracted into content header",
+			// Metadata no longer appears in Content — it's returned via the
+			// Metadata map and indexed via the JSONB-path expression in
+			// documents.search_vector (migration 000019).
+			name: "metadata surfaces on Metadata map, not Content",
 			opts: epubOpts{
 				meta: &epubMeta{
 					Title:   "Test Book Title",
@@ -252,11 +256,15 @@ func TestEPUBExtractor_Extract(t *testing.T) {
 				},
 				chapters: []string{"<p>Chapter body text.</p>"},
 			},
-			wantContains: []string{"Test Book Title", "Jane Author", "Chapter body text."},
+			wantContentContains: []string{"Chapter body text."},
+			wantMetadataContains: map[string]string{
+				"title":   "Test Book Title",
+				"creator": "Jane Author",
+			},
 			wantNotEmpty: true,
 		},
 		{
-			name: "full metadata in content header",
+			name: "full metadata populates Metadata map",
 			opts: epubOpts{
 				meta: &epubMeta{
 					Title:      "Full Metadata Book",
@@ -269,13 +277,14 @@ func TestEPUBExtractor_Extract(t *testing.T) {
 				},
 				chapters: []string{"<p>Content here.</p>"},
 			},
-			wantContains: []string{
-				"Full Metadata Book",
-				"John Writer",
-				"Big Publisher",
-				"2024-06-15",
-				"Fiction, Adventure",
-				"isbn:978-0-123456-78-9",
+			wantContentContains: []string{"Content here."},
+			wantMetadataContains: map[string]string{
+				"title":      "Full Metadata Book",
+				"creator":    "John Writer",
+				"publisher":  "Big Publisher",
+				"date":       "2024-06-15",
+				"language":   "en",
+				"identifier": "isbn:978-0-123456-78-9",
 			},
 			wantNotEmpty: true,
 		},
@@ -285,16 +294,16 @@ func TestEPUBExtractor_Extract(t *testing.T) {
 				opfDir:   "OEBPS",
 				chapters: []string{"<p>Subdirectory chapter content.</p>"},
 			},
-			wantContains: []string{"Subdirectory chapter content."},
-			wantNotEmpty: true,
+			wantContentContains: []string{"Subdirectory chapter content."},
+			wantNotEmpty:        true,
 		},
 		{
-			name: "no metadata produces no header",
+			name: "no metadata produces content with chapters only",
 			opts: epubOpts{
 				chapters: []string{"<p>Just content.</p>"},
 			},
-			wantContains: []string{"Just content."},
-			wantNotEmpty: true,
+			wantContentContains: []string{"Just content."},
+			wantNotEmpty:        true,
 		},
 	}
 
@@ -314,9 +323,20 @@ func TestEPUBExtractor_Extract(t *testing.T) {
 				t.Fatal("Extract() returned empty content")
 			}
 
-			for _, want := range tt.wantContains {
+			for _, want := range tt.wantContentContains {
 				if !strings.Contains(result.Content, want) {
 					t.Errorf("Content does not contain %q\ngot: %q", want, result.Content)
+				}
+			}
+
+			for key, want := range tt.wantMetadataContains {
+				got, ok := result.Metadata[key].(string)
+				if !ok {
+					t.Errorf("Metadata[%q] missing or not a string, got %v", key, result.Metadata[key])
+					continue
+				}
+				if got != want {
+					t.Errorf("Metadata[%q] = %q, want %q", key, got, want)
 				}
 			}
 
@@ -657,23 +677,20 @@ func TestEPUBExtractor_Extract_SampleEPUB(t *testing.T) {
 		t.Errorf("Metadata[\"title\"] = %q, want %q", title, "EPUB 3.0 Specification")
 	}
 
-	if creator, ok := result.Metadata["creator"].(string); !ok || creator == "" {
-		t.Errorf("Metadata[\"creator\"] = %v, want non-empty string", result.Metadata["creator"])
-	}
-
 	if lang, ok := result.Metadata["language"].(string); !ok || lang != "en" {
 		t.Errorf("Metadata[\"language\"] = %v, want \"en\"", result.Metadata["language"])
 	}
 
-	// Verify metadata is baked into content header for FTS.
-	if !strings.Contains(result.Content, "EPUB 3.0 Specification") {
-		t.Error("Content should contain title in metadata header")
-	}
-	if !strings.Contains(result.Content, "EPUB 3 Working Group") {
-		t.Error("Content should contain author in metadata header")
+	// Metadata lives on result.Metadata, not baked into Content. Migration
+	// 000019 extends documents.search_vector with JSONB-path extraction, so
+	// FTS reaches metadata without duplicating it into Content.
+	if creator, ok := result.Metadata["creator"].(string); !ok || creator == "" {
+		t.Errorf("Metadata[\"creator\"] = %v, want non-empty string", result.Metadata["creator"])
+	} else if !strings.Contains(creator, "EPUB 3 Working Group") {
+		t.Errorf("Metadata[\"creator\"] = %q, want to contain %q", creator, "EPUB 3 Working Group")
 	}
 
-	// Verify chapter text was extracted (not just metadata).
+	// Verify chapter text was extracted.
 	if !strings.Contains(result.Content, "Open Container Format") {
 		t.Error("Content should contain chapter text about Open Container Format")
 	}

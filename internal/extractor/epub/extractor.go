@@ -135,8 +135,9 @@ func (e *EPUBExtractor) Supports(mime string) bool {
 
 // Extract reads the EPUB file at filePath and returns its text content with
 // metadata. Chapter text is extracted in spine (reading) order. Dublin Core
-// metadata is baked into a header block for FTS discoverability and also
-// returned in the Metadata map for the analyze endpoint.
+// metadata is returned in the Metadata map; the pipeline persists it to the
+// documents.metadata JSONB column, where migration 000019 makes it
+// FTS-searchable alongside body content.
 func (e *EPUBExtractor) Extract(ctx context.Context, filePath string) (*extractor.ExtractedContent, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("extracting epub %q: %w", filePath, err)
@@ -210,14 +211,12 @@ func (e *EPUBExtractor) Extract(ctx context.Context, filePath string) (*extracto
 		return nil, fmt.Errorf("epub %q contains no extractable chapter content", filePath)
 	}
 
-	// Build content: metadata header + chapter text.
-	header := buildMetadataHeader(pkg.Metadata)
-	var content string
-	if header != "" {
-		content = header + "\n\n---\n\n" + strings.Join(chapters, "\n\n---\n\n")
-	} else {
-		content = strings.Join(chapters, "\n\n---\n\n")
-	}
+	// Content is chapter text only. OPF metadata is returned via the
+	// Metadata map and persisted to the documents.metadata JSONB column;
+	// migration 000019 weights metadata.title / creator / description /
+	// subjects into documents.search_vector, so metadata is FTS-reachable
+	// without baking it into Content.
+	content := strings.Join(chapters, "\n\n---\n\n")
 
 	metadata := buildMetadataMap(pkg.Metadata)
 
@@ -302,42 +301,6 @@ func extractChapterText(zr *zip.ReadCloser, chapterPath string, maxFileSize int6
 	}
 
 	return strings.TrimSpace(markdown), nil
-}
-
-// buildMetadataHeader creates a markdown header from OPF metadata for baking
-// into extracted content. This makes metadata FTS-searchable (e.g., searching
-// for an author name finds the document even if the name doesn't appear in
-// chapter text).
-func buildMetadataHeader(meta opfMetadata) string {
-	var lines []string
-
-	if meta.Title != "" {
-		lines = append(lines, "# "+meta.Title, "")
-	}
-
-	if meta.Creator != "" {
-		lines = append(lines, "**Author:** "+meta.Creator)
-	}
-	if meta.Publisher != "" {
-		lines = append(lines, "**Publisher:** "+meta.Publisher)
-	}
-	if meta.Date != "" {
-		lines = append(lines, "**Published:** "+meta.Date)
-	}
-	if len(meta.Subjects) > 0 {
-		lines = append(lines, "**Subjects:** "+strings.Join(meta.Subjects, ", "))
-	}
-	if meta.Language != "" {
-		lines = append(lines, "**Language:** "+meta.Language)
-	}
-	if meta.Identifier != "" {
-		lines = append(lines, "**Identifier:** "+meta.Identifier)
-	}
-
-	if len(lines) == 0 {
-		return ""
-	}
-	return strings.Join(lines, "\n")
 }
 
 // buildMetadataMap creates a metadata map from OPF metadata for the analyze
