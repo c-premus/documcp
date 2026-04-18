@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { apiFetch, buildQuery } from '@/api/helpers'
+import { withLoading } from '@/composables/useAsyncAction'
 
 export interface GitTemplate {
   readonly uuid: string
@@ -171,62 +172,56 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
   const error = ref<string | null>(null)
 
   async function fetchTemplates(params?: ListParams): Promise<ListResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const query = buildQuery({
-        category: params?.category,
-        per_page: params?.per_page,
-        offset: params?.offset,
-      })
-      const response = await apiFetch<ListResponse>(`/api/git-templates${query}`)
-      templates.value = response.data
-      total.value = response.meta.total
-      loaded.value = true
-      return response
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to fetch git templates'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const query = buildQuery({
+          category: params?.category,
+          per_page: params?.per_page,
+          offset: params?.offset,
+        })
+        const response = await apiFetch<ListResponse>(`/api/git-templates${query}`)
+        templates.value = response.data
+        total.value = response.meta.total
+        loaded.value = true
+        return response
+      },
+      'Failed to fetch git templates',
+    )
   }
 
   async function createTemplate(params: CreateTemplateParams): Promise<GitTemplate> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<SingleResponse>('/api/git-templates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-      })
-      templates.value = [response.data, ...templates.value]
-      total.value += 1
-      return response.data
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to create git template'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<SingleResponse>('/api/git-templates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(params),
+        })
+        templates.value = [response.data, ...templates.value]
+        total.value += 1
+        return response.data
+      },
+      'Failed to create git template',
+    )
   }
 
   async function deleteTemplate(uuid: string): Promise<MessageResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<MessageResponse>(`/api/git-templates/${uuid}`, {
-        method: 'DELETE',
-      })
-      templates.value = templates.value.filter((t) => t.uuid !== uuid)
-      return response
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to delete git template'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<MessageResponse>(`/api/git-templates/${uuid}`, {
+          method: 'DELETE',
+        })
+        templates.value = templates.value.filter((t) => t.uuid !== uuid)
+        return response
+      },
+      'Failed to delete git template',
+    )
   }
 
   async function syncTemplate(uuid: string): Promise<MessageResponse> {
@@ -242,17 +237,15 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
   }
 
   async function fetchStructure(uuid: string): Promise<StructureResponse['data']> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<StructureResponse>(`/api/git-templates/${uuid}/structure`)
-      return response.data
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to fetch template structure'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<StructureResponse>(`/api/git-templates/${uuid}/structure`)
+        return response.data
+      },
+      'Failed to fetch template structure',
+    )
   }
 
   async function readFile(uuid: string, path: string): Promise<FileContentResponse['data']> {
@@ -272,25 +265,23 @@ export const useGitTemplatesStore = defineStore('gitTemplates', () => {
     uuid: string,
     params: Partial<CreateTemplateParams>,
   ): Promise<GitTemplate> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<SingleResponse>(`/api/git-templates/${uuid}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-      })
-      const index = templates.value.findIndex((t) => t.uuid === uuid)
-      if (index !== -1) {
-        templates.value[index] = response.data
-      }
-      return response.data
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to update git template'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<SingleResponse>(`/api/git-templates/${uuid}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(params),
+        })
+        const index = templates.value.findIndex((t) => t.uuid === uuid)
+        if (index !== -1) {
+          templates.value[index] = response.data
+        }
+        return response.data
+      },
+      'Failed to update git template',
+    )
   }
 
   async function validateUrl(url: string): Promise<ValidateUrlResponse> {

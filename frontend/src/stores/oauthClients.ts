@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { apiFetch, buildQuery } from '@/api/helpers'
+import { withLoading } from '@/composables/useAsyncAction'
 
 export interface OAuthClient {
   readonly id: number
@@ -78,73 +79,65 @@ export const useOAuthClientsStore = defineStore('oauthClients', () => {
   const scopeGrants = ref<ScopeGrant[]>([])
 
   async function fetchClients(params?: ListParams): Promise<ListResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const query = buildQuery({
-        limit: params?.limit,
-        offset: params?.offset,
-        q: params?.q,
-      })
-      const response = await apiFetch<ListResponse>(`/api/admin/oauth-clients${query}`)
-      clients.value = response.data
-      total.value = response.meta.total
-      return response
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to fetch OAuth clients'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const query = buildQuery({
+          limit: params?.limit,
+          offset: params?.offset,
+          q: params?.q,
+        })
+        const response = await apiFetch<ListResponse>(`/api/admin/oauth-clients${query}`)
+        clients.value = response.data
+        total.value = response.meta.total
+        return response
+      },
+      'Failed to fetch OAuth clients',
+    )
   }
 
   async function createClient(request: CreateClientRequest): Promise<CreatedClient> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<CreateResponse>('/api/admin/oauth-clients', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request),
-      })
-      return response.data
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to create OAuth client'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<CreateResponse>('/api/admin/oauth-clients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(request),
+        })
+        return response.data
+      },
+      'Failed to create OAuth client',
+    )
   }
 
   async function deleteClient(id: number): Promise<void> {
-    loading.value = true
-    error.value = null
-    try {
-      await apiFetch(`/api/admin/oauth-clients/${id}`, {
-        method: 'DELETE',
-      })
-      clients.value = clients.value.filter((c) => c.id !== id)
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to delete OAuth client'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        await apiFetch(`/api/admin/oauth-clients/${id}`, {
+          method: 'DELETE',
+        })
+        clients.value = clients.value.filter((c) => c.id !== id)
+      },
+      'Failed to delete OAuth client',
+    )
   }
 
   async function fetchClient(id: number): Promise<OAuthClient> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<ShowResponse>(`/api/admin/oauth-clients/${id}`)
-      currentClient.value = response.data
-      return response.data
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to fetch OAuth client'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<ShowResponse>(`/api/admin/oauth-clients/${id}`)
+        currentClient.value = response.data
+        return response.data
+      },
+      'Failed to fetch OAuth client',
+    )
   }
 
   async function fetchScopeGrants(clientId: number): Promise<ScopeGrant[]> {

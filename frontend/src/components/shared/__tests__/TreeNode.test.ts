@@ -71,19 +71,19 @@ describe('TreeNode', () => {
     expect(wrapper.emitted('select')).toBeUndefined()
   })
 
-  it('highlights selected file', () => {
+  it('marks selected file with aria-current', () => {
     const wrapper = mountNode({
       item: { name: 'file.ts', path: 'src/file.ts', type: 'file' },
       selectedPath: 'src/file.ts',
     })
-    expect(wrapper.find('button').classes()).toContain('bg-indigo-50')
+    expect(wrapper.find('button').attributes('aria-current')).toBe('true')
   })
 
-  it('does not highlight non-selected file', () => {
+  it('omits aria-current on non-selected file', () => {
     const wrapper = mountNode({
       item: { name: 'file.ts', path: 'src/file.ts', type: 'file' },
       selectedPath: 'src/other.ts',
     })
-    expect(wrapper.find('button').classes()).not.toContain('bg-indigo-50')
+    expect(wrapper.find('button').attributes('aria-current')).toBeUndefined()
   })
 })

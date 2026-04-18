@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { apiFetch } from '@/api/helpers'
+import { withLoading } from '@/composables/useAsyncAction'
 
 export interface QueueStats {
   readonly available: number
@@ -34,31 +35,35 @@ export const useQueueStore = defineStore('queue', () => {
   const loading = ref(false)
 
   async function fetchStats(): Promise<QueueStats> {
-    loading.value = true
-    try {
-      const response = await apiFetch<{ data: QueueStats }>('/api/admin/queue/stats')
-      stats.value = response.data
-      return response.data
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      null,
+      async () => {
+        const response = await apiFetch<{ data: QueueStats }>('/api/admin/queue/stats')
+        stats.value = response.data
+        return response.data
+      },
+      'Failed to fetch queue stats',
+    )
   }
 
   async function fetchFailedJobs(
     limit?: number,
   ): Promise<{ data: FailedJob[]; meta: { count: number } }> {
-    loading.value = true
-    try {
-      const qs = limit ? `?limit=${limit}` : ''
-      const data = await apiFetch<{ data: FailedJob[]; meta: { count: number } }>(
-        `/api/admin/queue/failed${qs}`,
-      )
-      failedJobs.value = data.data
-      failedCount.value = data.meta.count
-      return data
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      null,
+      async () => {
+        const qs = limit ? `?limit=${limit}` : ''
+        const data = await apiFetch<{ data: FailedJob[]; meta: { count: number } }>(
+          `/api/admin/queue/failed${qs}`,
+        )
+        failedJobs.value = data.data
+        failedCount.value = data.meta.count
+        return data
+      },
+      'Failed to fetch failed jobs',
+    )
   }
 
   async function retryJob(id: number): Promise<void> {
