@@ -52,6 +52,7 @@ function handleChildSelect(path: string): void {
       ]"
       :style="{ paddingLeft: `${depth * 16 + 4}px` }"
       :aria-expanded="item.type === 'directory' ? expanded : undefined"
+      :aria-current="item.type === 'file' && selectedPath === item.path ? 'true' : undefined"
       :aria-label="
         item.type === 'directory'
           ? expanded

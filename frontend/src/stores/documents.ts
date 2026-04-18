@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { apiFetch, buildQuery } from '@/api/helpers'
+import { withLoading } from '@/composables/useAsyncAction'
 
 export interface Document {
   readonly uuid: string
@@ -94,225 +95,204 @@ export const useDocumentsStore = defineStore('documents', () => {
   const error = ref<string | null>(null)
 
   async function fetchDocuments(params?: ListParams): Promise<ListResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const query = buildQuery({
-        limit: params?.limit,
-        offset: params?.offset,
-        q: params?.q,
-        file_type: params?.file_type,
-        status: params?.status,
-        sort: params?.sort,
-        order: params?.order,
-      })
-      const response = await apiFetch<ListResponse>(`/api/documents${query}`)
-      documents.value = response.data
-      total.value = response.meta.total
-      loaded.value = true
-      return response
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to fetch documents'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const query = buildQuery({
+          limit: params?.limit,
+          offset: params?.offset,
+          q: params?.q,
+          file_type: params?.file_type,
+          status: params?.status,
+          sort: params?.sort,
+          order: params?.order,
+        })
+        const response = await apiFetch<ListResponse>(`/api/documents${query}`)
+        documents.value = response.data
+        total.value = response.meta.total
+        loaded.value = true
+        return response
+      },
+      'Failed to fetch documents',
+    )
   }
 
   async function fetchDocument(uuid: string): Promise<Document> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<SingleResponse>(`/api/documents/${uuid}?include_content=true`)
-      currentDocument.value = response.data
-      return response.data
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to fetch document'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<SingleResponse>(
+          `/api/documents/${uuid}?include_content=true`,
+        )
+        currentDocument.value = response.data
+        return response.data
+      },
+      'Failed to fetch document',
+    )
   }
 
   async function uploadDocument(formData: FormData): Promise<SingleResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<SingleResponse>('/api/documents', {
-        method: 'POST',
-        body: formData,
-      })
-      documents.value = [response.data, ...documents.value]
-      total.value += 1
-      return response
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to upload document'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<SingleResponse>('/api/documents', {
+          method: 'POST',
+          body: formData,
+        })
+        documents.value = [response.data, ...documents.value]
+        total.value += 1
+        return response
+      },
+      'Failed to upload document',
+    )
   }
 
   async function analyzeDocument(formData: FormData): Promise<AnalyzeResult> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<AnalyzeResponse>('/api/documents/analyze', {
-        method: 'POST',
-        body: formData,
-      })
-      return response.data
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to analyze document'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<AnalyzeResponse>('/api/documents/analyze', {
+          method: 'POST',
+          body: formData,
+        })
+        return response.data
+      },
+      'Failed to analyze document',
+    )
   }
 
   async function deleteDocument(uuid: string): Promise<DeleteResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<DeleteResponse>(`/api/documents/${uuid}`, {
-        method: 'DELETE',
-      })
-      documents.value = documents.value.filter((d) => d.uuid !== uuid)
-      if (currentDocument.value?.uuid === uuid) {
-        currentDocument.value = null
-      }
-      return response
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to delete document'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<DeleteResponse>(`/api/documents/${uuid}`, {
+          method: 'DELETE',
+        })
+        documents.value = documents.value.filter((d) => d.uuid !== uuid)
+        if (currentDocument.value?.uuid === uuid) {
+          currentDocument.value = null
+        }
+        return response
+      },
+      'Failed to delete document',
+    )
   }
 
   async function restoreDocument(uuid: string): Promise<Document> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<SingleResponse>(`/api/documents/${uuid}/restore`, {
-        method: 'POST',
-      })
-      return response.data
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to restore document'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<SingleResponse>(`/api/documents/${uuid}/restore`, {
+          method: 'POST',
+        })
+        return response.data
+      },
+      'Failed to restore document',
+    )
   }
 
   async function purgeDocument(uuid: string): Promise<DeleteResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<DeleteResponse>(`/api/documents/${uuid}/purge`, {
-        method: 'DELETE',
-      })
-      documents.value = documents.value.filter((d) => d.uuid !== uuid)
-      if (currentDocument.value?.uuid === uuid) {
-        currentDocument.value = null
-      }
-      return response
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to purge document'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<DeleteResponse>(`/api/documents/${uuid}/purge`, {
+          method: 'DELETE',
+        })
+        documents.value = documents.value.filter((d) => d.uuid !== uuid)
+        if (currentDocument.value?.uuid === uuid) {
+          currentDocument.value = null
+        }
+        return response
+      },
+      'Failed to purge document',
+    )
   }
 
   async function bulkPurge(olderThanDays: number): Promise<BulkPurgeResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const query = buildQuery({ older_than_days: olderThanDays })
-      const response = await apiFetch<BulkPurgeResponse>(`/api/admin/documents/purge${query}`, {
-        method: 'DELETE',
-      })
-      return response
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to bulk purge documents'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const query = buildQuery({ older_than_days: olderThanDays })
+        return apiFetch<BulkPurgeResponse>(`/api/admin/documents/purge${query}`, {
+          method: 'DELETE',
+        })
+      },
+      'Failed to bulk purge documents',
+    )
   }
 
   async function fetchDeletedDocuments(params?: TrashParams): Promise<TrashResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const query = buildQuery({
-        limit: params?.limit,
-        offset: params?.offset,
-      })
-      const response = await apiFetch<TrashResponse>(`/api/documents/trash${query}`)
-      documents.value = response.data
-      total.value = response.total
-      loaded.value = true
-      return response
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to fetch deleted documents'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const query = buildQuery({
+          limit: params?.limit,
+          offset: params?.offset,
+        })
+        const response = await apiFetch<TrashResponse>(`/api/documents/trash${query}`)
+        documents.value = response.data
+        total.value = response.total
+        loaded.value = true
+        return response
+      },
+      'Failed to fetch deleted documents',
+    )
   }
 
   async function updateDocument(uuid: string, payload: UpdateDocumentPayload): Promise<Document> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<{ data: Document }>(`/api/documents/${uuid}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const index = documents.value.findIndex((d) => d.uuid === uuid)
-      if (index !== -1) {
-        documents.value[index] = response.data
-      }
-      if (currentDocument.value?.uuid === uuid) {
-        currentDocument.value = response.data
-      }
-      return response.data
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to update document'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<{ data: Document }>(`/api/documents/${uuid}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        const index = documents.value.findIndex((d) => d.uuid === uuid)
+        if (index !== -1) {
+          documents.value[index] = response.data
+        }
+        if (currentDocument.value?.uuid === uuid) {
+          currentDocument.value = response.data
+        }
+        return response.data
+      },
+      'Failed to update document',
+    )
   }
 
   async function replaceContent(uuid: string, file: File): Promise<Document> {
-    loading.value = true
-    error.value = null
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const response = await apiFetch<{ data: Document }>(`/api/documents/${uuid}/content`, {
-        method: 'POST',
-        body: formData,
-      })
-      const index = documents.value.findIndex((d) => d.uuid === uuid)
-      if (index !== -1) {
-        documents.value[index] = response.data
-      }
-      if (currentDocument.value?.uuid === uuid) {
-        currentDocument.value = response.data
-      }
-      return response.data
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to replace document content'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const formData = new FormData()
+        formData.append('file', file)
+        const response = await apiFetch<{ data: Document }>(`/api/documents/${uuid}/content`, {
+          method: 'POST',
+          body: formData,
+        })
+        const index = documents.value.findIndex((d) => d.uuid === uuid)
+        if (index !== -1) {
+          documents.value[index] = response.data
+        }
+        if (currentDocument.value?.uuid === uuid) {
+          currentDocument.value = response.data
+        }
+        return response.data
+      },
+      'Failed to replace document content',
+    )
   }
 
   async function fetchTags(query: string): Promise<string[]> {
