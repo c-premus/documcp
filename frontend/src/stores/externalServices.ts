@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { apiFetch, buildQuery } from '@/api/helpers'
+import { withLoading } from '@/composables/useAsyncAction'
 
 export interface ExternalService {
   readonly uuid: string
@@ -74,88 +75,80 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
   const error = ref<string | null>(null)
 
   async function fetchServices(params?: ListParams): Promise<ListResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const query = buildQuery({
-        limit: params?.limit,
-        offset: params?.offset,
-        type: params?.type,
-        status: params?.status,
-      })
-      const response = await apiFetch<ListResponse>(`/api/external-services${query}`)
-      services.value = response.data
-      total.value = response.meta.total
-      loaded.value = true
-      return response
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to fetch external services'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const query = buildQuery({
+          limit: params?.limit,
+          offset: params?.offset,
+          type: params?.type,
+          status: params?.status,
+        })
+        const response = await apiFetch<ListResponse>(`/api/external-services${query}`)
+        services.value = response.data
+        total.value = response.meta.total
+        loaded.value = true
+        return response
+      },
+      'Failed to fetch external services',
+    )
   }
 
   async function createService(payload: CreateServicePayload): Promise<ExternalService> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<SingleResponse>('/api/external-services', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      services.value = [response.data, ...services.value]
-      total.value += 1
-      return response.data
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to create service'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<SingleResponse>('/api/external-services', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        services.value = [response.data, ...services.value]
+        total.value += 1
+        return response.data
+      },
+      'Failed to create service',
+    )
   }
 
   async function updateService(
     uuid: string,
     payload: UpdateServicePayload,
   ): Promise<ExternalService> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<SingleResponse>(`/api/external-services/${uuid}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const index = services.value.findIndex((s) => s.uuid === uuid)
-      if (index !== -1) {
-        services.value[index] = response.data
-      }
-      return response.data
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to update service'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<SingleResponse>(`/api/external-services/${uuid}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        const index = services.value.findIndex((s) => s.uuid === uuid)
+        if (index !== -1) {
+          services.value[index] = response.data
+        }
+        return response.data
+      },
+      'Failed to update service',
+    )
   }
 
   async function deleteService(uuid: string): Promise<MessageResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<MessageResponse>(`/api/external-services/${uuid}`, {
-        method: 'DELETE',
-      })
-      services.value = services.value.filter((s) => s.uuid !== uuid)
-      return response
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to delete service'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const response = await apiFetch<MessageResponse>(`/api/external-services/${uuid}`, {
+          method: 'DELETE',
+        })
+        services.value = services.value.filter((s) => s.uuid !== uuid)
+        return response
+      },
+      'Failed to delete service',
+    )
   }
 
   async function syncService(uuid: string): Promise<MessageResponse> {
@@ -190,21 +183,18 @@ export const useExternalServicesStore = defineStore('externalServices', () => {
   async function reorderServices(
     order: ReadonlyArray<{ readonly uuid: string; readonly priority: number }>,
   ): Promise<MessageResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<MessageResponse>('/api/admin/external-services/reorder', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order }),
-      })
-      return response
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to reorder services'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        return apiFetch<MessageResponse>('/api/admin/external-services/reorder', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order }),
+        })
+      },
+      'Failed to reorder services',
+    )
   }
 
   return {

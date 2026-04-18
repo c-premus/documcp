@@ -88,36 +88,36 @@ describe('DataTable', () => {
     expect(wrapper.emitted('row-click')![0]).toEqual([sampleData[0]])
   })
 
-  it('shows sorting indicator after clicking a column header', async () => {
+  it('announces sort state via aria-sort after clicking a column header', async () => {
     const wrapper = mountTable()
 
     const firstHeader = wrapper.findAll('th')[0]!
+    expect(firstHeader.attributes('aria-sort')).toBe('none')
+
     await firstHeader.trigger('click')
     await nextTick()
     await flushPromises()
 
-    const indicator = wrapper.find('.text-indigo-600')
-    expect(indicator.exists()).toBe(true)
-    // TanStack Table defaults to descending on first click
-    expect(['↑', '↓']).toContain(indicator.text())
+    expect(['ascending', 'descending']).toContain(firstHeader.attributes('aria-sort'))
+    expect(firstHeader.text()).toMatch(/[↑↓]/)
   })
 
-  it('toggles sorting direction on second click', async () => {
+  it('toggles sort direction on second click', async () => {
     const wrapper = mountTable()
 
     const firstHeader = wrapper.findAll('th')[0]!
     await firstHeader.trigger('click')
     await nextTick()
     await flushPromises()
-
-    const firstIndicator = wrapper.find('.text-indigo-600').text()
+    const firstSort = firstHeader.attributes('aria-sort')
 
     await firstHeader.trigger('click')
     await nextTick()
     await flushPromises()
+    const secondSort = firstHeader.attributes('aria-sort')
 
-    const secondIndicator = wrapper.find('.text-indigo-600').text()
-    expect(secondIndicator).not.toBe(firstIndicator)
-    expect(['↑', '↓']).toContain(secondIndicator)
+    expect(['ascending', 'descending']).toContain(firstSort)
+    expect(['ascending', 'descending']).toContain(secondSort)
+    expect(secondSort).not.toBe(firstSort)
   })
 })

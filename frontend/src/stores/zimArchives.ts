@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { apiFetch, buildQuery } from '@/api/helpers'
+import { withLoading } from '@/composables/useAsyncAction'
 
 export interface ZimArchive {
   readonly uuid: string
@@ -75,27 +76,25 @@ export const useZimArchivesStore = defineStore('zimArchives', () => {
   const error = ref<string | null>(null)
 
   async function fetchArchives(params?: ListParams): Promise<ListResponse> {
-    loading.value = true
-    error.value = null
-    try {
-      const query = buildQuery({
-        query: params?.query,
-        category: params?.category,
-        language: params?.language,
-        per_page: params?.per_page,
-        offset: params?.offset,
-      })
-      const response = await apiFetch<ListResponse>(`/api/zim/archives${query}`)
-      archives.value = response.data
-      total.value = response.meta.total
-      loaded.value = true
-      return response
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to fetch ZIM archives'
-      throw e
-    } finally {
-      loading.value = false
-    }
+    return withLoading(
+      loading,
+      error,
+      async () => {
+        const query = buildQuery({
+          query: params?.query,
+          category: params?.category,
+          language: params?.language,
+          per_page: params?.per_page,
+          offset: params?.offset,
+        })
+        const response = await apiFetch<ListResponse>(`/api/zim/archives${query}`)
+        archives.value = response.data
+        total.value = response.meta.total
+        loaded.value = true
+        return response
+      },
+      'Failed to fetch ZIM archives',
+    )
   }
 
   async function searchArticles(
@@ -103,38 +102,34 @@ export const useZimArchivesStore = defineStore('zimArchives', () => {
     q: string,
     limit?: number,
   ): Promise<ZimSearchResult[]> {
-    searchLoading.value = true
-    error.value = null
-    try {
-      const query = buildQuery({ q, limit })
-      const response = await apiFetch<SearchResponse>(
-        `/api/zim/archives/${encodeURIComponent(archive)}/search${query}`,
-      )
-      searchResults.value = response.data
-      return response.data
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to search articles'
-      throw e
-    } finally {
-      searchLoading.value = false
-    }
+    return withLoading(
+      searchLoading,
+      error,
+      async () => {
+        const query = buildQuery({ q, limit })
+        const response = await apiFetch<SearchResponse>(
+          `/api/zim/archives/${encodeURIComponent(archive)}/search${query}`,
+        )
+        searchResults.value = response.data
+        return response.data
+      },
+      'Failed to search articles',
+    )
   }
 
   async function readArticle(archive: string, path: string): Promise<ZimArticle> {
-    articleLoading.value = true
-    error.value = null
-    try {
-      const response = await apiFetch<ArticleResponse>(
-        `/api/zim/archives/${encodeURIComponent(archive)}/articles/${encodeURIComponent(path)}`,
-      )
-      currentArticle.value = response.data
-      return response.data
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to read article'
-      throw e
-    } finally {
-      articleLoading.value = false
-    }
+    return withLoading(
+      articleLoading,
+      error,
+      async () => {
+        const response = await apiFetch<ArticleResponse>(
+          `/api/zim/archives/${encodeURIComponent(archive)}/articles/${encodeURIComponent(path)}`,
+        )
+        currentArticle.value = response.data
+        return response.data
+      },
+      'Failed to read article',
+    )
   }
 
   function clearSearch(): void {
