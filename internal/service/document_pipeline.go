@@ -356,7 +356,10 @@ func (p *DocumentPipeline) ProcessDocument(ctx context.Context, docID int64) err
 	// extraction success must not depend on the metadata map round-tripping,
 	// and json.Marshal on map[string]any can fail for exotic value types.
 	if len(result.Metadata) > 0 {
-		if meta, marshalErr := json.Marshal(result.Metadata); marshalErr == nil {
+		// Sanitize uploader-controlled string values (titles, creator,
+		// description, EPUB subjects, etc.) before persisting them to the
+		// JSONB column — see sanitizeMetadataMap for the threat model.
+		if meta, marshalErr := json.Marshal(sanitizeMetadataMap(result.Metadata)); marshalErr == nil {
 			doc.Metadata = meta
 		} else {
 			p.logger.Warn("marshaling extracted metadata",
