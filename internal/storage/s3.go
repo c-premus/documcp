@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	smithy "github.com/aws/smithy-go"
@@ -51,7 +51,7 @@ type S3Config struct {
 // Garage, SeaweedFS — any service that implements the S3 API.
 type S3Blob struct {
 	client   *s3.Client
-	uploader *manager.Uploader
+	uploader *transfermanager.Client
 	bucket   string
 }
 
@@ -93,21 +93,22 @@ func NewS3Blob(ctx context.Context, cfg S3Config) (*S3Blob, error) {
 
 	return &S3Blob{
 		client:   client,
-		uploader: manager.NewUploader(client),
+		uploader: transfermanager.New(client),
 		bucket:   cfg.Bucket,
 	}, nil
 }
 
 // NewWriter returns a writer that uploads to the object at key on Close.
-// Internally it pipes writes into manager.Uploader, which handles multipart
-// chunking transparently. Callers must Close the writer; abandoning it leaks
-// the background upload goroutine until Close (or the request context) cancels it.
+// Internally it pipes writes into transfermanager.Client.UploadObject, which
+// handles multipart chunking transparently. Callers must Close the writer;
+// abandoning it leaks the background upload goroutine until Close (or the
+// request context) cancels it.
 func (b *S3Blob) NewWriter(ctx context.Context, key string, opts *WriterOpts) (io.WriteCloser, error) {
 	if err := ValidateKey(key); err != nil {
 		return nil, err
 	}
 	pr, pw := io.Pipe()
-	input := &s3.PutObjectInput{
+	input := &transfermanager.UploadObjectInput{
 		Bucket: aws.String(b.bucket),
 		Key:    aws.String(key),
 		Body:   pr,
@@ -117,16 +118,16 @@ func (b *S3Blob) NewWriter(ctx context.Context, key string, opts *WriterOpts) (i
 	}
 	w := &s3Writer{pw: pw, done: make(chan error, 1)}
 	go func() {
-		_, err := b.uploader.Upload(ctx, input)
+		_, err := b.uploader.UploadObject(ctx, input)
 		// Closing the pipe reader unblocks any pending Write on pw with
-		// io.ErrClosedPipe — matters when Upload errors mid-stream.
+		// io.ErrClosedPipe — matters when UploadObject errors mid-stream.
 		_ = pr.CloseWithError(err)
 		w.done <- err
 	}()
 	return w, nil
 }
 
-// s3Writer pipes Writes into a background manager.Uploader.Upload.
+// s3Writer pipes Writes into a background transfermanager.Client.UploadObject.
 type s3Writer struct {
 	pw   *io.PipeWriter
 	done chan error
