@@ -1,6 +1,6 @@
 # Stage 1: Frontend build (always native — output is static files)
 # node:24-alpine — pinned for supply chain integrity
-FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b AS frontend
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS frontend
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -10,7 +10,7 @@ RUN npm run build
 
 # Stage 2: Go build (always native — cross-compile for target arch)
 # golang:1.26.2-alpine — pinned for supply chain integrity
-FROM --platform=$BUILDPLATFORM golang:1.26.2-alpine@sha256:c2a1f7b2095d046ae14b286b18413a05bb82c9bca9b25fe7ff5efef0f0826166 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.2-alpine@sha256:f85330846cde1e57ca9ec309382da3b8e6ae3ab943d2739500e08c86393a21b1 AS builder
 
 # Target architecture injected by Buildx (e.g., amd64, arm64).
 ARG TARGETARCH
