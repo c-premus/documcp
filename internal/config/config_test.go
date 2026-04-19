@@ -241,6 +241,9 @@ func validBaseConfig() Config {
 			MaxFileSize:  10 * 1024 * 1024,
 			MaxTotalSize: 50 * 1024 * 1024,
 		},
+		OAuth: OAuthConfig{
+			HKDFSalt: "test-fixture-salt-deterministic-value",
+		},
 	}
 }
 
@@ -786,6 +789,9 @@ func TestConfig_Validate_ValidWithMinimumFields(t *testing.T) {
 			MaxFileSize:  1,
 			MaxTotalSize: 1,
 		},
+		OAuth: OAuthConfig{
+			HKDFSalt: "test-fixture-salt-deterministic-value",
+		},
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -1000,16 +1006,90 @@ func TestConfig_Validate_ProductionDebugEnabled(t *testing.T) {
 	}
 }
 
-func TestConfig_Validate_ProductionDefaultHKDFSalt(t *testing.T) {
-	cfg := validProdConfig()
-	cfg.OAuth.HKDFSalt = "DocuMCP-go-v1"
-
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("expected error, got nil")
+func TestConfig_Validate_HKDFSalt(t *testing.T) {
+	tests := []struct {
+		name    string
+		salt    string
+		prod    bool
+		wantErr string // substring; empty means expect no HKDF-related error
+	}{
+		{
+			name:    "empty salt in non-prod errors",
+			salt:    "",
+			prod:    false,
+			wantErr: "HKDF_SALT is required",
+		},
+		{
+			name:    "empty salt in prod errors",
+			salt:    "",
+			prod:    true,
+			wantErr: "HKDF_SALT is required",
+		},
+		{
+			name:    "short salt (8 chars) in non-prod errors",
+			salt:    "abcd1234",
+			prod:    false,
+			wantErr: "at least 16 characters",
+		},
+		{
+			name:    "short salt (8 chars) in prod errors",
+			salt:    "abcd1234",
+			prod:    true,
+			wantErr: "at least 16 characters",
+		},
+		{
+			name:    "legacy default string (14 chars) fails the length floor",
+			salt:    "DocuMCP-go-v1",
+			prod:    true,
+			wantErr: "at least 16 characters",
+		},
+		{
+			name:    "exactly 16 chars in non-prod is accepted",
+			salt:    "0123456789abcdef",
+			prod:    false,
+			wantErr: "",
+		},
+		{
+			name:    "long salt in non-prod is accepted",
+			salt:    "test-fixture-salt-deterministic-value",
+			prod:    false,
+			wantErr: "",
+		},
+		{
+			name:    "long salt in prod is accepted",
+			salt:    "test-fixture-salt-deterministic-value",
+			prod:    true,
+			wantErr: "",
+		},
 	}
-	if !strings.Contains(err.Error(), "HKDF_SALT must be changed from the default value") {
-		t.Errorf("error %q does not mention default HKDF salt", err.Error())
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var cfg Config
+			if tt.prod {
+				cfg = validProdConfig()
+			} else {
+				cfg = validBaseConfig()
+			}
+			cfg.OAuth.HKDFSalt = tt.salt
+
+			err := cfg.Validate()
+			if tt.wantErr == "" {
+				// Accept either a nil error or an error that does not mention
+				// HKDF_SALT — the fixture is shared with other tests and may
+				// fail on unrelated prod-only fields.
+				if err != nil && strings.Contains(err.Error(), "HKDF_SALT") {
+					t.Fatalf("unexpected HKDF error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error %q does not contain %q", err.Error(), tt.wantErr)
+			}
+		})
 	}
 }
 

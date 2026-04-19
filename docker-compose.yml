@@ -53,7 +53,7 @@ services:
       # Security
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
-      HKDF_SALT: ${HKDF_SALT:-}
+      HKDF_SALT: ${HKDF_SALT:?HKDF_SALT is required}
       # Redis
       REDIS_ADDR: redis:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}

@@ -188,7 +188,7 @@ The minimum set needed to start:
 | `APP_URL` | Public application URL. Seeds the RFC 8707 resource indicator allowlist and the OIDC `post_logout_redirect_uri`. |
 | `DB_HOST`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` | PostgreSQL connection. |
 | `REDIS_ADDR` | Distributed rate limiting and cross-replica SSE/control-bus. See [docs/REDIS.md](docs/REDIS.md) for ACL requirements. |
-| `OAUTH_SESSION_SECRET`, `HKDF_SALT`, `ENCRYPTION_KEY`, `INTERNAL_API_TOKEN` | Per-deployment secrets. Generate each with `openssl rand -base64 32`. Startup rejects the default `HKDF_SALT` in production. |
+| `OAUTH_SESSION_SECRET`, `HKDF_SALT`, `ENCRYPTION_KEY`, `INTERNAL_API_TOKEN` | Per-deployment secrets. Generate each with `openssl rand -base64 32` (`HKDF_SALT` can use `openssl rand -base64 24`). `HKDF_SALT` is required in every environment, must be at least 16 characters, and startup fails fast when empty or too short. |
 | `OIDC_PROVIDER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI` | OpenID Connect provider — DocuMCP has no local login. |
 | `OIDC_ADMIN_GROUPS` _or_ `OIDC_BOOTSTRAP_ADMIN_EMAIL` | At least one is required so an admin can ever exist. `OIDC_ADMIN_GROUPS` is re-evaluated on every login; `OIDC_BOOTSTRAP_ADMIN_EMAIL` fires once, on user creation, for providers without group claims. |
 

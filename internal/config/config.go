@@ -370,7 +370,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oauth_session_secret", "")
 	v.SetDefault("oauth_session_secret_previous", "")
 	v.SetDefault("oauth_session_max_age", 30*24*time.Hour)
-	v.SetDefault("hkdf_salt", "DocuMCP-go-v1")
+	// No default for HKDF_SALT — it is required and validated at startup.
+	// Supplying a default would mask misconfiguration: two deployments that
+	// omit the var would derive identical HMAC keys from the same IKM.
+	v.SetDefault("hkdf_salt", "")
 	v.SetDefault("oauth_registration_enabled", true)
 	v.SetDefault("oauth_registration_require_auth", true)
 	v.SetDefault("oauth_client_touch_timeout", 3*time.Second)
@@ -801,8 +804,16 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	if isProd && c.App.Debug {
 		errs = append(errs, "APP_DEBUG should not be enabled in production")
 	}
-	if isProd && c.OAuth.HKDFSalt == "DocuMCP-go-v1" {
-		errs = append(errs, "HKDF_SALT must be changed from the default value in production")
+	// HKDF_SALT guards HMAC/session-key derivation. Empty or short salts produce
+	// weak, deterministic keys across deployments sharing the same IKM, so the
+	// empty and length checks fire in every environment. The length floor
+	// subsumes the old default-string check (the historical default is only
+	// 14 chars and fails the 16-char floor first), so the default-string branch
+	// has been removed — the length check handles it.
+	if c.OAuth.HKDFSalt == "" {
+		errs = append(errs, "HKDF_SALT is required (must not be empty)")
+	} else if len(c.OAuth.HKDFSalt) < 16 {
+		errs = append(errs, "HKDF_SALT must be at least 16 characters")
 	}
 
 	// --- Admin bootstrap requirement ---
