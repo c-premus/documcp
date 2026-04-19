@@ -21,6 +21,7 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 
 	"github.com/c-premus/documcp/internal/extractor"
+	"github.com/c-premus/documcp/internal/extractor/ziputil"
 )
 
 const (
@@ -128,6 +129,19 @@ func NewWithLimits(maxZIPFiles int, maxExtractedText int64) *EPUBExtractor {
 	return e
 }
 
+// NewWithAllLimits creates an EPUBExtractor with every decompression bound
+// individually configurable. Zero values fall back to defaults. maxTotal caps
+// the cumulative decompressed bytes observed at runtime across every ZIP entry
+// opened during a single Extract call; it is the primary defense against zip
+// bombs that lie about UncompressedSize64 in the central directory.
+func NewWithAllLimits(maxZIPFiles int, maxFileSize, maxTotal int64) *EPUBExtractor {
+	e := NewWithLimits(maxZIPFiles, maxFileSize)
+	if maxTotal > 0 {
+		e.maxTotalDecompressed = maxTotal
+	}
+	return e
+}
+
 // Supports reports whether this extractor handles the given MIME type.
 func (e *EPUBExtractor) Supports(mime string) bool {
 	return mime == mimeType
@@ -165,13 +179,18 @@ func (e *EPUBExtractor) Extract(ctx context.Context, filePath string) (*extracto
 		}
 	}
 
+	// Runtime counter shared across every ZIP entry opened below. The preflight
+	// above trusts attacker-supplied UncompressedSize64; this counter is
+	// authoritative because it tallies bytes actually handed to decoders.
+	var decompressed int64
+
 	// Locate and parse OPF package document.
-	opfPath, err := findContainerRootfile(zr, e.maxDecompressedFileSize)
+	opfPath, err := findContainerRootfile(zr, e.maxDecompressedFileSize, &decompressed, e.maxTotalDecompressed)
 	if err != nil {
 		return nil, fmt.Errorf("reading epub container %q: %w", filePath, err)
 	}
 
-	pkg, err := parseOPF(zr, opfPath, e.maxDecompressedFileSize)
+	pkg, err := parseOPF(zr, opfPath, e.maxDecompressedFileSize, &decompressed, e.maxTotalDecompressed)
 	if err != nil {
 		return nil, fmt.Errorf("parsing epub OPF %q: %w", filePath, err)
 	}
@@ -185,6 +204,7 @@ func (e *EPUBExtractor) Extract(ctx context.Context, filePath string) (*extracto
 	// Extract chapter text in spine order.
 	opfDir := path.Dir(opfPath)
 	var chapters []string
+	var budgetErr error
 	for _, ref := range pkg.Spine.ItemRefs {
 		item, ok := manifest[ref.IDRef]
 		if !ok || item.MediaType != xhtmlMediaType {
@@ -198,13 +218,24 @@ func (e *EPUBExtractor) Extract(ctx context.Context, filePath string) (*extracto
 		}
 		chapterPath := path.Join(opfDir, href)
 
-		text, extractErr := extractChapterText(zr, chapterPath, e.maxDecompressedFileSize, e.policy)
+		text, extractErr := extractChapterText(zr, chapterPath, e.maxDecompressedFileSize, &decompressed, e.maxTotalDecompressed, e.policy)
 		if extractErr != nil {
-			continue // skip unreadable chapters
+			// Budget exhaustion aborts the whole extraction — otherwise an
+			// attacker could waste the budget on one malicious chapter while
+			// we quietly move on to the next.
+			if errors.Is(extractErr, ziputil.ErrBudgetExceeded) {
+				budgetErr = fmt.Errorf("extracting chapters from epub %q: %w", filePath, extractErr)
+				break
+			}
+			continue // skip unreadable chapters (malformed XHTML, missing file)
 		}
 		if text != "" {
 			chapters = append(chapters, text)
 		}
+	}
+
+	if budgetErr != nil {
+		return nil, budgetErr
 	}
 
 	if len(chapters) == 0 {
@@ -228,8 +259,9 @@ func (e *EPUBExtractor) Extract(ctx context.Context, filePath string) (*extracto
 }
 
 // findContainerRootfile parses META-INF/container.xml and returns the full-path
-// of the first rootfile entry.
-func findContainerRootfile(zr *zip.ReadCloser, maxFileSize int64) (string, error) {
+// of the first rootfile entry. total/totalMax share a cumulative decompression
+// budget across every ZIP entry opened during a single Extract call.
+func findContainerRootfile(zr *zip.ReadCloser, maxFileSize int64, total *int64, totalMax int64) (string, error) {
 	f, err := findFile(zr, "META-INF/container.xml")
 	if err != nil {
 		return "", fmt.Errorf("finding container.xml: %w", err)
@@ -241,8 +273,9 @@ func findContainerRootfile(zr *zip.ReadCloser, maxFileSize int64) (string, error
 	}
 	defer func() { _ = rc.Close() }()
 
+	br := ziputil.NewBudgetReader(io.LimitReader(rc, maxFileSize), total, totalMax)
 	var c container
-	if err := xml.NewDecoder(io.LimitReader(rc, maxFileSize)).Decode(&c); err != nil {
+	if err := xml.NewDecoder(br).Decode(&c); err != nil {
 		return "", fmt.Errorf("decoding container.xml: %w", err)
 	}
 
@@ -254,7 +287,9 @@ func findContainerRootfile(zr *zip.ReadCloser, maxFileSize int64) (string, error
 }
 
 // parseOPF parses the OPF package document at opfPath inside the ZIP archive.
-func parseOPF(zr *zip.ReadCloser, opfPath string, maxFileSize int64) (*opfPackage, error) {
+// total/totalMax share a cumulative decompression budget across every ZIP
+// entry opened during a single Extract call.
+func parseOPF(zr *zip.ReadCloser, opfPath string, maxFileSize int64, total *int64, totalMax int64) (*opfPackage, error) {
 	f, err := findFile(zr, opfPath)
 	if err != nil {
 		return nil, fmt.Errorf("finding OPF %q: %w", opfPath, err)
@@ -266,8 +301,9 @@ func parseOPF(zr *zip.ReadCloser, opfPath string, maxFileSize int64) (*opfPackag
 	}
 	defer func() { _ = rc.Close() }()
 
+	br := ziputil.NewBudgetReader(io.LimitReader(rc, maxFileSize), total, totalMax)
 	var pkg opfPackage
-	if err := xml.NewDecoder(io.LimitReader(rc, maxFileSize)).Decode(&pkg); err != nil {
+	if err := xml.NewDecoder(br).Decode(&pkg); err != nil {
 		return nil, fmt.Errorf("decoding OPF %q: %w", opfPath, err)
 	}
 
@@ -275,8 +311,11 @@ func parseOPF(zr *zip.ReadCloser, opfPath string, maxFileSize int64) (*opfPackag
 }
 
 // extractChapterText opens a chapter XHTML file from the ZIP, sanitizes it,
-// and converts it to markdown text.
-func extractChapterText(zr *zip.ReadCloser, chapterPath string, maxFileSize int64, policy *bluemonday.Policy) (string, error) {
+// and converts it to markdown text. total/totalMax share a cumulative
+// decompression budget across every ZIP entry opened during a single Extract
+// call; once exhausted the caller should halt extraction entirely rather than
+// skip to the next chapter (see Extract's spine loop).
+func extractChapterText(zr *zip.ReadCloser, chapterPath string, maxFileSize int64, total *int64, totalMax int64, policy *bluemonday.Policy) (string, error) {
 	f, err := findFile(zr, chapterPath)
 	if err != nil {
 		return "", fmt.Errorf("finding chapter %q: %w", chapterPath, err)
@@ -288,7 +327,8 @@ func extractChapterText(zr *zip.ReadCloser, chapterPath string, maxFileSize int6
 	}
 	defer func() { _ = rc.Close() }()
 
-	raw, err := io.ReadAll(io.LimitReader(rc, maxFileSize))
+	br := ziputil.NewBudgetReader(io.LimitReader(rc, maxFileSize), total, totalMax)
+	raw, err := io.ReadAll(br)
 	if err != nil {
 		return "", fmt.Errorf("reading chapter %q: %w", chapterPath, err)
 	}

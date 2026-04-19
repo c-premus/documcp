@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/c-premus/documcp/internal/extractor"
+	"github.com/c-premus/documcp/internal/extractor/ziputil"
 )
 
 const (
@@ -75,6 +76,20 @@ func NewWithLimits(maxZIPFiles int, maxExtractedText int64) *DOCXExtractor {
 	return e
 }
 
+// NewWithAllLimits creates a DOCXExtractor with all three resource limits
+// configurable. maxTotalDecompressed is the cumulative runtime decompression
+// budget across every entry processed by a single Extract call; it is the
+// authoritative defense against zip bombs whose central-directory headers
+// understate real decompression size. Zero or negative values fall back to
+// package defaults.
+func NewWithAllLimits(maxZIPFiles int, maxFileSize, maxTotalDecompressed int64) *DOCXExtractor {
+	e := NewWithLimits(maxZIPFiles, maxFileSize)
+	if maxTotalDecompressed > 0 {
+		e.maxTotalDecompressed = maxTotalDecompressed
+	}
+	return e
+}
+
 // Supports reports whether this extractor handles the given MIME type.
 func (e *DOCXExtractor) Supports(mime string) bool {
 	return mime == mimeType
@@ -108,12 +123,17 @@ func (e *DOCXExtractor) Extract(ctx context.Context, filePath string) (*extracto
 		}
 	}
 
-	content, err := extractText(zr, e.maxDecompressedFileSize)
+	// decompressed tracks cumulative bytes actually handed to the decoders
+	// across every entry read below. Shared with BudgetReader so a lying
+	// central directory cannot bypass the per-file io.LimitReader gate.
+	var decompressed int64
+
+	content, err := extractText(zr, e.maxDecompressedFileSize, &decompressed, e.maxTotalDecompressed)
 	if err != nil {
 		return nil, fmt.Errorf("extracting text from %q: %w", filePath, err)
 	}
 
-	metadata := extractMetadata(zr, e.maxDecompressedFileSize)
+	metadata := extractMetadata(zr, e.maxDecompressedFileSize, &decompressed, e.maxTotalDecompressed)
 
 	return &extractor.ExtractedContent{
 		Content:   content,
@@ -125,22 +145,32 @@ func (e *DOCXExtractor) Extract(ctx context.Context, filePath string) (*extracto
 // extractText parses word/document.xml (body), word/header*.xml (headers),
 // and word/footer*.xml (footers), returning the concatenated text in reading
 // order: headers, body, footers.
-func extractText(zr *zip.ReadCloser, maxFileSize int64) (string, error) {
+//
+// total and totalMax are shared across every entry read: total accumulates
+// decompressed bytes handed to the XML decoder, and parsing halts with
+// ziputil.ErrBudgetExceeded once total exceeds totalMax.
+func extractText(zr *zip.ReadCloser, maxFileSize int64, total *int64, totalMax int64) (string, error) {
 	docFile, err := findFile(zr, "word/document.xml")
 	if err != nil {
 		return "", fmt.Errorf("finding document.xml: %w", err)
 	}
 
-	body, err := parseZipXML(docFile, maxFileSize)
+	body, err := parseZipXML(docFile, maxFileSize, total, totalMax)
 	if err != nil {
 		return "", fmt.Errorf("parsing document.xml: %w", err)
 	}
 
-	// Collect header and footer text (optional — silently skip failures).
+	// Collect header and footer text (optional — silently skip malformed-XML
+	// failures). Budget-exhaustion errors must NOT be swallowed here: they
+	// indicate a zip bomb and have to propagate to the caller.
 	var sections []string
 
 	for _, f := range findFilesByPrefix(zr, "word/header") {
-		if text, parseErr := parseZipXML(f, maxFileSize); parseErr == nil && text != "" {
+		text, parseErr := parseZipXML(f, maxFileSize, total, totalMax)
+		if errors.Is(parseErr, ziputil.ErrBudgetExceeded) {
+			return "", parseErr
+		}
+		if parseErr == nil && text != "" {
 			sections = append(sections, text)
 		}
 	}
@@ -148,7 +178,11 @@ func extractText(zr *zip.ReadCloser, maxFileSize int64) (string, error) {
 	sections = append(sections, body)
 
 	for _, f := range findFilesByPrefix(zr, "word/footer") {
-		if text, parseErr := parseZipXML(f, maxFileSize); parseErr == nil && text != "" {
+		text, parseErr := parseZipXML(f, maxFileSize, total, totalMax)
+		if errors.Is(parseErr, ziputil.ErrBudgetExceeded) {
+			return "", parseErr
+		}
+		if parseErr == nil && text != "" {
 			sections = append(sections, text)
 		}
 	}
@@ -157,14 +191,17 @@ func extractText(zr *zip.ReadCloser, maxFileSize int64) (string, error) {
 }
 
 // parseZipXML opens a ZIP file entry and parses its WordprocessingML content.
-func parseZipXML(f *zip.File, maxFileSize int64) (string, error) {
+// The reader chain is LimitReader (per-file cap) wrapped by BudgetReader
+// (cumulative cap across the archive).
+func parseZipXML(f *zip.File, maxFileSize int64, total *int64, totalMax int64) (string, error) {
 	rc, err := f.Open()
 	if err != nil {
 		return "", fmt.Errorf("opening %s: %w", f.Name, err)
 	}
 	defer func() { _ = rc.Close() }()
 
-	return parseDocument(io.LimitReader(rc, maxFileSize))
+	br := ziputil.NewBudgetReader(io.LimitReader(rc, maxFileSize), total, totalMax)
+	return parseDocument(br)
 }
 
 // parseDocument decodes the XML from word/document.xml and returns paragraphs
@@ -224,8 +261,10 @@ func parseDocument(r io.Reader) (string, error) {
 }
 
 // extractMetadata reads docProps/core.xml and returns any title, creator, or
-// description fields found.
-func extractMetadata(zr *zip.ReadCloser, maxFileSize int64) map[string]any {
+// description fields found. total and totalMax share the cumulative
+// decompression budget with extractText so metadata parsing cannot smuggle
+// bytes past the zip-bomb defense.
+func extractMetadata(zr *zip.ReadCloser, maxFileSize int64, total *int64, totalMax int64) map[string]any {
 	f, err := findFile(zr, "docProps/core.xml")
 	if err != nil {
 		return nil
@@ -237,8 +276,9 @@ func extractMetadata(zr *zip.ReadCloser, maxFileSize int64) map[string]any {
 	}
 	defer func() { _ = rc.Close() }()
 
+	br := ziputil.NewBudgetReader(io.LimitReader(rc, maxFileSize), total, totalMax)
 	var props coreProperties
-	if err := xml.NewDecoder(io.LimitReader(rc, maxFileSize)).Decode(&props); err != nil {
+	if err := xml.NewDecoder(br).Decode(&props); err != nil {
 		return nil
 	}
 
