@@ -49,7 +49,13 @@ type Client struct {
 // NewClient creates a Client that uses tempDir as the base directory for cloning repos.
 // The maxFileSize and maxTotalSize parameters set default limits for ExtractFiles;
 // pass 0 to use DefaultMaxFileSize and DefaultMaxTotalSize respectively.
+//
+// The first NewClient call per process installs an SSRF-safe HTTP(S) transport
+// into go-git's plumbing/transport/client registry (see installSafeHTTPTransport
+// in safehttp.go). Subsequent calls are no-ops via sync.Once.
 func NewClient(tempDir string, maxFileSize, maxTotalSize int64, logger *slog.Logger) *Client {
+	installSafeHTTPTransport()
+
 	if maxFileSize <= 0 {
 		maxFileSize = DefaultMaxFileSize
 	}
