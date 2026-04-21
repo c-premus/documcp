@@ -752,7 +752,7 @@ func TestDocumentRepository_SuggestTitles(t *testing.T) {
 	}
 
 	t.Run("returns public non-deleted matches ordered by title", func(t *testing.T) {
-		suggestions, err := repo.SuggestTitles(ctx, "Doc", 5)
+		suggestions, err := repo.SuggestTitles(ctx, "Doc", 5, nil, false)
 		if err != nil {
 			t.Fatalf("SuggestTitles() error: %v", err)
 		}
@@ -772,7 +772,7 @@ func TestDocumentRepository_SuggestTitles(t *testing.T) {
 	})
 
 	t.Run("case insensitive matching", func(t *testing.T) {
-		suggestions, err := repo.SuggestTitles(ctx, "doc", 5)
+		suggestions, err := repo.SuggestTitles(ctx, "doc", 5, nil, false)
 		if err != nil {
 			t.Fatalf("SuggestTitles() error: %v", err)
 		}
@@ -783,7 +783,7 @@ func TestDocumentRepository_SuggestTitles(t *testing.T) {
 	})
 
 	t.Run("respects limit", func(t *testing.T) {
-		suggestions, err := repo.SuggestTitles(ctx, "Doc", 1)
+		suggestions, err := repo.SuggestTitles(ctx, "Doc", 1, nil, false)
 		if err != nil {
 			t.Fatalf("SuggestTitles() error: %v", err)
 		}
@@ -793,7 +793,7 @@ func TestDocumentRepository_SuggestTitles(t *testing.T) {
 	})
 
 	t.Run("no matches returns empty", func(t *testing.T) {
-		suggestions, err := repo.SuggestTitles(ctx, "Kubernetes", 5)
+		suggestions, err := repo.SuggestTitles(ctx, "Kubernetes", 5, nil, false)
 		if err != nil {
 			t.Fatalf("SuggestTitles() error: %v", err)
 		}
@@ -803,7 +803,7 @@ func TestDocumentRepository_SuggestTitles(t *testing.T) {
 	})
 
 	t.Run("different prefix matches different results", func(t *testing.T) {
-		suggestions, err := repo.SuggestTitles(ctx, "Go", 5)
+		suggestions, err := repo.SuggestTitles(ctx, "Go", 5, nil, false)
 		if err != nil {
 			t.Fatalf("SuggestTitles() error: %v", err)
 		}

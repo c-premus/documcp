@@ -27,7 +27,7 @@ type searchQueryLister interface {
 
 // titleSuggester provides title autocomplete suggestions.
 type titleSuggester interface {
-	SuggestTitles(ctx context.Context, prefix string, limit int) ([]repository.TitleSuggestion, error)
+	SuggestTitles(ctx context.Context, prefix string, limit int, userID *int64, isAdmin bool) ([]repository.TitleSuggestion, error)
 }
 
 // SearchHandler handles REST API endpoints for search.
@@ -209,7 +209,16 @@ func (h *SearchHandler) Autocomplete(w http.ResponseWriter, r *http.Request) {
 
 	limit, _ := parsePagination(r, 5, 10)
 
-	suggestions, err := h.suggester.SuggestTitles(r.Context(), query, limit)
+	// Apply caller-scoped visibility: admins see all non-deleted docs;
+	// authenticated users see public + own; unauth sees public-only.
+	var userID *int64
+	var isAdmin bool
+	if user, ok := authmiddleware.UserFromContext(r.Context()); ok {
+		userID = &user.ID
+		isAdmin = user.IsAdmin
+	}
+
+	suggestions, err := h.suggester.SuggestTitles(r.Context(), query, limit, userID, isAdmin)
 	if err != nil {
 		h.logger.Error("fetching title suggestions", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to fetch suggestions")

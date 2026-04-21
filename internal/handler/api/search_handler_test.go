@@ -744,12 +744,12 @@ func (m *mockQueryLister) PopularQueries(ctx context.Context, limit int) ([]repo
 }
 
 type mockTitleSuggester struct {
-	suggestTitlesFn func(ctx context.Context, prefix string, limit int) ([]repository.TitleSuggestion, error)
+	suggestTitlesFn func(ctx context.Context, prefix string, limit int, userID *int64, isAdmin bool) ([]repository.TitleSuggestion, error)
 }
 
-func (m *mockTitleSuggester) SuggestTitles(ctx context.Context, prefix string, limit int) ([]repository.TitleSuggestion, error) {
+func (m *mockTitleSuggester) SuggestTitles(ctx context.Context, prefix string, limit int, userID *int64, isAdmin bool) ([]repository.TitleSuggestion, error) {
 	if m.suggestTitlesFn != nil {
-		return m.suggestTitlesFn(ctx, prefix, limit)
+		return m.suggestTitlesFn(ctx, prefix, limit, userID, isAdmin)
 	}
 	return nil, nil
 }
@@ -1062,7 +1062,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		t.Parallel()
 
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, prefix string, limit int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, prefix string, limit int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				assert.Equal(t, "go", prefix)
 				assert.Equal(t, 5, limit, "default limit should be 5")
 				return []repository.TitleSuggestion{
@@ -1110,7 +1110,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 
 		var capturedLimit int
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, _ string, limit int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, _ string, limit int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				capturedLimit = limit
 				return nil, nil
 			},
@@ -1131,7 +1131,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 
 		var capturedLimit int
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, _ string, limit int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, _ string, limit int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				capturedLimit = limit
 				return nil, nil
 			},
@@ -1152,7 +1152,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 
 		var capturedLimit int
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, _ string, limit int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, _ string, limit int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				capturedLimit = limit
 				return nil, nil
 			},
@@ -1173,7 +1173,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 
 		var capturedLimit int
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, _ string, limit int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, _ string, limit int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				capturedLimit = limit
 				return nil, nil
 			},
@@ -1193,7 +1193,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		t.Parallel()
 
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, _ string, _ int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, _ string, _ int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				return []repository.TitleSuggestion{}, nil
 			},
 		}
@@ -1211,7 +1211,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		t.Parallel()
 
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, _ string, _ int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, _ string, _ int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				return nil, errors.New("database timeout")
 			},
 		}
@@ -1233,7 +1233,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		t.Parallel()
 
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, _ string, _ int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, _ string, _ int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				return []repository.TitleSuggestion{}, nil
 			},
 		}
@@ -1259,7 +1259,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 
 		query100 := strings.Repeat("a", 100)
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, prefix string, _ int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, prefix string, _ int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				assert.Equal(t, query100, prefix)
 				return []repository.TitleSuggestion{}, nil
 			},
@@ -1278,7 +1278,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		t.Parallel()
 
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, prefix string, _ int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, prefix string, _ int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				assert.Equal(t, "ab", prefix)
 				return []repository.TitleSuggestion{
 					{UUID: "uuid-1", Title: "About Us"},

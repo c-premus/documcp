@@ -335,8 +335,18 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 				r.Use(authmiddleware.RequireScope(authscope.SearchRead, s.logger))
 				r.Get("/search", deps.Handlers.SearchHandler.Search)
 				r.Get("/search/unified", deps.Handlers.SearchHandler.FederatedSearch)
-				r.Get("/search/popular", deps.Handlers.SearchHandler.Popular)
 				r.Get("/search/autocomplete", deps.Handlers.SearchHandler.Autocomplete)
+			})
+			// Popular searches are admin-only: the aggregation is global
+			// across all users (currently has no per-user scoping), so
+			// exposing it to any search:read bearer leaks what other
+			// users and third-party clients are searching for — project
+			// names, client names, internal-tool terms. Admin-gate until
+			// a proper per-caller scoping or anonymizing rollup lands.
+			r.Group(func(r chi.Router) {
+				r.Use(rateLimitByIP(120, time.Minute, deps.BareRedisClient))
+				r.Use(authmiddleware.RequireAdmin)
+				r.Get("/search/popular", deps.Handlers.SearchHandler.Popular)
 			})
 			s.logger.Info("search API endpoints registered")
 		}
