@@ -9,6 +9,12 @@ import (
 // Token Revocation (RFC 7009).
 //nolint:godot // ---------------------------------------------------------------------------
 
+// ErrInvalidClientCredentials signals that `/oauth/revoke` rejected the
+// caller's client authentication — the handler maps this to a 401
+// `invalid_client` response per RFC 6749 §5.2. Any other error returned
+// from RevokeToken is swallowed in the handler (200 OK per RFC 7009 §2.2).
+var ErrInvalidClientCredentials = errors.New("invalid client credentials")
+
 // RevokeTokenParams holds the input for token revocation.
 type RevokeTokenParams struct {
 	Token         string
@@ -17,37 +23,50 @@ type RevokeTokenParams struct {
 	TokenTypeHint string
 }
 
-// RevokeToken revokes an access or refresh token. Per RFC 7009, always succeeds.
+// RevokeToken revokes an access or refresh token. Per RFC 7009 §2.2 the
+// endpoint responds 200 even when the token is unknown; the only failure
+// worth surfacing to the caller is a client-authentication failure
+// (ErrInvalidClientCredentials), which the handler converts to 401
+// invalid_client.
 func (s *Service) RevokeToken(ctx context.Context, params RevokeTokenParams) error {
 	// Verify client
 	client, err := s.clients.FindClientByClientID(ctx, params.ClientID)
 	if err != nil {
-		return errors.New("invalid client credentials")
+		return ErrInvalidClientCredentials
 	}
-	err = s.verifyClientAuth(client, params.ClientSecret)
-	if err != nil {
-		return err
+	if err := s.verifyClientAuth(client, params.ClientSecret); err != nil {
+		return ErrInvalidClientCredentials
 	}
 
 	// Parse the token. Per RFC 7009, return success even for invalid tokens.
-	_, tokenHash, ok := s.parseTokenOrZero(params.Token)
+	// Candidate hashes cover every configured HMAC key so rotation doesn't
+	// silently skip revocation for tokens minted under a retired key.
+	_, tokenHashes, ok := s.parseTokenCandidateHashesOrZero(params.Token)
 	if !ok {
 		return nil
 	}
 
-	// Try to revoke based on hint (verify client ownership per RFC 7009 §2.1)
-	switch params.TokenTypeHint {
-	case "refresh_token":
-		s.tryRevokeRefreshToken(ctx, tokenHash, client.ID)
-	case "access_token":
-		s.tryRevokeAccessToken(ctx, tokenHash, client.ID)
-	default:
-		// Try access token first, then refresh token
-		s.tryRevokeAccessToken(ctx, tokenHash, client.ID)
-		s.tryRevokeRefreshToken(ctx, tokenHash, client.ID)
+	for _, tokenHash := range tokenHashes {
+		// Try to revoke based on hint (verify client ownership per RFC 7009 §2.1)
+		switch params.TokenTypeHint {
+		case "refresh_token":
+			s.tryRevokeRefreshToken(ctx, tokenHash, client.ID)
+		case "access_token":
+			s.tryRevokeAccessToken(ctx, tokenHash, client.ID)
+		default:
+			s.tryRevokeAccessToken(ctx, tokenHash, client.ID)
+			s.tryRevokeRefreshToken(ctx, tokenHash, client.ID)
+		}
 	}
 
 	return nil
+}
+
+// parseTokenCandidateHashesOrZero is the boolean-result variant of
+// parseTokenCandidateHashes, matching the shape of parseTokenOrZero.
+func (s *Service) parseTokenCandidateHashesOrZero(plaintext string) (id int64, hashes []string, ok bool) {
+	id, hashes, err := s.parseTokenCandidateHashes(plaintext)
+	return id, hashes, err == nil
 }
 
 func (s *Service) tryRevokeAccessToken(ctx context.Context, tokenHash string, clientID int64) {

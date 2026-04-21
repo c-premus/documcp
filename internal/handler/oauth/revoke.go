@@ -2,6 +2,7 @@ package oauthhandler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -55,12 +56,23 @@ func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
 		ClientSecret:  req.ClientSecret,
 		TokenTypeHint: req.TokenTypeHint,
 	})
-	if err != nil {
-		h.logger.Error("revoking token", "error", err)
-		oauthError(w, http.StatusInternalServerError, "server_error", "An internal error occurred while processing the revocation request")
+	switch {
+	case errors.Is(err, oauth.ErrInvalidClientCredentials):
+		// RFC 6749 §5.2 — bad client auth is `invalid_client` / 401.
+		w.Header().Set("WWW-Authenticate", `Basic realm="oauth"`)
+		oauthError(w, http.StatusUnauthorized, "invalid_client", "Client authentication failed")
 		return
+	case err != nil:
+		// RFC 7009 §2.2 — every other failure is swallowed: invalid token,
+		// unknown token, internal error on the revoke write, etc. The client
+		// cannot distinguish "already revoked" from "never existed" from
+		// "storage hiccup", and that's the intended spec behavior.
+		h.logger.Warn("swallowed revoke error per RFC 7009 §2.2",
+			"error", err,
+			"client_id", req.ClientID,
+			"token_type_hint", req.TokenTypeHint,
+		)
 	}
 
-	// Per RFC 7009, always return 200 OK with empty array
 	jsonResponse(w, http.StatusOK, []any{})
 }
