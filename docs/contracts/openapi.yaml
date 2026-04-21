@@ -212,6 +212,16 @@ paths:
             type: integer
             minimum: 0
             default: 0
+        - name: include_snippets
+          in: query
+          description: |
+            Include matched-text snippets (ts_headline highlights) in each
+            result's `extra.snippet`. Off by default — snippet generation
+            scans full content per hit (up to ~1 GB at LIMIT 100 over 10 MB
+            docs). Matches the MCP `search_documents` tool flag.
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
           description: Search results

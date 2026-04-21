@@ -20,7 +20,7 @@ type oauthClientRepo interface {
 	FindClientByID(ctx context.Context, id int64) (*model.OAuthClient, error)
 	DeleteClient(ctx context.Context, id int64) error
 	FindActiveScopeGrantsWithUsers(ctx context.Context, clientID int64) ([]repository.ScopeGrantWithUser, error)
-	DeleteScopeGrant(ctx context.Context, id int64, clientID int64) error
+	DeleteScopeGrant(ctx context.Context, id, clientID int64) error
 }
 
 // OAuthClientHandler handles REST API endpoints for OAuth client administration.
