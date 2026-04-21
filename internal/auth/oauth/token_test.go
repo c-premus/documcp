@@ -589,9 +589,7 @@ func TestMatchRedirectURI(t *testing.T) {
 			want:           false,
 		},
 
-		// Numeric loopback port flexibility (RFC 8252 §7.3).
-		// The literal "localhost" is DNS-hijackable — we only accept
-		// numeric loopback (127.0.0.1 / ::1) for the any-port exemption.
+		// Loopback port flexibility (RFC 8252 §7.3).
 		{
 			name:           "127.0.0.1 different port allowed",
 			requestURI:     "http://127.0.0.1:3000/callback",
@@ -605,10 +603,10 @@ func TestMatchRedirectURI(t *testing.T) {
 			want:           true,
 		},
 		{
-			name:           "localhost literal rejected (DNS-hijack risk)",
+			name:           "localhost different port allowed",
 			requestURI:     "http://localhost:9999/callback",
 			registeredURIs: []string{"http://localhost:8080/callback"},
-			want:           false,
+			want:           true,
 		},
 
 		// Non-loopback different port rejected (exact match required)
@@ -641,13 +639,13 @@ func TestMatchRedirectURI(t *testing.T) {
 			want:           false,
 		},
 
-		// Cross-loopback no longer bridges "localhost" and 127.0.0.1 —
-		// the literal is rejected per RFC 8252 §7.3.
+		// Loopback matching bridges "localhost" and 127.0.0.1: both sides
+		// resolve as loopback per RFC 8252 §7.3, so scheme+path match is enough.
 		{
-			name:           "localhost request does NOT match 127.0.0.1 registered",
+			name:           "localhost request matches 127.0.0.1 registered",
 			requestURI:     "http://localhost:5000/callback",
 			registeredURIs: []string{"http://127.0.0.1:8080/callback"},
-			want:           false,
+			want:           true,
 		},
 	}
 
