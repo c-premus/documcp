@@ -21,7 +21,10 @@ func TestClientTouchTimeout(t *testing.T) {
 		cfg := config.OAuthConfig{
 			ClientTouchTimeout: 30 * time.Second,
 		}
-		svc := NewService(nil, cfg, "https://app.example.com", slog.Default(), nil)
+		svc, err := NewService(nil, cfg, "https://app.example.com", slog.Default(), testHMACKeys())
+		if err != nil {
+			t.Fatalf("NewService: %v", err)
+		}
 
 		got := svc.ClientTouchTimeout()
 		if got != 30*time.Second {
@@ -33,7 +36,10 @@ func TestClientTouchTimeout(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.OAuthConfig{}
-		svc := NewService(nil, cfg, "https://app.example.com", slog.Default(), nil)
+		svc, err := NewService(nil, cfg, "https://app.example.com", slog.Default(), testHMACKeys())
+		if err != nil {
+			t.Fatalf("NewService: %v", err)
+		}
 
 		got := svc.ClientTouchTimeout()
 		if got != 0 {
@@ -47,7 +53,10 @@ func TestClientTouchTimeout(t *testing.T) {
 		cfg := config.OAuthConfig{
 			ClientTouchTimeout: 5 * time.Minute,
 		}
-		svc := NewService(nil, cfg, "https://app.example.com", slog.Default(), nil)
+		svc, err := NewService(nil, cfg, "https://app.example.com", slog.Default(), testHMACKeys())
+		if err != nil {
+			t.Fatalf("NewService: %v", err)
+		}
 
 		got := svc.ClientTouchTimeout()
 		if got != 5*time.Minute {

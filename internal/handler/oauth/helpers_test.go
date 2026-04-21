@@ -324,7 +324,11 @@ func newHandlerWithRepo(repo *mockOAuthRepo) (*Handler, *mockSessionStore) {
 
 func newHandlerWithRepoAndConfig(repo *mockOAuthRepo, oauthCfg config.OAuthConfig) (*Handler, *mockSessionStore) {
 	store := newMockSessionStore()
-	svc := oauth.NewService(repo, oauthCfg, "https://example.com", testutil.DiscardLogger(), nil)
+	keys := []oauth.HMACKey{{Version: '1', Key: []byte("handler-test-hmac-key")}}
+	svc, err := oauth.NewService(repo, oauthCfg, "https://example.com", testutil.DiscardLogger(), keys)
+	if err != nil {
+		panic(err)
+	}
 	h := New(Config{
 		Service:      svc,
 		SessionStore: store,

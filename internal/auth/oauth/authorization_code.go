@@ -96,8 +96,10 @@ type ExchangeAuthorizationCodeParams struct {
 
 // ExchangeAuthorizationCode exchanges an auth code for tokens.
 func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params ExchangeAuthorizationCodeParams) (*TokenResult, error) {
-	// Parse the authorization code
-	codeID, codeHash, err := s.ParseToken(params.Code)
+	// Parse the authorization code. During HMAC key rotation the stored hash
+	// may have been written with a retired key — candidate hashes cover every
+	// configured version.
+	codeID, codeHashes, err := s.parseTokenCandidateHashes(params.Code)
 	if err != nil {
 		return nil, errors.New("invalid authorization code")
 	}
@@ -120,16 +122,9 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 		return nil, err
 	}
 
-	// Look up the authorization code by hash. A non-revoked hit is the
-	// happy path. If the lookup fails with no-rows, dispatch to the replay
-	// detector before returning — a revoked match means the code is being
-	// replayed (security.md M1 / OAuth 2.1 §4.1.3).
-	authCode, err := s.authCodes.FindAuthorizationCodeByCode(ctx, codeHash)
+	authCode, err := s.findAuthCodeAcrossKeys(ctx, codeHashes, codeID, params.ClientID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			s.handleAuthCodeReusePossible(ctx, codeHash, codeID, params.ClientID)
-		}
-		return nil, errors.New("invalid authorization code")
+		return nil, err
 	}
 
 	// Verify code belongs to this client and matches the ID
@@ -214,6 +209,27 @@ func (s *Service) ExchangeAuthorizationCode(ctx context.Context, params Exchange
 	}
 
 	return s.issueTokenPair(ctx, client.ID, authCode.UserID, scope, resource, authCode.ID)
+}
+
+// findAuthCodeAcrossKeys returns the stored authorization code matching any
+// of the candidate hashes (one per configured HMAC key). When every candidate
+// misses with sql.ErrNoRows, the replay detector runs on each hash — a
+// revoked row under any version indicates the code is being replayed
+// (security.md M1 / OAuth 2.1 §4.1.3) and the token family is revoked.
+func (s *Service) findAuthCodeAcrossKeys(ctx context.Context, codeHashes []string, codeID int64, clientID string) (*model.OAuthAuthorizationCode, error) {
+	for _, codeHash := range codeHashes {
+		authCode, err := s.authCodes.FindAuthorizationCodeByCode(ctx, codeHash)
+		if err == nil {
+			return authCode, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("invalid authorization code")
+		}
+	}
+	for _, codeHash := range codeHashes {
+		s.handleAuthCodeReusePossible(ctx, codeHash, codeID, clientID)
+	}
+	return nil, errors.New("invalid authorization code")
 }
 
 // handleAuthCodeReusePossible runs when the primary code lookup misses with

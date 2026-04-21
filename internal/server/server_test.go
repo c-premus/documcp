@@ -575,7 +575,12 @@ func TestRegisterRoutes_AdminLoginRedirect(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func stubOAuthService() *oauth.Service {
-	return oauth.NewService(nil, config.OAuthConfig{}, "http://localhost", slog.Default(), nil)
+	keys := []oauth.HMACKey{{Version: '1', Key: []byte("server-test-stub-key")}}
+	svc, err := oauth.NewService(nil, config.OAuthConfig{}, "http://localhost", slog.Default(), keys)
+	if err != nil {
+		panic(err)
+	}
+	return svc
 }
 
 func TestRegisterRoutes_MCPHandler(t *testing.T) {

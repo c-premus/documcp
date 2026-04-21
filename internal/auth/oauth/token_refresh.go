@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	authscope "github.com/c-premus/documcp/internal/auth/scope"
+	"github.com/c-premus/documcp/internal/model"
 )
 
 //nolint:godot // ---------------------------------------------------------------------------
@@ -28,8 +29,9 @@ type RefreshTokenParams struct {
 
 // RefreshAccessToken exchanges a refresh token for new tokens (rotation).
 func (s *Service) RefreshAccessToken(ctx context.Context, params RefreshTokenParams) (*TokenResult, error) {
-	// Parse the refresh token
-	_, tokenHash, err := s.ParseToken(params.RefreshToken)
+	// Parse the refresh token. Candidate hashes cover every configured HMAC
+	// key so tokens minted before a rotation still verify.
+	_, tokenHashes, err := s.parseTokenCandidateHashes(params.RefreshToken)
 	if err != nil {
 		return nil, errors.New("refresh token not found")
 	}
@@ -53,14 +55,26 @@ func (s *Service) RefreshAccessToken(ctx context.Context, params RefreshTokenPar
 	}
 
 	// Look up the refresh token (non-revoked, non-expired). On primary
-	// miss, do a follow-up query without the revoked filter: a revoked
-	// hit means the refresh token was rotated away successfully and is
-	// now being replayed — evidence of token theft (security.md M2 /
-	// OAuth 2.1 §4.3.2). We revoke every descendant in the grant's
-	// lineage via the shared authorization_code_id.
-	refreshToken, err := s.refreshTokens.FindRefreshTokenByToken(ctx, tokenHash)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	// miss for every candidate hash, dispatch the reuse detector: a
+	// revoked-row hit means the refresh token was rotated away and is now
+	// being replayed — evidence of token theft (security.md M2 / OAuth 2.1
+	// §4.3.2). We revoke every descendant in the grant's lineage via the
+	// shared authorization_code_id.
+	var (
+		refreshToken *model.OAuthRefreshToken
+		findErr      error
+	)
+	for _, tokenHash := range tokenHashes {
+		refreshToken, findErr = s.refreshTokens.FindRefreshTokenByToken(ctx, tokenHash)
+		if findErr == nil {
+			break
+		}
+		if !errors.Is(findErr, sql.ErrNoRows) {
+			return nil, errors.New("refresh token not found")
+		}
+	}
+	if refreshToken == nil {
+		for _, tokenHash := range tokenHashes {
 			s.handleRefreshTokenReusePossible(ctx, tokenHash, params.ClientID)
 		}
 		return nil, errors.New("refresh token not found")
