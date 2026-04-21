@@ -85,6 +85,20 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		params.FileType = ft
 	}
 
+	// tags filter — accepts repeated ?tags=a&tags=b OR a single comma-list
+	// ?tags=a,b. Documents must match every tag (AND logic, per dto.mcp).
+	if rawTags := r.URL.Query()["tags"]; len(rawTags) > 0 {
+		params.Tags = expandTagsParam(rawTags)
+	}
+
+	// include_snippets flag-gates the ts_headline highlight pass. Off by
+	// default because ts_headline reads full content per hit (LIMIT 100 over
+	// 10 MB docs is up to 1 GB scanned). Matches the MCP search_documents
+	// contract.
+	if r.URL.Query().Get("include_snippets") == "true" {
+		params.WithSnippets = true
+	}
+
 	resp, err := h.searcher.Search(r.Context(), params)
 	if err != nil {
 		h.logger.Error("searching documents", "error", err)

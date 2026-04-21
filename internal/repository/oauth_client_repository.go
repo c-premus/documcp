@@ -217,7 +217,7 @@ func (r *OAuthRepository) FindActiveScopeGrantsWithUsers(ctx context.Context, cl
 // scoping prevents a DELETE on /oauth-clients/{a}/scope-grants/{b} from
 // silently deleting a grant that belongs to a different client (audit-log
 // integrity) even though the route is admin-only.
-func (r *OAuthRepository) DeleteScopeGrant(ctx context.Context, id int64, clientID int64) error {
+func (r *OAuthRepository) DeleteScopeGrant(ctx context.Context, id, clientID int64) error {
 	tag, err := r.db.Exec(ctx,
 		`DELETE FROM oauth_client_scope_grants WHERE id = $1 AND client_id = $2`,
 		id, clientID)

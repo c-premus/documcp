@@ -495,13 +495,13 @@ func (h *Handler) findOrCreateUser(ctx context.Context, sub, email string, email
 		if needsUpdate {
 			user.Name = name
 			user.Email = email
-			if err := h.repo.UpdateUser(ctx, user); err != nil {
+			if updateErr := h.repo.UpdateUser(ctx, user); updateErr != nil {
 				// Admin demotion/promotion + identity-field sync not persisted.
 				// Not fatal — session still works with the stale row — but next
 				// login will try again. Warn so operators see a persistent
 				// failure rather than silent drift.
 				h.logger.Warn("updating user on oidc callback",
-					"user_id", user.ID, "error", err)
+					"user_id", user.ID, "error", updateErr)
 			}
 		}
 		return user, nil
