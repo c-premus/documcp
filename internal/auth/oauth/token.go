@@ -111,13 +111,6 @@ func (s *Service) parseTokenCandidateHashes(plaintext string) (id int64, hashes 
 	return id, hashes, nil
 }
 
-// parseTokenOrZero attempts to parse a token string into its ID and hash.
-// Returns false if the token is malformed.
-func (s *Service) parseTokenOrZero(plaintext string) (id int64, hash string, ok bool) {
-	id, hash, err := s.ParseToken(plaintext)
-	return id, hash, err == nil
-}
-
 // hashToken returns the hex-encoded HMAC-SHA256 of plaintext under the
 // current primary key, prefixed with `v<version>$` so the stored hash records
 // which key version produced it.
