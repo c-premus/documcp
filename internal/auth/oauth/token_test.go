@@ -589,19 +589,9 @@ func TestMatchRedirectURI(t *testing.T) {
 			want:           false,
 		},
 
-		// Localhost port flexibility (RFC 8252 Section 7.3)
-		{
-			name:           "localhost different port allowed",
-			requestURI:     "http://localhost:9999/callback",
-			registeredURIs: []string{"http://localhost:8080/callback"},
-			want:           true,
-		},
-		{
-			name:           "localhost no port vs with port allowed",
-			requestURI:     "http://localhost/callback",
-			registeredURIs: []string{"http://localhost:8080/callback"},
-			want:           true,
-		},
+		// Numeric loopback port flexibility (RFC 8252 §7.3).
+		// The literal "localhost" is DNS-hijackable — we only accept
+		// numeric loopback (127.0.0.1 / ::1) for the any-port exemption.
 		{
 			name:           "127.0.0.1 different port allowed",
 			requestURI:     "http://127.0.0.1:3000/callback",
@@ -614,19 +604,9 @@ func TestMatchRedirectURI(t *testing.T) {
 			registeredURIs: []string{"http://[::1]:8080/callback"},
 			want:           true,
 		},
-
-		// Localhost scheme mismatch still fails
 		{
-			name:           "localhost scheme mismatch rejected",
-			requestURI:     "https://localhost:9999/callback",
-			registeredURIs: []string{"http://localhost:8080/callback"},
-			want:           false,
-		},
-
-		// Localhost path mismatch fails
-		{
-			name:           "localhost path mismatch rejected",
-			requestURI:     "http://localhost:9999/other",
+			name:           "localhost literal rejected (DNS-hijack risk)",
+			requestURI:     "http://localhost:9999/callback",
 			registeredURIs: []string{"http://localhost:8080/callback"},
 			want:           false,
 		},
@@ -661,12 +641,13 @@ func TestMatchRedirectURI(t *testing.T) {
 			want:           false,
 		},
 
-		// Cross-loopback: localhost vs 127.0.0.1
+		// Cross-loopback no longer bridges "localhost" and 127.0.0.1 —
+		// the literal is rejected per RFC 8252 §7.3.
 		{
-			name:           "localhost request matches 127.0.0.1 registered",
+			name:           "localhost request does NOT match 127.0.0.1 registered",
 			requestURI:     "http://localhost:5000/callback",
 			registeredURIs: []string{"http://127.0.0.1:8080/callback"},
-			want:           true,
+			want:           false,
 		},
 	}
 
