@@ -339,7 +339,6 @@ func (s *Searcher) searchZimArchives(ctx context.Context, query string, params S
 		args = append(args, params.Category)
 		argIdx++
 	}
-	_ = argIdx
 
 	where := ""
 	if len(whereClauses) > 0 {

@@ -8,7 +8,7 @@ documents *which tool for which state* and an end-to-end restore drill.
 See also:
 - Metrics exposed at `/metrics` (HTTP) — documented in `docs/PROMETHEUS_METRICS.md`
 - Grafana alert rules provisioned from `dist/alerts/documcp.json`
-- Health endpoints: `/health` (liveness), `/health/ready` (JSON dependency check), worker `/readyz` on port `QUEUE_HEALTH_PORT`
+- Health endpoints: `/health` (liveness), `/health/ready` (JSON dependency check), worker `/readyz` on port `WORKER_HEALTH_PORT`
 
 ## What needs backing up
 
@@ -222,7 +222,7 @@ code pattern handles the detection layer only.
 |----------|---------|------|
 | `/health` | Liveness — returns 200 if the process is running | none |
 | `/health/ready` | Readiness — 200 when all dependencies respond to Ping, 503 otherwise. JSON body includes per-service status. | none |
-| Worker `/readyz` (port `QUEUE_HEALTH_PORT`, default 9090) | Same readiness check, used by Docker/K8s worker healthchecks | none |
+| Worker `/readyz` (port `WORKER_HEALTH_PORT`, default 9090) | Same readiness check, used by Docker/K8s worker healthchecks | none |
 | `/metrics` | Prometheus scrape target | `INTERNAL_API_TOKEN` when set |
 
 `/health/ready` and `/readyz` call `Ping` on an uninstrumented pgxpool
