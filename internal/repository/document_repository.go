@@ -163,12 +163,25 @@ func (r *DocumentRepository) ReplaceTags(ctx context.Context, documentID int64, 
 		return fmt.Errorf("deleting tags for document %d: %w", documentID, err)
 	}
 
-	for _, tag := range tags {
-		_, err = tx.Exec(ctx,
-			`INSERT INTO document_tags (document_id, tag, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())`,
-			documentID, tag)
-		if err != nil {
-			return fmt.Errorf("inserting tag %q for document %d: %w", tag, documentID, err)
+	if len(tags) > 0 {
+		// Single multi-row INSERT replaces the per-tag loop: 50 tags =
+		// 1 round trip instead of 50. validateTags (service layer) caps
+		// count at 50 and per-tag length at 100, so the generated
+		// placeholder list is bounded.
+		var sb strings.Builder
+		sb.WriteString(`INSERT INTO document_tags (document_id, tag, created_at, updated_at) VALUES `)
+		args := make([]any, 0, len(tags)+1)
+		args = append(args, documentID)
+		for i, tag := range tags {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			// $1 is documentID (bound once); $2, $3, ... are tag values.
+			fmt.Fprintf(&sb, "($1, $%d, NOW(), NOW())", i+2)
+			args = append(args, tag)
+		}
+		if _, err = tx.Exec(ctx, sb.String(), args...); err != nil {
+			return fmt.Errorf("inserting %d tags for document %d: %w", len(tags), documentID, err)
 		}
 	}
 
