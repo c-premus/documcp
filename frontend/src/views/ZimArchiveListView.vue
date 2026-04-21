@@ -34,16 +34,9 @@ const columns: ColumnDef<ZimArchive, unknown>[] = [
     accessorKey: 'name',
     header: 'Name',
     enableSorting: true,
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      return h(
-        'span',
-        {
-          class:
-            'text-indigo-600 dark:text-indigo-400 font-medium hover:text-indigo-800 dark:hover:text-indigo-300',
-        },
-        value,
-      )
+    meta: {
+      className:
+        'text-indigo-600 dark:text-indigo-400 font-medium hover:text-indigo-800 dark:hover:text-indigo-300',
     },
   },
   {

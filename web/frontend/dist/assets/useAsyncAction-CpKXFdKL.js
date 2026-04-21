@@ -1,1 +1,0 @@
-async function e(e,t,n,r){e.value=!0,t!==null&&(t.value=null);try{return await n()}catch(e){throw t!==null&&(t.value=e instanceof Error?e.message:r),e}finally{e.value=!1}}export{e as t};

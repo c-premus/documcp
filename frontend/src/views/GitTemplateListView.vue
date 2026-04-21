@@ -141,9 +141,7 @@ const baseColumns: ColumnDef<GitTemplate, unknown>[] = [
     accessorKey: 'branch',
     header: 'Branch',
     enableSorting: false,
-    meta: { className: 'w-24 hidden md:table-cell' },
-    cell: ({ getValue }) =>
-      h('span', { class: 'font-mono text-xs text-text-muted' }, getValue<string>()),
+    meta: { className: 'w-24 hidden md:table-cell font-mono text-xs text-text-muted' },
   },
   {
     accessorKey: 'last_synced_at',

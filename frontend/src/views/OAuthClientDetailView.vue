@@ -3,13 +3,15 @@ import { ref, h, watch, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { format, formatDistanceToNow } from 'date-fns'
-import { TrashIcon } from '@heroicons/vue/24/outline'
 import type { ColumnDef } from '@tanstack/vue-table'
 
 import { useOAuthClientsStore, type ScopeGrant } from '@/stores/oauthClients'
 import DataTable from '@/components/shared/DataTable.vue'
 import EmptyState from '@/components/shared/EmptyState.vue'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
+import OAuthGrantTypeChips from '@/components/oauth/OAuthGrantTypeChips.vue'
+import OAuthScopeChips from '@/components/oauth/OAuthScopeChips.vue'
+import ScopeGrantRowActions from '@/components/oauth/ScopeGrantRowActions.vue'
 
 const props = defineProps<{
   readonly id: number
@@ -59,23 +61,7 @@ const grantColumns: ColumnDef<ScopeGrant, unknown>[] = [
     accessorKey: 'scope',
     header: 'Scope',
     enableSorting: false,
-    cell: ({ getValue }) => {
-      const value = getValue<string>()
-      return h(
-        'div',
-        { class: 'flex flex-wrap gap-1' },
-        value.split(' ').map((s) =>
-          h(
-            'span',
-            {
-              class:
-                'inline-flex items-center rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-xs font-medium text-green-800 dark:text-green-300',
-            },
-            s,
-          ),
-        ),
-      )
-    },
+    cell: ({ getValue }) => h(OAuthScopeChips, { scope: getValue<string>() }),
   },
   {
     accessorKey: 'granted_by',
@@ -100,23 +86,13 @@ const grantColumns: ColumnDef<ScopeGrant, unknown>[] = [
     header: '',
     enableSorting: false,
     meta: { className: 'w-16' },
-    cell: ({ row }) => {
-      const grant = row.original
-      return h(
-        'button',
-        {
-          type: 'button',
-          class: 'cursor-pointer text-text-muted hover:text-red-600 dark:hover:text-red-400',
-          title: 'Revoke grant',
-          'aria-label': 'Revoke grant',
-          onClick: (event: MouseEvent) => {
-            event.stopPropagation()
-            revokeTarget.value = grant
-          },
+    cell: ({ row }) =>
+      h(ScopeGrantRowActions, {
+        grant: row.original,
+        onRevoke: (grant: ScopeGrant) => {
+          revokeTarget.value = grant
         },
-        [h(TrashIcon, { class: 'h-5 w-5' })],
-      )
-    },
+      }),
   },
 ]
 
@@ -201,14 +177,8 @@ watch(
             <!-- Grant Types -->
             <div>
               <dt class="text-sm font-medium text-text-muted">Grant Types</dt>
-              <dd class="mt-1 flex flex-wrap gap-1">
-                <span
-                  v-for="gt in store.currentClient.grant_types"
-                  :key="gt"
-                  class="inline-flex items-center rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-xs font-medium text-blue-800 dark:text-blue-300"
-                >
-                  {{ gt.replace(/_/g, ' ') }}
-                </span>
+              <dd class="mt-1">
+                <OAuthGrantTypeChips :grant-types="store.currentClient.grant_types" />
               </dd>
             </div>
 
@@ -237,15 +207,11 @@ watch(
             <div>
               <dt class="text-sm font-medium text-text-muted">Base Scope</dt>
               <dd class="mt-1">
-                <div v-if="store.currentClient.scope" class="flex flex-wrap gap-1">
-                  <span
-                    v-for="s in store.currentClient.scope.split(' ')"
-                    :key="s"
-                    class="inline-flex items-center rounded-full bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:text-indigo-300"
-                  >
-                    {{ s }}
-                  </span>
-                </div>
+                <OAuthScopeChips
+                  v-if="store.currentClient.scope"
+                  :scope="store.currentClient.scope"
+                  variant="base"
+                />
                 <span v-else class="text-sm text-text-muted">No scopes</span>
               </dd>
             </div>

@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted, h, computed } from 'vue'
 import { toast } from 'vue-sonner'
 import { formatDistanceToNow } from 'date-fns'
-import { ArrowPathIcon, ArrowTopRightOnSquareIcon, TrashIcon } from '@heroicons/vue/24/outline'
+import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline'
 import { TabGroup, TabList, Tab, TabPanels, TabPanel } from '@headlessui/vue'
 import type { ColumnDef } from '@tanstack/vue-table'
 
@@ -12,6 +12,7 @@ import DataTable from '../components/shared/DataTable.vue'
 import StatusBadge from '../components/shared/StatusBadge.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
+import QueueJobRowActions from '../components/queue/QueueJobRowActions.vue'
 
 const store = useQueueStore()
 
@@ -131,38 +132,16 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
     id: 'actions',
     header: 'Actions',
     meta: { className: 'w-20' },
-    cell: ({ row }) => {
-      return h('div', { class: 'flex items-center gap-2' }, [
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400',
-            title: 'Retry job',
-            'aria-label': 'Retry job',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              handleRetry(row.original)
-            },
-          },
-          [h(ArrowPathIcon, { class: 'h-5 w-5' })],
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            class: 'text-text-muted hover:text-red-600 dark:hover:text-red-400',
-            title: 'Delete job',
-            'aria-label': 'Delete job',
-            onClick: (event: MouseEvent) => {
-              event.stopPropagation()
-              deleteTarget.value = row.original
-            },
-          },
-          [h(TrashIcon, { class: 'h-5 w-5' })],
-        ),
-      ])
-    },
+    cell: ({ row }) =>
+      h(QueueJobRowActions, {
+        job: row.original,
+        onRetry: (job: FailedJob) => {
+          handleRetry(job)
+        },
+        onDelete: (job: FailedJob) => {
+          deleteTarget.value = job
+        },
+      }),
   },
 ]
 </script>
