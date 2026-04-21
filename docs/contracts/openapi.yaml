@@ -327,10 +327,19 @@ paths:
     get:
       operationId: unifiedSearch
       tags: [Search]
-      summary: Unified search
+      summary: Unified discovery search
       description: |
-        Search across all content types (documents, git templates, ZIM archives)
-        in a single request. Requires authentication.
+        Discovery search across all FTS content types (documents, git
+        templates, ZIM archive metadata) in a single request. Returns the
+        top-ranked merged page plus per-source pre-limit totals so callers
+        can see how many matches exist in each source before choosing a
+        type-specific paginated endpoint.
+
+        **Pagination is not supported** — passing `offset` returns 400.
+        For deep search use `/api/search` (documents), the ZIM and git
+        template search endpoints, or the MCP `search_documents`,
+        `search_zim`, `search_git_templates` tools.
+
         Rate limit: `search` (120/min).
 
         **Required scope:** `search:read`
@@ -347,10 +356,13 @@ paths:
             maxLength: 255
         - name: types
           in: query
-          description: Filter to specific content types (max 4)
+          description: |
+            Filter to specific content types. Repeated (`?types=document&types=git_template`)
+            or comma-delimited (`?types=document,git_template`). Omit to search
+            all three FTS sources.
           schema:
             type: array
-            maxItems: 4
+            maxItems: 3
             items:
               type: string
               enum: [document, git_template, zim_archive]
@@ -364,13 +376,6 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
-        - name: offset
-          in: query
-          description: Pagination offset (default 0)
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
       responses:
         "200":
           description: Unified search results
@@ -378,6 +383,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UnifiedSearchResponse"
+        "400":
+          description: Invalid request (e.g. `offset` supplied on this discovery endpoint)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorEnvelope"
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "422":
@@ -3767,24 +3778,43 @@ components:
 
     UnifiedSearchResponse:
       type: object
+      description: |
+        Discovery-only response shape aligned with the MCP `unified_search`
+        tool. Top-ranked merged page, honest per-source totals, and a hint
+        pointing at the paginated deep-search endpoints. No `offset`, no
+        `limit` echo, no `data`/`meta` wrapper.
+      required: [query, results, returned, totals, sources_searched, processing_time_ms, hint]
       properties:
-        data:
+        query:
+          type: string
+        results:
           type: array
           items:
             $ref: "#/components/schemas/UnifiedSearchResult"
-        meta:
+        returned:
+          type: integer
+          description: Number of results in `results` after merge + limit truncation.
+        totals:
           type: object
-          properties:
-            query:
-              type: string
-            total:
-              type: integer
-            processing_time_ms:
-              type: number
-            limit:
-              type: integer
-            offset:
-              type: integer
+          description: |
+            Pre-limit match count per source that was queried. Sources with
+            zero matches still appear with a value of 0.
+          additionalProperties:
+            type: integer
+          example:
+            document: 12
+            git_template: 0
+            zim_archive: 3
+        sources_searched:
+          type: array
+          items:
+            type: string
+            enum: [document, git_template, zim_archive]
+        processing_time_ms:
+          type: integer
+        hint:
+          type: string
+          description: Human-readable pointer to the paginated deep-search endpoints.
 
     UnifiedSearchResult:
       type: object
@@ -3798,8 +3828,9 @@ components:
           type: string
         description:
           type: [string, "null"]
-        relevance_score:
+        score:
           type: number
+          description: Relevance score; higher is better.
         metadata:
           type: object
           additionalProperties: true
