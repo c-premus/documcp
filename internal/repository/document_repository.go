@@ -463,13 +463,46 @@ func (r *DocumentRepository) ListDistinctTags(ctx context.Context, prefix string
 	return tags, nil
 }
 
-// SuggestTitles returns title suggestions matching the given prefix (case-insensitive).
-func (r *DocumentRepository) SuggestTitles(ctx context.Context, prefix string, limit int) ([]TitleSuggestion, error) {
-	suggestions, err := database.Select[TitleSuggestion](ctx, r.db,
-		`SELECT uuid, title FROM documents
-		WHERE deleted_at IS NULL AND is_public = true AND title ILIKE $1
-		ORDER BY title LIMIT $2`,
-		escapeLike(prefix)+"%", limit)
+// SuggestTitles returns title suggestions matching the given prefix
+// (case-insensitive), scoped to the caller's visibility.
+//
+// When userID is nil (unauthenticated) or isAdmin is false, the result set
+// is limited to public documents plus documents owned by the caller —
+// matching the predicate used by full-text search. Before this scoping was
+// added, non-admins couldn't autocomplete their own private titles; the
+// audit flagged it as a cross-tenant leak (v0.20.x behavior was public-only).
+// Admins see all non-deleted documents.
+func (r *DocumentRepository) SuggestTitles(ctx context.Context, prefix string, limit int, userID *int64, isAdmin bool) ([]TitleSuggestion, error) {
+	query := `SELECT uuid, title FROM documents
+		WHERE deleted_at IS NULL AND title ILIKE $1`
+	args := []any{escapeLike(prefix) + "%"}
+
+	switch {
+	case isAdmin:
+		// no visibility predicate — admin sees all
+	case userID != nil:
+		query += ` AND (is_public = true OR user_id = $3)`
+		// $2 is reserved below for LIMIT — we want user_id to come after
+		// limit so that placeholder renumbering stays stable when the
+		// admin branch is taken.
+		args = append(args, *userID)
+	default:
+		query += ` AND is_public = true`
+	}
+
+	query += ` ORDER BY title LIMIT $2`
+	// Insert limit at position $2. args currently holds:
+	//   - args[0]: prefix (=$1)
+	//   - (isAdmin / public-only path) nothing else
+	//   - (owner-or-public path) args[1]: user_id (intended for $3)
+	// We rebuild in the right order.
+	final := make([]any, 0, len(args)+1)
+	final = append(final, args[0], limit)
+	if len(args) > 1 {
+		final = append(final, args[1:]...)
+	}
+
+	suggestions, err := database.Select[TitleSuggestion](ctx, r.db, query, final...)
 	if err != nil {
 		return nil, fmt.Errorf("suggesting titles with prefix %q: %w", prefix, err)
 	}
