@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
@@ -55,10 +56,13 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		return nil, err
 	}
 
-	// --- Token HMAC key ---
-	hmacKey, err := deriveKey([]byte(sessionSecret), cfg.OAuth.HKDFSalt, "oauth-token-hmac")
+	// --- Token HMAC keys ---
+	// Primary key derived from OAUTH_SESSION_SECRET, written as version '1'.
+	// Previous key (if OAUTH_SESSION_SECRET_PREVIOUS is set) is version '2':
+	// accepted on verify so rotation does not silently invalidate live tokens.
+	hmacKeys, err := buildHMACKeys(cfg, sessionSecret)
 	if err != nil {
-		return nil, fmt.Errorf("deriving HMAC key: %w", err)
+		return nil, fmt.Errorf("building token HMAC keys: %w", err)
 	}
 
 	// --- EventBus (Redis-backed for cross-instance SSE delivery) ---
@@ -115,7 +119,10 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	rs.ExtractWorker.Pipeline = documentPipeline
 	rs.ExtractWorker.Metrics = f.Metrics
 
-	oauthService := oauth.NewService(f.OAuthRepo, cfg.OAuth, cfg.App.URL, logger, hmacKey)
+	oauthService, err := oauth.NewService(f.OAuthRepo, cfg.OAuth, cfg.App.URL, logger, hmacKeys)
+	if err != nil {
+		return nil, fmt.Errorf("creating oauth service: %w", err)
+	}
 	externalServiceSvc := service.NewExternalServiceService(
 		f.ExternalServiceRepo,
 		f.ZimArchiveRepo,
@@ -370,6 +377,52 @@ func (s *ServerApp) Close() error {
 		}
 	}
 	return nil
+}
+
+// buildHMACKeys derives the OAuth token HMAC keys from OAUTH_SESSION_SECRET
+// (primary) and optionally OAUTH_SESSION_SECRET_PREVIOUS, returning them
+// newest-first. Each key's Version byte is the first hex character of
+// SHA-256(secret), giving a stable per-secret identifier so hashes stored
+// before a rotation still verify under the retired key (security M2).
+//
+// A 1-in-16 collision on the derived version is caught at boot — distinct
+// secrets must derive distinct versions so the stored prefix identifies
+// exactly one key. Operators resolve the collision by regenerating one of
+// the secrets.
+//
+// Returns an error when the primary key would be empty — production boots
+// fail-fast rather than falling back to unkeyed SHA-256 (security L4).
+func buildHMACKeys(cfg *config.Config, sessionSecret string) ([]oauth.HMACKey, error) {
+	primary, err := deriveKey([]byte(sessionSecret), cfg.OAuth.HKDFSalt, "oauth-token-hmac")
+	if err != nil {
+		return nil, fmt.Errorf("deriving primary HMAC key: %w", err)
+	}
+	keys := []oauth.HMACKey{{Version: hmacVersionByte(sessionSecret), Key: primary}}
+
+	if prev := cfg.OAuth.SessionSecretPrevious; prev != "" {
+		previous, prevErr := deriveKey([]byte(prev), cfg.OAuth.HKDFSalt, "oauth-token-hmac")
+		if prevErr != nil {
+			return nil, fmt.Errorf("deriving previous HMAC key: %w", prevErr)
+		}
+		prevVersion := hmacVersionByte(prev)
+		if prevVersion == keys[0].Version {
+			return nil, fmt.Errorf("OAUTH_SESSION_SECRET and OAUTH_SESSION_SECRET_PREVIOUS derive to the same HMAC key version %q — regenerate one secret", prevVersion)
+		}
+		keys = append(keys, oauth.HMACKey{Version: prevVersion, Key: previous})
+	}
+	return keys, nil
+}
+
+// hmacVersionByte returns a stable single-byte identifier for an HMAC key
+// derived from secret. Uses the first hex character of SHA-256(secret) so
+// every distinct secret maps to a distinct version with high probability
+// (15/16 per added secret). Rotating the primary secret keeps the retired
+// key's version byte stable, so stored hashes under that key continue to
+// verify after rotation.
+func hmacVersionByte(secret string) byte {
+	sum := sha256.Sum256([]byte(secret))
+	const hexAlphabet = "0123456789abcdef"
+	return hexAlphabet[sum[0]>>4]
 }
 
 // buildSessionStore creates a gorilla CookieStore with HKDF-derived encryption keys.

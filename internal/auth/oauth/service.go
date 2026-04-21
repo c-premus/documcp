@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -133,22 +132,30 @@ type Service struct {
 	appURL string
 	logger *slog.Logger
 
-	// hmacKey is the server-side key for HMAC-SHA256 token hashing. When
-	// non-empty, token hashes are keyed, preventing offline brute-force if
-	// the database is compromised. When nil, falls back to plain SHA-256
-	// (still safe for high-entropy tokens).
-	hmacKey []byte
-
-	// hmacWarnOnce ensures the SHA-256 fallback warning logs only once per
-	// service instance when hmacKey is nil.
-	hmacWarnOnce sync.Once
+	// hmacKeys holds the HMAC signing keys used for token hashing, newest-first.
+	// hmacKeys[0] is the PRIMARY — every fresh hash is signed with it.
+	// Subsequent entries are retired keys accepted on verify paths so a token
+	// minted before rotation still authenticates (security M2). NewService
+	// rejects an empty slice, so hashToken always has at least one key
+	// available — there is no silent SHA-256 fallback (security L4).
+	hmacKeys []HMACKey
 }
 
 // NewService creates a new OAuth service. repo must satisfy the composite
 // OAuthRepo interface; it is split across the role-specific fields
-// internally. hmacKey keys token hashing when non-empty; pass nil to fall
-// back to plain SHA-256 (appropriate for tests).
-func NewService(repo OAuthRepo, oauthCfg config.OAuthConfig, appURL string, logger *slog.Logger, hmacKey []byte) *Service {
+// internally. hmacKeys is required non-empty — hmacKeys[0] is the primary
+// signing key, the remainder (if any) are rotation keys accepted on verify.
+// Returns an error when hmacKeys is empty so production builds fail-boot
+// rather than silently falling back to unkeyed SHA-256 (security L4).
+func NewService(repo OAuthRepo, oauthCfg config.OAuthConfig, appURL string, logger *slog.Logger, hmacKeys []HMACKey) (*Service, error) {
+	if len(hmacKeys) == 0 {
+		return nil, errors.New("oauth.NewService: at least one HMAC key is required (see security L4)")
+	}
+	for i, k := range hmacKeys {
+		if len(k.Key) == 0 {
+			return nil, fmt.Errorf("oauth.NewService: hmacKeys[%d].Key is empty", i)
+		}
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -163,8 +170,8 @@ func NewService(repo OAuthRepo, oauthCfg config.OAuthConfig, appURL string, logg
 		config:        oauthCfg,
 		appURL:        appURL,
 		logger:        logger,
-		hmacKey:       hmacKey,
-	}
+		hmacKeys:      hmacKeys,
+	}, nil
 }
 
 // ClientTouchTimeout returns the configured timeout for background client
@@ -262,22 +269,25 @@ type TokenResult struct {
 }
 
 // ValidateAccessToken validates a bearer token and returns the access token model.
+// During HMAC key rotation, every configured key is tried — a token minted
+// under a retired key still authenticates until the operator drops the key.
 func (s *Service) ValidateAccessToken(ctx context.Context, bearerToken string) (*model.OAuthAccessToken, error) {
-	id, tokenHash, err := s.ParseToken(bearerToken)
+	id, hashes, err := s.parseTokenCandidateHashes(bearerToken)
 	if err != nil {
 		return nil, errors.New("invalid token format")
 	}
 
-	token, err := s.accessTokens.FindAccessTokenByToken(ctx, tokenHash)
-	if err != nil {
-		return nil, errors.New("invalid or expired token")
+	for _, hash := range hashes {
+		token, findErr := s.accessTokens.FindAccessTokenByToken(ctx, hash)
+		if findErr != nil {
+			continue
+		}
+		if token.ID != id {
+			continue
+		}
+		return token, nil
 	}
-
-	if token.ID != id {
-		return nil, errors.New("invalid or expired token")
-	}
-
-	return token, nil
+	return nil, errors.New("invalid or expired token")
 }
 
 // ValidateState checks that a state parameter has a safe format.

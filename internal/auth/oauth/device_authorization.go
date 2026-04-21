@@ -192,15 +192,22 @@ func (s *Service) ExchangeDeviceCode(ctx context.Context, params ExchangeDeviceC
 		return nil, &DeviceCodeError{Code: "invalid_client", Description: "Invalid client credentials"}
 	}
 
-	// Parse the device code
-	_, deviceCodeHash, err := s.ParseToken(params.DeviceCode)
+	// Parse the device code. Candidate hashes cover every configured HMAC
+	// key so codes minted before a rotation still verify.
+	_, deviceCodeHashes, err := s.parseTokenCandidateHashes(params.DeviceCode)
 	if err != nil {
 		return nil, &DeviceCodeError{Code: "invalid_grant", Description: "Invalid device code"}
 	}
 
-	// Look up the device code
-	dc, err := s.deviceCodes.FindDeviceCodeByDeviceCode(ctx, deviceCodeHash)
-	if err != nil {
+	// Look up the device code across all candidate hashes.
+	var dc *model.OAuthDeviceCode
+	for _, deviceCodeHash := range deviceCodeHashes {
+		dc, err = s.deviceCodes.FindDeviceCodeByDeviceCode(ctx, deviceCodeHash)
+		if err == nil {
+			break
+		}
+	}
+	if dc == nil {
 		return nil, &DeviceCodeError{Code: "invalid_grant", Description: "Invalid device code"}
 	}
 

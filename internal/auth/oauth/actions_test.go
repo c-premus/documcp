@@ -295,12 +295,27 @@ func testConfig() config.OAuthConfig {
 	}
 }
 
+// testHMACKeys returns a single fixed HMAC key used across tests that don't
+// exercise rotation. The key is deterministic so different test services
+// produce the same hashes for the same plaintext, simplifying assertions.
+func testHMACKeys() []HMACKey {
+	return []HMACKey{{Version: '1', Key: []byte("unit-test-hmac-key-at-least-32-bytes!!")}}
+}
+
 func testService(repo OAuthRepo) *Service {
-	return NewService(repo, testConfig(), "https://app.example.com", slog.Default(), nil)
+	svc, err := NewService(repo, testConfig(), "https://app.example.com", slog.Default(), testHMACKeys())
+	if err != nil {
+		panic(err)
+	}
+	return svc
 }
 
 func testServiceWithConfig(repo OAuthRepo, cfg config.OAuthConfig) *Service {
-	return NewService(repo, cfg, "https://app.example.com", slog.Default(), nil)
+	svc, err := NewService(repo, cfg, "https://app.example.com", slog.Default(), testHMACKeys())
+	if err != nil {
+		panic(err)
+	}
+	return svc
 }
 
 // makeTokenPlaintext generates a real token via the test service, assigns it

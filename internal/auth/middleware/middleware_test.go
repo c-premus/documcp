@@ -266,7 +266,12 @@ func newTestOAuthService(repo *mockOAuthRepo) *oauth.Service {
 		DeviceCodeLifetime:   10 * time.Minute,
 		DeviceCodeInterval:   5 * time.Second,
 	}
-	return oauth.NewService(repo, cfg, "https://example.com", nil, nil)
+	keys := []oauth.HMACKey{{Version: '1', Key: []byte("middleware-test-hmac-key")}}
+	svc, err := oauth.NewService(repo, cfg, "https://example.com", nil, keys)
+	if err != nil {
+		panic(err)
+	}
+	return svc
 }
 
 // okHandler is a simple handler that writes 200 OK. Used as the "next"
