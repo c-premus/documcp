@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import { storeToRefs } from 'pinia'
 import { ref, watch, computed, h } from 'vue'
 import { toast } from 'vue-sonner'
 import type { ColumnDef } from '@tanstack/vue-table'
 
-import { apiFetch } from '@/api/helpers'
 import DataTable from '../components/shared/DataTable.vue'
 import Pagination from '../components/shared/Pagination.vue'
 import SearchInput from '../components/shared/SearchInput.vue'
@@ -14,44 +14,10 @@ import TruncatedText from '../components/shared/TruncatedText.vue'
 import RelativeTimeCell from '../components/shared/RelativeTimeCell.vue'
 import UserRowActions from '../components/users/UserRowActions.vue'
 
-interface User {
-  readonly id: number
-  readonly name: string
-  readonly email: string
-  readonly oidc_sub: string
-  readonly oidc_provider: string
-  readonly is_admin: boolean
-  readonly created_at: string
-  readonly updated_at: string
-}
+import { useUsersStore, type User } from '../stores/users'
 
-interface ListResponse {
-  readonly data: User[]
-  readonly meta: { readonly total: number }
-}
-
-interface SingleResponse {
-  readonly data: User
-}
-
-interface DeleteResponse {
-  readonly message: string
-}
-
-function buildQuery(params: Record<string, string | number | undefined>): string {
-  const search = new URLSearchParams()
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '') {
-      search.set(key, String(value))
-    }
-  }
-  const qs = search.toString()
-  return qs ? `?${qs}` : ''
-}
-
-const users = ref<User[]>([])
-const total = ref(0)
-const loading = ref(false)
+const usersStore = useUsersStore()
+const { users, total, loading } = storeToRefs(usersStore)
 
 const searchQuery = ref('')
 const page = ref(1)
@@ -60,22 +26,15 @@ const perPage = ref(20)
 const deleteTarget = ref<User | null>(null)
 const showDeleteDialog = computed(() => deleteTarget.value !== null)
 
-async function fetchUsers(): Promise<void> {
-  loading.value = true
+async function loadUsers(): Promise<void> {
   try {
-    const offset = (page.value - 1) * perPage.value
-    const query = buildQuery({
+    await usersStore.fetchUsers({
       q: searchQuery.value || undefined,
       limit: perPage.value,
-      offset,
+      offset: (page.value - 1) * perPage.value,
     })
-    const response = await apiFetch<ListResponse>(`/api/admin/users${query}`)
-    users.value = response.data
-    total.value = response.meta.total
   } catch {
     toast.error('Failed to load users')
-  } finally {
-    loading.value = false
   }
 }
 
@@ -83,26 +42,20 @@ watch(
   [searchQuery],
   () => {
     page.value = 1
-    fetchUsers()
+    loadUsers()
   },
   { immediate: true },
 )
 
 watch([page, perPage], () => {
-  fetchUsers()
+  loadUsers()
 })
 
 async function handleToggleAdmin(user: User): Promise<void> {
   try {
-    const response = await apiFetch<SingleResponse>(`/api/admin/users/${user.id}/toggle-admin`, {
-      method: 'POST',
-    })
-    const index = users.value.findIndex((u) => u.id === user.id)
-    if (index !== -1) {
-      users.value[index] = response.data
-    }
-    const label = response.data.is_admin ? 'granted' : 'revoked'
-    toast.success(`Admin ${label} for ${response.data.name}`)
+    const updated = await usersStore.toggleAdmin(user.id)
+    const label = updated.is_admin ? 'granted' : 'revoked'
+    toast.success(`Admin ${label} for ${updated.name}`)
   } catch {
     toast.error(`Failed to toggle admin for ${user.name}`)
   }
@@ -113,13 +66,12 @@ async function handleDeleteConfirm(): Promise<void> {
     return
   }
   const name = deleteTarget.value.name
+  const id = deleteTarget.value.id
   try {
-    await apiFetch<DeleteResponse>(`/api/admin/users/${deleteTarget.value.id}`, {
-      method: 'DELETE',
-    })
+    await usersStore.deleteUser(id)
     toast.success(`User "${name}" deleted`)
     deleteTarget.value = null
-    fetchUsers()
+    loadUsers()
   } catch {
     toast.error(`Failed to delete "${name}"`)
   }

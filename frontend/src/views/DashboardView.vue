@@ -137,9 +137,8 @@ async function fetchStats(): Promise<void> {
     const body = await apiFetch<{ data: DashboardStats }>('/api/admin/dashboard/stats')
     stats.value = body.data
   } catch (e) {
-    error.value = e instanceof ApiError || e instanceof Error
-      ? e.message
-      : 'Failed to fetch dashboard stats'
+    error.value =
+      e instanceof ApiError || e instanceof Error ? e.message : 'Failed to fetch dashboard stats'
   } finally {
     loading.value = false
   }

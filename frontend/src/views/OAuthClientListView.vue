@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import { storeToRefs } from 'pinia'
 import { ref, watch, computed, h } from 'vue'
 import { RouterLink } from 'vue-router'
 import { toast } from 'vue-sonner'
 import type { ColumnDef } from '@tanstack/vue-table'
 
-import { apiFetch } from '@/api/helpers'
 import DataTable from '../components/shared/DataTable.vue'
 import Pagination from '../components/shared/Pagination.vue'
 import SearchInput from '../components/shared/SearchInput.vue'
@@ -13,34 +13,14 @@ import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
 import TruncatedText from '../components/shared/TruncatedText.vue'
 import RelativeTimeCell from '../components/shared/RelativeTimeCell.vue'
 import OAuthClientCreateModal from '../components/oauth/OAuthClientCreateModal.vue'
+import OAuthGrantTypeChips from '../components/oauth/OAuthGrantTypeChips.vue'
 import OAuthClientRowActions from '../components/oauth/OAuthClientRowActions.vue'
 import SecretDisplayModal from '../components/oauth/SecretDisplayModal.vue'
 
-import type { OAuthClient } from '../stores/oauthClients'
+import { useOAuthClientsStore, type OAuthClient } from '../stores/oauthClients'
 
-interface ListResponse {
-  readonly data: OAuthClient[]
-  readonly meta: {
-    readonly total: number
-    readonly limit: number
-    readonly offset: number
-  }
-}
-
-function buildQuery(params: Record<string, string | number | undefined>): string {
-  const search = new URLSearchParams()
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '') {
-      search.set(key, String(value))
-    }
-  }
-  const qs = search.toString()
-  return qs ? `?${qs}` : ''
-}
-
-const clients = ref<OAuthClient[]>([])
-const total = ref(0)
-const loading = ref(false)
+const oauthStore = useOAuthClientsStore()
+const { clients, total, loading } = storeToRefs(oauthStore)
 
 const searchQuery = ref('')
 const page = ref(1)
@@ -54,22 +34,15 @@ const showSecretModal = ref(false)
 const createdClientId = ref('')
 const createdClientSecret = ref('')
 
-async function fetchClients(): Promise<void> {
-  loading.value = true
+async function loadClients(): Promise<void> {
   try {
-    const offset = (page.value - 1) * perPage.value
-    const query = buildQuery({
+    await oauthStore.fetchClients({
       q: searchQuery.value || undefined,
       limit: perPage.value,
-      offset,
+      offset: (page.value - 1) * perPage.value,
     })
-    const response = await apiFetch<ListResponse>(`/api/admin/oauth-clients${query}`)
-    clients.value = response.data
-    total.value = response.meta.total
   } catch {
     toast.error('Failed to load OAuth clients')
-  } finally {
-    loading.value = false
   }
 }
 
@@ -77,13 +50,13 @@ watch(
   [searchQuery],
   () => {
     page.value = 1
-    fetchClients()
+    loadClients()
   },
   { immediate: true },
 )
 
 watch([page, perPage], () => {
-  fetchClients()
+  loadClients()
 })
 
 function openCreateModal(): void {
@@ -99,7 +72,7 @@ function handleClientCreated(payload: { clientId: string; clientSecret: string }
   createdClientId.value = payload.clientId
   createdClientSecret.value = payload.clientSecret
   showSecretModal.value = true
-  fetchClients()
+  loadClients()
 }
 
 function handleSecretModalClose(): void {
@@ -115,12 +88,10 @@ async function handleDeleteConfirm(): Promise<void> {
   const clientName = deleteTarget.value.client_name
   const clientDbId = deleteTarget.value.id
   try {
-    await apiFetch(`/api/admin/oauth-clients/${clientDbId}`, {
-      method: 'DELETE',
-    })
+    await oauthStore.deleteClient(clientDbId)
     toast.success(`Client "${clientName}" deleted`)
     deleteTarget.value = null
-    fetchClients()
+    loadClients()
   } catch {
     toast.error(`Failed to delete "${clientName}"`)
   }
@@ -160,23 +131,7 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
     header: 'Grant Types',
     enableSorting: false,
     meta: { className: 'hidden sm:table-cell' },
-    cell: ({ getValue }) => {
-      const types = getValue<string[]>()
-      return h(
-        'div',
-        { class: 'flex flex-wrap gap-1' },
-        types.map((gt) =>
-          h(
-            'span',
-            {
-              class:
-                'inline-flex items-center rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 text-xs font-medium text-blue-800 dark:text-blue-300',
-            },
-            gt.replace(/_/g, ' '),
-          ),
-        ),
-      )
-    },
+    cell: ({ getValue }) => h(OAuthGrantTypeChips, { grantTypes: getValue<string[]>() }),
   },
   {
     accessorKey: 'token_endpoint_auth_method',
