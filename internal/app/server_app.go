@@ -137,6 +137,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		OIDCCfg:      cfg.OIDC,
 		SessionStore: sessionStore,
 		Repo:         f.OAuthRepo,
+		TokenRevoker: oauthService,
 		Logger:       logger,
 		AppURL:       cfg.App.URL,
 	})
@@ -260,12 +261,13 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 			RootAssetHandler:       rootAssetHandler,
 		},
 		Auth: server.Auth{
-			OAuthHandler: oauthH,
-			OIDCHandler:  oidcH,
-			OAuthService: oauthService,
-			SessionStore: sessionStore,
-			MCPResource:  cfg.App.URL + cfg.DocuMCP.Endpoint,
-			APIResource:  cfg.App.URL,
+			OAuthHandler:          oauthH,
+			OIDCHandler:           oidcH,
+			OAuthService:          oauthService,
+			SessionStore:          sessionStore,
+			MCPResource:           cfg.App.URL + cfg.DocuMCP.Endpoint,
+			APIResource:           cfg.App.URL,
+			SessionAbsoluteMaxAge: cfg.OAuth.SessionAbsoluteMaxAge,
 		},
 		Tuning: server.Tuning{
 			MaxBodySize:      cfg.Server.MaxBodySize,

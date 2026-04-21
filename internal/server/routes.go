@@ -53,12 +53,13 @@ type Handlers struct {
 // and session middleware, the session store, and the RFC 8707 audience
 // strings that /documcp and /api enforce.
 type Auth struct {
-	OAuthHandler *oauthhandler.Handler
-	OIDCHandler  *oidc.Handler
-	OAuthService *oauth.Service
-	SessionStore sessions.Store
-	MCPResource  string // expected audience for the /documcp MCP endpoint
-	APIResource  string // expected audience for /api/* bearer-token requests
+	OAuthHandler          *oauthhandler.Handler
+	OIDCHandler           *oidc.Handler
+	OAuthService          *oauth.Service
+	SessionStore          sessions.Store
+	MCPResource           string // expected audience for the /documcp MCP endpoint
+	APIResource           string // expected audience for /api/* bearer-token requests
+	SessionAbsoluteMaxAge time.Duration
 }
 
 // Tuning groups operator-configured numeric limits applied to HTTP requests.
@@ -264,7 +265,7 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 		r.Use(rateLimitByIP(300, time.Minute, deps.BareRedisClient))
 		switch {
 		case deps.Auth.OAuthService != nil:
-			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.Auth.OAuthService, deps.Auth.SessionStore, s.logger, deps.Auth.APIResource))
+			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.Auth.OAuthService, deps.Auth.SessionStore, s.logger, deps.Auth.APIResource, deps.Auth.SessionAbsoluteMaxAge))
 		default:
 			r.Use(func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -502,7 +503,7 @@ func (s *Server) registerSPARoutes(deps Deps) {
 	// River UI — must be registered before the SPA catch-all so chi matches it first.
 	if deps.Handlers.RiverUIHandler != nil {
 		r.Route("/admin/river", func(r chi.Router) {
-			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.Auth.OAuthService, deps.Auth.SessionStore, s.logger, deps.Auth.APIResource))
+			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.Auth.OAuthService, deps.Auth.SessionStore, s.logger, deps.Auth.APIResource, deps.Auth.SessionAbsoluteMaxAge))
 			r.Use(authmiddleware.RequireScope(authscope.Admin, s.logger))
 			r.Use(authmiddleware.RequireAdmin)
 			r.Use(riverUICSP)

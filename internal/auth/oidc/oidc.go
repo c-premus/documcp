@@ -24,10 +24,18 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/oauth2"
 
+	authmiddleware "github.com/c-premus/documcp/internal/auth/middleware"
 	"github.com/c-premus/documcp/internal/config"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/security"
 )
+
+// TokenRevoker revokes OAuth tokens issued during a session. Implemented by
+// *oauth.Service; declared here as a narrow interface so the OIDC package
+// keeps its consumer-side dependency minimal and tests can substitute a stub.
+type TokenRevoker interface {
+	RevokeUserTokensSince(ctx context.Context, userID int64, since time.Time) (int64, error)
+}
 
 // UserRepo defines the repository interface consumed by the OIDC handler.
 // There is no FindUserByEmail method by design — email is display-only here.
@@ -48,6 +56,7 @@ type Handler struct {
 	httpClient          *http.Client // instrumented with otelhttp for tracing
 	store               sessions.Store
 	repo                UserRepo
+	tokenRevoker        TokenRevoker // nil disables session-logout token revocation
 	logger              *slog.Logger
 	adminGroups         []string
 	bootstrapAdminEmail string // normalized lower-case; empty = disabled
@@ -61,6 +70,7 @@ type Config struct {
 	OIDCCfg      config.OIDCConfig
 	SessionStore sessions.Store
 	Repo         UserRepo
+	TokenRevoker TokenRevoker // optional; enables security L7 on logout
 	Logger       *slog.Logger
 	AppURL       string // used as post_logout_redirect_uri
 }
@@ -208,6 +218,7 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 		httpClient:          httpClient,
 		store:               cfg.SessionStore,
 		repo:                cfg.Repo,
+		tokenRevoker:        cfg.TokenRevoker,
 		logger:              cfg.Logger,
 		adminGroups:         cfg.OIDCCfg.AdminGroups,
 		bootstrapAdminEmail: strings.ToLower(strings.TrimSpace(cfg.OIDCCfg.BootstrapAdminEmail)),
@@ -392,6 +403,10 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 	session.Values["user_id"] = user.ID
 	session.Values["is_admin"] = user.IsAdmin
 	session.Values["user_email"] = user.Email
+	// login_at anchors the session's absolute lifetime (security M1).
+	// BearerOrSession / SessionAuth compare against OAUTH_SESSION_ABSOLUTE_MAX_AGE
+	// to reject stale sessions regardless of sliding-cookie activity.
+	session.Values[authmiddleware.LoginAtSessionKey] = time.Now().Unix()
 
 	if err := session.Save(r, w); err != nil {
 		h.logger.Error("saving session", "error", err)
@@ -421,6 +436,12 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 // provider exposes end_session_endpoint), the redirect URL points to the
 // provider's logout endpoint with id_token_hint and post_logout_redirect_uri
 // so the provider session is also terminated. Otherwise falls back to "/".
+//
+// Query param `revoke_oauth=true` opts into session-L7 behavior: every live
+// OAuth access + refresh token for the session user minted at or after
+// login_at is revoked before the cookie is cleared. Tokens minted before the
+// current session are left alone — they belong to earlier, still-valid grants.
+// Requires TokenRevoker to be configured (nil disables the feature).
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	session, err := h.store.Get(r, sessionName)
 	if err != nil {
@@ -435,6 +456,10 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		_ = idtSession.Save(r, w)
 	}
 
+	if r.URL.Query().Get("revoke_oauth") == "true" {
+		h.revokeSessionTokens(r.Context(), session)
+	}
+
 	session.Options.MaxAge = -1
 	_ = session.Save(r, w)
 
@@ -445,6 +470,31 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"redirect_url": redirectURL})
+}
+
+// revokeSessionTokens implements security L7: revoke live OAuth tokens minted
+// by the session user since login_at. Silent when prerequisites are missing
+// (no revoker configured, no login_at anchor, no user_id) — opt-in feature
+// that must not block logout.
+func (h *Handler) revokeSessionTokens(ctx context.Context, session *sessions.Session) {
+	if h.tokenRevoker == nil || session == nil {
+		return
+	}
+	userID, hasUser := session.Values["user_id"].(int64)
+	loginAt, hasAnchor := session.Values[authmiddleware.LoginAtSessionKey].(int64)
+	if !hasUser || !hasAnchor || userID == 0 {
+		return
+	}
+	revoked, err := h.tokenRevoker.RevokeUserTokensSince(ctx, userID, time.Unix(loginAt, 0))
+	if err != nil {
+		h.logger.Warn("revoking session-minted oauth tokens on logout",
+			"user_id", userID, "error", err)
+		return
+	}
+	if revoked > 0 {
+		h.logger.Info("revoked session-minted oauth tokens on logout",
+			"user_id", userID, "access_tokens_revoked", revoked)
+	}
 }
 
 // buildEndSessionURL constructs the RP-Initiated Logout URL per
@@ -593,4 +643,3 @@ func generateState() (string, error) {
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
-

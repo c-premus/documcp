@@ -107,7 +107,8 @@ DocuMCP requires an OpenID Connect provider for user login. Set `OIDC_PROVIDER_U
 |----------|----------|---------|-------------|
 | `OAUTH_SESSION_SECRET` | Prod | -- | Session secret (min 32 bytes); derives CSRF and token HMAC keys via HKDF. Generate `openssl rand -base64 32` |
 | `OAUTH_SESSION_SECRET_PREVIOUS` | No | -- | Previous session secret for key rotation |
-| `OAUTH_SESSION_MAX_AGE` | No | `720h` | Session lifetime (30 days) |
+| `OAUTH_SESSION_MAX_AGE` | No | `720h` | Sliding session lifetime (30 days) |
+| `OAUTH_SESSION_ABSOLUTE_MAX_AGE` | No | `168h` | Absolute session lifetime anchored at login (7 days). Stale sessions are forced back through OIDC regardless of activity. `0` disables. |
 | `HKDF_SALT` | Yes | -- | Per-deployment salt for HKDF key derivation. Required (min 16 chars) in every environment. Generate `openssl rand -base64 24` |
 | `OAUTH_AUTHORIZATION_CODE_LIFETIME` | No | `10m` | Authorization code TTL |
 | `OAUTH_ACCESS_TOKEN_LIFETIME` | No | `1h` | Access token TTL |

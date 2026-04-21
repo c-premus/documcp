@@ -449,4 +449,3 @@ func TestNewUserResponse(t *testing.T) {
 		}
 	})
 }
-

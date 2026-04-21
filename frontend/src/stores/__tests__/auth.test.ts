@@ -102,5 +102,20 @@ describe('auth store', () => {
         expect(locationMock.href).toBe('/')
       })
     })
+
+    it('appends revoke_oauth=true when opted in', async () => {
+      const locationMock = { href: '' }
+      vi.stubGlobal('location', locationMock)
+
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+      vi.stubGlobal('fetch', fetchMock)
+
+      const auth = useAuthStore()
+      auth.logout({ revokeOAuth: true })
+
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith('/auth/logout?revoke_oauth=true', { method: 'POST' })
+      })
+    })
   })
 })

@@ -369,6 +369,103 @@ func TestOAuthRepository_RefreshTokens(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// RevokeUserTokensSince (security L7)
+// ---------------------------------------------------------------------------
+
+func TestOAuthRepository_RevokeUserTokensSince(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	repo := NewOAuthRepository(testPool, testutil.DiscardLogger())
+
+	user := testutil.NewUser(
+		testutil.WithUserID(0),
+		testutil.WithUserEmail("revoke-since@example.com"),
+	)
+	require.NoError(t, repo.CreateUser(ctx, user))
+
+	other := testutil.NewUser(
+		testutil.WithUserID(0),
+		testutil.WithUserEmail("unrelated@example.com"),
+	)
+	require.NoError(t, repo.CreateUser(ctx, other))
+
+	client := testutil.NewOAuthClient(
+		testutil.WithOAuthClientID(0),
+		testutil.WithOAuthClientClientID("revoke-since-client"),
+	)
+	require.NoError(t, repo.CreateClient(ctx, client))
+
+	mkAccess := func(t *testing.T, hash string, userID int64) *model.OAuthAccessToken {
+		t.Helper()
+		at := &model.OAuthAccessToken{
+			Token:     hash,
+			ClientID:  client.ID,
+			UserID:    sql.NullInt64{Int64: userID, Valid: true},
+			ExpiresAt: time.Now().Add(time.Hour),
+		}
+		require.NoError(t, repo.CreateAccessToken(ctx, at))
+		return at
+	}
+	mkRefresh := func(t *testing.T, hash string, accessID int64) *model.OAuthRefreshToken {
+		t.Helper()
+		rt := &model.OAuthRefreshToken{
+			Token:         hash,
+			AccessTokenID: accessID,
+			ExpiresAt:     time.Now().Add(24 * time.Hour),
+		}
+		require.NoError(t, repo.CreateRefreshToken(ctx, rt))
+		return rt
+	}
+
+	oldAccess := mkAccess(t, "pre-session-access", user.ID)
+	oldRefresh := mkRefresh(t, "pre-session-refresh", oldAccess.ID)
+
+	// Anchor `since` after the pre-session tokens were created. Tokens created
+	// after this point are eligible for revocation; earlier ones must not be.
+	time.Sleep(10 * time.Millisecond)
+	since := time.Now()
+	time.Sleep(10 * time.Millisecond)
+
+	newAccess := mkAccess(t, "in-session-access", user.ID)
+	newRefresh := mkRefresh(t, "in-session-refresh", newAccess.ID)
+
+	// Another user's token minted in the same window must not be affected.
+	otherAccess := mkAccess(t, "other-user-access", other.ID)
+	otherRefresh := mkRefresh(t, "other-user-refresh", otherAccess.ID)
+
+	revoked, err := repo.RevokeUserTokensSince(ctx, user.ID, since)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), revoked, "exactly one access token revoked")
+
+	// In-session pair should be gone from the live lookup.
+	_, err = repo.FindAccessTokenByToken(ctx, newAccess.Token)
+	assert.Error(t, err, "in-session access token should be revoked")
+	_, err = repo.FindRefreshTokenByToken(ctx, newRefresh.Token)
+	assert.Error(t, err, "in-session refresh token should be revoked")
+
+	// Pre-session pair stays live.
+	pre, err := repo.FindAccessTokenByToken(ctx, oldAccess.Token)
+	require.NoError(t, err)
+	assert.Equal(t, oldAccess.ID, pre.ID)
+	preRT, err := repo.FindRefreshTokenByToken(ctx, oldRefresh.Token)
+	require.NoError(t, err)
+	assert.Equal(t, oldRefresh.ID, preRT.ID)
+
+	// Other user's tokens stay live.
+	ot, err := repo.FindAccessTokenByToken(ctx, otherAccess.Token)
+	require.NoError(t, err)
+	assert.Equal(t, otherAccess.ID, ot.ID)
+	otRT, err := repo.FindRefreshTokenByToken(ctx, otherRefresh.Token)
+	require.NoError(t, err)
+	assert.Equal(t, otherRefresh.ID, otRT.ID)
+
+	// Calling again is a no-op (idempotent) — already-revoked rows skipped.
+	again, err := repo.RevokeUserTokensSince(ctx, user.ID, since)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), again, "second call should revoke nothing")
+}
+
+// ---------------------------------------------------------------------------
 // Device Codes
 // ---------------------------------------------------------------------------
 

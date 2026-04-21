@@ -65,6 +65,7 @@ type AccessTokenRepo interface {
 	RevokeAccessToken(ctx context.Context, id int64) error
 	RevokeTokenPair(ctx context.Context, accessTokenID, refreshTokenID int64) error
 	RevokeTokenFamilyByAuthorizationCodeID(ctx context.Context, authCodeID int64) (int64, error)
+	RevokeUserTokensSince(ctx context.Context, userID int64, since time.Time) (int64, error)
 }
 
 // RefreshTokenRepo accesses refresh token rows.
@@ -180,6 +181,13 @@ func (s *Service) FindClient(ctx context.Context, clientID string) (*model.OAuth
 // FindUserByID returns a user by ID.
 func (s *Service) FindUserByID(ctx context.Context, id int64) (*model.User, error) {
 	return s.users.FindUserByID(ctx, id)
+}
+
+// RevokeUserTokensSince revokes every live access + refresh token minted for
+// userID at or after since. Used by session logout to invalidate OAuth grants
+// issued during the session being terminated (security L7).
+func (s *Service) RevokeUserTokensSince(ctx context.Context, userID int64, since time.Time) (int64, error) {
+	return s.accessTokens.RevokeUserTokensSince(ctx, userID, since)
 }
 
 // FindClientByInternalID looks up a client by its database primary key.
@@ -363,4 +371,3 @@ func (s *Service) issueTokenPair(ctx context.Context, clientID int64, userID sql
 		Scope:        scope,
 	}, nil
 }
-

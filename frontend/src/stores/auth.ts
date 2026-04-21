@@ -31,10 +31,11 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function logout() {
+  async function logout(options: { revokeOAuth?: boolean } = {}) {
     user.value = null
+    const url = options.revokeOAuth ? '/auth/logout?revoke_oauth=true' : '/auth/logout'
     try {
-      const response = await fetch('/auth/logout', { method: 'POST' })
+      const response = await fetch(url, { method: 'POST' })
       if (response.ok) {
         const body = await response.json()
         if (body.redirect_url) {

@@ -24,16 +24,16 @@ import (
 //
 // Rationale for each addition (security.md M5):
 //   - 100.64/10    — CGN (RFC 6598); common inside Tailscale, Oracle Cloud,
-//                    and carrier networks; not "private" by Go's definition.
+//     and carrier networks; not "private" by Go's definition.
 //   - 192.0.2/24,
 //     198.51.100/24,
 //     203.0.113/24 — TEST-NET-1/2/3 (RFC 5737); documentation ranges that
-//                    some broken DNS resolvers hand out unexpectedly.
+//     some broken DNS resolvers hand out unexpectedly.
 //   - 192.0.0/24   — IETF protocol assignments (RFC 6890); no legitimate
-//                    destination value.
+//     destination value.
 //   - 198.18/15    — benchmarking (RFC 2544); should never be a real target.
 //   - 224/4        — multicast (RFC 5771); sending HTTP to a multicast
-//                    address is a misconfiguration at best.
+//     address is a misconfiguration at best.
 //   - 240/4        — reserved class E (RFC 1112); treat as untargetable.
 var privateRanges = []string{
 	"10.0.0.0/8",

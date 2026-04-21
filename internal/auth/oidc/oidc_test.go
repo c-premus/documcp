@@ -1053,6 +1053,213 @@ func TestLogout(t *testing.T) {
 	})
 }
 
+// stubTokenRevoker captures RevokeUserTokensSince calls for assertion.
+type stubTokenRevoker struct {
+	calls  int
+	userID int64
+	since  time.Time
+	count  int64
+	err    error
+}
+
+func (s *stubTokenRevoker) RevokeUserTokensSince(_ context.Context, userID int64, since time.Time) (int64, error) {
+	s.calls++
+	s.userID = userID
+	s.since = since
+	return s.count, s.err
+}
+
+func TestCallback_WritesLoginAtAnchor(t *testing.T) {
+	repo := &mockUserRepo{
+		createFn: func(_ context.Context, user *model.User) error {
+			user.ID = 77
+			return nil
+		},
+	}
+	h, server, noncePtr := newTestHandler(t, repo)
+	defer server.Close()
+
+	state, loginCookies := doLogin(t, h, noncePtr)
+	req := httptest.NewRequest(http.MethodGet, "/auth/callback?code=test-code&state="+state, http.NoBody)
+	for _, c := range loginCookies {
+		req.AddCookie(c)
+	}
+	before := time.Now().Unix()
+	w := httptest.NewRecorder()
+	h.Callback(w, req)
+	after := time.Now().Unix()
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("callback status = %d, want 302: %s", w.Code, w.Body.String())
+	}
+
+	// Reconstruct the session from the Set-Cookie headers and assert login_at
+	// is present with a timestamp bracketing the callback execution.
+	cookies := w.Result().Cookies()
+	verifyReq := httptest.NewRequest(http.MethodGet, "/any", http.NoBody)
+	added := make(map[string]bool)
+	for i := len(cookies) - 1; i >= 0; i-- {
+		if cookies[i].Name == sessionName && !added[sessionName] {
+			verifyReq.AddCookie(cookies[i])
+			added[sessionName] = true
+		}
+	}
+	session, err := h.store.Get(verifyReq, sessionName)
+	if err != nil {
+		t.Fatalf("re-reading session: %v", err)
+	}
+	loginAt, ok := session.Values["login_at"].(int64)
+	if !ok {
+		t.Fatalf("login_at missing from session (values=%#v)", session.Values)
+	}
+	if loginAt < before || loginAt > after {
+		t.Errorf("login_at = %d, want between %d and %d", loginAt, before, after)
+	}
+}
+
+func TestLogout_RevokesOAuthTokensWhenOptedIn(t *testing.T) {
+	t.Run("revoke_oauth=true calls revoker with login_at", func(t *testing.T) {
+		revoker := &stubTokenRevoker{count: 3}
+		repo := &mockUserRepo{
+			createFn: func(_ context.Context, user *model.User) error {
+				user.ID = 42
+				return nil
+			},
+		}
+		h, server, noncePtr := newTestHandler(t, repo)
+		defer server.Close()
+		h.tokenRevoker = revoker
+
+		// Full login+callback so the session carries user_id + login_at.
+		state, loginCookies := doLogin(t, h, noncePtr)
+		callbackReq := httptest.NewRequest(http.MethodGet, "/auth/callback?code=test-code&state="+state, http.NoBody)
+		for _, c := range loginCookies {
+			callbackReq.AddCookie(c)
+		}
+		callbackW := httptest.NewRecorder()
+		h.Callback(callbackW, callbackReq)
+
+		logoutReq := httptest.NewRequest(http.MethodPost, "/auth/logout?revoke_oauth=true", http.NoBody)
+		// Callback emits one cookie to expire the pre-callback session and another
+		// to set the new session. Walk newest-first and keep the last of each
+		// name — matches how browsers resolve duplicate Set-Cookie headers.
+		cbCookies := callbackW.Result().Cookies()
+		added := make(map[string]bool)
+		for i := len(cbCookies) - 1; i >= 0; i-- {
+			c := cbCookies[i]
+			if !added[c.Name] && (c.Name == sessionName || c.Name == idTokenSessionName) {
+				logoutReq.AddCookie(c)
+				added[c.Name] = true
+			}
+		}
+		h.Logout(httptest.NewRecorder(), logoutReq)
+
+		if revoker.calls != 1 {
+			t.Fatalf("revoker.calls = %d, want 1", revoker.calls)
+		}
+		if revoker.userID != 42 {
+			t.Errorf("revoker.userID = %d, want 42", revoker.userID)
+		}
+		if time.Since(revoker.since) > time.Minute {
+			t.Errorf("revoker.since = %v, should be within the last minute", revoker.since)
+		}
+	})
+
+	t.Run("default logout does not revoke", func(t *testing.T) {
+		revoker := &stubTokenRevoker{}
+		repo := &mockUserRepo{
+			createFn: func(_ context.Context, user *model.User) error {
+				user.ID = 99
+				return nil
+			},
+		}
+		h, server, noncePtr := newTestHandler(t, repo)
+		defer server.Close()
+		h.tokenRevoker = revoker
+
+		state, loginCookies := doLogin(t, h, noncePtr)
+		callbackReq := httptest.NewRequest(http.MethodGet, "/auth/callback?code=test-code&state="+state, http.NoBody)
+		for _, c := range loginCookies {
+			callbackReq.AddCookie(c)
+		}
+		callbackW := httptest.NewRecorder()
+		h.Callback(callbackW, callbackReq)
+
+		logoutReq := httptest.NewRequest(http.MethodPost, "/auth/logout", http.NoBody)
+		cbCookies := callbackW.Result().Cookies()
+		added := make(map[string]bool)
+		for i := len(cbCookies) - 1; i >= 0; i-- {
+			c := cbCookies[i]
+			if !added[c.Name] && (c.Name == sessionName || c.Name == idTokenSessionName) {
+				logoutReq.AddCookie(c)
+				added[c.Name] = true
+			}
+		}
+		h.Logout(httptest.NewRecorder(), logoutReq)
+
+		if revoker.calls != 0 {
+			t.Errorf("revoker.calls = %d, want 0 when flag absent", revoker.calls)
+		}
+	})
+
+	t.Run("no-op when TokenRevoker nil", func(t *testing.T) {
+		repo := &mockUserRepo{
+			createFn: func(_ context.Context, user *model.User) error {
+				user.ID = 5
+				return nil
+			},
+		}
+		h, server, noncePtr := newTestHandler(t, repo)
+		defer server.Close()
+		// h.tokenRevoker left nil — should not panic.
+
+		state, loginCookies := doLogin(t, h, noncePtr)
+		callbackReq := httptest.NewRequest(http.MethodGet, "/auth/callback?code=test-code&state="+state, http.NoBody)
+		for _, c := range loginCookies {
+			callbackReq.AddCookie(c)
+		}
+		callbackW := httptest.NewRecorder()
+		h.Callback(callbackW, callbackReq)
+
+		logoutReq := httptest.NewRequest(http.MethodPost, "/auth/logout?revoke_oauth=true", http.NoBody)
+		for _, c := range callbackW.Result().Cookies() {
+			logoutReq.AddCookie(c)
+		}
+		w := httptest.NewRecorder()
+		h.Logout(w, logoutReq)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("logout status = %d, want 200", w.Code)
+		}
+	})
+
+	t.Run("silent when session has no login_at anchor", func(t *testing.T) {
+		revoker := &stubTokenRevoker{}
+		h, server, _ := newTestHandler(t, &mockUserRepo{})
+		defer server.Close()
+		h.tokenRevoker = revoker
+
+		// Seed a session with user_id but no login_at.
+		seed := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		seedRR := httptest.NewRecorder()
+		session, _ := h.store.New(seed, sessionName)
+		session.Values["user_id"] = int64(7)
+		if err := session.Save(seed, seedRR); err != nil {
+			t.Fatalf("seeding session: %v", err)
+		}
+
+		logoutReq := httptest.NewRequest(http.MethodPost, "/auth/logout?revoke_oauth=true", http.NoBody)
+		for _, c := range seedRR.Result().Cookies() {
+			logoutReq.AddCookie(c)
+		}
+		h.Logout(httptest.NewRecorder(), logoutReq)
+
+		if revoker.calls != 0 {
+			t.Errorf("revoker.calls = %d, want 0 when login_at missing", revoker.calls)
+		}
+	})
+}
+
 func TestGenerateState(t *testing.T) {
 	t.Run("generates non-empty unique states", func(t *testing.T) {
 		s1, err := generateState()
