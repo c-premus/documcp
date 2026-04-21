@@ -193,10 +193,15 @@ func (s *Server) registerAuthRoutes(deps Deps) {
 	if deps.Auth.OAuthHandler != nil {
 		r.Route("/oauth", func(r chi.Router) {
 			// Browser-rendered form endpoints — protected by CrossOriginProtection
-			// (global middleware) plus SameSite=Lax session cookies.
-			r.Get("/authorize", deps.Auth.OAuthHandler.Authorize)
-			r.Post("/authorize/approve", deps.Auth.OAuthHandler.AuthorizeApprove)
-			r.Post("/authorize/deny", deps.Auth.OAuthHandler.AuthorizeDeny)
+			// (global middleware) plus SameSite=Lax session cookies. Per-IP rate
+			// limit caps consent-form flooding (burns session state and DB write
+			// traffic via GrantClientScope / POST approve).
+			r.Group(func(r chi.Router) {
+				r.Use(rateLimitByIP(30, time.Minute, deps.BareRedisClient))
+				r.Get("/authorize", deps.Auth.OAuthHandler.Authorize)
+				r.Post("/authorize/approve", deps.Auth.OAuthHandler.AuthorizeApprove)
+				r.Post("/authorize/deny", deps.Auth.OAuthHandler.AuthorizeDeny)
+			})
 			r.Get("/device", deps.Auth.OAuthHandler.DeviceVerification)
 			r.Group(func(r chi.Router) {
 				r.Use(rateLimitByIP(10, time.Minute, deps.BareRedisClient))
@@ -250,6 +255,13 @@ func (s *Server) registerAuthRoutes(deps Deps) {
 // RequireScope calls are therefore guaranteed to have a non-nil OAuthService.
 func (s *Server) registerAPIRoutes(deps Deps) {
 	s.router.Route("/api", func(r chi.Router) {
+		// Root-level IP rate limit applied BEFORE the bearer token DB lookup.
+		// Without this gate, an unauthenticated attacker could force one DB
+		// hash-lookup per request by sending arbitrary bearer tokens — per-route
+		// rate limits inside nested groups kick in too late for that. Cap is
+		// a generous 300 req/min/IP so it doesn't interfere with legitimate SSE
+		// reconnects or admin-panel bursts; the per-route caps stay stricter.
+		r.Use(rateLimitByIP(300, time.Minute, deps.BareRedisClient))
 		switch {
 		case deps.Auth.OAuthService != nil:
 			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.Auth.OAuthService, deps.Auth.SessionStore, s.logger, deps.Auth.APIResource))

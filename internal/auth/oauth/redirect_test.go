@@ -14,7 +14,9 @@ func TestIsLoopbackHost(t *testing.T) {
 		hostname string
 		want     bool
 	}{
-		{name: "localhost returns true", hostname: "localhost", want: true},
+		// RFC 8252 §7.3 — "localhost" is DNS-resolvable and therefore
+		// hijackable; we only accept numeric loopback.
+		{name: "localhost returns false (DNS-hijack risk)", hostname: "localhost", want: false},
 		{name: "IPv4 loopback returns true", hostname: "127.0.0.1", want: true},
 		{name: "IPv6 loopback returns true", hostname: "::1", want: true},
 		{name: "public domain returns false", hostname: "example.com", want: false},

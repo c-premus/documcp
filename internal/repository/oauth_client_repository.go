@@ -212,12 +212,17 @@ func (r *OAuthRepository) FindActiveScopeGrantsWithUsers(ctx context.Context, cl
 	return rows, nil
 }
 
-// DeleteScopeGrant removes a scope grant by ID. Returns sql.ErrNoRows if not found.
-func (r *OAuthRepository) DeleteScopeGrant(ctx context.Context, id int64) error {
+// DeleteScopeGrant removes a scope grant by ID scoped to the given client.
+// Returns sql.ErrNoRows if no grant with that ID belongs to the client — this
+// scoping prevents a DELETE on /oauth-clients/{a}/scope-grants/{b} from
+// silently deleting a grant that belongs to a different client (audit-log
+// integrity) even though the route is admin-only.
+func (r *OAuthRepository) DeleteScopeGrant(ctx context.Context, id int64, clientID int64) error {
 	tag, err := r.db.Exec(ctx,
-		`DELETE FROM oauth_client_scope_grants WHERE id = $1`, id)
+		`DELETE FROM oauth_client_scope_grants WHERE id = $1 AND client_id = $2`,
+		id, clientID)
 	if err != nil {
-		return fmt.Errorf("deleting scope grant %d: %w", id, err)
+		return fmt.Errorf("deleting scope grant %d for client %d: %w", id, clientID, err)
 	}
 	if tag.RowsAffected() == 0 {
 		return sql.ErrNoRows

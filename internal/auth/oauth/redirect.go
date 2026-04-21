@@ -34,16 +34,17 @@ func MatchRedirectURI(requestURI string, registeredURIs []string) bool {
 	return false
 }
 
-// IsLoopbackHost checks if a hostname is a loopback address (localhost, 127.0.0.1, [::1]).
+// IsLoopbackHost checks if a hostname is a numeric loopback address
+// (127.0.0.1 or ::1). The literal "localhost" is deliberately rejected —
+// RFC 8252 §7.3 prefers numeric loopback because "localhost" is
+// DNS-resolvable and overridable by LAN DHCP, a malicious hosts file, or
+// browser extensions, creating a DNS-hijack redirect path.
 func IsLoopbackHost(hostname string) bool {
 	return isLoopback(hostname)
 }
 
-// isLoopback checks if a hostname is a loopback address (localhost, 127.0.0.1, [::1]).
+// isLoopback returns true only for numeric loopback addresses.
 func isLoopback(hostname string) bool {
-	if hostname == "localhost" {
-		return true
-	}
 	ip := net.ParseIP(hostname)
 	return ip != nil && ip.IsLoopback()
 }

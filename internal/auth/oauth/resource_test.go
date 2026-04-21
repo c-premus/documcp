@@ -9,7 +9,6 @@ func TestValidateResource(t *testing.T) {
 	allowed := []string{
 		"https://documcp.example.com",
 		"https://documcp.example.com/documcp",
-		"http://localhost:8080",
 		"http://127.0.0.1:8080/documcp",
 	}
 
@@ -21,7 +20,6 @@ func TestValidateResource(t *testing.T) {
 	}{
 		{name: "https exact match", raw: "https://documcp.example.com", want: "https://documcp.example.com"},
 		{name: "https with path match", raw: "https://documcp.example.com/documcp", want: "https://documcp.example.com/documcp"},
-		{name: "loopback localhost", raw: "http://localhost:8080", want: "http://localhost:8080"},
 		{name: "loopback 127.0.0.1", raw: "http://127.0.0.1:8080/documcp", want: "http://127.0.0.1:8080/documcp"},
 
 		{name: "empty", raw: "", wantErr: true},
@@ -30,6 +28,9 @@ func TestValidateResource(t *testing.T) {
 		{name: "trailing slash mismatch", raw: "https://documcp.example.com/", wantErr: true},
 		{name: "fragment", raw: "https://documcp.example.com#frag", wantErr: true},
 		{name: "http on non-loopback", raw: "http://documcp.example.com", wantErr: true},
+		// RFC 8252 §7.3 — "localhost" is DNS-hijackable; reject http://localhost
+		// even when it appears to be loopback syntactically.
+		{name: "http localhost rejected (DNS-hijack risk)", raw: "http://localhost:8080", wantErr: true},
 		{name: "ftp scheme", raw: "ftp://documcp.example.com", wantErr: true},
 		{name: "not in allowlist", raw: "https://other.example.com", wantErr: true},
 	}
