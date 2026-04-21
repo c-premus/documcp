@@ -113,6 +113,16 @@ func (p *DocumentPipeline) Delete(ctx context.Context, docUUID string) error {
 	return p.DocumentService.Delete(ctx, docUUID)
 }
 
+// deleteOrphanBlob best-effort removes a blob whose DB record failed to
+// persist. We log on error rather than swallow silently — orphan keys
+// otherwise become invisible and leak storage.
+func (p *DocumentPipeline) deleteOrphanBlob(ctx context.Context, key, reason string) {
+	if err := p.blob.Delete(ctx, key); err != nil {
+		p.logger.Warn("orphaned blob cleanup failed",
+			"key", key, "reason", reason, "error", err)
+	}
+}
+
 // Blob returns the blob store backing uploaded documents. Used by HTTP
 // handlers that need to stream content directly (download, range GET).
 func (p *DocumentPipeline) Blob() storage.Blob {
@@ -170,11 +180,11 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 		err = closeErr
 	}
 	if err != nil {
-		_ = p.blob.Delete(ctx, key)
+		p.deleteOrphanBlob(ctx, key, "upload write error")
 		return nil, fmt.Errorf("writing uploaded blob: %w", err)
 	}
 	if written > p.maxUploadSize {
-		_ = p.blob.Delete(ctx, key)
+		p.deleteOrphanBlob(ctx, key, "upload size exceeded")
 		return nil, fmt.Errorf("%w: actual bytes %d exceeds limit of %d", ErrFileTooLarge, written, p.maxUploadSize)
 	}
 
@@ -198,7 +208,7 @@ func (p *DocumentPipeline) Upload(ctx context.Context, params UploadDocumentPara
 	}
 
 	if err = p.repo.Create(ctx, doc); err != nil {
-		_ = p.blob.Delete(ctx, key)
+		p.deleteOrphanBlob(ctx, key, "document record create failed")
 		return nil, fmt.Errorf("creating document record: %w", err)
 	}
 
@@ -273,11 +283,11 @@ func (p *DocumentPipeline) ReplaceContent(ctx context.Context, docUUID string, p
 		err = closeErr
 	}
 	if err != nil {
-		_ = p.blob.Delete(ctx, key)
+		p.deleteOrphanBlob(ctx, key, "replace write error")
 		return nil, fmt.Errorf("writing replacement blob: %w", err)
 	}
 	if written > p.maxUploadSize {
-		_ = p.blob.Delete(ctx, key)
+		p.deleteOrphanBlob(ctx, key, "replace size exceeded")
 		return nil, fmt.Errorf("%w: actual bytes %d exceeds limit of %d", ErrFileTooLarge, written, p.maxUploadSize)
 	}
 
