@@ -78,7 +78,7 @@ describe('DashboardView', () => {
       mount(DashboardView)
       await flushPromises()
 
-      expect(fetch).toHaveBeenCalledWith('/api/admin/dashboard/stats')
+      expect(fetch).toHaveBeenCalledWith('/api/admin/dashboard/stats', undefined)
     })
 
     it('shows loading state initially', () => {

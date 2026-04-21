@@ -142,13 +142,17 @@ async function handleReplace(): Promise<void> {
           />
 
           <div
-            class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors cursor-pointer"
+            role="button"
+            tabindex="0"
+            aria-label="Replace document content — click or drag a file"
+            class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500"
             :class="
               dragActive
                 ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
                 : 'border-border-input hover:border-text-disabled'
             "
             @click="openFilePicker"
+            @keydown.enter.space.prevent="openFilePicker"
             @drop.prevent="onDrop"
             @dragover.prevent="onDragOver"
             @dragleave.prevent="onDragLeave"
