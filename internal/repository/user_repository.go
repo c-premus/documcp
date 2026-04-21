@@ -89,27 +89,37 @@ func (r *OAuthRepository) ListUsers(ctx context.Context, query string, limit, of
 		argIdx += 2
 	}
 
-	countQuery := "SELECT COUNT(*) FROM users WHERE " + where
-	var total int
-	if err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("counting users: %w", err)
-	}
-
 	if limit <= 0 {
 		limit = 20
 	}
 
+	// COUNT(*) OVER () collapses the prior COUNT+SELECT pair into one scan.
 	selectQuery := fmt.Sprintf(
-		"SELECT * FROM users WHERE %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d",
+		"SELECT *, COUNT(*) OVER () AS total FROM users WHERE %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d",
 		where, argIdx, argIdx+1,
 	)
 	args = append(args, limit, offset)
 
-	users, err := database.Select[model.User](ctx, r.db, selectQuery, args...)
+	rows, err := database.Select[userListRow](ctx, r.db, selectQuery, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("listing users: %w", err)
 	}
+	users := make([]model.User, len(rows))
+	var total int
+	for i := range rows {
+		users[i] = rows[i].User
+		if i == 0 {
+			total = int(rows[i].Total)
+		}
+	}
 	return users, total, nil
+}
+
+// userListRow extends model.User with the windowed COUNT(*) OVER () total
+// so a single scan yields both the page and the true filtered total.
+type userListRow struct {
+	model.User
+	Total int64 `db:"total"`
 }
 
 // ToggleAdmin toggles the is_admin flag for a user.

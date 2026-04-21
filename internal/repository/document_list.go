@@ -77,13 +77,6 @@ func (r *DocumentRepository) List(ctx context.Context, params DocumentListParams
 
 	where := strings.Join(conditions, " AND ")
 
-	// Count total matching rows.
-	countQuery := "SELECT COUNT(*) FROM documents WHERE " + where
-	var total int
-	if err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
-		return nil, fmt.Errorf("counting documents: %w", err)
-	}
-
 	// Determine ordering.
 	orderBy := "created_at"
 	if params.OrderBy != "" {
@@ -102,24 +95,44 @@ func (r *DocumentRepository) List(ctx context.Context, params DocumentListParams
 		limit = 20
 	}
 
+	// Single-query pagination: COUNT(*) OVER () computes the true total
+	// post-WHERE / pre-LIMIT in the same scan, avoiding the second COUNT
+	// round trip. Returned as column `total` on every row; we read it once
+	// (identical value on all rows) and discard the rest.
 	selectQuery := fmt.Sprintf(
 		`SELECT id, uuid, title, description, file_type, file_path, file_size, mime_type,
 		url, content_hash, metadata, processed_at, word_count, user_id, is_public,
-		status, error_message, created_at, updated_at, deleted_at
+		status, error_message, created_at, updated_at, deleted_at,
+		COUNT(*) OVER () AS total
 		FROM documents WHERE %s ORDER BY %s %s LIMIT $%d OFFSET $%d`,
 		where, orderBy, orderDir, argIdx, argIdx+1,
 	)
 	args = append(args, limit, params.Offset)
 
-	docs, err := database.Select[model.Document](ctx, r.db, selectQuery, args...)
+	rows, err := database.Select[documentListRow](ctx, r.db, selectQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing documents: %w", err)
+	}
+	docs := make([]model.Document, len(rows))
+	var total int
+	for i := range rows {
+		docs[i] = rows[i].Document
+		if i == 0 {
+			total = int(rows[i].Total)
+		}
 	}
 
 	return &DocumentListResult{
 		Documents: docs,
 		Total:     total,
 	}, nil
+}
+
+// documentListRow extends model.Document with the windowed COUNT(*) OVER ()
+// total so a single scan yields both the page and the true filtered total.
+type documentListRow struct {
+	model.Document
+	Total int64 `db:"total"`
 }
 
 // FindByStatus returns documents with the given status, limited to count.
