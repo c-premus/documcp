@@ -52,6 +52,7 @@ type mockOAuthRepo struct {
 	FindAuthorizationCodeByCodeIncludingRevokedFunc func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
 	RevokeTokenFamilyByAuthorizationCodeIDFunc      func(ctx context.Context, authCodeID int64) (int64, error)
 	FindRefreshTokenByTokenIgnoringRevocationFunc   func(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error)
+	RevokeUserTokensSinceFunc                       func(ctx context.Context, userID int64, since time.Time) (int64, error)
 }
 
 func (m *mockOAuthRepo) CreateClient(ctx context.Context, client *model.OAuthClient) error {
@@ -253,6 +254,13 @@ func (m *mockOAuthRepo) FindAuthorizationCodeByCodeIncludingRevoked(ctx context.
 func (m *mockOAuthRepo) RevokeTokenFamilyByAuthorizationCodeID(ctx context.Context, authCodeID int64) (int64, error) {
 	if m.RevokeTokenFamilyByAuthorizationCodeIDFunc != nil {
 		return m.RevokeTokenFamilyByAuthorizationCodeIDFunc(ctx, authCodeID)
+	}
+	return 0, nil
+}
+
+func (m *mockOAuthRepo) RevokeUserTokensSince(ctx context.Context, userID int64, since time.Time) (int64, error) {
+	if m.RevokeUserTokensSinceFunc != nil {
+		return m.RevokeUserTokensSinceFunc(ctx, userID, since)
 	}
 	return 0, nil
 }

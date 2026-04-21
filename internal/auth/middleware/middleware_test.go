@@ -154,6 +154,10 @@ func (m *mockOAuthRepo) RevokeTokenFamilyByAuthorizationCodeID(_ context.Context
 	return 0, nil
 }
 
+func (m *mockOAuthRepo) RevokeUserTokensSince(_ context.Context, _ int64, _ time.Time) (int64, error) {
+	return 0, nil
+}
+
 func (m *mockOAuthRepo) FindRefreshTokenByTokenIgnoringRevocation(_ context.Context, _ string) (*model.OAuthRefreshToken, error) {
 	return nil, sql.ErrNoRows
 }
@@ -547,7 +551,7 @@ func TestSessionAuth(t *testing.T) {
 
 		store := sessions.NewCookieStore([]byte("test-secret-key-for-session"))
 		svc := newTestOAuthService(&mockOAuthRepo{})
-		middleware := SessionAuth(store, svc, slog.Default())
+		middleware := SessionAuth(store, svc, slog.Default(), 0)
 		handler := middleware(okHandler())
 
 		req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", http.NoBody)
@@ -569,7 +573,7 @@ func TestSessionAuth(t *testing.T) {
 
 		store := sessions.NewCookieStore([]byte("test-secret-key-for-session"))
 		svc := newTestOAuthService(&mockOAuthRepo{})
-		middleware := SessionAuth(store, svc, slog.Default())
+		middleware := SessionAuth(store, svc, slog.Default(), 0)
 		handler := middleware(okHandler())
 
 		// Create a request with a session that has no user_id
@@ -600,7 +604,7 @@ func TestSessionAuth(t *testing.T) {
 
 		store := sessions.NewCookieStore([]byte("test-secret-key-for-session"))
 		svc := newTestOAuthService(&mockOAuthRepo{})
-		middleware := SessionAuth(store, svc, slog.Default())
+		middleware := SessionAuth(store, svc, slog.Default(), 0)
 		handler := middleware(okHandler())
 
 		req := httptest.NewRequest(http.MethodGet, "/admin/settings?tab=oauth", http.NoBody)
@@ -629,7 +633,7 @@ func TestSessionAuth(t *testing.T) {
 			},
 		}
 		svc := newTestOAuthService(repo)
-		middleware := SessionAuth(store, svc, slog.Default())
+		middleware := SessionAuth(store, svc, slog.Default(), 0)
 
 		var capturedUser *model.User
 		inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -677,7 +681,7 @@ func TestSessionAuth(t *testing.T) {
 			},
 		}
 		svc := newTestOAuthService(repo)
-		middleware := SessionAuth(store, svc, slog.Default())
+		middleware := SessionAuth(store, svc, slog.Default(), 0)
 		handler := middleware(okHandler())
 
 		// Create a valid session with a user_id
@@ -698,6 +702,144 @@ func TestSessionAuth(t *testing.T) {
 
 		if rr2.Code != http.StatusFound {
 			t.Errorf("status = %d, want %d", rr2.Code, http.StatusFound)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Session absolute-lifetime tests (security M1)
+// ---------------------------------------------------------------------------
+
+func TestSessionAbsoluteMaxAge(t *testing.T) {
+	t.Parallel()
+
+	user := &model.User{ID: 7, Name: "Session User", Email: "u@example.com"}
+	newService := func() *oauth.Service {
+		return newTestOAuthService(&mockOAuthRepo{
+			findUserByIDFn: func(_ context.Context, _ int64) (*model.User, error) {
+				return user, nil
+			},
+		})
+	}
+
+	newSessionRequest := func(t *testing.T, store *sessions.CookieStore, set func(*sessions.Session)) *http.Request {
+		t.Helper()
+		seed := httptest.NewRequest(http.MethodGet, "/api/documents", http.NoBody)
+		rr := httptest.NewRecorder()
+		session, _ := store.Get(seed, "documcp_session")
+		session.Values["user_id"] = user.ID
+		set(session)
+		if err := session.Save(seed, rr); err != nil {
+			t.Fatalf("seeding session: %v", err)
+		}
+		req := httptest.NewRequest(http.MethodGet, "/api/documents", http.NoBody)
+		for _, cookie := range rr.Result().Cookies() {
+			req.AddCookie(cookie)
+		}
+		return req
+	}
+
+	t.Run("fresh login_at within absolute lifetime passes", func(t *testing.T) {
+		t.Parallel()
+
+		store := sessions.NewCookieStore([]byte("absmaxage-test-secret-1"))
+		middleware := BearerOrSession(newService(), store, slog.Default(), time.Hour)
+		handler := middleware(okHandler())
+
+		req := newSessionRequest(t, store, func(s *sessions.Session) {
+			s.Values[LoginAtSessionKey] = time.Now().Add(-5 * time.Minute).Unix()
+		})
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200 for fresh session", rr.Code)
+		}
+	})
+
+	t.Run("aged login_at past absolute lifetime rejects and clears cookie", func(t *testing.T) {
+		t.Parallel()
+
+		store := sessions.NewCookieStore([]byte("absmaxage-test-secret-2"))
+		middleware := BearerOrSession(newService(), store, slog.Default(), time.Hour)
+		handler := middleware(okHandler())
+
+		req := newSessionRequest(t, store, func(s *sessions.Session) {
+			s.Values[LoginAtSessionKey] = time.Now().Add(-2 * time.Hour).Unix()
+		})
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("status = %d, want 401 for stale session", rr.Code)
+		}
+		foundCleared := false
+		for _, cookie := range rr.Result().Cookies() {
+			if cookie.Name == "documcp_session" && cookie.MaxAge < 0 {
+				foundCleared = true
+			}
+		}
+		if !foundCleared {
+			t.Error("expected Set-Cookie with MaxAge<0 to clear stale session")
+		}
+	})
+
+	t.Run("session without login_at anchor is treated as stale", func(t *testing.T) {
+		t.Parallel()
+
+		store := sessions.NewCookieStore([]byte("absmaxage-test-secret-3"))
+		middleware := BearerOrSession(newService(), store, slog.Default(), time.Hour)
+		handler := middleware(okHandler())
+
+		req := newSessionRequest(t, store, func(s *sessions.Session) {
+			// intentionally no login_at
+			s.Values["user_email"] = user.Email
+		})
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("status = %d, want 401 when login_at missing", rr.Code)
+		}
+	})
+
+	t.Run("zero absoluteMaxAge disables the check", func(t *testing.T) {
+		t.Parallel()
+
+		store := sessions.NewCookieStore([]byte("absmaxage-test-secret-4"))
+		middleware := BearerOrSession(newService(), store, slog.Default(), 0)
+		handler := middleware(okHandler())
+
+		req := newSessionRequest(t, store, func(s *sessions.Session) {
+			// very old anchor, but check disabled
+			s.Values[LoginAtSessionKey] = time.Now().Add(-365 * 24 * time.Hour).Unix()
+		})
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200 when absolute lifetime disabled", rr.Code)
+		}
+	})
+
+	t.Run("SessionAuth stale session redirects to login", func(t *testing.T) {
+		t.Parallel()
+
+		store := sessions.NewCookieStore([]byte("absmaxage-test-secret-5"))
+		middleware := SessionAuth(store, newService(), slog.Default(), time.Hour)
+		handler := middleware(okHandler())
+
+		req := newSessionRequest(t, store, func(s *sessions.Session) {
+			s.Values[LoginAtSessionKey] = time.Now().Add(-25 * time.Hour).Unix()
+		})
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusFound {
+			t.Errorf("status = %d, want 302 redirect for stale session", rr.Code)
+		}
+		if loc := rr.Header().Get("Location"); !strings.Contains(loc, "/auth/login") {
+			t.Errorf("Location = %q, want /auth/login", loc)
 		}
 	})
 }
@@ -980,7 +1122,7 @@ func TestBearerOrSession(t *testing.T) {
 
 		store := sessions.NewCookieStore([]byte("test-secret"))
 		svc := newTestOAuthService(&mockOAuthRepo{})
-		middleware := BearerOrSession(svc, store, slog.Default())
+		middleware := BearerOrSession(svc, store, slog.Default(), 0)
 		handler := middleware(okHandler())
 
 		req := httptest.NewRequest(http.MethodGet, "/api/resource", http.NoBody)
@@ -1002,7 +1144,7 @@ func TestBearerOrSession(t *testing.T) {
 
 		store := sessions.NewCookieStore([]byte("test-secret"))
 		svc := newTestOAuthService(&mockOAuthRepo{})
-		middleware := BearerOrSession(svc, store, slog.Default())
+		middleware := BearerOrSession(svc, store, slog.Default(), 0)
 		handler := middleware(okHandler())
 
 		// user_id is a string instead of int64 — type assertion will fail
@@ -1025,7 +1167,7 @@ func TestBearerOrSession(t *testing.T) {
 
 		store := sessions.NewCookieStore([]byte("test-secret"))
 		svc := newTestOAuthService(&mockOAuthRepo{})
-		middleware := BearerOrSession(svc, store, slog.Default())
+		middleware := BearerOrSession(svc, store, slog.Default(), 0)
 		handler := middleware(okHandler())
 
 		cookies := sessionCookie(t, store, map[string]any{"user_id": int64(0)})
@@ -1056,7 +1198,7 @@ func TestBearerOrSession(t *testing.T) {
 			},
 		}
 		svc := newTestOAuthService(repo)
-		middleware := BearerOrSession(svc, store, slog.Default())
+		middleware := BearerOrSession(svc, store, slog.Default(), 0)
 
 		var capturedUser *model.User
 		inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -1100,7 +1242,7 @@ func TestBearerOrSession(t *testing.T) {
 			},
 		}
 		svc := newTestOAuthService(repo)
-		middleware := BearerOrSession(svc, store, slog.Default())
+		middleware := BearerOrSession(svc, store, slog.Default(), 0)
 		handler := middleware(okHandler())
 
 		cookies := sessionCookie(t, store, map[string]any{"user_id": int64(42)})
@@ -1126,7 +1268,7 @@ func TestBearerOrSession(t *testing.T) {
 
 		store := sessions.NewCookieStore([]byte("test-secret"))
 		svc := newTestOAuthService(&mockOAuthRepo{})
-		middleware := BearerOrSession(svc, store, slog.Default())
+		middleware := BearerOrSession(svc, store, slog.Default(), 0)
 		handler := middleware(okHandler())
 
 		req := httptest.NewRequest(http.MethodGet, "/api/resource", http.NoBody)
@@ -1174,7 +1316,7 @@ func TestBearerOrSession(t *testing.T) {
 			},
 		}
 		svc := newTestOAuthService(repo)
-		middleware := BearerOrSession(svc, store, slog.Default())
+		middleware := BearerOrSession(svc, store, slog.Default(), 0)
 
 		var capturedToken *model.OAuthAccessToken
 		inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -1238,7 +1380,7 @@ func TestBearerOrSession(t *testing.T) {
 			},
 		}
 		svc := newTestOAuthService(repo)
-		middleware := BearerOrSession(svc, store, slog.Default())
+		middleware := BearerOrSession(svc, store, slog.Default(), 0)
 
 		var capturedUser *model.User
 		var capturedToken *model.OAuthAccessToken
@@ -1306,7 +1448,7 @@ func TestBearerOrSession(t *testing.T) {
 			},
 		}
 		svc := newTestOAuthService(repo)
-		middleware := BearerOrSession(svc, store, slog.Default())
+		middleware := BearerOrSession(svc, store, slog.Default(), 0)
 
 		var capturedUser *model.User
 		var capturedToken *model.OAuthAccessToken
@@ -1352,7 +1494,7 @@ func TestBearerOrSession(t *testing.T) {
 			},
 		}
 		svc := newTestOAuthService(repo)
-		middleware := BearerOrSession(svc, store, slog.Default())
+		middleware := BearerOrSession(svc, store, slog.Default(), 0)
 		handler := middleware(okHandler())
 
 		req := httptest.NewRequest(http.MethodGet, "/api/resource", http.NoBody)

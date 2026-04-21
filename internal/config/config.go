@@ -189,14 +189,19 @@ func (c OIDCConfig) ManualEndpoints() bool {
 
 // OAuthConfig holds OAuth 2.1 authorization server settings.
 type OAuthConfig struct {
-	AuthCodeLifetime        time.Duration `mapstructure:"oauth_authorization_code_lifetime"`
-	AccessTokenLifetime     time.Duration `mapstructure:"oauth_access_token_lifetime"`
-	RefreshTokenLifetime    time.Duration `mapstructure:"oauth_refresh_token_lifetime"`
-	DeviceCodeLifetime      time.Duration `mapstructure:"oauth_device_code_lifetime"`
-	DeviceCodeInterval      time.Duration `mapstructure:"oauth_device_polling_interval"`
-	SessionSecret           string        `mapstructure:"oauth_session_secret"`
-	SessionSecretPrevious   string        `mapstructure:"oauth_session_secret_previous"`
-	SessionMaxAge           time.Duration `mapstructure:"oauth_session_max_age"`
+	AuthCodeLifetime      time.Duration `mapstructure:"oauth_authorization_code_lifetime"`
+	AccessTokenLifetime   time.Duration `mapstructure:"oauth_access_token_lifetime"`
+	RefreshTokenLifetime  time.Duration `mapstructure:"oauth_refresh_token_lifetime"`
+	DeviceCodeLifetime    time.Duration `mapstructure:"oauth_device_code_lifetime"`
+	DeviceCodeInterval    time.Duration `mapstructure:"oauth_device_polling_interval"`
+	SessionSecret         string        `mapstructure:"oauth_session_secret"`
+	SessionSecretPrevious string        `mapstructure:"oauth_session_secret_previous"`
+	SessionMaxAge         time.Duration `mapstructure:"oauth_session_max_age"`
+	// SessionAbsoluteMaxAge caps the total lifetime of a session regardless
+	// of activity. Cookies with a `login_at` older than this are treated as
+	// stale and forced back through the OIDC flow. Zero disables the check
+	// (fall back to sliding SessionMaxAge only). Default 168h (7d).
+	SessionAbsoluteMaxAge   time.Duration `mapstructure:"oauth_session_absolute_max_age"`
 	HKDFSalt                string        `mapstructure:"hkdf_salt"`
 	RegistrationEnabled     bool          `mapstructure:"oauth_registration_enabled"`
 	RegistrationRequireAuth bool          `mapstructure:"oauth_registration_require_auth"`
@@ -370,6 +375,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oauth_session_secret", "")
 	v.SetDefault("oauth_session_secret_previous", "")
 	v.SetDefault("oauth_session_max_age", 30*24*time.Hour)
+	v.SetDefault("oauth_session_absolute_max_age", 7*24*time.Hour)
 	// No default for HKDF_SALT — it is required and validated at startup.
 	// Supplying a default would mask misconfiguration: two deployments that
 	// omit the var would derive identical HMAC keys from the same IKM.
@@ -564,6 +570,7 @@ func Load() (*Config, error) {
 		SessionSecret:           v.GetString("oauth_session_secret"),
 		SessionSecretPrevious:   v.GetString("oauth_session_secret_previous"),
 		SessionMaxAge:           v.GetDuration("oauth_session_max_age"),
+		SessionAbsoluteMaxAge:   v.GetDuration("oauth_session_absolute_max_age"),
 		HKDFSalt:                v.GetString("hkdf_salt"),
 		RegistrationEnabled:     v.GetBool("oauth_registration_enabled"),
 		RegistrationRequireAuth: v.GetBool("oauth_registration_require_auth"),
