@@ -131,7 +131,7 @@ func (h *Handler) handleListZimArchives(ctx context.Context, _ *mcp.CallToolRequ
 	}
 	limit := clampPagination(input.Limit, 50, 100)
 
-	archives, err := h.zimArchiveRepo.List(ctx, input.Category, input.Language, input.Query, limit, 0)
+	archives, _, err := h.zimArchiveRepo.List(ctx, input.Category, input.Language, input.Query, limit, 0)
 	if err != nil {
 		return nil, listZimArchivesResponse{}, fmt.Errorf("listing zim archives: %w", err)
 	}

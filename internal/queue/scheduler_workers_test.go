@@ -90,6 +90,17 @@ func (m *mockOAuthTokenPurger) DeleteExpiredScopeGrants(_ context.Context) (int6
 	return 0, nil
 }
 
+type mockSearchQueryRetentionPurger struct {
+	deleteCount int64
+	deleteErr   error
+	calledAge   time.Duration
+}
+
+func (m *mockSearchQueryRetentionPurger) DeleteOlderThan(_ context.Context, age time.Duration) (int64, error) {
+	m.calledAge = age
+	return m.deleteCount, m.deleteErr
+}
+
 type mockExternalServiceFinder struct {
 	findEnabledByTypeFn func(ctx context.Context, serviceType string) ([]model.ExternalService, error)
 }
@@ -354,6 +365,81 @@ func TestCleanupOAuthTokensWorker_Work(t *testing.T) {
 		err := worker.Work(context.Background(), makeJob(CleanupOAuthTokensArgs{}))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "purging expired OAuth tokens")
+		assert.Contains(t, err.Error(), "db down")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// CleanupSearchQueriesWorker
+// ---------------------------------------------------------------------------
+
+func TestCleanupSearchQueriesWorker_Work(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil SearchQueryRepo skips gracefully", func(t *testing.T) {
+		t.Parallel()
+
+		worker := &CleanupSearchQueriesWorker{
+			Deps: SchedulerDeps{
+				SearchQueryRepo:      nil,
+				SearchQueryRetention: 30 * 24 * time.Hour,
+				Logger:               testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(CleanupSearchQueriesArgs{}))
+		require.NoError(t, err)
+	})
+
+	t.Run("zero retention disables deletion", func(t *testing.T) {
+		t.Parallel()
+
+		mock := &mockSearchQueryRetentionPurger{}
+		worker := &CleanupSearchQueriesWorker{
+			Deps: SchedulerDeps{
+				SearchQueryRepo:      mock,
+				SearchQueryRetention: 0,
+				Logger:               testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(CleanupSearchQueriesArgs{}))
+		require.NoError(t, err)
+		assert.Equal(t, time.Duration(0), mock.calledAge, "DeleteOlderThan should not be called")
+	})
+
+	t.Run("success passes retention through", func(t *testing.T) {
+		t.Parallel()
+
+		mock := &mockSearchQueryRetentionPurger{deleteCount: 42}
+		worker := &CleanupSearchQueriesWorker{
+			Deps: SchedulerDeps{
+				SearchQueryRepo:      mock,
+				SearchQueryRetention: 90 * 24 * time.Hour,
+				Logger:               testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(CleanupSearchQueriesArgs{}))
+		require.NoError(t, err)
+		assert.Equal(t, 90*24*time.Hour, mock.calledAge)
+	})
+
+	t.Run("DeleteOlderThan error is wrapped", func(t *testing.T) {
+		t.Parallel()
+
+		mock := &mockSearchQueryRetentionPurger{deleteErr: errors.New("db down")}
+		worker := &CleanupSearchQueriesWorker{
+			Deps: SchedulerDeps{
+				SearchQueryRepo:      mock,
+				SearchQueryRetention: 30 * 24 * time.Hour,
+				Logger:               testLogger(),
+			},
+		}
+
+		err := worker.Work(context.Background(), makeJob(CleanupSearchQueriesArgs{}))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "purging search_queries")
 		assert.Contains(t, err.Error(), "db down")
 	})
 }

@@ -42,6 +42,11 @@ type OAuthTokenPurger interface {
 	DeleteExpiredScopeGrants(ctx context.Context) (int64, error)
 }
 
+// SearchQueryRetentionPurger deletes search_queries rows older than the configured age.
+type SearchQueryRetentionPurger interface {
+	DeleteOlderThan(ctx context.Context, age time.Duration) (int64, error)
+}
+
 // DocumentRepoDeps provides document repository methods needed by cleanup workers.
 type DocumentRepoDeps interface {
 	ListActiveFilePaths(ctx context.Context) ([]repository.DocumentFilePath, error)
@@ -64,20 +69,22 @@ type GitTemplateRepoDeps interface {
 
 // SchedulerDeps holds all dependencies needed by scheduler workers.
 type SchedulerDeps struct {
-	Services          ExternalServiceFinder
-	HealthChecker     ExternalServiceHealthChecker
-	ZimRepo           ZimArchiveRepoDeps
-	GitRepo           GitTemplateRepoDeps
-	OAuthRepo         OAuthTokenPurger
-	DocRepo           DocumentRepoDeps
-	Metrics           *observability.Metrics
-	Blob              storage.Blob
-	GitTempDir        string
-	Logger            *slog.Logger
-	GitMaxFileSize    int64
-	GitMaxTotalSize   int64
-	SSRFDialerTimeout time.Duration
-	KiwixConfig       kiwix.ClientConfig
+	Services             ExternalServiceFinder
+	HealthChecker        ExternalServiceHealthChecker
+	ZimRepo              ZimArchiveRepoDeps
+	GitRepo              GitTemplateRepoDeps
+	OAuthRepo            OAuthTokenPurger
+	DocRepo              DocumentRepoDeps
+	SearchQueryRepo      SearchQueryRetentionPurger
+	Metrics              *observability.Metrics
+	Blob                 storage.Blob
+	GitTempDir           string
+	Logger               *slog.Logger
+	GitMaxFileSize       int64
+	GitMaxTotalSize      int64
+	SearchQueryRetention time.Duration
+	SSRFDialerTimeout    time.Duration
+	KiwixConfig          kiwix.ClientConfig
 }
 
 // workerTracer is the shared tracer for River worker spans.
@@ -283,6 +290,55 @@ func (w *CleanupOAuthTokensWorker) Work(ctx context.Context, job *river.Job[Clea
 	} else if grantCount > 0 {
 		w.Deps.Logger.Info("expired scope grants cleanup completed", "purged_count", grantCount)
 	}
+
+	recordJobCompleted(w.Deps.Metrics, job.Queue, job.Kind, time.Since(start))
+	return nil
+}
+
+// CleanupSearchQueriesWorker deletes search_queries rows older than the configured retention.
+// Bounds unbounded table growth and, by extension, the aggregation scan in
+// SearchQueryRepository.PopularQueries.
+type CleanupSearchQueriesWorker struct {
+	river.WorkerDefaults[CleanupSearchQueriesArgs]
+	Deps SchedulerDeps
+}
+
+// Work executes the CleanupSearchQueriesWorker job.
+func (w *CleanupSearchQueriesWorker) Work(ctx context.Context, job *river.Job[CleanupSearchQueriesArgs]) (retErr error) {
+	ctx, span := workerTracer.Start(ctx, "job."+job.Kind,
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(attribute.String("job.kind", job.Kind)),
+	)
+	defer func() {
+		if retErr != nil {
+			span.RecordError(retErr)
+			span.SetStatus(codes.Error, retErr.Error())
+		}
+		span.End()
+	}()
+
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	if w.Deps.SearchQueryRepo == nil {
+		w.Deps.Logger.Warn("skipping search_queries cleanup: repository not configured")
+		return nil
+	}
+	if w.Deps.SearchQueryRetention <= 0 {
+		w.Deps.Logger.Info("skipping search_queries cleanup: retention disabled (set SEARCH_QUERY_RETENTION to enable)")
+		return nil
+	}
+
+	count, err := w.Deps.SearchQueryRepo.DeleteOlderThan(ctx, w.Deps.SearchQueryRetention)
+	if err != nil {
+		return fmt.Errorf("purging search_queries: %w", err)
+	}
+
+	w.Deps.Logger.Info("search_queries retention cleanup completed",
+		"deleted_count", count,
+		"retention", w.Deps.SearchQueryRetention,
+	)
 
 	recordJobCompleted(w.Deps.Metrics, job.Queue, job.Kind, time.Since(start))
 	return nil

@@ -246,3 +246,5 @@ See [docs/OBSERVABILITY.md](OBSERVABILITY.md) for architecture and [docs/PROMETH
 | `SCHEDULER_SOFT_DELETE_PURGE_SCHEDULE` | No | `0 4 * * *` | Permanent deletion of soft-deleted documents |
 | `SCHEDULER_ZIM_CLEANUP_SCHEDULE` | No | `0 5 * * *` | Stale ZIM archive cache cleanup |
 | `SCHEDULER_HEALTH_CHECK_SCHEDULE` | No | `*/15 * * * *` | External service health probing |
+| `SCHEDULER_SEARCH_QUERY_CLEANUP_SCHEDULE` | No | `0 3 * * *` | Retention-based cleanup of `search_queries` rows |
+| `SEARCH_QUERY_RETENTION` | No | `2160h` (90 days) | Age after which `search_queries` rows are deleted (Go duration; `0` disables) |

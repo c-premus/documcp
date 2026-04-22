@@ -13,17 +13,18 @@ func TestBuildPeriodicJobs_allSchedulesConfigured(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.SchedulerConfig{
-		KiwixSchedule:           "0 */6 * * *",
-		GitSchedule:             "0 * * * *",
-		OAuthCleanupSchedule:    "0 * * * *",
-		OrphanedFilesSchedule:   "0 2 * * *",
-		SoftDeletePurgeSchedule: "0 4 * * *",
-		HealthCheckSchedule:     "*/15 * * * *",
+		KiwixSchedule:              "0 */6 * * *",
+		GitSchedule:                "0 * * * *",
+		OAuthCleanupSchedule:       "0 * * * *",
+		OrphanedFilesSchedule:      "0 2 * * *",
+		SoftDeletePurgeSchedule:    "0 4 * * *",
+		HealthCheckSchedule:        "*/15 * * * *",
+		SearchQueryCleanupSchedule: "0 3 * * *",
 	}
 
 	jobs := BuildPeriodicJobs(cfg, testutil.DiscardLogger())
 
-	assert.Len(t, jobs, 6, "all 6 periodic jobs should be registered")
+	assert.Len(t, jobs, 7, "all 7 periodic jobs should be registered")
 }
 
 func TestBuildPeriodicJobs_emptySchedulesSkipped(t *testing.T) {
