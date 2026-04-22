@@ -13,6 +13,7 @@ import StatusBadge from '../components/shared/StatusBadge.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
 import QueueJobRowActions from '../components/queue/QueueJobRowActions.vue'
+import QueueJobErrorCell from '../components/queue/QueueJobErrorCell.vue'
 
 const store = useQueueStore()
 
@@ -63,21 +64,6 @@ function handleDeleteCancel(): void {
   deleteTarget.value = null
 }
 
-function truncateError(job: FailedJob): string {
-  if (!job.errors || job.errors.length === 0) {
-    return ''
-  }
-  const lastError = job.errors[job.errors.length - 1]
-  if (!lastError) {
-    return ''
-  }
-  const msg = lastError.error
-  if (msg.length > 80) {
-    return `${msg.slice(0, 80)}...`
-  }
-  return msg
-}
-
 const columns: ColumnDef<FailedJob, unknown>[] = [
   {
     accessorKey: 'id',
@@ -114,10 +100,7 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
     id: 'error',
     header: 'Error',
     meta: { className: 'hidden md:table-cell' },
-    cell: ({ row }) => {
-      const msg = truncateError(row.original)
-      return h('span', { class: 'text-red-600 dark:text-red-400 text-xs', title: msg }, msg)
-    },
+    cell: ({ row }) => h(QueueJobErrorCell, { job: row.original }),
   },
   {
     accessorKey: 'created_at',
