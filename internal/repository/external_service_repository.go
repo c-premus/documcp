@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -62,45 +61,36 @@ func (r *ExternalServiceRepository) FindByUUID(ctx context.Context, uuid string)
 
 // List returns external services with optional type/status filters and pagination.
 // Returns the matching services and the total count (before LIMIT/OFFSET).
+//
+// Query text is stable across all filter combinations so pgx's prepared-statement
+// cache hits on repeated admin-list renders. Optional filters are bound as
+// typed NULL when absent; the ::text cast is required so PostgreSQL can
+// compare the column against the bound value.
 func (r *ExternalServiceRepository) List(ctx context.Context, serviceType, status string, limit, offset int) ([]model.ExternalService, int, error) {
-	var conditions []string
-	var args []any
-	argIdx := 1
-
-	if serviceType != "" {
-		conditions = append(conditions, fmt.Sprintf("type = $%d", argIdx))
-		args = append(args, serviceType)
-		argIdx++
-	}
-
-	if status != "" {
-		conditions = append(conditions, fmt.Sprintf("status = $%d", argIdx))
-		args = append(args, status)
-		argIdx++
-	}
-
-	whereClause := ""
-	if len(conditions) > 0 {
-		whereClause = " WHERE " + strings.Join(conditions, " AND ")
-	}
-
-	// Count total matching rows.
-	countQuery := `SELECT COUNT(*) FROM external_services` + whereClause
-	var total int
-	if err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("counting external services: %w", err)
-	}
-
-	// Fetch paginated results.
 	if limit <= 0 {
 		limit = 50
 	}
+	typeArg := nullStr(serviceType)
+	statusArg := nullStr(status)
 
-	q := `SELECT * FROM external_services` + whereClause + ` ORDER BY priority, name`
-	q += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, argIdx, argIdx+1)
-	args = append(args, limit, offset)
+	var total int
+	if err := r.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM external_services
+		WHERE ($1::text IS NULL OR type = $1)
+		  AND ($2::text IS NULL OR status = $2)`,
+		typeArg, statusArg,
+	).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("counting external services: %w", err)
+	}
 
-	services, err := database.Select[model.ExternalService](ctx, r.db, q, args...)
+	services, err := database.Select[model.ExternalService](ctx, r.db,
+		`SELECT * FROM external_services
+		WHERE ($1::text IS NULL OR type = $1)
+		  AND ($2::text IS NULL OR status = $2)
+		ORDER BY priority, name
+		LIMIT $3 OFFSET $4`,
+		typeArg, statusArg, limit, offset,
+	)
 	if err != nil {
 		return nil, 0, fmt.Errorf("listing external services: %w", err)
 	}
