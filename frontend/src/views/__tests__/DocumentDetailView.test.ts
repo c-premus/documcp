@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createPinia, setActivePinia } from 'pinia'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import DocumentDetailView from '@/views/DocumentDetailView.vue'
 import { useDocumentsStore } from '@/stores/documents'
+import { setupViewTest } from '@/__tests__/testHelpers/viewHarness'
 
 const pushMock = vi.fn()
 
@@ -14,18 +14,6 @@ vi.mock('vue-router', () => ({
 vi.mock('vue-sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
-
-function stubFetch(response: unknown, ok = true) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok,
-      status: ok ? 200 : 500,
-      statusText: 'Internal Server Error',
-      json: () => Promise.resolve(response),
-    }),
-  )
-}
 
 function mockDocument(overrides = {}) {
   return {
@@ -50,14 +38,8 @@ function mockDocument(overrides = {}) {
 }
 
 describe('DocumentDetailView', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
-    stubFetch({ data: mockDocument() })
-  })
-
+  setupViewTest({ defaultFetch: { data: mockDocument() } })
   afterEach(() => {
-    vi.restoreAllMocks()
-    vi.unstubAllGlobals()
     pushMock.mockReset()
   })
 

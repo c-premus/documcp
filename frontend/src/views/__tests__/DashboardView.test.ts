@@ -1,8 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createPinia, setActivePinia } from 'pinia'
+import { describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import DashboardView from '@/views/DashboardView.vue'
-import { useAuthStore } from '@/stores/auth'
+import {
+  setAdmin,
+  setNonAdmin,
+  setupViewTest,
+  stubFetch,
+} from '@/__tests__/testHelpers/viewHarness'
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -19,27 +23,6 @@ interface DashboardStats {
   queue?: { pending: number; completed: number; failed: number }
 }
 
-function stubFetchStats(stats: DashboardStats) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ data: stats }),
-    }),
-  )
-}
-
-function stubFetchError(message: string) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: false,
-      statusText: 'Internal Server Error',
-      json: () => Promise.resolve({ message }),
-    }),
-  )
-}
-
 const sampleStats: DashboardStats = {
   documents: 42,
   users: 5,
@@ -49,31 +32,13 @@ const sampleStats: DashboardStats = {
   git_templates: 10,
 }
 
-function setAdmin() {
-  const auth = useAuthStore()
-  auth.user = { id: 1, email: 'admin@test.com', name: 'Admin', is_admin: true }
-}
-
-function setNonAdmin() {
-  const auth = useAuthStore()
-  auth.user = { id: 2, email: 'user@test.com', name: 'Regular User', is_admin: false }
-}
-
 describe('DashboardView', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
-    vi.stubGlobal('fetch', vi.fn())
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-    vi.unstubAllGlobals()
-  })
+  setupViewTest()
 
   describe('admin', () => {
     it('fetches stats on mount', async () => {
       setAdmin()
-      stubFetchStats(sampleStats)
+      stubFetch({ data: sampleStats })
 
       mount(DashboardView)
       await flushPromises()
@@ -92,7 +57,7 @@ describe('DashboardView', () => {
 
     it('renders stat cards with correct counts', async () => {
       setAdmin()
-      stubFetchStats(sampleStats)
+      stubFetch({ data: sampleStats })
 
       const wrapper = mount(DashboardView)
       await flushPromises()
@@ -113,7 +78,7 @@ describe('DashboardView', () => {
 
     it('hides loading spinner after stats load', async () => {
       setAdmin()
-      stubFetchStats(sampleStats)
+      stubFetch({ data: sampleStats })
 
       const wrapper = mount(DashboardView)
       await flushPromises()
@@ -123,7 +88,7 @@ describe('DashboardView', () => {
 
     it('shows error state on fetch failure', async () => {
       setAdmin()
-      stubFetchError('Server unavailable')
+      stubFetch({ message: 'Server unavailable' }, false)
 
       const wrapper = mount(DashboardView)
       await flushPromises()
@@ -138,7 +103,7 @@ describe('DashboardView', () => {
         ...sampleStats,
         queue: { pending: 12, completed: 89, failed: 3 },
       }
-      stubFetchStats(statsWithQueue)
+      stubFetch({ data: statsWithQueue })
 
       const wrapper = mount(DashboardView)
       await flushPromises()
@@ -154,7 +119,7 @@ describe('DashboardView', () => {
 
     it('does not show queue section when queue data is absent', async () => {
       setAdmin()
-      stubFetchStats(sampleStats)
+      stubFetch({ data: sampleStats })
 
       const wrapper = mount(DashboardView)
       await flushPromises()
@@ -164,7 +129,7 @@ describe('DashboardView', () => {
 
     it('renders the dashboard heading with system overview', async () => {
       setAdmin()
-      stubFetchStats(sampleStats)
+      stubFetch({ data: sampleStats })
 
       const wrapper = mount(DashboardView)
       await flushPromises()

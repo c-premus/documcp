@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createPinia, setActivePinia } from 'pinia'
+import { describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import DocumentListView from '@/views/DocumentListView.vue'
+import { setupViewTest, stubFetch } from '@/__tests__/testHelpers/viewHarness'
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -12,28 +12,8 @@ vi.mock('vue-sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
-function stubFetch(response: unknown, ok = true) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok,
-      status: ok ? 200 : 500,
-      statusText: 'Internal Server Error',
-      json: () => Promise.resolve(response),
-    }),
-  )
-}
-
 describe('DocumentListView', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
-    stubFetch({ data: [], meta: { total: 0, limit: 10, offset: 0 } })
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-    vi.unstubAllGlobals()
-  })
+  setupViewTest({ defaultFetch: { data: [], meta: { total: 0, limit: 10, offset: 0 } } })
 
   function mountView() {
     return mount(DocumentListView, {
