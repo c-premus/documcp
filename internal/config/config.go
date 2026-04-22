@@ -209,6 +209,11 @@ type OAuthConfig struct {
 	RegistrationRequireAuth bool          `mapstructure:"oauth_registration_require_auth"`
 	ClientTouchTimeout      time.Duration `mapstructure:"oauth_client_touch_timeout"`
 	ScopeGrantTTL           time.Duration `mapstructure:"oauth_scope_grant_ttl"`
+	// DeviceFailureLimit caps failed user_code submissions per authenticated
+	// user within DeviceFailureWindow (security L6). The counter lives in
+	// Redis so it survives session-cookie resets. 0 disables enforcement.
+	DeviceFailureLimit  int           `mapstructure:"oauth_device_failure_limit"`
+	DeviceFailureWindow time.Duration `mapstructure:"oauth_device_failure_window"`
 	// AllowedResources is the RFC 8707 resource indicator allowlist. Clients
 	// may only request access tokens bound to one of these URIs. Defaults to
 	// [AppURL, AppURL+DocuMCP.Endpoint] when unset.
@@ -386,6 +391,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oauth_registration_require_auth", true)
 	v.SetDefault("oauth_client_touch_timeout", 3*time.Second)
 	v.SetDefault("oauth_scope_grant_ttl", 30*24*time.Hour) // 30 days; 0 = no expiry
+	v.SetDefault("oauth_device_failure_limit", 5)
+	v.SetDefault("oauth_device_failure_window", 1*time.Hour)
 
 	// Storage
 	v.SetDefault("storage_driver", "local")
@@ -580,6 +587,8 @@ func Load() (*Config, error) {
 		RegistrationRequireAuth: v.GetBool("oauth_registration_require_auth"),
 		ClientTouchTimeout:      v.GetDuration("oauth_client_touch_timeout"),
 		ScopeGrantTTL:           v.GetDuration("oauth_scope_grant_ttl"),
+		DeviceFailureLimit:      v.GetInt("oauth_device_failure_limit"),
+		DeviceFailureWindow:     v.GetDuration("oauth_device_failure_window"),
 		AllowedResources:        v.GetStringSlice("oauth_allowed_resources"),
 	}
 

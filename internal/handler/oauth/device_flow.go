@@ -113,18 +113,25 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Brute force protection: track failed verification attempts per session (RFC 8628 §3.5).
-	failedAttempts, _ := session.Values["device_failed_attempts"].(int)
-	if failedAttempts >= 5 {
+	// Brute-force protection keyed on user_id in Redis (security L6). The
+	// counter survives session-cookie resets — the prior session-scoped
+	// implementation was defeated by clearing cookies. Fail-open on Redis
+	// errors: a Redis blip shouldn't break legitimate device flows.
+	allowed, failErr := h.deviceFailures.Allowed(r.Context(), userID)
+	if failErr != nil {
+		h.logger.Warn("device failure limiter check failed", "error", failErr, "user_id", userID)
+	}
+	if !allowed {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = deviceErrorTmpl.Execute(w, "Too many failed attempts. Please log out and try again.")
+		_ = deviceErrorTmpl.Execute(w, "Too many failed attempts. Please try again later.")
 		return
 	}
 
 	userCode := r.FormValue("user_code")
 	if userCode == "" || len(userCode) > 9 {
-		session.Values["device_failed_attempts"] = failedAttempts + 1
-		_ = session.Save(r, w)
+		if err := h.deviceFailures.Record(r.Context(), userID); err != nil {
+			h.logger.Warn("device failure limiter record failed", "error", err, "user_id", userID)
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = deviceErrorTmpl.Execute(w, "Invalid or expired user code. Please check the code and try again.")
 		return
@@ -133,8 +140,9 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 	// Look up the device code
 	dc, err := h.service.FindDeviceCodeByUserCode(r.Context(), userCode)
 	if err != nil {
-		session.Values["device_failed_attempts"] = failedAttempts + 1
-		_ = session.Save(r, w)
+		if recErr := h.deviceFailures.Record(r.Context(), userID); recErr != nil {
+			h.logger.Warn("device failure limiter record failed", "error", recErr, "user_id", userID)
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = deviceErrorTmpl.Execute(w, "Invalid or expired user code. Please check the code and try again.")
 		return
@@ -150,6 +158,12 @@ func (h *Handler) DeviceVerificationSubmit(w http.ResponseWriter, r *http.Reques
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = deviceErrorTmpl.Execute(w, "This code has already been used. Please request a new code from your device.")
 		return
+	}
+
+	// Successful lookup: clear the failure counter so a typo earlier in the
+	// window doesn't eat into a legit user's budget.
+	if clearErr := h.deviceFailures.Clear(r.Context(), userID); clearErr != nil {
+		h.logger.Warn("device failure limiter clear failed", "error", clearErr, "user_id", userID)
 	}
 
 	// Store pending device code in session

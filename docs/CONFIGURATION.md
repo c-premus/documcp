@@ -119,6 +119,8 @@ DocuMCP requires an OpenID Connect provider for user login. Set `OIDC_PROVIDER_U
 | `OAUTH_REGISTRATION_REQUIRE_AUTH` | No | `true` | When `false`, anonymous registration is allowed but constrained (public clients, read-only scopes, no device_code; rate-limited) |
 | `OAUTH_CLIENT_TOUCH_TIMEOUT` | No | `3s` | Timeout for fire-and-forget `last_used_at` updates |
 | `OAUTH_SCOPE_GRANT_TTL` | No | `720h` | Time-bounded scope-grant lifetime (30 days; `0` = no expiry) |
+| `OAUTH_DEVICE_FAILURE_LIMIT` | No | `5` | Max failed `user_code` submissions per user within the window before the device-flow verification page is blocked. `0` disables. |
+| `OAUTH_DEVICE_FAILURE_WINDOW` | No | `1h` | Window over which failures are counted. Counter is keyed on `user_id` in Redis so it survives session-cookie resets. `0` disables. |
 | `OAUTH_ALLOWED_RESOURCES` | No | _derived_ | RFC 8707 resource indicator allowlist (comma-separated absolute URIs). Defaults to `[APP_URL, APP_URL+DOCUMCP_ENDPOINT]` |
 
 ### Rotating the OAuth HMAC key (`OAUTH_SESSION_SECRET`)

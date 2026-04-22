@@ -134,12 +134,18 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	)
 
 	// --- OAuth Handler ---
+	deviceFailures := oauth.NewDeviceFailureLimiter(
+		f.BareRedisClient,
+		cfg.OAuth.DeviceFailureLimit,
+		cfg.OAuth.DeviceFailureWindow,
+	)
 	oauthH := oauthhandler.New(oauthhandler.Config{
-		Service:      oauthService,
-		SessionStore: sessionStore,
-		OAuthCfg:     cfg.OAuth,
-		AppURL:       cfg.App.URL,
-		Logger:       logger,
+		Service:              oauthService,
+		SessionStore:         sessionStore,
+		OAuthCfg:             cfg.OAuth,
+		AppURL:               cfg.App.URL,
+		Logger:               logger,
+		DeviceFailureLimiter: deviceFailures,
 	})
 
 	// --- OIDC Handler ---
