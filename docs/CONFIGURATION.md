@@ -66,6 +66,14 @@ For the minimum set needed to boot a deployment, see [Required for startup](../R
 
 See [docs/REDIS.md](REDIS.md) for ACL requirements, client architecture, and troubleshooting.
 
+Redis also backs the **session store** (as of the RedisStore rollout). Browser
+cookies hold only a signed session ID; the session payload (`user_id`,
+`login_at`, OIDC state) lives at `session:<id>` with a TTL tied to the absolute
+session lifetime. A per-user index at `user-sessions:<user_id>` keeps the set
+of active session IDs so the server can enumerate and revoke sessions
+(e.g., on user deletion). The first boot after the rollout invalidates
+existing cookies — users re-authenticate through OIDC once.
+
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `REDIS_ADDR` | Yes | `localhost:6379` | Redis address (`host:port`) |
