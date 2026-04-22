@@ -111,37 +111,56 @@ type Foundation struct {
 
 	tracerShutdown func(context.Context) error
 	sentryFlush    func()
+
+	// foundationCtx governs the lifetime of long-running subscribers started
+	// from startup code — ControlBus listeners, the RedisEventBus consumer
+	// goroutine. Close() cancels it so those goroutines have a second exit
+	// path alongside their own Close methods (architecture A3).
+	foundationCtx    context.Context
+	foundationCancel context.CancelFunc
 }
 
+// Ctx returns the Foundation's long-running context. Subscribers whose
+// goroutines should live as long as the process use this instead of
+// context.Background() so shutdown cancels them explicitly.
+func (f *Foundation) Ctx() context.Context { return f.foundationCtx }
+
 // NewFoundation constructs every shared singleton by calling narrow phase
-// factories in sequence. On any error before initOK flips true, the deferred
-// cleanup chain closes each resource already opened in reverse order.
+// factories in sequence. Each acquired resource appends a cleanup closure to
+// the rollback stack; on error before initOK flips true, the stack is drained
+// in LIFO order. Data-driven rollback means the next resource added can't be
+// forgotten by an author who doesn't remember to write a matching defer
+// (architecture A1).
 func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	logger := newLogger(cfg.App.Env, cfg.App.Debug, os.Stdout)
+
+	var (
+		initOK   bool
+		rollback []func()
+	)
+	pushCleanup := func(fn func()) { rollback = append(rollback, fn) }
+	defer func() {
+		if initOK {
+			return
+		}
+		for i := len(rollback) - 1; i >= 0; i-- {
+			rollback[i]()
+		}
+	}()
 
 	pgxPool, barePgxPool, err := newDatabasePools(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
-
-	var initOK bool
-	defer func() {
-		if !initOK {
-			barePgxPool.Close()
-			pgxPool.Close()
-		}
-	}()
+	pushCleanup(pgxPool.Close)
+	pushCleanup(barePgxPool.Close)
 
 	redisClient, bareRedisClient, err := newRedisClients(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if !initOK {
-			_ = bareRedisClient.Close()
-			_ = redisClient.Close()
-		}
-	}()
+	pushCleanup(func() { _ = redisClient.Close() })
+	pushCleanup(func() { _ = bareRedisClient.Close() })
 
 	if migErr := runMigrations(pgxPool); migErr != nil {
 		return nil, migErr
@@ -174,22 +193,14 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening blob store: %w", err)
 	}
-	defer func() {
-		if !initOK {
-			_ = blobStore.Close()
-		}
-	}()
+	pushCleanup(func() { _ = blobStore.Close() })
 	logger.Info("blob store opened", "driver", cfg.Storage.Driver)
 
 	// Control bus for cross-replica control messages (cache invalidation).
 	// Lives in its own Redis channels so it doesn't contend with the SSE
 	// subscriber cap on the main event bus.
 	controlBus := queue.NewRedisControlBus(redisClient, logger)
-	defer func() {
-		if !initOK {
-			_ = controlBus.Close()
-		}
-	}()
+	pushCleanup(func() { _ = controlBus.Close() })
 
 	obs, err := newObservability(context.Background(), cfg, pgxPool, barePgxPool, redisClient, bareRedisClient, searcher, logger)
 	if err != nil {
@@ -198,6 +209,8 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 	// Observability may wrap the logger with the OTEL trace-correlating
 	// handler, so replace from here onward.
 	logger = obs.Logger
+
+	foundationCtx, foundationCancel := context.WithCancel(context.Background())
 
 	initOK = true
 	return &Foundation{
@@ -225,6 +238,8 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		ControlBus:          controlBus,
 		tracerShutdown:      obs.TracerShutdown,
 		sentryFlush:         obs.SentryFlush,
+		foundationCtx:       foundationCtx,
+		foundationCancel:    foundationCancel,
 	}, nil
 }
 
@@ -522,8 +537,14 @@ func openBlobStore(ctx context.Context, cfg config.StorageConfig, storagePath st
 	}
 }
 
-// Close releases all resources held by the Foundation.
+// Close releases all resources held by the Foundation. The foundation
+// context is canceled first so long-running subscribers (ControlBus
+// listeners, RedisEventBus consumer) exit their receive loops before we
+// close the underlying Redis/DB clients underneath them.
 func (f *Foundation) Close() {
+	if f.foundationCancel != nil {
+		f.foundationCancel()
+	}
 	if f.sentryFlush != nil {
 		f.sentryFlush()
 	}
@@ -563,13 +584,20 @@ func (f *Foundation) Close() {
 }
 
 // runMigrations runs goose and River schema migrations.
+//
+// The sql.DB returned by SQLDBFromPool wraps the underlying pgxpool; failing
+// to close it on the success path leaks the migration's connection slot until
+// pool teardown. Returning the close error surfaces a partial-flush condition
+// that would otherwise be invisible (code-quality M6).
 func runMigrations(pool *pgxpool.Pool) error {
 	sqlDB := database.SQLDBFromPool(pool)
 	if err := database.RunMigrations(sqlDB, "migrations"); err != nil {
 		_ = sqlDB.Close()
 		return fmt.Errorf("running migrations: %w", err)
 	}
-	_ = sqlDB.Close()
+	if err := sqlDB.Close(); err != nil {
+		return fmt.Errorf("closing migration db: %w", err)
+	}
 
 	if err := database.RunRiverMigrations(context.Background(), pool); err != nil {
 		return fmt.Errorf("running river migrations: %w", err)
