@@ -192,7 +192,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	)
 
 	// --- SSE & Queue Handlers ---
-	sseH := apihandler.NewSSEHandler(eventBus, cfg.Server.SSEHeartbeatInterval)
+	sseH := apihandler.NewSSEHandler(eventBus, cfg.Server.SSEHeartbeatInterval, oauthService, logger)
 	queueH := apihandler.NewQueueHandler(riverClient, logger)
 
 	// --- River UI Handler ---
