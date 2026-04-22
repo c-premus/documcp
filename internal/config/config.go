@@ -111,6 +111,12 @@ type AppConfig struct {
 	InternalAPIToken   string        `mapstructure:"internal_api_token"`
 	EncryptionKey      string        `mapstructure:"encryption_key"`
 	EncryptionKeyBytes []byte        // Decoded from EncryptionKey (hex); populated by Validate()
+	// EncryptionKeyPrevious is an optional retired key retained for decrypt
+	// only. When set, ciphertext written under the retired key remains
+	// readable until a `documcp rekey` pass re-encrypts it under the current
+	// primary. Same 32-byte hex format as EncryptionKey.
+	EncryptionKeyPrevious      string `mapstructure:"encryption_key_previous"`
+	EncryptionKeyPreviousBytes []byte // Decoded from EncryptionKeyPrevious (hex); populated by Validate()
 	QueueStopTimeout   time.Duration `mapstructure:"app_queue_stop_timeout"`
 	TracerStopTimeout  time.Duration `mapstructure:"app_tracer_stop_timeout"`
 	SSRFDialerTimeout  time.Duration `mapstructure:"ssrf_dialer_timeout"`
@@ -499,9 +505,10 @@ func Load() (*Config, error) {
 		Debug:             v.GetBool("app_debug"),
 		URL:               v.GetString("app_url"),
 		Timezone:          v.GetString("app_timezone"),
-		InternalAPIToken:  v.GetString("internal_api_token"),
-		EncryptionKey:     v.GetString("encryption_key"),
-		QueueStopTimeout:  v.GetDuration("app_queue_stop_timeout"),
+		InternalAPIToken:       v.GetString("internal_api_token"),
+		EncryptionKey:          v.GetString("encryption_key"),
+		EncryptionKeyPrevious:  v.GetString("encryption_key_previous"),
+		QueueStopTimeout:       v.GetDuration("app_queue_stop_timeout"),
 		TracerStopTimeout: v.GetDuration("app_tracer_stop_timeout"),
 		SSRFDialerTimeout: v.GetDuration("ssrf_dialer_timeout"),
 	}
@@ -727,6 +734,20 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 			errs = append(errs, "ENCRYPTION_KEY must decode to exactly 32 bytes for AES-256-GCM (use a 64-character hex string)")
 		default:
 			c.App.EncryptionKeyBytes = keyBytes
+		}
+	}
+
+	if c.App.EncryptionKeyPrevious != "" {
+		prevBytes, hexErr := hex.DecodeString(c.App.EncryptionKeyPrevious)
+		switch {
+		case hexErr != nil:
+			errs = append(errs, "ENCRYPTION_KEY_PREVIOUS must be a valid hex string (generate with: openssl rand -hex 32)")
+		case len(prevBytes) != 32:
+			errs = append(errs, "ENCRYPTION_KEY_PREVIOUS must decode to exactly 32 bytes for AES-256-GCM (use a 64-character hex string)")
+		case c.App.EncryptionKey == "":
+			errs = append(errs, "ENCRYPTION_KEY_PREVIOUS is set but ENCRYPTION_KEY is empty — previous keys are decrypt-only; a primary key must be configured to rotate under")
+		default:
+			c.App.EncryptionKeyPreviousBytes = prevBytes
 		}
 	}
 

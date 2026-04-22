@@ -17,6 +17,7 @@ For the minimum set needed to boot a deployment, see [Required for startup](../R
 | `APP_TIMEZONE` | No | `UTC` | Server timezone |
 | `INTERNAL_API_TOKEN` | Prod | -- | Bearer token guarding `/metrics` and `/health/ready`. Generate `openssl rand -hex 32` |
 | `ENCRYPTION_KEY` | Prod | -- | 64-char hex (32 bytes) for AES-256-GCM encryption of stored Git tokens. Generate `openssl rand -hex 32` |
+| `ENCRYPTION_KEY_PREVIOUS` | No | -- | Optional retired key retained for decrypt-only during rotation. Same 64-char hex format. See [Encryption key rotation](#encryption-key-rotation) below. |
 
 ## Server
 
@@ -148,6 +149,33 @@ To rotate without interruption:
 Every environment must configure a non-empty `OAUTH_SESSION_SECRET`. The
 prior silent SHA-256 fallback for a missing key was removed — `serve` now
 fails to boot without a derivable HMAC key (security L4).
+
+### Encryption key rotation (`ENCRYPTION_KEY`)
+
+At-rest ciphertext carries a `v<hex>$<base64>` prefix that identifies which
+`ENCRYPTION_KEY` produced it — analogous to the OAuth HMAC scheme above.
+Decrypt paths match the prefix, and a retired key configured via
+`ENCRYPTION_KEY_PREVIOUS` stays accepted for decryption until all stored
+ciphertext has been re-encrypted under the new primary.
+
+To rotate:
+
+1. Generate a new key: `openssl rand -hex 32`.
+2. Set `ENCRYPTION_KEY_PREVIOUS` to the current value and `ENCRYPTION_KEY`
+   to the new value. Deploy. The server logs
+   `encryption at rest enabled with key rotation (previous key configured)`.
+3. Run `documcp rekey`. It walks `external_services.api_key` and
+   `git_templates.git_token`, decrypts every row under whichever key matches,
+   and re-encrypts under the new primary. Safe to run repeatedly — rows
+   already under the primary are skipped.
+4. On the next deploy, drop `ENCRYPTION_KEY_PREVIOUS`. Only the new primary
+   remains.
+
+Legacy ciphertext written before versioned prefixes existed has no prefix;
+decrypt falls back to trying every configured key in order, and `rekey` will
+upgrade those rows too. Distinct `ENCRYPTION_KEY` and
+`ENCRYPTION_KEY_PREVIOUS` values must derive to distinct version bytes — a
+1-in-16 collision causes boot to fail so operators regenerate one.
 
 ## Storage
 

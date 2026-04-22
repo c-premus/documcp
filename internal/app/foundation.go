@@ -390,16 +390,31 @@ func buildRedisTLS(cfg *config.Config, logger *slog.Logger) (*tls.Config, error)
 // newEncryptor returns an AES-256-GCM encryptor when EncryptionKeyBytes is
 // set; otherwise nil with a warning log. Repositories that encrypt fields
 // (git_token, service credentials) must check for nil before use.
+//
+// When EncryptionKeyPreviousBytes is also set, the retired key is configured
+// for decrypt-only fallback so ciphertext written under the previous key
+// stays readable during a rotation window (until `documcp rekey` completes).
 func newEncryptor(cfg *config.Config, logger *slog.Logger) (*crypto.Encryptor, error) {
 	if len(cfg.App.EncryptionKeyBytes) == 0 {
 		logger.Warn("ENCRYPTION_KEY not set, secrets will be stored in plaintext")
 		return nil, nil
 	}
-	enc, err := crypto.NewEncryptor(cfg.App.EncryptionKeyBytes)
+	previous := cfg.App.EncryptionKeyPreviousBytes
+	var enc *crypto.Encryptor
+	var err error
+	if len(previous) == 0 {
+		enc, err = crypto.NewEncryptor(cfg.App.EncryptionKeyBytes)
+	} else {
+		enc, err = crypto.NewEncryptor(cfg.App.EncryptionKeyBytes, previous)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("initializing encryptor: %w", err)
 	}
-	logger.Info("encryption at rest enabled")
+	if len(previous) > 0 {
+		logger.Info("encryption at rest enabled with key rotation (previous key configured)")
+	} else {
+		logger.Info("encryption at rest enabled")
+	}
 	return enc, nil
 }
 
