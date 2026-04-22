@@ -56,15 +56,16 @@ type opdsEntry struct {
 	// Kiwix-specific metadata fields.
 	ArticleCount int64  `xml:"articleCount"`
 	MediaCount   int64  `xml:"mediaCount"`
-	Size         int64  `xml:"size"`
 	Favicon      string `xml:"favicon"`
 }
 
-// opdsLink is a link element in an OPDS entry.
+// opdsLink is a link element in an OPDS entry. The Length attribute carries
+// the ZIM file size in bytes on acquisition links (rel="http://opds-spec.org/acquisition/open-access").
 type opdsLink struct {
-	Rel  string `xml:"rel,attr"`
-	Href string `xml:"href,attr"`
-	Type string `xml:"type,attr"`
+	Rel    string `xml:"rel,attr"`
+	Href   string `xml:"href,attr"`
+	Type   string `xml:"type,attr"`
+	Length int64  `xml:"length,attr"`
 }
 
 // suggestResult is the JSON structure returned by the Kiwix suggest API.

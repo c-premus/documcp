@@ -389,12 +389,16 @@ func parseCatalog(data []byte) ([]CatalogEntry, error) {
 			}
 		}
 
-		// Extract versioned content ID from the text/html link.
+		// Extract versioned content ID from the text/html link, plus the ZIM
+		// file size from the acquisition link's length attribute.
 		var contentID string
+		var fileSize int64
 		for _, link := range e.Links {
 			if link.Type == "text/html" && strings.HasPrefix(link.Href, "/content/") {
 				contentID = strings.TrimPrefix(link.Href, "/content/")
-				break
+			}
+			if link.Rel == "http://opds-spec.org/acquisition/open-access" && link.Length > 0 {
+				fileSize = link.Length
 			}
 		}
 		if contentID == "" {
@@ -414,7 +418,7 @@ func parseCatalog(data []byte) ([]CatalogEntry, error) {
 			Favicon:          favicon,
 			ArticleCount:     e.ArticleCount,
 			MediaCount:       e.MediaCount,
-			FileSize:         e.Size,
+			FileSize:         fileSize,
 			Tags:             tags,
 			Name:             name,
 			ContentID:        contentID,
