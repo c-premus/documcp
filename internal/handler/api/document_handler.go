@@ -22,32 +22,50 @@ import (
 	"github.com/c-premus/documcp/internal/storage"
 )
 
-// documentPipeline is the single dependency used by DocumentHandler. The
-// production implementation (*service.DocumentPipeline) embeds
-// *service.DocumentService, so read methods (List, Restore, Purge, etc.)
-// come from the service layer while write-with-extraction methods (Upload,
-// ReplaceContent) come from the pipeline.
-type documentPipeline interface {
-	// Pipeline orchestration (file handling + extraction).
-	Upload(ctx context.Context, params service.UploadDocumentParams) (*model.Document, error)
-	ReplaceContent(ctx context.Context, docUUID string, params service.ReplaceContentParams) (*model.Document, error)
-	Update(ctx context.Context, docUUID string, params service.UpdateDocumentParams) (*model.Document, error)
-	Delete(ctx context.Context, docUUID string) error
-	ExtractorRegistry() *extractor.Registry
+// Document handler dependencies are split into three role interfaces so future
+// sub-handlers (analyze, trash, admin) can take the narrower surface they
+// actually use, and so test mocks for those split handlers don't have to stub
+// the unrelated methods (architecture A2 / code-quality S1). The umbrella
+// interface composes them; *service.DocumentPipeline satisfies all three via
+// composite embedding of *DocumentService.
 
-	// Document reads and tag lookups.
+// documentReader covers list, lookup, and tag-loading paths used by GET
+// handlers and the trash listing.
+type documentReader interface {
+	List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error)
 	FindByUUID(ctx context.Context, uuid string) (*model.Document, error)
 	FindByUUIDIncludingDeleted(ctx context.Context, uuid string) (*model.Document, error)
-	List(ctx context.Context, params repository.DocumentListParams) (*repository.DocumentListResult, error)
 	TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
 	TagsForDocuments(ctx context.Context, documentIDs []int64) (map[int64][]model.DocumentTag, error)
 	ListDistinctTags(ctx context.Context, prefix string, limit int, userID *int64) ([]string, error)
+}
 
-	// Trash operations.
+// documentWriter covers upload + mutation flows that traverse the extraction
+// pipeline. ExtractorRegistry lives here because Analyze drives extraction
+// inline without going through Upload.
+type documentWriter interface {
+	Upload(ctx context.Context, params service.UploadDocumentParams) (*model.Document, error)
+	Update(ctx context.Context, docUUID string, params service.UpdateDocumentParams) (*model.Document, error)
+	Delete(ctx context.Context, docUUID string) error
+	ReplaceContent(ctx context.Context, docUUID string, params service.ReplaceContentParams) (*model.Document, error)
+	ExtractorRegistry() *extractor.Registry
+}
+
+// documentTrash covers soft-delete recovery and permanent purge.
+type documentTrash interface {
 	Restore(ctx context.Context, docUUID string) (*model.Document, error)
 	PurgeSingle(ctx context.Context, docUUID string) (string, error)
 	PurgeSoftDeleted(ctx context.Context, olderThan time.Duration) ([]repository.DocumentFilePath, error)
 	ListDeleted(ctx context.Context, limit, offset int, userID *int64) ([]model.Document, int, error)
+}
+
+// documentPipeline is the umbrella interface satisfied by
+// *service.DocumentPipeline. DocumentHandler holds a single field of this
+// type for now; sub-handlers split out later can take the narrower role.
+type documentPipeline interface {
+	documentReader
+	documentWriter
+	documentTrash
 }
 
 const maxUploadBodySize = 50*1024*1024 + 1024 // 50 MiB + metadata overhead

@@ -66,7 +66,9 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	}
 
 	// --- EventBus (Redis-backed for cross-instance SSE delivery) ---
-	eventBus, err := queue.NewRedisEventBus(context.Background(), f.RedisClient, logger)
+	// Uses the Foundation context so the pub/sub consumer goroutine exits
+	// when Foundation.Close cancels, alongside eventBus.Close (architecture A3).
+	eventBus, err := queue.NewRedisEventBus(f.Ctx(), f.RedisClient, logger)
 	if err != nil {
 		return nil, fmt.Errorf("redis event bus: %w", err)
 	}
@@ -80,10 +82,11 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	// --- Control Bus Subscriptions ---
 	// Remote replicas publish on this topic after admin-UI edits to
 	// external services; we clear our local kiwix factory cache so the
-	// next request re-reads from Postgres. The subscription's goroutine
-	// lives until Foundation.ControlBus.Close() runs during shutdown.
+	// next request re-reads from Postgres. Foundation.Ctx is canceled at
+	// shutdown so the subscriber goroutine has a second exit path on top of
+	// Foundation.ControlBus.Close (architecture A3).
 	if f.ControlBus != nil {
-		subErr := f.ControlBus.Subscribe(context.Background(), apihandler.KiwixCacheInvalidateTopic, func(_ []byte) {
+		subErr := f.ControlBus.Subscribe(f.Ctx(), apihandler.KiwixCacheInvalidateTopic, func(_ []byte) {
 			f.KiwixFactory.Invalidate()
 			logger.Info("kiwix cache invalidated by control bus")
 		})
