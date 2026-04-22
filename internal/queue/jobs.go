@@ -153,6 +153,31 @@ func (PurgeSoftDeletedArgs) InsertOpts() river.InsertOpts {
 	}
 }
 
+// CleanupSearchQueriesArgs dispatches retention-based cleanup of search_queries rows.
+type CleanupSearchQueriesArgs struct{}
+
+// Kind returns the job kind identifier for CleanupSearchQueriesArgs.
+func (CleanupSearchQueriesArgs) Kind() string { return "cleanup_search_queries" }
+
+// InsertOpts returns the River insert options for CleanupSearchQueriesArgs.
+func (CleanupSearchQueriesArgs) InsertOpts() river.InsertOpts {
+	return river.InsertOpts{
+		Queue:       "low",
+		Priority:    4,
+		MaxAttempts: 2,
+		UniqueOpts: river.UniqueOpts{
+			ByQueue: true,
+			ByState: []rivertype.JobState{
+				rivertype.JobStatePending,
+				rivertype.JobStateAvailable,
+				rivertype.JobStateRunning,
+				rivertype.JobStateRetryable,
+				rivertype.JobStateScheduled,
+			},
+		},
+	}
+}
+
 // HealthCheckServicesArgs dispatches external service health checks.
 type HealthCheckServicesArgs struct{}
 

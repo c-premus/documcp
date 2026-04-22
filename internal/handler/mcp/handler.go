@@ -30,7 +30,7 @@ type documentServicer interface {
 
 // zimArchiveLister abstracts the ZIM archive repository methods.
 type zimArchiveLister interface {
-	List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error)
+	List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, int, error)
 	ListSearchable(ctx context.Context) ([]model.ZimArchive, error)
 }
 

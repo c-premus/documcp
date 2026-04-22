@@ -43,20 +43,19 @@ func NewZimArchiveRepository(db *pgxpool.Pool, logger *slog.Logger) *ZimArchiveR
 	return &ZimArchiveRepository{db: db, logger: logger}
 }
 
-// List returns enabled ZIM archives with optional filtering by category, language, and search query.
-//
-// Query text is stable across all filter combinations so pgx's prepared-statement
-// cache hits on repeated admin-list renders. Optional filters are bound as
-// typed NULL when absent (the ::text / ::bigint casts let PostgreSQL compare
-// against a NULL parameter). Callers that pass limit == 0 see no LIMIT clause
-// via NULLIF, preserving the existing "zero means unlimited" contract.
-func (r *ZimArchiveRepository) List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error) {
+// List returns enabled ZIM archives plus the pre-LIMIT total in a single
+// round trip using COUNT(*) OVER (). Optional filters are bound as typed
+// NULL when absent (the ::text cast lets PostgreSQL compare against a NULL
+// parameter). Callers that pass limit == 0 see no LIMIT clause via NULLIF,
+// preserving the "zero means unlimited" contract that the integration tests
+// depend on.
+func (r *ZimArchiveRepository) List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, int, error) {
 	categoryArg := nullStr(category)
 	languageArg := nullStr(language)
 	queryArg := nullLikePattern(query)
 
-	archives, err := database.Select[model.ZimArchive](ctx, r.db,
-		`SELECT * FROM zim_archives
+	rows, err := database.Select[zimArchiveListRow](ctx, r.db,
+		`SELECT *, COUNT(*) OVER () AS total FROM zim_archives
 		WHERE is_enabled = true
 		  AND ($1::text IS NULL OR category = $1)
 		  AND ($2::text IS NULL OR language = $2)
@@ -66,31 +65,24 @@ func (r *ZimArchiveRepository) List(ctx context.Context, category, language, que
 		categoryArg, languageArg, queryArg, limit, offset,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("listing zim archives: %w", err)
+		return nil, 0, fmt.Errorf("listing zim archives: %w", err)
 	}
-	return archives, nil
+	archives := make([]model.ZimArchive, len(rows))
+	var total int
+	for i := range rows {
+		archives[i] = rows[i].ZimArchive
+		if i == 0 {
+			total = int(rows[i].Total)
+		}
+	}
+	return archives, total, nil
 }
 
-// CountFiltered returns the total number of enabled ZIM archives matching the given filters.
-// Query text mirrors List's WHERE clause for statement-cache stability.
-func (r *ZimArchiveRepository) CountFiltered(ctx context.Context, category, language, query string) (int, error) {
-	categoryArg := nullStr(category)
-	languageArg := nullStr(language)
-	queryArg := nullLikePattern(query)
-
-	var count int
-	err := r.db.QueryRow(ctx,
-		`SELECT COUNT(*) FROM zim_archives
-		WHERE is_enabled = true
-		  AND ($1::text IS NULL OR category = $1)
-		  AND ($2::text IS NULL OR language = $2)
-		  AND ($3::text IS NULL OR name ILIKE $3 OR title ILIKE $3)`,
-		categoryArg, languageArg, queryArg,
-	).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("counting zim archives: %w", err)
-	}
-	return count, nil
+// zimArchiveListRow extends model.ZimArchive with the windowed COUNT(*) OVER ()
+// total so a single scan yields both the page and the true filtered total.
+type zimArchiveListRow struct {
+	model.ZimArchive
+	Total int64 `db:"total"`
 }
 
 // nullLikePattern returns a `%escaped%` ILIKE pattern, or nil when the input

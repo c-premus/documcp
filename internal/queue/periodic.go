@@ -26,6 +26,7 @@ func BuildPeriodicJobs(cfg config.SchedulerConfig, logger *slog.Logger) []*river
 		{"orphaned-files", cfg.OrphanedFilesSchedule, CleanupOrphanedFilesArgs{}, false},
 		{"soft-delete-purge", cfg.SoftDeletePurgeSchedule, PurgeSoftDeletedArgs{}, false},
 		{"health-check", cfg.HealthCheckSchedule, HealthCheckServicesArgs{}, false},
+		{"search-query-cleanup", cfg.SearchQueryCleanupSchedule, CleanupSearchQueriesArgs{}, false},
 	}
 
 	var jobs []*river.PeriodicJob
