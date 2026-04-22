@@ -30,7 +30,7 @@ import (
 
 func newTestSSEHandler() (*SSEHandler, *queue.EventBus) {
 	eb := queue.NewEventBus(slog.New(slog.DiscardHandler))
-	h := NewSSEHandler(eb, 15*time.Second)
+	h := NewSSEHandler(eb, 15*time.Second, nil, slog.New(slog.DiscardHandler))
 	return h, eb
 }
 
@@ -160,7 +160,7 @@ func TestNewSSEHandler(t *testing.T) {
 	t.Parallel()
 
 	eb := queue.NewEventBus(slog.New(slog.DiscardHandler))
-	h := NewSSEHandler(eb, 15*time.Second)
+	h := NewSSEHandler(eb, 15*time.Second, nil, slog.New(slog.DiscardHandler))
 
 	assert.NotNil(t, h, "NewSSEHandler should return a non-nil handler")
 }
@@ -178,6 +178,7 @@ func TestSSEHandler_Stream(t *testing.T) {
 		h, _ := newTestSSEHandler()
 
 		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
+		req = req.WithContext(ctxWithUser(req.Context(), &model.User{ID: 1, IsAdmin: true}))
 		w := &nonFlushableWriter{header: http.Header{}, code: http.StatusOK}
 
 		h.Stream(w, req)
@@ -186,12 +187,26 @@ func TestSSEHandler_Stream(t *testing.T) {
 		assert.Contains(t, w.body.String(), "streaming not supported")
 	})
 
+	t.Run("returns 401 when no user in context", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := newTestSSEHandler()
+
+		req := httptest.NewRequest(http.MethodGet, "/api/admin/events/stream", http.NoBody)
+		w := httptest.NewRecorder()
+
+		h.Stream(w, req)
+
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+		assert.Contains(t, w.Body.String(), "unauthorized")
+	})
+
 	t.Run("sets correct SSE headers", func(t *testing.T) {
 		t.Parallel()
 
 		h, eb := newTestSSEHandler()
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), &model.User{ID: 1, IsAdmin: true}))
 		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
 		req = req.WithContext(ctx)
 		rec := newSSERecorder()
@@ -225,7 +240,7 @@ func TestSSEHandler_Stream(t *testing.T) {
 
 		h, eb := newTestSSEHandler()
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), &model.User{ID: 1, IsAdmin: true}))
 		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
 		req = req.WithContext(ctx)
 		rec := newSSERecorder()
@@ -288,7 +303,7 @@ func TestSSEHandler_Stream(t *testing.T) {
 
 		h, eb := newTestSSEHandler()
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), &model.User{ID: 1, IsAdmin: true}))
 		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
 		req = req.WithContext(ctx)
 		rec := newSSERecorder()
@@ -329,7 +344,7 @@ func TestSSEHandler_Stream(t *testing.T) {
 
 		h, eb := newTestSSEHandler()
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), &model.User{ID: 1, IsAdmin: true}))
 		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
 		req = req.WithContext(ctx)
 		rec := newSSERecorder()
@@ -366,7 +381,7 @@ func TestSSEHandler_Stream(t *testing.T) {
 
 		h, eb := newTestSSEHandler()
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), &model.User{ID: 1, IsAdmin: true}))
 		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
 		req = req.WithContext(ctx)
 		rec := newSSERecorder()
@@ -478,7 +493,7 @@ func TestSSEHandler_UserStream(t *testing.T) {
 	t.Run("returns 401 when no user in context", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewSSEHandler(&stubEventSubscriber{}, 15*time.Second)
+		h := NewSSEHandler(&stubEventSubscriber{}, 15*time.Second, nil, slog.New(slog.DiscardHandler))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody)
 		w := httptest.NewRecorder()
@@ -492,7 +507,7 @@ func TestSSEHandler_UserStream(t *testing.T) {
 	t.Run("returns 503 when subscriber limit reached", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewSSEHandler(nilEventSubscriber{}, 15*time.Second)
+		h := NewSSEHandler(nilEventSubscriber{}, 15*time.Second, nil, slog.New(slog.DiscardHandler))
 
 		user := &model.User{ID: 1, IsAdmin: false}
 		ctx := ctxWithUser(context.Background(), user)
@@ -516,7 +531,7 @@ func TestSSEHandler_UserStream(t *testing.T) {
 
 		ch := make(chan queue.Event, 10)
 		stub := &stubEventSubscriber{ch: ch}
-		h := NewSSEHandler(stub, 15*time.Second)
+		h := NewSSEHandler(stub, 15*time.Second, nil, slog.New(slog.DiscardHandler))
 
 		admin := &model.User{ID: 1, IsAdmin: true}
 		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), admin))
@@ -554,7 +569,7 @@ func TestSSEHandler_UserStream(t *testing.T) {
 
 		ch := make(chan queue.Event, 10)
 		stub := &stubEventSubscriber{ch: ch}
-		h := NewSSEHandler(stub, 15*time.Second)
+		h := NewSSEHandler(stub, 15*time.Second, nil, slog.New(slog.DiscardHandler))
 
 		user := &model.User{ID: 42, IsAdmin: false}
 		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), user))
@@ -585,7 +600,7 @@ func TestSSEHandler_UserStream(t *testing.T) {
 
 		ch := make(chan queue.Event, 10)
 		stub := &stubEventSubscriber{ch: ch}
-		h := NewSSEHandler(stub, 15*time.Second)
+		h := NewSSEHandler(stub, 15*time.Second, nil, slog.New(slog.DiscardHandler))
 
 		user := &model.User{ID: 42, IsAdmin: false}
 		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), user))
@@ -623,7 +638,7 @@ func TestSSEHandler_UserStream(t *testing.T) {
 
 		ch := make(chan queue.Event, 10)
 		stub := &stubEventSubscriber{ch: ch}
-		h := NewSSEHandler(stub, 15*time.Second)
+		h := NewSSEHandler(stub, 15*time.Second, nil, slog.New(slog.DiscardHandler))
 
 		user := &model.User{ID: 42, IsAdmin: false}
 		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), user))
@@ -652,5 +667,252 @@ func TestSSEHandler_UserStream(t *testing.T) {
 		body := rec.body()
 		assert.NotContains(t, body, "other_user_job", "non-admin should NOT see events for other users")
 		assert.Contains(t, body, "own_job", "non-admin should see their own events")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Session re-validation tests
+//
+// While an SSE stream is open the middleware that authenticated it has long
+// returned — token revocation, user deletion, and admin demotion must drop
+// the stream, not silently keep flowing.
+// ---------------------------------------------------------------------------
+
+// stubValidator lets tests script the responses from FindUserByID and
+// FindAccessTokenByID.
+type stubValidator struct {
+	mu    sync.Mutex
+	users map[int64]*model.User
+	toks  map[int64]*model.OAuthAccessToken
+	err   error
+}
+
+func newStubValidator() *stubValidator {
+	return &stubValidator{
+		users: map[int64]*model.User{},
+		toks:  map[int64]*model.OAuthAccessToken{},
+	}
+}
+
+func (s *stubValidator) setUser(u *model.User) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if u == nil {
+		return
+	}
+	s.users[u.ID] = u
+}
+
+func (s *stubValidator) deleteUser(id int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.users, id)
+}
+
+func (s *stubValidator) setToken(tok *model.OAuthAccessToken) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if tok == nil {
+		return
+	}
+	s.toks[tok.ID] = tok
+}
+
+func (s *stubValidator) FindUserByID(_ context.Context, id int64) (*model.User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return nil, s.err
+	}
+	u, ok := s.users[id]
+	if !ok {
+		return nil, nil
+	}
+	return u, nil
+}
+
+func (s *stubValidator) FindAccessTokenByID(_ context.Context, id int64) (*model.OAuthAccessToken, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tok, ok := s.toks[id]
+	if !ok {
+		return nil, nil
+	}
+	return tok, nil
+}
+
+// ctxWithBearerToken returns a context with the given access token set via
+// the auth middleware key — mimics the state BearerToken middleware leaves
+// behind after validating an Authorization header.
+func ctxWithBearerToken(ctx context.Context, tok *model.OAuthAccessToken) context.Context {
+	return context.WithValue(ctx, authmiddleware.AccessTokenContextKey, tok)
+}
+
+func TestSSEHandler_Revalidation(t *testing.T) {
+	t.Parallel()
+
+	// Each subtest uses a short heartbeat so revalidation fires within the
+	// 2-second test timeout.
+	const fastHB = 20 * time.Millisecond
+
+	t.Run("UserStream drops when user is deleted mid-stream", func(t *testing.T) {
+		t.Parallel()
+
+		ch := make(chan queue.Event, 10)
+		validator := newStubValidator()
+		validator.setUser(&model.User{ID: 42, IsAdmin: false})
+
+		h := NewSSEHandler(&stubEventSubscriber{ch: ch}, fastHB, validator, slog.New(slog.DiscardHandler))
+
+		user := &model.User{ID: 42, IsAdmin: false}
+		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), user))
+		defer cancel()
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody).WithContext(ctx)
+		rec := newSSERecorder()
+
+		done := make(chan struct{})
+		go func() {
+			h.UserStream(rec, req)
+			close(done)
+		}()
+
+		rec.waitForFirstWrite(t)
+
+		// User is deleted from the validator store; next heartbeat drops stream.
+		validator.deleteUser(42)
+
+		select {
+		case <-done:
+			// Expected: handler returned on revalidation failure.
+		case <-time.After(2 * time.Second):
+			t.Fatal("UserStream did not drop within 2 s after user deletion")
+		}
+	})
+
+	t.Run("UserStream drops when bearer token is revoked mid-stream", func(t *testing.T) {
+		t.Parallel()
+
+		ch := make(chan queue.Event, 10)
+		validator := newStubValidator()
+		validator.setUser(&model.User{ID: 42, IsAdmin: false})
+		tok := &model.OAuthAccessToken{ID: 7, Revoked: false, ExpiresAt: time.Now().Add(time.Hour)}
+		validator.setToken(tok)
+
+		h := NewSSEHandler(&stubEventSubscriber{ch: ch}, fastHB, validator, slog.New(slog.DiscardHandler))
+
+		user := &model.User{ID: 42, IsAdmin: false}
+		ctx, cancel := context.WithCancel(ctxWithBearerToken(ctxWithUser(context.Background(), user), tok))
+		defer cancel()
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody).WithContext(ctx)
+		rec := newSSERecorder()
+
+		done := make(chan struct{})
+		go func() {
+			h.UserStream(rec, req)
+			close(done)
+		}()
+
+		rec.waitForFirstWrite(t)
+
+		// Mark the token revoked; next heartbeat drops the stream.
+		validator.setToken(&model.OAuthAccessToken{ID: 7, Revoked: true, ExpiresAt: time.Now().Add(time.Hour)})
+
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("UserStream did not drop within 2 s after token revocation")
+		}
+	})
+
+	t.Run("Stream drops when admin is demoted mid-stream", func(t *testing.T) {
+		t.Parallel()
+
+		ch := make(chan queue.Event, 10)
+		validator := newStubValidator()
+		validator.setUser(&model.User{ID: 1, IsAdmin: true})
+
+		h := NewSSEHandler(&stubEventSubscriber{ch: ch}, fastHB, validator, slog.New(slog.DiscardHandler))
+
+		admin := &model.User{ID: 1, IsAdmin: true}
+		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), admin))
+		defer cancel()
+		req := httptest.NewRequest(http.MethodGet, "/api/admin/events/stream", http.NoBody).WithContext(ctx)
+		rec := newSSERecorder()
+
+		done := make(chan struct{})
+		go func() {
+			h.Stream(rec, req)
+			close(done)
+		}()
+
+		rec.waitForFirstWrite(t)
+
+		// Demote admin; next heartbeat drops stream.
+		validator.setUser(&model.User{ID: 1, IsAdmin: false})
+
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("Stream did not drop within 2 s after admin demotion")
+		}
+	})
+
+	t.Run("UserStream continues across heartbeat when credentials stay valid", func(t *testing.T) {
+		t.Parallel()
+
+		ch := make(chan queue.Event, 10)
+		validator := newStubValidator()
+		validator.setUser(&model.User{ID: 42, IsAdmin: false})
+
+		h := NewSSEHandler(&stubEventSubscriber{ch: ch}, fastHB, validator, slog.New(slog.DiscardHandler))
+
+		user := &model.User{ID: 42, IsAdmin: false}
+		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), user))
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody).WithContext(ctx)
+		rec := newSSERecorder()
+
+		done := make(chan struct{})
+		go func() {
+			h.UserStream(rec, req)
+			close(done)
+		}()
+
+		rec.waitForFirstWrite(t)
+
+		// Wait for at least one heartbeat tick to fire, confirming the loop
+		// didn't drop the stream. Events published afterward still deliver.
+		time.Sleep(3 * fastHB)
+		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "post_heartbeat_job", JobID: 123, UserID: 42, Timestamp: time.Now()}
+		rec.waitForBodyContains(t, "post_heartbeat_job")
+
+		cancel()
+		<-done
+	})
+
+	t.Run("UserStream tolerates nil validator", func(t *testing.T) {
+		t.Parallel()
+
+		ch := make(chan queue.Event, 10)
+		h := NewSSEHandler(&stubEventSubscriber{ch: ch}, fastHB, nil, slog.New(slog.DiscardHandler))
+
+		user := &model.User{ID: 42, IsAdmin: false}
+		ctx, cancel := context.WithCancel(ctxWithUser(context.Background(), user))
+		req := httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody).WithContext(ctx)
+		rec := newSSERecorder()
+
+		done := make(chan struct{})
+		go func() {
+			h.UserStream(rec, req)
+			close(done)
+		}()
+
+		rec.waitForFirstWrite(t)
+		time.Sleep(3 * fastHB) // let several heartbeats fire; stream must survive
+
+		ch <- queue.Event{Type: queue.EventJobCompleted, JobKind: "alive_job", JobID: 1, UserID: 42, Timestamp: time.Now()}
+		rec.waitForBodyContains(t, "alive_job")
+
+		cancel()
+		<-done
 	})
 }
