@@ -44,44 +44,27 @@ func NewZimArchiveRepository(db *pgxpool.Pool, logger *slog.Logger) *ZimArchiveR
 }
 
 // List returns enabled ZIM archives with optional filtering by category, language, and search query.
+//
+// Query text is stable across all filter combinations so pgx's prepared-statement
+// cache hits on repeated admin-list renders. Optional filters are bound as
+// typed NULL when absent (the ::text / ::bigint casts let PostgreSQL compare
+// against a NULL parameter). Callers that pass limit == 0 see no LIMIT clause
+// via NULLIF, preserving the existing "zero means unlimited" contract.
 func (r *ZimArchiveRepository) List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error) {
-	q := `SELECT * FROM zim_archives WHERE is_enabled = true`
-	args := []any{}
-	argIdx := 1
+	categoryArg := nullStr(category)
+	languageArg := nullStr(language)
+	queryArg := nullLikePattern(query)
 
-	if category != "" {
-		q += fmt.Sprintf(` AND category = $%d`, argIdx)
-		args = append(args, category)
-		argIdx++
-	}
-
-	if language != "" {
-		q += fmt.Sprintf(` AND language = $%d`, argIdx)
-		args = append(args, language)
-		argIdx++
-	}
-
-	if query != "" {
-		q += fmt.Sprintf(` AND (name ILIKE $%d OR title ILIKE $%d)`, argIdx, argIdx+1)
-		likeQuery := "%" + escapeLike(query) + "%"
-		args = append(args, likeQuery, likeQuery)
-		argIdx += 2
-	}
-
-	q += ` ORDER BY name`
-
-	if limit > 0 {
-		q += fmt.Sprintf(` LIMIT $%d`, argIdx)
-		args = append(args, limit)
-		argIdx++
-	}
-
-	if offset > 0 {
-		q += fmt.Sprintf(` OFFSET $%d`, argIdx)
-		args = append(args, offset)
-	}
-
-	archives, err := database.Select[model.ZimArchive](ctx, r.db, q, args...)
+	archives, err := database.Select[model.ZimArchive](ctx, r.db,
+		`SELECT * FROM zim_archives
+		WHERE is_enabled = true
+		  AND ($1::text IS NULL OR category = $1)
+		  AND ($2::text IS NULL OR language = $2)
+		  AND ($3::text IS NULL OR name ILIKE $3 OR title ILIKE $3)
+		ORDER BY name
+		LIMIT NULLIF($4::bigint, 0) OFFSET $5`,
+		categoryArg, languageArg, queryArg, limit, offset,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("listing zim archives: %w", err)
 	}
@@ -89,35 +72,35 @@ func (r *ZimArchiveRepository) List(ctx context.Context, category, language, que
 }
 
 // CountFiltered returns the total number of enabled ZIM archives matching the given filters.
+// Query text mirrors List's WHERE clause for statement-cache stability.
 func (r *ZimArchiveRepository) CountFiltered(ctx context.Context, category, language, query string) (int, error) {
-	q := `SELECT COUNT(*) FROM zim_archives WHERE is_enabled = true`
-	args := []any{}
-	argIdx := 1
-
-	if category != "" {
-		q += fmt.Sprintf(` AND category = $%d`, argIdx)
-		args = append(args, category)
-		argIdx++
-	}
-
-	if language != "" {
-		q += fmt.Sprintf(` AND language = $%d`, argIdx)
-		args = append(args, language)
-		argIdx++
-	}
-
-	if query != "" {
-		q += fmt.Sprintf(` AND (name ILIKE $%d OR title ILIKE $%d)`, argIdx, argIdx+1)
-		likeQuery := "%" + escapeLike(query) + "%"
-		args = append(args, likeQuery, likeQuery)
-	}
+	categoryArg := nullStr(category)
+	languageArg := nullStr(language)
+	queryArg := nullLikePattern(query)
 
 	var count int
-	err := r.db.QueryRow(ctx, q, args...).Scan(&count)
+	err := r.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM zim_archives
+		WHERE is_enabled = true
+		  AND ($1::text IS NULL OR category = $1)
+		  AND ($2::text IS NULL OR language = $2)
+		  AND ($3::text IS NULL OR name ILIKE $3 OR title ILIKE $3)`,
+		categoryArg, languageArg, queryArg,
+	).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("counting zim archives: %w", err)
 	}
 	return count, nil
+}
+
+// nullLikePattern returns a `%escaped%` ILIKE pattern, or nil when the input
+// is empty so the bound parameter is NULL and the predicate skips.
+func nullLikePattern(s string) *string {
+	if s == "" {
+		return nil
+	}
+	pat := "%" + escapeLike(s) + "%"
+	return &pat
 }
 
 // ListSearchable returns all enabled and searchable ZIM archives, ordered by

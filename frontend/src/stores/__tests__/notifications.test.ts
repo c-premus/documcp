@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useNotificationsStore } from '@/stores/notifications'
 import type { SSEEvent } from '@/stores/sse'
@@ -17,21 +17,12 @@ function mockEvent(overrides: Partial<SSEEvent> = {}): SSEEvent {
 describe('notifications store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    vi.stubGlobal('crypto', {
-      randomUUID: vi.fn().mockReturnValue('test-uuid-123'),
-    })
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-    vi.unstubAllGlobals()
   })
 
   it('has correct initial state', () => {
     const store = useNotificationsStore()
 
     expect(store.events).toEqual([])
-    expect(store.notifications).toEqual([])
   })
 
   describe('addEvent', () => {
@@ -79,70 +70,6 @@ describe('notifications store', () => {
     })
   })
 
-  describe('add', () => {
-    it('creates notification with generated ID and timestamp', () => {
-      const store = useNotificationsStore()
-
-      store.add({ type: 'success', title: 'Upload complete' })
-
-      expect(store.notifications).toHaveLength(1)
-      expect(store.notifications[0]!.id).toBe('test-uuid-123')
-      expect(store.notifications[0]!.type).toBe('success')
-      expect(store.notifications[0]!.title).toBe('Upload complete')
-      expect(store.notifications[0]!.timestamp).toBeInstanceOf(Date)
-    })
-
-    it('includes optional message', () => {
-      const store = useNotificationsStore()
-
-      store.add({ type: 'error', title: 'Failed', message: 'Something went wrong' })
-
-      expect(store.notifications[0]!.message).toBe('Something went wrong')
-    })
-
-    it('supports all notification types', () => {
-      const store = useNotificationsStore()
-      const types = ['success', 'error', 'info', 'warning'] as const
-
-      for (const type of types) {
-        store.add({ type, title: `${type} notification` })
-      }
-
-      expect(store.notifications).toHaveLength(4)
-      expect(store.notifications.map((n) => n.type)).toEqual([...types])
-    })
-  })
-
-  describe('remove', () => {
-    it('removes notification by ID', () => {
-      const store = useNotificationsStore()
-
-      let callCount = 0
-      vi.stubGlobal('crypto', {
-        randomUUID: vi.fn(() => `uuid-${callCount++}`),
-      })
-
-      store.add({ type: 'success', title: 'First' })
-      store.add({ type: 'info', title: 'Second' })
-
-      expect(store.notifications).toHaveLength(2)
-
-      store.remove('uuid-0')
-
-      expect(store.notifications).toHaveLength(1)
-      expect(store.notifications[0]!.title).toBe('Second')
-    })
-
-    it('does nothing for non-existent ID', () => {
-      const store = useNotificationsStore()
-
-      store.add({ type: 'success', title: 'First' })
-      store.remove('non-existent')
-
-      expect(store.notifications).toHaveLength(1)
-    })
-  })
-
   describe('clear', () => {
     it('empties events array', () => {
       const store = useNotificationsStore()
@@ -154,18 +81,6 @@ describe('notifications store', () => {
       store.clear()
 
       expect(store.events).toEqual([])
-    })
-
-    it('does not affect notifications array', () => {
-      const store = useNotificationsStore()
-
-      store.add({ type: 'success', title: 'Keep me' })
-      store.addEvent(mockEvent())
-
-      store.clear()
-
-      expect(store.events).toEqual([])
-      expect(store.notifications).toHaveLength(1)
     })
   })
 })
