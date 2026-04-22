@@ -111,6 +111,12 @@ type AppConfig struct {
 	InternalAPIToken   string        `mapstructure:"internal_api_token"`
 	EncryptionKey      string        `mapstructure:"encryption_key"`
 	EncryptionKeyBytes []byte        // Decoded from EncryptionKey (hex); populated by Validate()
+	// EncryptionKeyPrevious is an optional retired key retained for decrypt
+	// only. When set, ciphertext written under the retired key remains
+	// readable until a `documcp rekey` pass re-encrypts it under the current
+	// primary. Same 32-byte hex format as EncryptionKey.
+	EncryptionKeyPrevious      string `mapstructure:"encryption_key_previous"`
+	EncryptionKeyPreviousBytes []byte // Decoded from EncryptionKeyPrevious (hex); populated by Validate()
 	QueueStopTimeout   time.Duration `mapstructure:"app_queue_stop_timeout"`
 	TracerStopTimeout  time.Duration `mapstructure:"app_tracer_stop_timeout"`
 	SSRFDialerTimeout  time.Duration `mapstructure:"ssrf_dialer_timeout"`
@@ -209,6 +215,11 @@ type OAuthConfig struct {
 	RegistrationRequireAuth bool          `mapstructure:"oauth_registration_require_auth"`
 	ClientTouchTimeout      time.Duration `mapstructure:"oauth_client_touch_timeout"`
 	ScopeGrantTTL           time.Duration `mapstructure:"oauth_scope_grant_ttl"`
+	// DeviceFailureLimit caps failed user_code submissions per authenticated
+	// user within DeviceFailureWindow (security L6). The counter lives in
+	// Redis so it survives session-cookie resets. 0 disables enforcement.
+	DeviceFailureLimit  int           `mapstructure:"oauth_device_failure_limit"`
+	DeviceFailureWindow time.Duration `mapstructure:"oauth_device_failure_window"`
 	// AllowedResources is the RFC 8707 resource indicator allowlist. Clients
 	// may only request access tokens bound to one of these URIs. Defaults to
 	// [AppURL, AppURL+DocuMCP.Endpoint] when unset.
@@ -386,6 +397,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oauth_registration_require_auth", true)
 	v.SetDefault("oauth_client_touch_timeout", 3*time.Second)
 	v.SetDefault("oauth_scope_grant_ttl", 30*24*time.Hour) // 30 days; 0 = no expiry
+	v.SetDefault("oauth_device_failure_limit", 5)
+	v.SetDefault("oauth_device_failure_window", 1*time.Hour)
 
 	// Storage
 	v.SetDefault("storage_driver", "local")
@@ -492,9 +505,10 @@ func Load() (*Config, error) {
 		Debug:             v.GetBool("app_debug"),
 		URL:               v.GetString("app_url"),
 		Timezone:          v.GetString("app_timezone"),
-		InternalAPIToken:  v.GetString("internal_api_token"),
-		EncryptionKey:     v.GetString("encryption_key"),
-		QueueStopTimeout:  v.GetDuration("app_queue_stop_timeout"),
+		InternalAPIToken:       v.GetString("internal_api_token"),
+		EncryptionKey:          v.GetString("encryption_key"),
+		EncryptionKeyPrevious:  v.GetString("encryption_key_previous"),
+		QueueStopTimeout:       v.GetDuration("app_queue_stop_timeout"),
 		TracerStopTimeout: v.GetDuration("app_tracer_stop_timeout"),
 		SSRFDialerTimeout: v.GetDuration("ssrf_dialer_timeout"),
 	}
@@ -580,6 +594,8 @@ func Load() (*Config, error) {
 		RegistrationRequireAuth: v.GetBool("oauth_registration_require_auth"),
 		ClientTouchTimeout:      v.GetDuration("oauth_client_touch_timeout"),
 		ScopeGrantTTL:           v.GetDuration("oauth_scope_grant_ttl"),
+		DeviceFailureLimit:      v.GetInt("oauth_device_failure_limit"),
+		DeviceFailureWindow:     v.GetDuration("oauth_device_failure_window"),
 		AllowedResources:        v.GetStringSlice("oauth_allowed_resources"),
 	}
 
@@ -718,6 +734,20 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 			errs = append(errs, "ENCRYPTION_KEY must decode to exactly 32 bytes for AES-256-GCM (use a 64-character hex string)")
 		default:
 			c.App.EncryptionKeyBytes = keyBytes
+		}
+	}
+
+	if c.App.EncryptionKeyPrevious != "" {
+		prevBytes, hexErr := hex.DecodeString(c.App.EncryptionKeyPrevious)
+		switch {
+		case hexErr != nil:
+			errs = append(errs, "ENCRYPTION_KEY_PREVIOUS must be a valid hex string (generate with: openssl rand -hex 32)")
+		case len(prevBytes) != 32:
+			errs = append(errs, "ENCRYPTION_KEY_PREVIOUS must decode to exactly 32 bytes for AES-256-GCM (use a 64-character hex string)")
+		case c.App.EncryptionKey == "":
+			errs = append(errs, "ENCRYPTION_KEY_PREVIOUS is set but ENCRYPTION_KEY is empty — previous keys are decrypt-only; a primary key must be configured to rotate under")
+		default:
+			c.App.EncryptionKeyPreviousBytes = prevBytes
 		}
 	}
 

@@ -207,6 +207,13 @@ func (s *Service) FindUserByID(ctx context.Context, id int64) (*model.User, erro
 	return s.users.FindUserByID(ctx, id)
 }
 
+// FindAccessTokenByID returns an access token row by its primary key. Used by
+// long-running handlers (e.g. SSE) that re-validate credentials mid-stream
+// without re-hashing the bearer token.
+func (s *Service) FindAccessTokenByID(ctx context.Context, id int64) (*model.OAuthAccessToken, error) {
+	return s.accessTokens.FindAccessTokenByID(ctx, id)
+}
+
 // RevokeUserTokensSince revokes every live access + refresh token minted for
 // userID at or after since. Used by session logout to invalidate OAuth grants
 // issued during the session being terminated (security L7).

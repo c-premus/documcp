@@ -17,6 +17,7 @@ For the minimum set needed to boot a deployment, see [Required for startup](../R
 | `APP_TIMEZONE` | No | `UTC` | Server timezone |
 | `INTERNAL_API_TOKEN` | Prod | -- | Bearer token guarding `/metrics` and `/health/ready`. Generate `openssl rand -hex 32` |
 | `ENCRYPTION_KEY` | Prod | -- | 64-char hex (32 bytes) for AES-256-GCM encryption of stored Git tokens. Generate `openssl rand -hex 32` |
+| `ENCRYPTION_KEY_PREVIOUS` | No | -- | Optional retired key retained for decrypt-only during rotation. Same 64-char hex format. See [Encryption key rotation](#encryption-key-rotation) below. |
 
 ## Server
 
@@ -64,6 +65,14 @@ For the minimum set needed to boot a deployment, see [Required for startup](../R
 ## Redis
 
 See [docs/REDIS.md](REDIS.md) for ACL requirements, client architecture, and troubleshooting.
+
+Redis also backs the **session store** (as of the RedisStore rollout). Browser
+cookies hold only a signed session ID; the session payload (`user_id`,
+`login_at`, OIDC state) lives at `session:<id>` with a TTL tied to the absolute
+session lifetime. A per-user index at `user-sessions:<user_id>` keeps the set
+of active session IDs so the server can enumerate and revoke sessions
+(e.g., on user deletion). The first boot after the rollout invalidates
+existing cookies — users re-authenticate through OIDC once.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -119,6 +128,8 @@ DocuMCP requires an OpenID Connect provider for user login. Set `OIDC_PROVIDER_U
 | `OAUTH_REGISTRATION_REQUIRE_AUTH` | No | `true` | When `false`, anonymous registration is allowed but constrained (public clients, read-only scopes, no device_code; rate-limited) |
 | `OAUTH_CLIENT_TOUCH_TIMEOUT` | No | `3s` | Timeout for fire-and-forget `last_used_at` updates |
 | `OAUTH_SCOPE_GRANT_TTL` | No | `720h` | Time-bounded scope-grant lifetime (30 days; `0` = no expiry) |
+| `OAUTH_DEVICE_FAILURE_LIMIT` | No | `5` | Max failed `user_code` submissions per user within the window before the device-flow verification page is blocked. `0` disables. |
+| `OAUTH_DEVICE_FAILURE_WINDOW` | No | `1h` | Window over which failures are counted. Counter is keyed on `user_id` in Redis so it survives session-cookie resets. `0` disables. |
 | `OAUTH_ALLOWED_RESOURCES` | No | _derived_ | RFC 8707 resource indicator allowlist (comma-separated absolute URIs). Defaults to `[APP_URL, APP_URL+DOCUMCP_ENDPOINT]` |
 
 ### Rotating the OAuth HMAC key (`OAUTH_SESSION_SECRET`)
@@ -146,6 +157,33 @@ To rotate without interruption:
 Every environment must configure a non-empty `OAUTH_SESSION_SECRET`. The
 prior silent SHA-256 fallback for a missing key was removed — `serve` now
 fails to boot without a derivable HMAC key (security L4).
+
+### Encryption key rotation (`ENCRYPTION_KEY`)
+
+At-rest ciphertext carries a `v<hex>$<base64>` prefix that identifies which
+`ENCRYPTION_KEY` produced it — analogous to the OAuth HMAC scheme above.
+Decrypt paths match the prefix, and a retired key configured via
+`ENCRYPTION_KEY_PREVIOUS` stays accepted for decryption until all stored
+ciphertext has been re-encrypted under the new primary.
+
+To rotate:
+
+1. Generate a new key: `openssl rand -hex 32`.
+2. Set `ENCRYPTION_KEY_PREVIOUS` to the current value and `ENCRYPTION_KEY`
+   to the new value. Deploy. The server logs
+   `encryption at rest enabled with key rotation (previous key configured)`.
+3. Run `documcp rekey`. It walks `external_services.api_key` and
+   `git_templates.git_token`, decrypts every row under whichever key matches,
+   and re-encrypts under the new primary. Safe to run repeatedly — rows
+   already under the primary are skipped.
+4. On the next deploy, drop `ENCRYPTION_KEY_PREVIOUS`. Only the new primary
+   remains.
+
+Legacy ciphertext written before versioned prefixes existed has no prefix;
+decrypt falls back to trying every configured key in order, and `rekey` will
+upgrade those rows too. Distinct `ENCRYPTION_KEY` and
+`ENCRYPTION_KEY_PREVIOUS` values must derive to distinct version bytes — a
+1-in-16 collision causes boot to fail so operators regenerate one.
 
 ## Storage
 

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -14,12 +15,14 @@ import (
 	"syscall"
 
 	"github.com/gorilla/sessions"
+	"github.com/redis/go-redis/v9"
 	"github.com/riverqueue/river"
 
 	"riverqueue.com/riverui"
 
 	"github.com/c-premus/documcp/internal/auth/oauth"
 	"github.com/c-premus/documcp/internal/auth/oidc"
+	redissession "github.com/c-premus/documcp/internal/auth/session"
 	"github.com/c-premus/documcp/internal/client/kiwix"
 	"github.com/c-premus/documcp/internal/config"
 	apihandler "github.com/c-premus/documcp/internal/handler/api"
@@ -51,7 +54,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	logger := f.Logger
 
 	// --- Session Store ---
-	sessionStore, sessionSecret, err := buildSessionStore(cfg, logger)
+	sessionStore, sessionSecret, err := buildSessionStore(cfg, f.RedisClient, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -134,12 +137,18 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	)
 
 	// --- OAuth Handler ---
+	deviceFailures := oauth.NewDeviceFailureLimiter(
+		f.BareRedisClient,
+		cfg.OAuth.DeviceFailureLimit,
+		cfg.OAuth.DeviceFailureWindow,
+	)
 	oauthH := oauthhandler.New(oauthhandler.Config{
-		Service:      oauthService,
-		SessionStore: sessionStore,
-		OAuthCfg:     cfg.OAuth,
-		AppURL:       cfg.App.URL,
-		Logger:       logger,
+		Service:              oauthService,
+		SessionStore:         sessionStore,
+		OAuthCfg:             cfg.OAuth,
+		AppURL:               cfg.App.URL,
+		Logger:               logger,
+		DeviceFailureLimiter: deviceFailures,
 	})
 
 	// --- OIDC Handler ---
@@ -186,7 +195,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	)
 
 	// --- SSE & Queue Handlers ---
-	sseH := apihandler.NewSSEHandler(eventBus, cfg.Server.SSEHeartbeatInterval)
+	sseH := apihandler.NewSSEHandler(eventBus, cfg.Server.SSEHeartbeatInterval, oauthService, logger)
 	queueH := apihandler.NewQueueHandler(riverClient, logger)
 
 	// --- River UI Handler ---
@@ -428,8 +437,12 @@ func hmacVersionByte(secret string) byte {
 	return hexAlphabet[sum[0]>>4]
 }
 
-// buildSessionStore creates a gorilla CookieStore with HKDF-derived encryption keys.
-func buildSessionStore(cfg *config.Config, logger *slog.Logger) (*sessions.CookieStore, string, error) {
+// buildSessionStore creates a Redis-backed session store keyed on a signed
+// session ID cookie. The cookie itself only carries a signed identifier; the
+// session payload (user_id, login_at, OIDC state) lives in Redis so we can
+// enumerate and revoke sessions server-side — which the old
+// sessions.CookieStore couldn't do.
+func buildSessionStore(cfg *config.Config, redisClient *redis.Client, logger *slog.Logger) (*redissession.Store, string, error) {
 	sessionSecret := cfg.OAuth.SessionSecret
 	if sessionSecret == "" {
 		b := make([]byte, 32)
@@ -438,6 +451,10 @@ func buildSessionStore(cfg *config.Config, logger *slog.Logger) (*sessions.Cooki
 		}
 		sessionSecret = hex.EncodeToString(b)
 		logger.Warn("no OAUTH_SESSION_SECRET configured, using random secret (sessions will not survive restarts)")
+	}
+
+	if redisClient == nil {
+		return nil, "", errors.New("redis client required for session store")
 	}
 
 	sessionEncKey, err := deriveKey([]byte(sessionSecret), cfg.OAuth.HKDFSalt, "session-cookie-encryption")
@@ -455,8 +472,7 @@ func buildSessionStore(cfg *config.Config, logger *slog.Logger) (*sessions.Cooki
 		logger.Info("session key rotation enabled (previous key configured)")
 	}
 
-	store := sessions.NewCookieStore(keyPairs...)
-	store.Options = &sessions.Options{
+	opts := &sessions.Options{
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   strings.HasPrefix(cfg.App.URL, "https://") || cfg.Server.TLSEnabled,
@@ -464,6 +480,15 @@ func buildSessionStore(cfg *config.Config, logger *slog.Logger) (*sessions.Cooki
 		MaxAge:   int(cfg.OAuth.SessionMaxAge.Seconds()),
 	}
 
+	ttl := cfg.OAuth.SessionMaxAge
+	if cfg.OAuth.SessionAbsoluteMaxAge > 0 && cfg.OAuth.SessionAbsoluteMaxAge < ttl {
+		// The middleware rejects sessions older than AbsoluteMaxAge anyway —
+		// expire the Redis row at the same horizon so memory frees itself
+		// without waiting for the MaxAge cookie TTL to lapse.
+		ttl = cfg.OAuth.SessionAbsoluteMaxAge
+	}
+
+	store := redissession.New(redisClient, ttl, opts, keyPairs...)
 	return store, sessionSecret, nil
 }
 
