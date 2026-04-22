@@ -233,7 +233,7 @@
     {
       "name": "create_document",
       "title": "Create Document",
-      "description": "Create a new document with title, description, content, and tags. Automatically indexed via PostgreSQL full-text search.",
+      "description": "Create a new document. Required: `title`, `content`, `file_type` (`markdown` or `html` — binary formats must be uploaded via REST). Optional: description, tags, is_public. Automatically indexed via PostgreSQL full-text search.",
       "annotations": {},
       "conditional": null,
       "inputSchema": {

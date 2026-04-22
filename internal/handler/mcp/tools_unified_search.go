@@ -177,49 +177,52 @@ func (h *Handler) handleUnifiedSearch(
 		searched []string
 	}
 
+	// Buffered so the in-line empty-result writes for skipped branches don't
+	// block, and so the live goroutine can exit even if the receive races.
 	ftsCh := make(chan ftsResult, 1)
 	kiwixCh := make(chan kiwixResult, 1)
 
-	// Launch FTS search.
-	go func() {
-		if skipFTS {
-			ftsCh <- ftsResult{}
-			return
-		}
-		resp, err := h.searcher.FederatedSearch(ctx, search.FederatedSearchParams{
-			Query:    input.Query,
-			Indexes:  indexes,
-			Limit:    limit,
-			UserID:   fedUserID,
-			IsPublic: fedIsPublic,
-			IsAdmin:  fedIsAdmin,
-		})
-		if err != nil {
-			ftsCh <- ftsResult{err: err}
-			return
-		}
-		results := make([]unifiedSearchResult, 0, len(resp.Hits))
-		for _, sr := range resp.Hits {
-			results = append(results, unifiedSearchResult{
-				Source:      indexToSource(sr.Source),
-				UUID:        sr.UUID,
-				Title:       sr.Title,
-				Description: sr.Description,
-				Score:       sr.Score,
+	// Launch FTS search — skip the goroutine entirely when the caller filtered
+	// down to zim_article only (code-quality M7).
+	if skipFTS {
+		ftsCh <- ftsResult{}
+	} else {
+		go func() {
+			resp, err := h.searcher.FederatedSearch(ctx, search.FederatedSearchParams{
+				Query:    input.Query,
+				Indexes:  indexes,
+				Limit:    limit,
+				UserID:   fedUserID,
+				IsPublic: fedIsPublic,
+				IsAdmin:  fedIsAdmin,
 			})
-		}
-		ftsCh <- ftsResult{results: results, sourceTotals: resp.SourceTotals}
-	}()
+			if err != nil {
+				ftsCh <- ftsResult{err: err}
+				return
+			}
+			results := make([]unifiedSearchResult, 0, len(resp.Hits))
+			for _, sr := range resp.Hits {
+				results = append(results, unifiedSearchResult{
+					Source:      indexToSource(sr.Source),
+					UUID:        sr.UUID,
+					Title:       sr.Title,
+					Description: sr.Description,
+					Score:       sr.Score,
+				})
+			}
+			ftsCh <- ftsResult{results: results, sourceTotals: resp.SourceTotals}
+		}()
+	}
 
-	// Launch Kiwix fan-out.
-	go func() {
-		if !wantZimArticles {
-			kiwixCh <- kiwixResult{}
-			return
-		}
-		results, searched := h.searchKiwixArchives(ctx, input.Query, h.federatedPerArchiveLimit)
-		kiwixCh <- kiwixResult{results: results, searched: searched}
-	}()
+	// Launch Kiwix fan-out — skip when no caller asked for article content.
+	if !wantZimArticles {
+		kiwixCh <- kiwixResult{}
+	} else {
+		go func() {
+			results, searched := h.searchKiwixArchives(ctx, input.Query, h.federatedPerArchiveLimit)
+			kiwixCh <- kiwixResult{results: results, searched: searched}
+		}()
+	}
 
 	mr := <-ftsCh
 	kr := <-kiwixCh
