@@ -14,11 +14,12 @@ import (
 
 // Handler holds dependencies for all OAuth HTTP handlers.
 type Handler struct {
-	service  *oauth.Service
-	store    sessions.Store
-	oauthCfg config.OAuthConfig
-	appURL   string
-	logger   *slog.Logger
+	service        *oauth.Service
+	store          sessions.Store
+	oauthCfg       config.OAuthConfig
+	appURL         string
+	logger         *slog.Logger
+	deviceFailures *oauth.DeviceFailureLimiter
 }
 
 // Config holds the dependencies for creating a new Handler.
@@ -28,16 +29,25 @@ type Config struct {
 	OAuthCfg     config.OAuthConfig
 	AppURL       string
 	Logger       *slog.Logger
+	// DeviceFailureLimiter enforces per-user brute-force limits on the
+	// device-verification submit endpoint (security L6). Nil collapses to a
+	// no-op limiter for tests that don't exercise the counter.
+	DeviceFailureLimiter *oauth.DeviceFailureLimiter
 }
 
 // New creates a new OAuth handler.
 func New(cfg Config) *Handler {
+	limiter := cfg.DeviceFailureLimiter
+	if limiter == nil {
+		limiter = oauth.NewDeviceFailureLimiter(nil, 0, 0)
+	}
 	return &Handler{
-		service:  cfg.Service,
-		store:    cfg.SessionStore,
-		oauthCfg: cfg.OAuthCfg,
-		appURL:   cfg.AppURL,
-		logger:   cfg.Logger,
+		service:        cfg.Service,
+		store:          cfg.SessionStore,
+		oauthCfg:       cfg.OAuthCfg,
+		appURL:         cfg.AppURL,
+		logger:         cfg.Logger,
+		deviceFailures: limiter,
 	}
 }
 
