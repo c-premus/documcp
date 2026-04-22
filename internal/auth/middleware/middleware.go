@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/gorilla/sessions"
 
@@ -18,6 +19,11 @@ import (
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/observability"
 )
+
+// LoginAtSessionKey is the session-values key under which the OIDC callback
+// writes the login timestamp (unix seconds). Exported so the OIDC handler and
+// tests can reference a single source of truth.
+const LoginAtSessionKey = "login_at"
 
 type contextKey string
 
@@ -33,6 +39,7 @@ var (
 	errNotBearer    = errors.New("not a bearer token")
 	errInvalidToken = errors.New("invalid or expired token")
 	errNoSession    = errors.New("no valid session")
+	errSessionStale = errors.New("session exceeded absolute lifetime")
 )
 
 // bearerResult holds the outcome of bearer token authentication.
@@ -42,8 +49,9 @@ type bearerResult struct {
 }
 
 // authenticateBearerToken extracts and validates a bearer token from the
-// Authorization header value. On success it fires-and-forgets
-// TouchClientLastUsed and optionally loads the associated user.
+// Authorization header value. On success it triggers a debounced background
+// last_used_at update via the oauth service and optionally loads the
+// associated user.
 func authenticateBearerToken(ctx context.Context, authHeader string, oauthService *oauth.Service, logger *slog.Logger) (*bearerResult, error) {
 	bearerToken := strings.TrimPrefix(authHeader, "Bearer ")
 	if bearerToken == authHeader {
@@ -55,13 +63,7 @@ func authenticateBearerToken(ctx context.Context, authHeader string, oauthServic
 		return nil, errInvalidToken
 	}
 
-	go func(id int64) {
-		touchCtx, cancel := context.WithTimeout(context.Background(), oauthService.ClientTouchTimeout())
-		defer cancel()
-		if err := oauthService.TouchClientLastUsed(touchCtx, id); err != nil {
-			logger.Warn("updating oauth client last_used_at", "client_id", id, "error", err)
-		}
-	}(token.ClientID)
+	oauthService.TouchClientLastUsedAsync(token.ClientID, logger)
 
 	result := &bearerResult{token: token}
 	if token.UserID.Valid {
@@ -76,7 +78,10 @@ func authenticateBearerToken(ctx context.Context, authHeader string, oauthServic
 }
 
 // loadSessionUser retrieves the authenticated user from the session cookie.
-func loadSessionUser(ctx context.Context, r *http.Request, store sessions.Store, oauthService *oauth.Service, logger *slog.Logger) (*model.User, *sessions.Session, error) {
+// When absoluteMaxAge > 0, sessions without a login_at anchor or whose anchor
+// has aged beyond absoluteMaxAge return errSessionStale so callers clear the
+// cookie and force a fresh OIDC flow.
+func loadSessionUser(ctx context.Context, r *http.Request, store sessions.Store, oauthService *oauth.Service, absoluteMaxAge time.Duration, logger *slog.Logger) (*model.User, *sessions.Session, error) {
 	session, err := store.Get(r, "documcp_session")
 	if err != nil {
 		logger.Warn("session decode error", "error", err)
@@ -85,6 +90,13 @@ func loadSessionUser(ctx context.Context, r *http.Request, store sessions.Store,
 	userID, ok := session.Values["user_id"].(int64)
 	if !ok || userID == 0 {
 		return nil, session, errNoSession
+	}
+
+	if absoluteMaxAge > 0 {
+		loginAt, hasAnchor := session.Values[LoginAtSessionKey].(int64)
+		if !hasAnchor || time.Since(time.Unix(loginAt, 0)) > absoluteMaxAge {
+			return nil, session, errSessionStale
+		}
 	}
 
 	user, err := oauthService.FindUserByID(ctx, userID)
@@ -160,7 +172,11 @@ func BearerToken(oauthService *oauth.Service, logger *slog.Logger) func(http.Han
 // BearerOrSession tries bearer token auth first, then falls back to session
 // cookie auth. This allows the same API routes to serve both MCP/API clients
 // (bearer token) and the admin SPA (session cookie).
-func BearerOrSession(oauthService *oauth.Service, store sessions.Store, logger *slog.Logger) func(http.Handler) http.Handler {
+//
+// absoluteMaxAge caps session lifetime regardless of activity (security M1).
+// When > 0, sessions without a login_at anchor or whose anchor is older than
+// absoluteMaxAge are rejected as stale and the cookie is cleared.
+func BearerOrSession(oauthService *oauth.Service, store sessions.Store, logger *slog.Logger, absoluteMaxAge time.Duration) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// If Authorization header is present, use bearer token auth.
@@ -192,13 +208,22 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store, logger *
 			}
 
 			// No Authorization header — try session cookie.
-			user, _, err := loadSessionUser(r.Context(), r, store, oauthService, logger)
+			user, session, err := loadSessionUser(r.Context(), r, store, oauthService, absoluteMaxAge, logger)
 			if err != nil {
-				logger.Warn("auth failed: invalid session",
-					"client_ip", r.RemoteAddr,
-					"path", r.URL.Path,
-					"method", r.Method,
-				)
+				if errors.Is(err, errSessionStale) {
+					logger.Info("auth failed: session exceeded absolute lifetime",
+						"client_ip", r.RemoteAddr,
+						"path", r.URL.Path,
+						"method", r.Method,
+					)
+					clearSessionCookie(w, r, session)
+				} else {
+					logger.Warn("auth failed: invalid session",
+						"client_ip", r.RemoteAddr,
+						"path", r.URL.Path,
+						"method", r.Method,
+					)
+				}
 				jsonError(w, http.StatusUnauthorized, "Authentication required")
 				return
 			}
@@ -208,6 +233,16 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store, logger *
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// clearSessionCookie writes an immediately-expiring cookie to remove a stale
+// session so the browser stops sending it.
+func clearSessionCookie(w http.ResponseWriter, r *http.Request, session *sessions.Session) {
+	if session == nil {
+		return
+	}
+	session.Options.MaxAge = -1
+	_ = session.Save(r, w)
 }
 
 // BearerTokenWithAudience validates a bearer token like BearerToken and
@@ -245,8 +280,8 @@ func BearerTokenWithAudience(oauthService *oauth.Service, logger *slog.Logger, e
 // BearerOrSession. The audience check applies only when the request is
 // authenticated by bearer token; session-cookie requests bypass the check
 // because sessions are not bound to a specific resource.
-func BearerOrSessionWithAudience(oauthService *oauth.Service, store sessions.Store, logger *slog.Logger, expectedResource string) func(http.Handler) http.Handler {
-	inner := BearerOrSession(oauthService, store, logger)
+func BearerOrSessionWithAudience(oauthService *oauth.Service, store sessions.Store, logger *slog.Logger, expectedResource string, absoluteMaxAge time.Duration) func(http.Handler) http.Handler {
+	inner := BearerOrSession(oauthService, store, logger, absoluteMaxAge)
 	return func(next http.Handler) http.Handler {
 		return inner(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// If a token is present in context, the request was authenticated
@@ -286,15 +321,17 @@ func nullStringOrEmpty(s sql.NullString) string {
 
 // SessionAuth validates an admin session cookie.
 // On success, it sets the user in the request context.
-func SessionAuth(store sessions.Store, oauthService *oauth.Service, logger *slog.Logger) func(http.Handler) http.Handler {
+//
+// absoluteMaxAge caps session lifetime regardless of activity (security M1).
+// Stale sessions redirect to /auth/login after clearing the cookie.
+func SessionAuth(store sessions.Store, oauthService *oauth.Service, logger *slog.Logger, absoluteMaxAge time.Duration) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			user, session, err := loadSessionUser(r.Context(), r, store, oauthService, logger)
+			user, session, err := loadSessionUser(r.Context(), r, store, oauthService, absoluteMaxAge, logger)
 			if err != nil {
 				if !errors.Is(err, errNoSession) {
-					// User lookup failed — clear stale session.
-					session.Options.MaxAge = -1
-					_ = session.Save(r, w)
+					// User lookup failed or session stale — clear the cookie.
+					clearSessionCookie(w, r, session)
 				}
 				http.Redirect(w, r, "/auth/login?redirect="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
 				return

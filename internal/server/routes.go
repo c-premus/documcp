@@ -53,12 +53,13 @@ type Handlers struct {
 // and session middleware, the session store, and the RFC 8707 audience
 // strings that /documcp and /api enforce.
 type Auth struct {
-	OAuthHandler *oauthhandler.Handler
-	OIDCHandler  *oidc.Handler
-	OAuthService *oauth.Service
-	SessionStore sessions.Store
-	MCPResource  string // expected audience for the /documcp MCP endpoint
-	APIResource  string // expected audience for /api/* bearer-token requests
+	OAuthHandler          *oauthhandler.Handler
+	OIDCHandler           *oidc.Handler
+	OAuthService          *oauth.Service
+	SessionStore          sessions.Store
+	MCPResource           string // expected audience for the /documcp MCP endpoint
+	APIResource           string // expected audience for /api/* bearer-token requests
+	SessionAbsoluteMaxAge time.Duration
 }
 
 // Tuning groups operator-configured numeric limits applied to HTTP requests.
@@ -193,10 +194,15 @@ func (s *Server) registerAuthRoutes(deps Deps) {
 	if deps.Auth.OAuthHandler != nil {
 		r.Route("/oauth", func(r chi.Router) {
 			// Browser-rendered form endpoints — protected by CrossOriginProtection
-			// (global middleware) plus SameSite=Lax session cookies.
-			r.Get("/authorize", deps.Auth.OAuthHandler.Authorize)
-			r.Post("/authorize/approve", deps.Auth.OAuthHandler.AuthorizeApprove)
-			r.Post("/authorize/deny", deps.Auth.OAuthHandler.AuthorizeDeny)
+			// (global middleware) plus SameSite=Lax session cookies. Per-IP rate
+			// limit caps consent-form flooding (burns session state and DB write
+			// traffic via GrantClientScope / POST approve).
+			r.Group(func(r chi.Router) {
+				r.Use(rateLimitByIP(30, time.Minute, deps.BareRedisClient))
+				r.Get("/authorize", deps.Auth.OAuthHandler.Authorize)
+				r.Post("/authorize/approve", deps.Auth.OAuthHandler.AuthorizeApprove)
+				r.Post("/authorize/deny", deps.Auth.OAuthHandler.AuthorizeDeny)
+			})
 			r.Get("/device", deps.Auth.OAuthHandler.DeviceVerification)
 			r.Group(func(r chi.Router) {
 				r.Use(rateLimitByIP(10, time.Minute, deps.BareRedisClient))
@@ -250,9 +256,16 @@ func (s *Server) registerAuthRoutes(deps Deps) {
 // RequireScope calls are therefore guaranteed to have a non-nil OAuthService.
 func (s *Server) registerAPIRoutes(deps Deps) {
 	s.router.Route("/api", func(r chi.Router) {
+		// Root-level IP rate limit applied BEFORE the bearer token DB lookup.
+		// Without this gate, an unauthenticated attacker could force one DB
+		// hash-lookup per request by sending arbitrary bearer tokens — per-route
+		// rate limits inside nested groups kick in too late for that. Cap is
+		// a generous 300 req/min/IP so it doesn't interfere with legitimate SSE
+		// reconnects or admin-panel bursts; the per-route caps stay stricter.
+		r.Use(rateLimitByIP(300, time.Minute, deps.BareRedisClient))
 		switch {
 		case deps.Auth.OAuthService != nil:
-			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.Auth.OAuthService, deps.Auth.SessionStore, s.logger, deps.Auth.APIResource))
+			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.Auth.OAuthService, deps.Auth.SessionStore, s.logger, deps.Auth.APIResource, deps.Auth.SessionAbsoluteMaxAge))
 		default:
 			r.Use(func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -323,8 +336,18 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 				r.Use(authmiddleware.RequireScope(authscope.SearchRead, s.logger))
 				r.Get("/search", deps.Handlers.SearchHandler.Search)
 				r.Get("/search/unified", deps.Handlers.SearchHandler.FederatedSearch)
-				r.Get("/search/popular", deps.Handlers.SearchHandler.Popular)
 				r.Get("/search/autocomplete", deps.Handlers.SearchHandler.Autocomplete)
+			})
+			// Popular searches are admin-only: the aggregation is global
+			// across all users (currently has no per-user scoping), so
+			// exposing it to any search:read bearer leaks what other
+			// users and third-party clients are searching for — project
+			// names, client names, internal-tool terms. Admin-gate until
+			// a proper per-caller scoping or anonymizing rollup lands.
+			r.Group(func(r chi.Router) {
+				r.Use(rateLimitByIP(120, time.Minute, deps.BareRedisClient))
+				r.Use(authmiddleware.RequireAdmin)
+				r.Get("/search/popular", deps.Handlers.SearchHandler.Popular)
 			})
 			s.logger.Info("search API endpoints registered")
 		}
@@ -480,7 +503,7 @@ func (s *Server) registerSPARoutes(deps Deps) {
 	// River UI — must be registered before the SPA catch-all so chi matches it first.
 	if deps.Handlers.RiverUIHandler != nil {
 		r.Route("/admin/river", func(r chi.Router) {
-			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.Auth.OAuthService, deps.Auth.SessionStore, s.logger, deps.Auth.APIResource))
+			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.Auth.OAuthService, deps.Auth.SessionStore, s.logger, deps.Auth.APIResource, deps.Auth.SessionAbsoluteMaxAge))
 			r.Use(authmiddleware.RequireScope(authscope.Admin, s.logger))
 			r.Use(authmiddleware.RequireAdmin)
 			r.Use(riverUICSP)

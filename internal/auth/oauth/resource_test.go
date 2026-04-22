@@ -9,8 +9,8 @@ func TestValidateResource(t *testing.T) {
 	allowed := []string{
 		"https://documcp.example.com",
 		"https://documcp.example.com/documcp",
-		"http://localhost:8080",
 		"http://127.0.0.1:8080/documcp",
+		"http://localhost:8080",
 	}
 
 	tests := []struct {
@@ -21,8 +21,8 @@ func TestValidateResource(t *testing.T) {
 	}{
 		{name: "https exact match", raw: "https://documcp.example.com", want: "https://documcp.example.com"},
 		{name: "https with path match", raw: "https://documcp.example.com/documcp", want: "https://documcp.example.com/documcp"},
-		{name: "loopback localhost", raw: "http://localhost:8080", want: "http://localhost:8080"},
 		{name: "loopback 127.0.0.1", raw: "http://127.0.0.1:8080/documcp", want: "http://127.0.0.1:8080/documcp"},
+		{name: "loopback localhost", raw: "http://localhost:8080", want: "http://localhost:8080"},
 
 		{name: "empty", raw: "", wantErr: true},
 		{name: "relative URI", raw: "/documcp", wantErr: true},

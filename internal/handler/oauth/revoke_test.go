@@ -2,6 +2,7 @@ package oauthhandler
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/c-premus/documcp/internal/auth/oauth"
 	"github.com/c-premus/documcp/internal/model"
 )
 
@@ -240,8 +242,10 @@ func TestHandler_Revoke(t *testing.T) {
 		assert.Equal(t, "invalid_request", result["error"])
 	})
 
-	t.Run("returns server_error when service fails", func(t *testing.T) {
+	t.Run("returns 401 invalid_client when client credentials fail", func(t *testing.T) {
 		t.Parallel()
+		// RFC 6749 §5.2: client-authentication failure on the token endpoints
+		// is `invalid_client` at 401, not a server error. Security audit L5.
 		repo := &mockOAuthRepo{
 			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
 				return nil, errors.New("db error")
@@ -256,9 +260,39 @@ func TestHandler_Revoke(t *testing.T) {
 
 		h.Revoke(rr, req)
 
-		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		assert.Equal(t, http.StatusUnauthorized, rr.Code)
 		result := decodeOAuthJSON(t, rr.Body)
-		assert.Equal(t, "server_error", result["error"])
+		assert.Equal(t, "invalid_client", result["error"])
+		assert.Contains(t, rr.Header().Get("WWW-Authenticate"), "Basic")
+	})
+
+	t.Run("returns 401 invalid_client when client secret is wrong", func(t *testing.T) {
+		t.Parallel()
+		// Confidential client with stored secret, caller sends a different one.
+		storedHash, err := oauth.HashSecret("the-real-secret")
+		require.NoError(t, err)
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:                      1,
+					ClientID:                "cid",
+					ClientSecret:            sql.NullString{String: storedHash, Valid: true},
+					TokenEndpointAuthMethod: "client_secret_post",
+				}, nil
+			},
+		}
+		h, _ := newHandlerWithRepo(repo)
+
+		body := `{"token":"1|sometoken","client_id":"cid","client_secret":"wrong"}`
+		req := httptest.NewRequest(http.MethodPost, "/oauth/revoke", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Revoke(rr, req)
+
+		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+		result := decodeOAuthJSON(t, rr.Body)
+		assert.Equal(t, "invalid_client", result["error"])
 	})
 
 	t.Run("no hint tries both access and refresh token revocation", func(t *testing.T) {

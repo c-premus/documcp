@@ -194,9 +194,12 @@ func (r *ZimArchiveRepository) ListAll(ctx context.Context, query string, limit 
 	return archives, nil
 }
 
-// ListAllUUIDs returns all ZIM archive UUIDs.
+// ListAllUUIDs returns ZIM archive UUIDs, capped at maxUnboundedList rows.
+// Used by the reconciliation worker; callers that need more must paginate.
+// The cap matches the pattern on other internal reconciliation list methods.
 func (r *ZimArchiveRepository) ListAllUUIDs(ctx context.Context) ([]string, error) {
-	rows, err := r.db.Query(ctx, `SELECT uuid FROM zim_archives`)
+	rows, err := r.db.Query(ctx,
+		`SELECT uuid FROM zim_archives LIMIT $1`, maxUnboundedList)
 	if err != nil {
 		return nil, fmt.Errorf("listing all zim archive uuids: %w", err)
 	}

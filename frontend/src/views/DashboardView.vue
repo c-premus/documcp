@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
+import { apiFetch, ApiError } from '@/api/helpers'
 import {
   DocumentTextIcon,
   UsersIcon,
@@ -133,15 +134,11 @@ async function fetchStats(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const res = await fetch('/api/admin/dashboard/stats')
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ message: res.statusText }))
-      throw new Error(body.message || res.statusText)
-    }
-    const body = await res.json()
-    stats.value = body.data as DashboardStats
+    const body = await apiFetch<{ data: DashboardStats }>('/api/admin/dashboard/stats')
+    stats.value = body.data
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to fetch dashboard stats'
+    error.value =
+      e instanceof ApiError || e instanceof Error ? e.message : 'Failed to fetch dashboard stats'
   } finally {
     loading.value = false
   }

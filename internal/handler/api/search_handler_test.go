@@ -646,7 +646,7 @@ func TestSearchHandler_FederatedSearch(t *testing.T) {
 		assert.Empty(t, capturedIndexes, "unknown types should be ignored, resulting in empty indexes")
 	})
 
-	t.Run("returns search results with correct response structure", func(t *testing.T) {
+	t.Run("returns discovery-only response shape with totals and hint", func(t *testing.T) {
 		t.Parallel()
 
 		ms := &mockDocumentSearcher{
@@ -656,13 +656,18 @@ func TestSearchHandler_FederatedSearch(t *testing.T) {
 						{UUID: "abc-123", Title: "Go Guide", Description: "A guide", Source: "document", Score: 0.95},
 						{UUID: "def-456", Title: "Docker Intro", Source: "zim_archive", Score: 0.80},
 					},
-					EstimatedTotal:   2,
+					EstimatedTotal: 2,
+					SourceTotals: map[string]int64{
+						search.IndexDocuments:    5,
+						search.IndexZimArchives:  3,
+						search.IndexGitTemplates: 0,
+					},
 					ProcessingTimeMs: 15,
 				}, nil
 			},
 		}
 		h := newSearchHandlerWithSearcher(ms)
-		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=go&limit=10&offset=5", http.NoBody)
+		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=go&limit=10", http.NoBody)
 		rr := httptest.NewRecorder()
 
 		h.FederatedSearch(rr, req)
@@ -673,17 +678,47 @@ func TestSearchHandler_FederatedSearch(t *testing.T) {
 		err := json.NewDecoder(rr.Body).Decode(&body)
 		require.NoError(t, err)
 
-		data, ok := body["data"].([]any)
-		require.True(t, ok)
-		assert.Len(t, data, 2)
+		// Top-level shape matches MCP unified_search (audit C1). No `data` /
+		// `meta` wrapper, no offset echoed back.
+		assert.Equal(t, "go", body["query"])
+		results, ok := body["results"].([]any)
+		require.True(t, ok, "results should be a top-level array")
+		assert.Len(t, results, 2)
+		assert.InEpsilon(t, float64(2), body["returned"], 1e-9)
+		assert.InEpsilon(t, float64(15), body["processing_time_ms"], 1e-9)
 
-		meta, ok := body["meta"].(map[string]any)
+		totals, ok := body["totals"].(map[string]any)
+		require.True(t, ok, "totals should be a top-level object")
+		assert.InEpsilon(t, float64(5), totals["document"], 1e-9)
+		assert.InEpsilon(t, float64(3), totals["zim_archive"], 1e-9)
+		assert.InDelta(t, float64(0), totals["git_template"], 1e-9, "zero-match sources should still appear in totals")
+
+		sourcesSearched, ok := body["sources_searched"].([]any)
 		require.True(t, ok)
-		assert.Equal(t, "go", meta["query"])
-		assert.InEpsilon(t, float64(2), meta["total"], 1e-9)
-		assert.InEpsilon(t, float64(15), meta["processing_time_ms"], 1e-9)
-		assert.InEpsilon(t, float64(10), meta["limit"], 1e-9)
-		assert.InEpsilon(t, float64(5), meta["offset"], 1e-9)
+		assert.Len(t, sourcesSearched, 3, "all three FTS sources searched by default")
+
+		hint, ok := body["hint"].(string)
+		require.True(t, ok)
+		assert.Contains(t, hint, "deep search")
+
+		assert.Nil(t, body["meta"], "response should not have pre-v0.24 meta wrapper")
+		assert.Nil(t, body["data"], "response should not have pre-v0.24 data wrapper")
+	})
+
+	t.Run("rejects ?offset= with 400", func(t *testing.T) {
+		t.Parallel()
+
+		h := newSearchHandlerWithSearcher(&mockDocumentSearcher{})
+		req := httptest.NewRequest(http.MethodGet, "/api/search/unified?q=go&offset=10", http.NoBody)
+		rr := httptest.NewRecorder()
+
+		h.FederatedSearch(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code, "offset is unsupported on discovery-only endpoint (audit C1)")
+		var body map[string]any
+		err := json.NewDecoder(rr.Body).Decode(&body)
+		require.NoError(t, err)
+		assert.Contains(t, body["message"], "offset is not supported")
 	})
 
 	t.Run("returns 500 when searcher fails", func(t *testing.T) {
@@ -744,12 +779,12 @@ func (m *mockQueryLister) PopularQueries(ctx context.Context, limit int) ([]repo
 }
 
 type mockTitleSuggester struct {
-	suggestTitlesFn func(ctx context.Context, prefix string, limit int) ([]repository.TitleSuggestion, error)
+	suggestTitlesFn func(ctx context.Context, prefix string, limit int, userID *int64, isAdmin bool) ([]repository.TitleSuggestion, error)
 }
 
-func (m *mockTitleSuggester) SuggestTitles(ctx context.Context, prefix string, limit int) ([]repository.TitleSuggestion, error) {
+func (m *mockTitleSuggester) SuggestTitles(ctx context.Context, prefix string, limit int, userID *int64, isAdmin bool) ([]repository.TitleSuggestion, error) {
 	if m.suggestTitlesFn != nil {
-		return m.suggestTitlesFn(ctx, prefix, limit)
+		return m.suggestTitlesFn(ctx, prefix, limit, userID, isAdmin)
 	}
 	return nil, nil
 }
@@ -1062,7 +1097,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		t.Parallel()
 
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, prefix string, limit int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, prefix string, limit int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				assert.Equal(t, "go", prefix)
 				assert.Equal(t, 5, limit, "default limit should be 5")
 				return []repository.TitleSuggestion{
@@ -1110,7 +1145,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 
 		var capturedLimit int
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, _ string, limit int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, _ string, limit int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				capturedLimit = limit
 				return nil, nil
 			},
@@ -1131,7 +1166,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 
 		var capturedLimit int
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, _ string, limit int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, _ string, limit int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				capturedLimit = limit
 				return nil, nil
 			},
@@ -1152,7 +1187,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 
 		var capturedLimit int
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, _ string, limit int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, _ string, limit int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				capturedLimit = limit
 				return nil, nil
 			},
@@ -1173,7 +1208,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 
 		var capturedLimit int
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, _ string, limit int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, _ string, limit int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				capturedLimit = limit
 				return nil, nil
 			},
@@ -1193,7 +1228,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		t.Parallel()
 
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, _ string, _ int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, _ string, _ int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				return []repository.TitleSuggestion{}, nil
 			},
 		}
@@ -1211,7 +1246,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		t.Parallel()
 
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, _ string, _ int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, _ string, _ int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				return nil, errors.New("database timeout")
 			},
 		}
@@ -1233,7 +1268,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		t.Parallel()
 
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, _ string, _ int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, _ string, _ int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				return []repository.TitleSuggestion{}, nil
 			},
 		}
@@ -1259,7 +1294,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 
 		query100 := strings.Repeat("a", 100)
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, prefix string, _ int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, prefix string, _ int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				assert.Equal(t, query100, prefix)
 				return []repository.TitleSuggestion{}, nil
 			},
@@ -1278,7 +1313,7 @@ func TestSearchHandler_Autocomplete(t *testing.T) {
 		t.Parallel()
 
 		ts := &mockTitleSuggester{
-			suggestTitlesFn: func(_ context.Context, prefix string, _ int) ([]repository.TitleSuggestion, error) {
+			suggestTitlesFn: func(_ context.Context, prefix string, _ int, _ *int64, _ bool) ([]repository.TitleSuggestion, error) {
 				assert.Equal(t, "ab", prefix)
 				return []repository.TitleSuggestion{
 					{UUID: "uuid-1", Title: "About Us"},

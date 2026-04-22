@@ -84,27 +84,39 @@ func (r *OAuthRepository) ListClients(ctx context.Context, query string, limit, 
 		argIdx += 2
 	}
 
-	countQuery := "SELECT COUNT(*) FROM oauth_clients WHERE " + where
-	var total int
-	if err := r.db.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("counting oauth clients: %w", err)
-	}
-
 	if limit <= 0 {
 		limit = 20
 	}
 
+	// COUNT(*) OVER () rolls the filtered total into the same scan as the
+	// page; single round trip replaces the prior COUNT+SELECT pair.
 	selectQuery := fmt.Sprintf(
-		"SELECT * FROM oauth_clients WHERE %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d",
+		"SELECT *, COUNT(*) OVER () AS total FROM oauth_clients WHERE %s ORDER BY created_at DESC LIMIT $%d OFFSET $%d",
 		where, argIdx, argIdx+1,
 	)
 	args = append(args, limit, offset)
 
-	clients, err := database.Select[model.OAuthClient](ctx, r.db, selectQuery, args...)
+	rows, err := database.Select[oauthClientListRow](ctx, r.db, selectQuery, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("listing oauth clients: %w", err)
 	}
+	clients := make([]model.OAuthClient, len(rows))
+	var total int
+	for i := range rows {
+		clients[i] = rows[i].OAuthClient
+		if i == 0 {
+			total = int(rows[i].Total)
+		}
+	}
 	return clients, total, nil
+}
+
+// oauthClientListRow extends model.OAuthClient with the windowed
+// COUNT(*) OVER () total so a single scan yields both the page and the
+// true filtered total.
+type oauthClientListRow struct {
+	model.OAuthClient
+	Total int64 `db:"total"`
 }
 
 // DeleteClient permanently removes an OAuth client and all associated tokens,
@@ -212,12 +224,17 @@ func (r *OAuthRepository) FindActiveScopeGrantsWithUsers(ctx context.Context, cl
 	return rows, nil
 }
 
-// DeleteScopeGrant removes a scope grant by ID. Returns sql.ErrNoRows if not found.
-func (r *OAuthRepository) DeleteScopeGrant(ctx context.Context, id int64) error {
+// DeleteScopeGrant removes a scope grant by ID scoped to the given client.
+// Returns sql.ErrNoRows if no grant with that ID belongs to the client — this
+// scoping prevents a DELETE on /oauth-clients/{a}/scope-grants/{b} from
+// silently deleting a grant that belongs to a different client (audit-log
+// integrity) even though the route is admin-only.
+func (r *OAuthRepository) DeleteScopeGrant(ctx context.Context, id, clientID int64) error {
 	tag, err := r.db.Exec(ctx,
-		`DELETE FROM oauth_client_scope_grants WHERE id = $1`, id)
+		`DELETE FROM oauth_client_scope_grants WHERE id = $1 AND client_id = $2`,
+		id, clientID)
 	if err != nil {
-		return fmt.Errorf("deleting scope grant %d: %w", id, err)
+		return fmt.Errorf("deleting scope grant %d for client %d: %w", id, clientID, err)
 	}
 	if tag.RowsAffected() == 0 {
 		return sql.ErrNoRows

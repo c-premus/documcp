@@ -106,8 +106,9 @@ DocuMCP requires an OpenID Connect provider for user login. Set `OIDC_PROVIDER_U
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `OAUTH_SESSION_SECRET` | Prod | -- | Session secret (min 32 bytes); derives CSRF and token HMAC keys via HKDF. Generate `openssl rand -base64 32` |
-| `OAUTH_SESSION_SECRET_PREVIOUS` | No | -- | Previous session secret for key rotation |
-| `OAUTH_SESSION_MAX_AGE` | No | `720h` | Session lifetime (30 days) |
+| `OAUTH_SESSION_SECRET_PREVIOUS` | No | -- | Previous session secret for key rotation. When set, token hashes stored under the previous key still verify alongside the current key — see rotation runbook below. |
+| `OAUTH_SESSION_MAX_AGE` | No | `720h` | Sliding session lifetime (30 days) |
+| `OAUTH_SESSION_ABSOLUTE_MAX_AGE` | No | `168h` | Absolute session lifetime anchored at login (7 days). Stale sessions are forced back through OIDC regardless of activity. `0` disables. |
 | `HKDF_SALT` | Yes | -- | Per-deployment salt for HKDF key derivation. Required (min 16 chars) in every environment. Generate `openssl rand -base64 24` |
 | `OAUTH_AUTHORIZATION_CODE_LIFETIME` | No | `10m` | Authorization code TTL |
 | `OAUTH_ACCESS_TOKEN_LIFETIME` | No | `1h` | Access token TTL |
@@ -119,6 +120,32 @@ DocuMCP requires an OpenID Connect provider for user login. Set `OIDC_PROVIDER_U
 | `OAUTH_CLIENT_TOUCH_TIMEOUT` | No | `3s` | Timeout for fire-and-forget `last_used_at` updates |
 | `OAUTH_SCOPE_GRANT_TTL` | No | `720h` | Time-bounded scope-grant lifetime (30 days; `0` = no expiry) |
 | `OAUTH_ALLOWED_RESOURCES` | No | _derived_ | RFC 8707 resource indicator allowlist (comma-separated absolute URIs). Defaults to `[APP_URL, APP_URL+DOCUMCP_ENDPOINT]` |
+
+### Rotating the OAuth HMAC key (`OAUTH_SESSION_SECRET`)
+
+Token hashes in `oauth_access_tokens.token`, `oauth_refresh_tokens.token`,
+`oauth_device_codes.device_code`, and `oauth_authorization_codes.code` are
+HMAC-SHA256 of the plaintext prefixed with a per-key version
+(`v<hex>$<hmac-hex>`). The prefix identifies which key produced the hash;
+verify paths try every configured key, so rotating the secret does not
+silently invalidate live tokens (security M2).
+
+To rotate without interruption:
+
+1. Copy the current `OAUTH_SESSION_SECRET` into `OAUTH_SESSION_SECRET_PREVIOUS`
+   and set a fresh `OAUTH_SESSION_SECRET` (e.g., `openssl rand -base64 32`).
+2. Deploy. The server derives a stable version byte per secret; if both
+   secrets happen to map to the same version the startup check fails — regenerate
+   one of the secrets.
+3. Fresh tokens are hashed under the new primary key with its version prefix.
+   Tokens hashed before rotation continue to verify against the retired key.
+4. After the longest token lifetime elapses (the larger of
+   `OAUTH_ACCESS_TOKEN_LIFETIME` + `OAUTH_REFRESH_TOKEN_LIFETIME`, default 30d),
+   remove `OAUTH_SESSION_SECRET_PREVIOUS` and redeploy.
+
+Every environment must configure a non-empty `OAUTH_SESSION_SECRET`. The
+prior silent SHA-256 fallback for a missing key was removed — `serve` now
+fails to boot without a derivable HMAC key (security L4).
 
 ## Storage
 

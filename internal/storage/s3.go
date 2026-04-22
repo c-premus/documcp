@@ -116,7 +116,7 @@ func (b *S3Blob) NewWriter(ctx context.Context, key string, opts *WriterOpts) (i
 	if opts != nil && opts.ContentType != "" {
 		input.ContentType = aws.String(opts.ContentType)
 	}
-	w := &s3Writer{pw: pw, done: make(chan error, 1)}
+	w := &s3Writer{pw: pw, done: make(chan error, 1), ctx: ctx}
 	go func() {
 		_, err := b.uploader.UploadObject(ctx, input)
 		// Closing the pipe reader unblocks any pending Write on pw with
@@ -128,21 +128,36 @@ func (b *S3Blob) NewWriter(ctx context.Context, key string, opts *WriterOpts) (i
 }
 
 // s3Writer pipes Writes into a background transfermanager.Client.UploadObject.
+// ctx is the upload-scoped context captured at NewWriter time; Close selects
+// against ctx.Done() so callers whose context is canceled don't hang on a
+// goroutine that, hypothetically, fails to honor ctx (code-quality M5).
 type s3Writer struct {
 	pw   *io.PipeWriter
 	done chan error
+	ctx  context.Context
 }
 
 func (w *s3Writer) Write(p []byte) (int, error) { return w.pw.Write(p) }
 
 // Close signals end-of-input and waits for the background upload to finish.
-// Close errors propagate the upload error if any.
+// Returns the upload error when one occurred. If the writer's context is
+// canceled before the goroutine reports completion, Close returns the
+// context error as defense-in-depth — UploadObject normally honors ctx, but
+// stranding the caller would be worse than reporting a cancellation.
 func (w *s3Writer) Close() error {
-	if err := w.pw.Close(); err != nil {
-		<-w.done
+	closeErr := w.pw.Close()
+	select {
+	case err := <-w.done:
+		if closeErr != nil {
+			return closeErr
+		}
 		return err
+	case <-w.ctx.Done():
+		// Ensure the pipe writer is closed even on context cancellation so the
+		// background goroutine doesn't block on a Read that will never come.
+		_ = w.pw.CloseWithError(w.ctx.Err())
+		return w.ctx.Err()
 	}
-	return <-w.done
 }
 
 // NewReader opens the object for streaming reads.

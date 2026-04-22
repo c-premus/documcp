@@ -15,12 +15,27 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// HMACKey binds an HMAC signing key to a single-byte version identifier.
+// Stored token hashes are prefixed `v<Version>$<hex>` so rotation can happen
+// without silently invalidating every active token hash (security M2). Version
+// is a printable ASCII byte chosen by operators; the ServerApp wires '1' for
+// the key derived from OAUTH_SESSION_SECRET and '2' for OAUTH_SESSION_SECRET_PREVIOUS.
+type HMACKey struct {
+	Version byte
+	Key     []byte
+}
+
+// hashPrefix returns the `v<byte>$` prefix used on stored hashes.
+func (k HMACKey) hashPrefix() string {
+	return "v" + string(k.Version) + "$"
+}
+
 // TokenPair holds a plaintext token and its database-storable hash.
 // The plaintext is returned to the client exactly once; the hash is persisted.
 type TokenPair struct {
 	ID        int64
 	Plaintext string // "{id}|{64_char_random}" — returned to client
-	Hash      string // HMAC-SHA256 (or SHA-256 fallback) hex of the random portion — stored in DB
+	Hash      string // "v<key-version>$<hex>" HMAC-SHA256 of the random portion — stored in DB
 }
 
 // SetID finalizes the token plaintext with the database-assigned ID.
@@ -45,8 +60,24 @@ func (s *Service) GenerateToken() (*TokenPair, error) {
 }
 
 // ParseToken splits a plaintext token "{id}|{random}" into its components
-// and returns the database ID and the keyed hash of the random portion.
+// and returns the database ID and the keyed hash computed with the CURRENT
+// (primary) HMAC key. Use parseTokenCandidateHashes on verify paths that
+// need to accept hashes minted under a previously-current key.
 func (s *Service) ParseToken(plaintext string) (id int64, hash string, err error) {
+	id, _, err = s.parseTokenID(plaintext)
+	if err != nil {
+		return 0, "", err
+	}
+	random, randomErr := s.parseTokenRandom(plaintext)
+	if randomErr != nil {
+		return 0, "", randomErr
+	}
+	return id, s.hashToken(random), nil
+}
+
+// parseTokenID extracts the leading int64 id and the random remainder without
+// computing any hash.
+func (s *Service) parseTokenID(plaintext string) (id int64, random string, err error) {
 	parts := strings.SplitN(plaintext, "|", 2)
 	if len(parts) != 2 {
 		return 0, "", errors.New("invalid token format")
@@ -55,30 +86,47 @@ func (s *Service) ParseToken(plaintext string) (id int64, hash string, err error
 	if err != nil {
 		return 0, "", fmt.Errorf("invalid token id: %w", err)
 	}
-	hash = s.hashToken(parts[1])
-	return id, hash, nil
+	return id, parts[1], nil
 }
 
-// parseTokenOrZero attempts to parse a token string into its ID and hash.
-// Returns false if the token is malformed.
-func (s *Service) parseTokenOrZero(plaintext string) (id int64, hash string, ok bool) {
-	id, hash, err := s.ParseToken(plaintext)
-	return id, hash, err == nil
+// parseTokenRandom returns only the random portion after the "|" separator.
+func (s *Service) parseTokenRandom(plaintext string) (string, error) {
+	_, random, err := s.parseTokenID(plaintext)
+	return random, err
 }
 
-// hashToken returns a hex-encoded hash of s.
-// Uses HMAC-SHA256 when a key is configured, otherwise plain SHA-256.
-func (s *Service) hashToken(plaintext string) string {
-	if len(s.hmacKey) > 0 {
-		mac := hmac.New(sha256.New, s.hmacKey)
-		mac.Write([]byte(plaintext))
-		return hex.EncodeToString(mac.Sum(nil))
+// parseTokenCandidateHashes returns the ID plus one candidate hash per
+// configured HMAC key — hashes[0] is the primary-key hash, subsequent entries
+// cover retired keys. Verify paths try them in order so a token minted under
+// the previous key still authenticates during a rotation window.
+func (s *Service) parseTokenCandidateHashes(plaintext string) (id int64, hashes []string, err error) {
+	id, random, err := s.parseTokenID(plaintext)
+	if err != nil {
+		return 0, nil, err
 	}
-	s.hmacWarnOnce.Do(func() {
-		s.logger.Warn("token HMAC key not configured, falling back to plain SHA-256")
-	})
-	h := sha256.Sum256([]byte(plaintext))
-	return hex.EncodeToString(h[:])
+	hashes = make([]string, 0, len(s.hmacKeys))
+	for i := range s.hmacKeys {
+		hashes = append(hashes, s.hashWithKey(random, s.hmacKeys[i]))
+	}
+	return id, hashes, nil
+}
+
+// hashToken returns the hex-encoded HMAC-SHA256 of plaintext under the
+// current primary key, prefixed with `v<version>$` so the stored hash records
+// which key version produced it.
+//
+// Service construction rejects an empty hmacKeys slice so this method always
+// has a key to use — no silent SHA-256 fallback (security L4).
+func (s *Service) hashToken(plaintext string) string {
+	return s.hashWithKey(plaintext, s.hmacKeys[0])
+}
+
+// hashWithKey computes the versioned HMAC hash for an explicit key. Used on
+// verify paths to try multiple keys during rotation.
+func (s *Service) hashWithKey(plaintext string, k HMACKey) string {
+	mac := hmac.New(sha256.New, k.Key)
+	mac.Write([]byte(plaintext))
+	return k.hashPrefix() + hex.EncodeToString(mac.Sum(nil))
 }
 
 // HashSecret hashes a client secret using bcrypt.
@@ -133,4 +181,3 @@ func randomString(length int) (string, error) {
 	}
 	return string(b), nil
 }
-

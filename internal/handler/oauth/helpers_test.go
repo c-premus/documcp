@@ -52,6 +52,7 @@ type mockOAuthRepo struct {
 	FindAuthorizationCodeByCodeIncludingRevokedFunc func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
 	RevokeTokenFamilyByAuthorizationCodeIDFunc      func(ctx context.Context, authCodeID int64) (int64, error)
 	FindRefreshTokenByTokenIgnoringRevocationFunc   func(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error)
+	RevokeUserTokensSinceFunc                       func(ctx context.Context, userID int64, since time.Time) (int64, error)
 }
 
 func (m *mockOAuthRepo) CreateClient(ctx context.Context, client *model.OAuthClient) error {
@@ -257,6 +258,13 @@ func (m *mockOAuthRepo) RevokeTokenFamilyByAuthorizationCodeID(ctx context.Conte
 	return 0, nil
 }
 
+func (m *mockOAuthRepo) RevokeUserTokensSince(ctx context.Context, userID int64, since time.Time) (int64, error) {
+	if m.RevokeUserTokensSinceFunc != nil {
+		return m.RevokeUserTokensSinceFunc(ctx, userID, since)
+	}
+	return 0, nil
+}
+
 func (m *mockOAuthRepo) FindRefreshTokenByTokenIgnoringRevocation(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error) {
 	if m.FindRefreshTokenByTokenIgnoringRevocationFunc != nil {
 		return m.FindRefreshTokenByTokenIgnoringRevocationFunc(ctx, tokenHash)
@@ -316,7 +324,11 @@ func newHandlerWithRepo(repo *mockOAuthRepo) (*Handler, *mockSessionStore) {
 
 func newHandlerWithRepoAndConfig(repo *mockOAuthRepo, oauthCfg config.OAuthConfig) (*Handler, *mockSessionStore) {
 	store := newMockSessionStore()
-	svc := oauth.NewService(repo, oauthCfg, "https://example.com", testutil.DiscardLogger(), nil)
+	keys := []oauth.HMACKey{{Version: '1', Key: []byte("handler-test-hmac-key")}}
+	svc, err := oauth.NewService(repo, oauthCfg, "https://example.com", testutil.DiscardLogger(), keys)
+	if err != nil {
+		panic(err)
+	}
 	h := New(Config{
 		Service:      svc,
 		SessionStore: store,

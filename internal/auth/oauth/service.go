@@ -18,6 +18,13 @@ import (
 	"github.com/c-premus/documcp/internal/model"
 )
 
+// defaultClientTouchDebounce is the per-client TTL within which repeated
+// last_used_at updates collapse into a single DB write. At any sustained
+// request rate against the same client, only one row update fires per
+// window — bounding the goroutine count enforced by TouchClientLastUsedAsync
+// (code-quality M4).
+const defaultClientTouchDebounce = 30 * time.Second
+
 // tokenReplayTotal counts detected OAuth token replays. A non-zero rate on
 // this counter is evidence of interception (stolen code or refresh token).
 // Labeled by replay type so alerts can distinguish auth-code replay
@@ -65,6 +72,7 @@ type AccessTokenRepo interface {
 	RevokeAccessToken(ctx context.Context, id int64) error
 	RevokeTokenPair(ctx context.Context, accessTokenID, refreshTokenID int64) error
 	RevokeTokenFamilyByAuthorizationCodeID(ctx context.Context, authCodeID int64) (int64, error)
+	RevokeUserTokensSince(ctx context.Context, userID int64, since time.Time) (int64, error)
 }
 
 // RefreshTokenRepo accesses refresh token rows.
@@ -132,38 +140,55 @@ type Service struct {
 	appURL string
 	logger *slog.Logger
 
-	// hmacKey is the server-side key for HMAC-SHA256 token hashing. When
-	// non-empty, token hashes are keyed, preventing offline brute-force if
-	// the database is compromised. When nil, falls back to plain SHA-256
-	// (still safe for high-entropy tokens).
-	hmacKey []byte
+	// hmacKeys holds the HMAC signing keys used for token hashing, newest-first.
+	// hmacKeys[0] is the PRIMARY — every fresh hash is signed with it.
+	// Subsequent entries are retired keys accepted on verify paths so a token
+	// minted before rotation still authenticates (security M2). NewService
+	// rejects an empty slice, so hashToken always has at least one key
+	// available — there is no silent SHA-256 fallback (security L4).
+	hmacKeys []HMACKey
 
-	// hmacWarnOnce ensures the SHA-256 fallback warning logs only once per
-	// service instance when hmacKey is nil.
-	hmacWarnOnce sync.Once
+	// touchDebouncer bounds the rate at which TouchClientLastUsedAsync fires
+	// background goroutines. Without it, every authenticated bearer-token
+	// request spawns one fire-and-forget goroutine and one DB write per
+	// request — at 1k req/s that's 1k pgxpool slots in flight against a
+	// last_used_at column that only ever needs second-resolution accuracy
+	// (code-quality M4).
+	touchDebouncer *clientTouchDebouncer
 }
 
 // NewService creates a new OAuth service. repo must satisfy the composite
 // OAuthRepo interface; it is split across the role-specific fields
-// internally. hmacKey keys token hashing when non-empty; pass nil to fall
-// back to plain SHA-256 (appropriate for tests).
-func NewService(repo OAuthRepo, oauthCfg config.OAuthConfig, appURL string, logger *slog.Logger, hmacKey []byte) *Service {
+// internally. hmacKeys is required non-empty — hmacKeys[0] is the primary
+// signing key, the remainder (if any) are rotation keys accepted on verify.
+// Returns an error when hmacKeys is empty so production builds fail-boot
+// rather than silently falling back to unkeyed SHA-256 (security L4).
+func NewService(repo OAuthRepo, oauthCfg config.OAuthConfig, appURL string, logger *slog.Logger, hmacKeys []HMACKey) (*Service, error) {
+	if len(hmacKeys) == 0 {
+		return nil, errors.New("oauth.NewService: at least one HMAC key is required (see security L4)")
+	}
+	for i, k := range hmacKeys {
+		if len(k.Key) == 0 {
+			return nil, fmt.Errorf("oauth.NewService: hmacKeys[%d].Key is empty", i)
+		}
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Service{
-		clients:       repo,
-		authCodes:     repo,
-		accessTokens:  repo,
-		refreshTokens: repo,
-		deviceCodes:   repo,
-		scopeGrants:   repo,
-		users:         repo,
-		config:        oauthCfg,
-		appURL:        appURL,
-		logger:        logger,
-		hmacKey:       hmacKey,
-	}
+		clients:        repo,
+		authCodes:      repo,
+		accessTokens:   repo,
+		refreshTokens:  repo,
+		deviceCodes:    repo,
+		scopeGrants:    repo,
+		users:          repo,
+		config:         oauthCfg,
+		appURL:         appURL,
+		logger:         logger,
+		hmacKeys:       hmacKeys,
+		touchDebouncer: newClientTouchDebouncer(defaultClientTouchDebounce),
+	}, nil
 }
 
 // ClientTouchTimeout returns the configured timeout for background client
@@ -182,6 +207,13 @@ func (s *Service) FindUserByID(ctx context.Context, id int64) (*model.User, erro
 	return s.users.FindUserByID(ctx, id)
 }
 
+// RevokeUserTokensSince revokes every live access + refresh token minted for
+// userID at or after since. Used by session logout to invalidate OAuth grants
+// issued during the session being terminated (security L7).
+func (s *Service) RevokeUserTokensSince(ctx context.Context, userID int64, since time.Time) (int64, error) {
+	return s.accessTokens.RevokeUserTokensSince(ctx, userID, since)
+}
+
 // FindClientByInternalID looks up a client by its database primary key.
 func (s *Service) FindClientByInternalID(ctx context.Context, id int64) (*model.OAuthClient, error) {
 	return s.clients.FindClientByID(ctx, id)
@@ -190,6 +222,68 @@ func (s *Service) FindClientByInternalID(ctx context.Context, id int64) (*model.
 // TouchClientLastUsed records that a client's token was used.
 func (s *Service) TouchClientLastUsed(ctx context.Context, clientID int64) error {
 	return s.clients.TouchClientLastUsed(ctx, clientID)
+}
+
+// TouchClientLastUsedAsync fires a debounced background update of a client's
+// last_used_at column. Requests for the same client within the debouncer
+// window are dropped — at sustained load this collapses one goroutine + one
+// DB write per request into at most one per window (code-quality M4).
+//
+// The background ctx is detached from the request so Touch completes after
+// the response has shipped; ClientTouchTimeout bounds the upper wait.
+// Errors are logged at Warn — last_used_at is operator-visible telemetry,
+// not a load-bearing auth signal.
+func (s *Service) TouchClientLastUsedAsync(clientID int64, logger *slog.Logger) {
+	if s.touchDebouncer != nil && !s.touchDebouncer.shouldTouch(clientID, time.Now()) {
+		return
+	}
+	if logger == nil {
+		logger = s.logger
+	}
+	go func(id int64) {
+		ctx, cancel := context.WithTimeout(context.Background(), s.ClientTouchTimeout())
+		defer cancel()
+		if err := s.TouchClientLastUsed(ctx, id); err != nil {
+			logger.Warn("updating oauth client last_used_at", "client_id", id, "error", err)
+		}
+	}(clientID)
+}
+
+// clientTouchDebouncer collapses repeated TouchClientLastUsedAsync calls for
+// the same client into at most one underlying DB write per ttl window.
+//
+// Map growth is bounded by the number of distinct clients that have ever
+// authenticated against this process — typically in the hundreds. Entries
+// are not evicted; clients that fall silent keep a single stale timestamp
+// until process restart, which is not a memory-footprint concern at that
+// cardinality.
+type clientTouchDebouncer struct {
+	mu       sync.Mutex
+	lastSeen map[int64]time.Time
+	ttl      time.Duration
+}
+
+func newClientTouchDebouncer(ttl time.Duration) *clientTouchDebouncer {
+	return &clientTouchDebouncer{
+		lastSeen: make(map[int64]time.Time),
+		ttl:      ttl,
+	}
+}
+
+// shouldTouch returns true when clientID has not been touched within ttl
+// and records now as the most recent touch. ttl <= 0 disables debouncing
+// (every call returns true) so tests can exercise the underlying path.
+func (d *clientTouchDebouncer) shouldTouch(clientID int64, now time.Time) bool {
+	if d.ttl <= 0 {
+		return true
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if last, ok := d.lastSeen[clientID]; ok && now.Sub(last) < d.ttl {
+		return false
+	}
+	d.lastSeen[clientID] = now
+	return true
 }
 
 // GrantClientScope records a time-bounded scope expansion for a client,
@@ -254,22 +348,25 @@ type TokenResult struct {
 }
 
 // ValidateAccessToken validates a bearer token and returns the access token model.
+// During HMAC key rotation, every configured key is tried — a token minted
+// under a retired key still authenticates until the operator drops the key.
 func (s *Service) ValidateAccessToken(ctx context.Context, bearerToken string) (*model.OAuthAccessToken, error) {
-	id, tokenHash, err := s.ParseToken(bearerToken)
+	id, hashes, err := s.parseTokenCandidateHashes(bearerToken)
 	if err != nil {
 		return nil, errors.New("invalid token format")
 	}
 
-	token, err := s.accessTokens.FindAccessTokenByToken(ctx, tokenHash)
-	if err != nil {
-		return nil, errors.New("invalid or expired token")
+	for _, hash := range hashes {
+		token, findErr := s.accessTokens.FindAccessTokenByToken(ctx, hash)
+		if findErr != nil {
+			continue
+		}
+		if token.ID != id {
+			continue
+		}
+		return token, nil
 	}
-
-	if token.ID != id {
-		return nil, errors.New("invalid or expired token")
-	}
-
-	return token, nil
+	return nil, errors.New("invalid or expired token")
 }
 
 // ValidateState checks that a state parameter has a safe format.
@@ -363,4 +460,3 @@ func (s *Service) issueTokenPair(ctx context.Context, clientID int64, userID sql
 		Scope:        scope,
 	}, nil
 }
-

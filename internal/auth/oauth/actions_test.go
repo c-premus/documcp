@@ -31,10 +31,10 @@ type mockOAuthRepo struct {
 	TouchClientLastUsedFunc  func(ctx context.Context, clientID int64) error
 	UpdateClientScopeFunc    func(ctx context.Context, clientID int64, scope string) error
 	// Authorization Codes
-	CreateAuthorizationCodeFunc                    func(ctx context.Context, code *model.OAuthAuthorizationCode) error
-	FindAuthorizationCodeByCodeFunc                func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
+	CreateAuthorizationCodeFunc                     func(ctx context.Context, code *model.OAuthAuthorizationCode) error
+	FindAuthorizationCodeByCodeFunc                 func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
 	FindAuthorizationCodeByCodeIncludingRevokedFunc func(ctx context.Context, codeHash string) (*model.OAuthAuthorizationCode, error)
-	RevokeAuthorizationCodeFunc                    func(ctx context.Context, id int64) error
+	RevokeAuthorizationCodeFunc                     func(ctx context.Context, id int64) error
 	// Access Tokens
 	CreateAccessTokenFunc                      func(ctx context.Context, token *model.OAuthAccessToken) error
 	FindAccessTokenByIDFunc                    func(ctx context.Context, id int64) (*model.OAuthAccessToken, error)
@@ -42,6 +42,7 @@ type mockOAuthRepo struct {
 	RevokeAccessTokenFunc                      func(ctx context.Context, id int64) error
 	RevokeTokenPairFunc                        func(ctx context.Context, accessTokenID, refreshTokenID int64) error
 	RevokeTokenFamilyByAuthorizationCodeIDFunc func(ctx context.Context, authCodeID int64) (int64, error)
+	RevokeUserTokensSinceFunc                  func(ctx context.Context, userID int64, since time.Time) (int64, error)
 	// Refresh Tokens
 	CreateRefreshTokenFunc                        func(ctx context.Context, token *model.OAuthRefreshToken) error
 	FindRefreshTokenByTokenFunc                   func(ctx context.Context, tokenHash string) (*model.OAuthRefreshToken, error)
@@ -129,6 +130,13 @@ func (m *mockOAuthRepo) RevokeAuthorizationCode(ctx context.Context, id int64) e
 func (m *mockOAuthRepo) RevokeTokenFamilyByAuthorizationCodeID(ctx context.Context, authCodeID int64) (int64, error) {
 	if m.RevokeTokenFamilyByAuthorizationCodeIDFunc != nil {
 		return m.RevokeTokenFamilyByAuthorizationCodeIDFunc(ctx, authCodeID)
+	}
+	return 0, nil
+}
+
+func (m *mockOAuthRepo) RevokeUserTokensSince(ctx context.Context, userID int64, since time.Time) (int64, error) {
+	if m.RevokeUserTokensSinceFunc != nil {
+		return m.RevokeUserTokensSinceFunc(ctx, userID, since)
 	}
 	return 0, nil
 }
@@ -287,12 +295,27 @@ func testConfig() config.OAuthConfig {
 	}
 }
 
+// testHMACKeys returns a single fixed HMAC key used across tests that don't
+// exercise rotation. The key is deterministic so different test services
+// produce the same hashes for the same plaintext, simplifying assertions.
+func testHMACKeys() []HMACKey {
+	return []HMACKey{{Version: '1', Key: []byte("unit-test-hmac-key-at-least-32-bytes!!")}}
+}
+
 func testService(repo OAuthRepo) *Service {
-	return NewService(repo, testConfig(), "https://app.example.com", slog.Default(), nil)
+	svc, err := NewService(repo, testConfig(), "https://app.example.com", slog.Default(), testHMACKeys())
+	if err != nil {
+		panic(err)
+	}
+	return svc
 }
 
 func testServiceWithConfig(repo OAuthRepo, cfg config.OAuthConfig) *Service {
-	return NewService(repo, cfg, "https://app.example.com", slog.Default(), nil)
+	svc, err := NewService(repo, cfg, "https://app.example.com", slog.Default(), testHMACKeys())
+	if err != nil {
+		panic(err)
+	}
+	return svc
 }
 
 // makeTokenPlaintext generates a real token via the test service, assigns it

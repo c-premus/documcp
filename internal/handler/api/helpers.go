@@ -4,10 +4,34 @@ import (
 	"database/sql"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 )
+
+// expandTagsParam flattens a repeated ?tags=a&tags=b list AND a single
+// comma-delimited ?tags=a,b into a single de-duplicated []string. Empty
+// entries are skipped. Callers expecting AND-logic tag filtering see the
+// union of the two accepted shapes.
+func expandTagsParam(raw []string) []string {
+	seen := make(map[string]struct{}, len(raw))
+	out := make([]string, 0, len(raw))
+	for _, value := range raw {
+		for token := range strings.SplitSeq(value, ",") {
+			t := strings.TrimSpace(token)
+			if t == "" {
+				continue
+			}
+			if _, dup := seen[t]; dup {
+				continue
+			}
+			seen[t] = struct{}{}
+			out = append(out, t)
+		}
+	}
+	return out
+}
 
 // parsePagination extracts limit and offset query parameters with bounds enforcement.
 func parsePagination(r *http.Request, defaultLimit, maxLimit int) (limit, offset int) {

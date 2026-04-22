@@ -148,20 +148,21 @@ function handleResultClick(result: ZimSearchResult): void {
           v-else-if="store.searchResults.length > 0"
           class="divide-y divide-border-default rounded-lg border border-border-default bg-bg-surface overflow-hidden"
         >
-          <li
-            v-for="result in store.searchResults"
-            :key="result.path"
-            class="px-4 py-3 hover:bg-bg-hover cursor-pointer"
-            @click="handleResultClick(result)"
-          >
-            <p class="text-sm font-medium text-indigo-600 dark:text-indigo-400">
-              {{ result.title }}
-            </p>
-            <p
-              v-if="result.snippet"
-              class="mt-1 text-xs text-text-muted line-clamp-2"
-              v-html="sanitizeHTML(result.snippet)"
-            />
+          <li v-for="result in store.searchResults" :key="result.path" class="hover:bg-bg-hover">
+            <button
+              type="button"
+              class="w-full text-left px-4 py-3 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500"
+              @click="handleResultClick(result)"
+            >
+              <p class="text-sm font-medium text-indigo-600 dark:text-indigo-400">
+                {{ result.title }}
+              </p>
+              <p
+                v-if="result.snippet"
+                class="mt-1 text-xs text-text-muted line-clamp-2"
+                v-html="sanitizeHTML(result.snippet)"
+              />
+            </button>
           </li>
         </ul>
 

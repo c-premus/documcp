@@ -29,7 +29,7 @@ type mockOAuthClientRepo struct {
 	findClientByIDFn                 func(ctx context.Context, id int64) (*model.OAuthClient, error)
 	deleteClientFn                   func(ctx context.Context, id int64) error
 	findActiveScopeGrantsWithUsersFn func(ctx context.Context, clientID int64) ([]repository.ScopeGrantWithUser, error)
-	deleteScopeGrantFn               func(ctx context.Context, id int64) error
+	deleteScopeGrantFn               func(ctx context.Context, id, clientID int64) error
 }
 
 func (m *mockOAuthClientRepo) ListClients(ctx context.Context, query string, limit, offset int) ([]model.OAuthClient, int, error) {
@@ -67,9 +67,9 @@ func (m *mockOAuthClientRepo) FindActiveScopeGrantsWithUsers(ctx context.Context
 	return nil, nil
 }
 
-func (m *mockOAuthClientRepo) DeleteScopeGrant(ctx context.Context, id int64) error {
+func (m *mockOAuthClientRepo) DeleteScopeGrant(ctx context.Context, id, clientID int64) error {
 	if m.deleteScopeGrantFn != nil {
-		return m.deleteScopeGrantFn(ctx, id)
+		return m.deleteScopeGrantFn(ctx, id, clientID)
 	}
 	return nil
 }

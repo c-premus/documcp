@@ -271,6 +271,49 @@ func (r *OAuthRepository) RevokeTokenPair(ctx context.Context, accessTokenID, re
 	return nil
 }
 
+// RevokeUserTokensSince marks every live access token minted for userID at or
+// after since as revoked, and cascades to their refresh tokens. Used by session
+// logout to invalidate OAuth grants minted during the session being terminated
+// (L7). Returns the number of access tokens revoked so callers can log it.
+//
+// since is typically the session's login_at timestamp. Tokens older than the
+// session are intentionally left alone — they belong to earlier grants that
+// the user may still want to keep.
+func (r *OAuthRepository) RevokeUserTokensSince(ctx context.Context, userID int64, since time.Time) (int64, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("beginning revoke-since tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op; error is irrelevant
+
+	if _, execErr := tx.Exec(ctx,
+		`UPDATE oauth_refresh_tokens
+		   SET revoked = true, updated_at = NOW()
+		 WHERE revoked = false
+		   AND access_token_id IN (
+		       SELECT id FROM oauth_access_tokens
+		        WHERE user_id = $1 AND created_at >= $2
+		   )`, userID, since); execErr != nil {
+		return 0, fmt.Errorf("revoking refresh tokens since %s: %w", since.Format(time.RFC3339), execErr)
+	}
+
+	tag, err := tx.Exec(ctx,
+		`UPDATE oauth_access_tokens
+		   SET revoked = true, updated_at = NOW()
+		 WHERE revoked = false
+		   AND user_id = $1
+		   AND created_at >= $2`, userID, since)
+	if err != nil {
+		return 0, fmt.Errorf("revoking access tokens since %s: %w", since.Format(time.RFC3339), err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("committing revoke-since: %w", err)
+	}
+
+	return tag.RowsAffected(), nil
+}
+
 // PurgeExpiredTokens deletes expired/revoked tokens older than retentionDays.
 // Order: refresh tokens first (FK to access tokens), then access tokens, then auth codes, then device codes.
 func (r *OAuthRepository) PurgeExpiredTokens(ctx context.Context, retentionDays int) (int64, error) {
