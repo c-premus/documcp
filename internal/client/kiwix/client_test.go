@@ -43,7 +43,7 @@ func catalogForArchive(name string, ftindex bool) string {
     <tags>%s</tags>
     <articleCount>100</articleCount>
     <mediaCount>0</mediaCount>
-    <size>1024</size>
+    <link rel="http://opds-spec.org/acquisition/open-access" type="application/x-zim" href="https://example.test/archive.zim" length="1024" />
   </entry>
 </feed>`, name, tags)
 }
@@ -63,9 +63,9 @@ func sampleOPDSCatalog() string {
     <author><name>DevDocs</name></author>
     <articleCount>1500</articleCount>
     <mediaCount>200</mediaCount>
-    <size>52428800</size>
     <favicon>/meta?name=devdocs-go&amp;content=favicon</favicon>
     <link rel="http://opds-spec.org/image/thumbnail" href="/thumb/devdocs-go.png" type="image/png"/>
+    <link rel="http://opds-spec.org/acquisition/open-access" type="application/x-zim" href="https://example.test/devdocs-go.zim" length="52428800" />
   </entry>
   <entry>
     <id>urn:uuid:bbb-222</id>
@@ -76,8 +76,8 @@ func sampleOPDSCatalog() string {
     <author><name>Wikipedia</name></author>
     <articleCount>6000000</articleCount>
     <mediaCount>0</mediaCount>
-    <size>104857600</size>
     <link rel="http://opds-spec.org/image" href="/thumb/wikipedia_en.png" type="image/png"/>
+    <link rel="http://opds-spec.org/acquisition/open-access" type="application/x-zim" href="https://example.test/wikipedia_en.zim" length="104857600" />
   </entry>
 </feed>`
 }
