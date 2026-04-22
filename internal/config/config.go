@@ -90,13 +90,15 @@ type QueueConfig struct {
 // SchedulerConfig holds cron schedule expressions for background sync jobs.
 // Empty schedule strings disable the corresponding job.
 type SchedulerConfig struct {
-	Enabled                 bool   `mapstructure:"scheduler_enabled"`
-	KiwixSchedule           string `mapstructure:"scheduler_kiwix_schedule"`
-	GitSchedule             string `mapstructure:"scheduler_git_schedule"`
-	OAuthCleanupSchedule    string `mapstructure:"scheduler_oauth_cleanup_schedule"`
-	OrphanedFilesSchedule   string `mapstructure:"scheduler_orphaned_files_schedule"`
-	SoftDeletePurgeSchedule string `mapstructure:"scheduler_soft_delete_purge_schedule"`
-	HealthCheckSchedule     string `mapstructure:"scheduler_health_check_schedule"`
+	Enabled                    bool          `mapstructure:"scheduler_enabled"`
+	KiwixSchedule              string        `mapstructure:"scheduler_kiwix_schedule"`
+	GitSchedule                string        `mapstructure:"scheduler_git_schedule"`
+	OAuthCleanupSchedule       string        `mapstructure:"scheduler_oauth_cleanup_schedule"`
+	OrphanedFilesSchedule      string        `mapstructure:"scheduler_orphaned_files_schedule"`
+	SoftDeletePurgeSchedule    string        `mapstructure:"scheduler_soft_delete_purge_schedule"`
+	HealthCheckSchedule        string        `mapstructure:"scheduler_health_check_schedule"`
+	SearchQueryCleanupSchedule string        `mapstructure:"scheduler_search_query_cleanup_schedule"`
+	SearchQueryRetention       time.Duration `mapstructure:"search_query_retention"`
 }
 
 // AppConfig holds general application settings.
@@ -437,12 +439,14 @@ func setDefaults(v *viper.Viper) {
 
 	// Scheduler
 	v.SetDefault("scheduler_enabled", false)
-	v.SetDefault("scheduler_kiwix_schedule", "0 */6 * * *")           // every 6 hours
-	v.SetDefault("scheduler_git_schedule", "0 * * * *")               // every hour
-	v.SetDefault("scheduler_oauth_cleanup_schedule", "0 * * * *")     // hourly
-	v.SetDefault("scheduler_orphaned_files_schedule", "0 2 * * *")    // daily 2 AM
-	v.SetDefault("scheduler_soft_delete_purge_schedule", "0 4 * * *") // daily 4 AM
-	v.SetDefault("scheduler_health_check_schedule", "*/15 * * * *")   // every 15 min
+	v.SetDefault("scheduler_kiwix_schedule", "0 */6 * * *")              // every 6 hours
+	v.SetDefault("scheduler_git_schedule", "0 * * * *")                  // every hour
+	v.SetDefault("scheduler_oauth_cleanup_schedule", "0 * * * *")        // hourly
+	v.SetDefault("scheduler_orphaned_files_schedule", "0 2 * * *")       // daily 2 AM
+	v.SetDefault("scheduler_soft_delete_purge_schedule", "0 4 * * *")    // daily 4 AM
+	v.SetDefault("scheduler_health_check_schedule", "*/15 * * * *")      // every 15 min
+	v.SetDefault("scheduler_search_query_cleanup_schedule", "0 3 * * *") // daily 3 AM
+	v.SetDefault("search_query_retention", 90*24*time.Hour)              // 90 days
 }
 
 // Load reads configuration from environment variables and an optional YAML
@@ -668,13 +672,15 @@ func Load() (*Config, error) {
 	}
 
 	cfg.Scheduler = SchedulerConfig{
-		Enabled:                 v.GetBool("scheduler_enabled"),
-		KiwixSchedule:           v.GetString("scheduler_kiwix_schedule"),
-		GitSchedule:             v.GetString("scheduler_git_schedule"),
-		OAuthCleanupSchedule:    v.GetString("scheduler_oauth_cleanup_schedule"),
-		OrphanedFilesSchedule:   v.GetString("scheduler_orphaned_files_schedule"),
-		SoftDeletePurgeSchedule: v.GetString("scheduler_soft_delete_purge_schedule"),
-		HealthCheckSchedule:     v.GetString("scheduler_health_check_schedule"),
+		Enabled:                    v.GetBool("scheduler_enabled"),
+		KiwixSchedule:              v.GetString("scheduler_kiwix_schedule"),
+		GitSchedule:                v.GetString("scheduler_git_schedule"),
+		OAuthCleanupSchedule:       v.GetString("scheduler_oauth_cleanup_schedule"),
+		OrphanedFilesSchedule:      v.GetString("scheduler_orphaned_files_schedule"),
+		SoftDeletePurgeSchedule:    v.GetString("scheduler_soft_delete_purge_schedule"),
+		HealthCheckSchedule:        v.GetString("scheduler_health_check_schedule"),
+		SearchQueryCleanupSchedule: v.GetString("scheduler_search_query_cleanup_schedule"),
+		SearchQueryRetention:       v.GetDuration("search_query_retention"),
 	}
 
 	return cfg, nil

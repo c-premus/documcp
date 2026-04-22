@@ -16,8 +16,7 @@ import (
 
 // zimArchiveRepo defines the methods used by ZimHandler -- defined where consumed.
 type zimArchiveRepo interface {
-	List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error)
-	CountFiltered(ctx context.Context, category, language, query string) (int, error)
+	List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, int, error)
 	FindByName(ctx context.Context, name string) (*model.ZimArchive, error)
 }
 
@@ -115,14 +114,7 @@ func (h *ZimHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	perPage, offset := parsePaginationParam(r, "per_page", 50, 100)
 
-	total, err := h.repo.CountFiltered(r.Context(), category, language, query)
-	if err != nil {
-		h.logger.Error("counting zim archives", "error", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to count ZIM archives")
-		return
-	}
-
-	archives, err := h.repo.List(r.Context(), category, language, query, perPage, offset)
+	archives, total, err := h.repo.List(r.Context(), category, language, query, perPage, offset)
 	if err != nil {
 		h.logger.Error("listing zim archives", "error", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to list ZIM archives")

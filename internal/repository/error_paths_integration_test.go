@@ -80,7 +80,7 @@ func TestErrorPaths_CanceledContext(t *testing.T) {
 		assert.Error(t, err)
 		_, err = repo.FindByUUID(ctx, "x")
 		assert.Error(t, err)
-		_, err = repo.List(ctx, "", "", "", 10, 0)
+		_, _, err = repo.List(ctx, "", "", "", 10, 0)
 		assert.Error(t, err)
 		_, err = repo.ListAll(ctx, "", 10)
 		assert.Error(t, err)

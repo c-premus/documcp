@@ -1,7 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createPinia, setActivePinia } from 'pinia'
+import { describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import GitTemplateListView from '@/views/GitTemplateListView.vue'
+import {
+  setAdmin,
+  setNonAdmin,
+  setupViewTest,
+  stubFetch,
+} from '@/__tests__/testHelpers/viewHarness'
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -12,28 +17,8 @@ vi.mock('vue-sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
-function stubFetch(response: unknown, ok = true) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok,
-      status: ok ? 200 : 500,
-      statusText: 'Internal Server Error',
-      json: () => Promise.resolve(response),
-    }),
-  )
-}
-
 describe('GitTemplateListView', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
-    stubFetch({ data: [], meta: { total: 0, limit: 50, offset: 0 } })
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-    vi.unstubAllGlobals()
-  })
+  setupViewTest({ defaultFetch: { data: [], meta: { total: 0, limit: 50, offset: 0 } } })
 
   function mountView() {
     return mount(GitTemplateListView, {
@@ -108,9 +93,7 @@ describe('GitTemplateListView', () => {
   })
 
   it('has add template button for admin', async () => {
-    const { useAuthStore } = await import('@/stores/auth')
-    const auth = useAuthStore()
-    auth.user = { id: 1, email: 'admin@test.com', name: 'Admin', is_admin: true }
+    setAdmin()
 
     const wrapper = mountView()
     await flushPromises()
@@ -119,9 +102,7 @@ describe('GitTemplateListView', () => {
   })
 
   it('hides add template button for non-admin', async () => {
-    const { useAuthStore } = await import('@/stores/auth')
-    const auth = useAuthStore()
-    auth.user = { id: 2, email: 'user@test.com', name: 'User', is_admin: false }
+    setNonAdmin({ name: 'User' })
 
     const wrapper = mountView()
     await flushPromises()

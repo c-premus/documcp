@@ -141,15 +141,15 @@ func (m *mockDocumentService) Delete(ctx context.Context, uuid string) error {
 }
 
 type mockZimArchiveRepo struct {
-	listFn           func(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error)
+	listFn           func(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, int, error)
 	listSearchableFn func(ctx context.Context) ([]model.ZimArchive, error)
 }
 
-func (m *mockZimArchiveRepo) List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error) {
+func (m *mockZimArchiveRepo) List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, int, error) {
 	if m.listFn != nil {
 		return m.listFn(ctx, category, language, query, limit, offset)
 	}
-	return nil, nil
+	return nil, 0, nil
 }
 
 func (m *mockZimArchiveRepo) ListSearchable(ctx context.Context) ([]model.ZimArchive, error) {
@@ -909,7 +909,7 @@ func TestHandleListZimArchives(t *testing.T) {
 
 	t.Run("returns archives successfully", func(t *testing.T) {
 		repo := &mockZimArchiveRepo{
-			listFn: func(_ context.Context, _, _, _ string, _, _ int) ([]model.ZimArchive, error) {
+			listFn: func(_ context.Context, _, _, _ string, _, _ int) ([]model.ZimArchive, int, error) {
 				return []model.ZimArchive{
 					{
 						Name:         "devdocs_en_go",
@@ -920,7 +920,7 @@ func TestHandleListZimArchives(t *testing.T) {
 						Description:  sql.NullString{String: "Go docs", Valid: true},
 						Category:     sql.NullString{String: "devdocs", Valid: true},
 					},
-				}, nil
+				}, 1, nil
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -956,9 +956,9 @@ func TestHandleListZimArchives(t *testing.T) {
 	t.Run("clamps limit", func(t *testing.T) {
 		var capturedLimit int
 		repo := &mockZimArchiveRepo{
-			listFn: func(_ context.Context, _, _, _ string, limit, _ int) ([]model.ZimArchive, error) {
+			listFn: func(_ context.Context, _, _, _ string, limit, _ int) ([]model.ZimArchive, int, error) {
 				capturedLimit = limit
-				return nil, nil
+				return nil, 0, nil
 			},
 		}
 		h := newHandlerWithMocks(struct {
@@ -983,8 +983,8 @@ func TestHandleListZimArchives(t *testing.T) {
 
 	t.Run("returns error when repo fails", func(t *testing.T) {
 		repo := &mockZimArchiveRepo{
-			listFn: func(_ context.Context, _, _, _ string, _, _ int) ([]model.ZimArchive, error) {
-				return nil, errors.New("db error")
+			listFn: func(_ context.Context, _, _, _ string, _, _ int) ([]model.ZimArchive, int, error) {
+				return nil, 0, errors.New("db error")
 			},
 		}
 		h := newHandlerWithMocks(struct {

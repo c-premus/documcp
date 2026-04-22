@@ -385,17 +385,12 @@ func TestToZimArchiveResponse(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 type mockZimArchiveRepo struct {
-	ListFn          func(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error)
-	CountFilteredFn func(ctx context.Context, category, language, query string) (int, error)
-	FindByNameFn    func(ctx context.Context, name string) (*model.ZimArchive, error)
+	ListFn       func(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, int, error)
+	FindByNameFn func(ctx context.Context, name string) (*model.ZimArchive, error)
 }
 
-func (m *mockZimArchiveRepo) List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error) {
+func (m *mockZimArchiveRepo) List(ctx context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, int, error) {
 	return m.ListFn(ctx, category, language, query, limit, offset)
-}
-
-func (m *mockZimArchiveRepo) CountFiltered(ctx context.Context, category, language, query string) (int, error) {
-	return m.CountFilteredFn(ctx, category, language, query)
 }
 
 func (m *mockZimArchiveRepo) FindByName(ctx context.Context, name string) (*model.ZimArchive, error) {
@@ -581,10 +576,7 @@ func TestZimHandler_List(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockZimArchiveRepo{
-			CountFilteredFn: func(_ context.Context, _, _, _ string) (int, error) {
-				return 2, nil
-			},
-			ListFn: func(_ context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, error) {
+			ListFn: func(_ context.Context, category, language, query string, limit, offset int) ([]model.ZimArchive, int, error) {
 				if category != "" {
 					t.Errorf("category = %q, want empty", category)
 				}
@@ -594,10 +586,12 @@ func TestZimHandler_List(t *testing.T) {
 				if offset != 0 {
 					t.Errorf("offset = %d, want 0", offset)
 				}
+				_ = language
+				_ = query
 				return []model.ZimArchive{
 					{UUID: "z1", Name: "wikipedia_en", Title: "Wikipedia", Language: "eng"},
 					{UUID: "z2", Name: "wiktionary_en", Title: "Wiktionary", Language: "eng"},
-				}, nil
+				}, 2, nil
 			},
 		}
 		h := newZimHandlerWithMocks(repo, nil)
@@ -629,10 +623,7 @@ func TestZimHandler_List(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockZimArchiveRepo{
-			CountFilteredFn: func(_ context.Context, _, _, _ string) (int, error) {
-				return 0, nil
-			},
-			ListFn: func(_ context.Context, category, language, query string, limit, _ int) ([]model.ZimArchive, error) {
+			ListFn: func(_ context.Context, category, language, query string, limit, _ int) ([]model.ZimArchive, int, error) {
 				if category != "wikipedia" {
 					t.Errorf("category = %q, want wikipedia", category)
 				}
@@ -645,7 +636,7 @@ func TestZimHandler_List(t *testing.T) {
 				if limit != 5 {
 					t.Errorf("limit = %d, want 5", limit)
 				}
-				return []model.ZimArchive{}, nil
+				return []model.ZimArchive{}, 0, nil
 			},
 		}
 		h := newZimHandlerWithMocks(repo, nil)
@@ -659,42 +650,12 @@ func TestZimHandler_List(t *testing.T) {
 		}
 	})
 
-	t.Run("returns 500 when count returns error", func(t *testing.T) {
-		t.Parallel()
-
-		repo := &mockZimArchiveRepo{
-			CountFilteredFn: func(_ context.Context, _, _, _ string) (int, error) {
-				return 0, errors.New("db failure")
-			},
-		}
-		h := newZimHandlerWithMocks(repo, nil)
-		req := httptest.NewRequest(http.MethodGet, "/api/zim/archives", http.NoBody)
-		rr := httptest.NewRecorder()
-
-		h.List(rr, req)
-
-		if rr.Code != http.StatusInternalServerError {
-			t.Errorf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
-		}
-
-		var body map[string]any
-		if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
-			t.Fatalf("decoding response: %v", err)
-		}
-		if msg := body["message"]; msg != "failed to count ZIM archives" {
-			t.Errorf("message = %v, want 'failed to count ZIM archives'", msg)
-		}
-	})
-
 	t.Run("returns 500 when list returns error", func(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockZimArchiveRepo{
-			CountFilteredFn: func(_ context.Context, _, _, _ string) (int, error) {
-				return 0, nil
-			},
-			ListFn: func(_ context.Context, _, _, _ string, _, _ int) ([]model.ZimArchive, error) {
-				return nil, errors.New("db failure")
+			ListFn: func(_ context.Context, _, _, _ string, _, _ int) ([]model.ZimArchive, int, error) {
+				return nil, 0, errors.New("db failure")
 			},
 		}
 		h := newZimHandlerWithMocks(repo, nil)
@@ -720,11 +681,8 @@ func TestZimHandler_List(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockZimArchiveRepo{
-			CountFilteredFn: func(_ context.Context, _, _, _ string) (int, error) {
-				return 0, nil
-			},
-			ListFn: func(_ context.Context, _, _, _ string, _, _ int) ([]model.ZimArchive, error) {
-				return []model.ZimArchive{}, nil
+			ListFn: func(_ context.Context, _, _, _ string, _, _ int) ([]model.ZimArchive, int, error) {
+				return []model.ZimArchive{}, 0, nil
 			},
 		}
 		h := newZimHandlerWithMocks(repo, nil)
@@ -751,14 +709,11 @@ func TestZimHandler_List(t *testing.T) {
 		t.Parallel()
 
 		repo := &mockZimArchiveRepo{
-			CountFilteredFn: func(_ context.Context, _, _, _ string) (int, error) {
-				return 0, nil
-			},
-			ListFn: func(_ context.Context, _, _, _ string, limit, _ int) ([]model.ZimArchive, error) {
+			ListFn: func(_ context.Context, _, _, _ string, limit, _ int) ([]model.ZimArchive, int, error) {
 				if limit != 50 {
 					t.Errorf("limit = %d, want 50 (default)", limit)
 				}
-				return []model.ZimArchive{}, nil
+				return []model.ZimArchive{}, 0, nil
 			},
 		}
 		h := newZimHandlerWithMocks(repo, nil)

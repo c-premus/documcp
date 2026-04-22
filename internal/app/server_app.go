@@ -481,19 +481,21 @@ func buildRiverClient(f *Foundation, eventBus queue.EventPublisher, insertOnly b
 	cfg := f.Config
 
 	schedulerDeps := queue.SchedulerDeps{
-		Services:          f.ExternalServiceRepo,
-		HealthChecker:     f.ExternalServiceRepo,
-		ZimRepo:           f.ZimArchiveRepo,
-		GitRepo:           f.GitTemplateRepo,
-		OAuthRepo:         f.OAuthRepo,
-		DocRepo:           f.DocumentRepo,
-		Metrics:           f.Metrics,
-		Blob:              f.BlobStore,
-		GitTempDir:        f.GitTempDir,
-		Logger:            f.Logger,
-		GitMaxFileSize:    cfg.Git.MaxFileSize,
-		GitMaxTotalSize:   cfg.Git.MaxTotalSize,
-		SSRFDialerTimeout: cfg.App.SSRFDialerTimeout,
+		Services:             f.ExternalServiceRepo,
+		HealthChecker:        f.ExternalServiceRepo,
+		ZimRepo:              f.ZimArchiveRepo,
+		GitRepo:              f.GitTemplateRepo,
+		OAuthRepo:            f.OAuthRepo,
+		DocRepo:              f.DocumentRepo,
+		SearchQueryRepo:      f.SearchQueryRepo,
+		Metrics:              f.Metrics,
+		Blob:                 f.BlobStore,
+		GitTempDir:           f.GitTempDir,
+		Logger:               f.Logger,
+		GitMaxFileSize:       cfg.Git.MaxFileSize,
+		GitMaxTotalSize:      cfg.Git.MaxTotalSize,
+		SearchQueryRetention: cfg.Scheduler.SearchQueryRetention,
+		SSRFDialerTimeout:    cfg.App.SSRFDialerTimeout,
 		KiwixConfig: kiwix.ClientConfig{
 			HTTPTimeout:        cfg.Kiwix.HTTPTimeout,
 			HealthCheckTimeout: cfg.Kiwix.HealthCheckTimeout,
@@ -515,6 +517,7 @@ func buildRiverClient(f *Foundation, eventBus queue.EventPublisher, insertOnly b
 	river.AddWorker(workers, &queue.CleanupOrphanedFilesWorker{Deps: schedulerDeps})
 	river.AddWorker(workers, &queue.PurgeSoftDeletedWorker{Deps: schedulerDeps})
 	river.AddWorker(workers, &queue.HealthCheckServicesWorker{Deps: schedulerDeps})
+	river.AddWorker(workers, &queue.CleanupSearchQueriesWorker{Deps: schedulerDeps})
 
 	// Periodic jobs (only when processing jobs).
 	var periodicJobs []*river.PeriodicJob

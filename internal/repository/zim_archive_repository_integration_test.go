@@ -204,44 +204,51 @@ func TestZimArchiveRepository_List(t *testing.T) {
 	require.NoError(t, repo.ToggleEnabled(ctx, disableID))
 
 	t.Run("all enabled", func(t *testing.T) {
-		results, err := repo.List(ctx, "", "", "", 0, 0)
+		results, total, err := repo.List(ctx, "", "", "", 0, 0)
 		require.NoError(t, err)
 		assert.Len(t, results, 2)
+		assert.Equal(t, 2, total)
 	})
 
 	t.Run("filter by category", func(t *testing.T) {
-		results, err := repo.List(ctx, "wikipedia", "", "", 0, 0)
+		results, total, err := repo.List(ctx, "wikipedia", "", "", 0, 0)
 		require.NoError(t, err)
 		assert.Len(t, results, 1)
+		assert.Equal(t, 1, total)
 		assert.Equal(t, "Wikipedia English", results[0].Name)
 	})
 
 	t.Run("filter by language", func(t *testing.T) {
-		results, err := repo.List(ctx, "", "en", "", 0, 0)
+		results, total, err := repo.List(ctx, "", "en", "", 0, 0)
 		require.NoError(t, err)
 		assert.Len(t, results, 1)
+		assert.Equal(t, 1, total)
 		assert.Equal(t, "Wikipedia English", results[0].Name)
 	})
 
 	t.Run("filter by search query", func(t *testing.T) {
-		results, err := repo.List(ctx, "", "", "Wikipedia", 0, 0)
+		results, total, err := repo.List(ctx, "", "", "Wikipedia", 0, 0)
 		require.NoError(t, err)
 		// Only Wikipedia English is enabled; Wikipedia French was disabled.
 		assert.Len(t, results, 1)
+		assert.Equal(t, 1, total)
 		assert.Equal(t, "Wikipedia English", results[0].Name)
 	})
 
 	t.Run("combined filters", func(t *testing.T) {
-		results, err := repo.List(ctx, "wikipedia", "en", "", 0, 0)
+		results, total, err := repo.List(ctx, "wikipedia", "en", "", 0, 0)
 		require.NoError(t, err)
 		assert.Len(t, results, 1)
+		assert.Equal(t, 1, total)
 		assert.Equal(t, "Wikipedia English", results[0].Name)
 	})
 
 	t.Run("limit", func(t *testing.T) {
-		results, err := repo.List(ctx, "", "", "", 1, 0)
+		// Pre-LIMIT total is 2 (both enabled archives match), page is capped to 1.
+		results, total, err := repo.List(ctx, "", "", "", 1, 0)
 		require.NoError(t, err)
 		assert.Len(t, results, 1)
+		assert.Equal(t, 2, total)
 	})
 }
 

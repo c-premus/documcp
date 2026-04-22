@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -39,4 +40,18 @@ func (r *SearchQueryRepository) PopularQueries(ctx context.Context, limit int) (
 		return nil, fmt.Errorf("querying popular searches: %w", err)
 	}
 	return queries, nil
+}
+
+// DeleteOlderThan removes search_queries rows with created_at older than age.
+// Returns the number of rows deleted. The periodic cleanup worker uses this to
+// bound table growth; retention size also bounds the aggregation scan in
+// PopularQueries.
+func (r *SearchQueryRepository) DeleteOlderThan(ctx context.Context, age time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-age)
+	result, err := r.db.Exec(ctx,
+		`DELETE FROM search_queries WHERE created_at < $1`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("deleting search_queries older than %s: %w", age, err)
+	}
+	return result.RowsAffected(), nil
 }
