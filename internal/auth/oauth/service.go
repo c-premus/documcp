@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,6 +17,13 @@ import (
 	"github.com/c-premus/documcp/internal/config"
 	"github.com/c-premus/documcp/internal/model"
 )
+
+// defaultClientTouchDebounce is the per-client TTL within which repeated
+// last_used_at updates collapse into a single DB write. At any sustained
+// request rate against the same client, only one row update fires per
+// window — bounding the goroutine count enforced by TouchClientLastUsedAsync
+// (code-quality M4).
+const defaultClientTouchDebounce = 30 * time.Second
 
 // tokenReplayTotal counts detected OAuth token replays. A non-zero rate on
 // this counter is evidence of interception (stolen code or refresh token).
@@ -139,6 +147,14 @@ type Service struct {
 	// rejects an empty slice, so hashToken always has at least one key
 	// available — there is no silent SHA-256 fallback (security L4).
 	hmacKeys []HMACKey
+
+	// touchDebouncer bounds the rate at which TouchClientLastUsedAsync fires
+	// background goroutines. Without it, every authenticated bearer-token
+	// request spawns one fire-and-forget goroutine and one DB write per
+	// request — at 1k req/s that's 1k pgxpool slots in flight against a
+	// last_used_at column that only ever needs second-resolution accuracy
+	// (code-quality M4).
+	touchDebouncer *clientTouchDebouncer
 }
 
 // NewService creates a new OAuth service. repo must satisfy the composite
@@ -160,17 +176,18 @@ func NewService(repo OAuthRepo, oauthCfg config.OAuthConfig, appURL string, logg
 		logger = slog.Default()
 	}
 	return &Service{
-		clients:       repo,
-		authCodes:     repo,
-		accessTokens:  repo,
-		refreshTokens: repo,
-		deviceCodes:   repo,
-		scopeGrants:   repo,
-		users:         repo,
-		config:        oauthCfg,
-		appURL:        appURL,
-		logger:        logger,
-		hmacKeys:      hmacKeys,
+		clients:        repo,
+		authCodes:      repo,
+		accessTokens:   repo,
+		refreshTokens:  repo,
+		deviceCodes:    repo,
+		scopeGrants:    repo,
+		users:          repo,
+		config:         oauthCfg,
+		appURL:         appURL,
+		logger:         logger,
+		hmacKeys:       hmacKeys,
+		touchDebouncer: newClientTouchDebouncer(defaultClientTouchDebounce),
 	}, nil
 }
 
@@ -205,6 +222,68 @@ func (s *Service) FindClientByInternalID(ctx context.Context, id int64) (*model.
 // TouchClientLastUsed records that a client's token was used.
 func (s *Service) TouchClientLastUsed(ctx context.Context, clientID int64) error {
 	return s.clients.TouchClientLastUsed(ctx, clientID)
+}
+
+// TouchClientLastUsedAsync fires a debounced background update of a client's
+// last_used_at column. Requests for the same client within the debouncer
+// window are dropped — at sustained load this collapses one goroutine + one
+// DB write per request into at most one per window (code-quality M4).
+//
+// The background ctx is detached from the request so Touch completes after
+// the response has shipped; ClientTouchTimeout bounds the upper wait.
+// Errors are logged at Warn — last_used_at is operator-visible telemetry,
+// not a load-bearing auth signal.
+func (s *Service) TouchClientLastUsedAsync(clientID int64, logger *slog.Logger) {
+	if s.touchDebouncer != nil && !s.touchDebouncer.shouldTouch(clientID, time.Now()) {
+		return
+	}
+	if logger == nil {
+		logger = s.logger
+	}
+	go func(id int64) {
+		ctx, cancel := context.WithTimeout(context.Background(), s.ClientTouchTimeout())
+		defer cancel()
+		if err := s.TouchClientLastUsed(ctx, id); err != nil {
+			logger.Warn("updating oauth client last_used_at", "client_id", id, "error", err)
+		}
+	}(clientID)
+}
+
+// clientTouchDebouncer collapses repeated TouchClientLastUsedAsync calls for
+// the same client into at most one underlying DB write per ttl window.
+//
+// Map growth is bounded by the number of distinct clients that have ever
+// authenticated against this process — typically in the hundreds. Entries
+// are not evicted; clients that fall silent keep a single stale timestamp
+// until process restart, which is not a memory-footprint concern at that
+// cardinality.
+type clientTouchDebouncer struct {
+	mu       sync.Mutex
+	lastSeen map[int64]time.Time
+	ttl      time.Duration
+}
+
+func newClientTouchDebouncer(ttl time.Duration) *clientTouchDebouncer {
+	return &clientTouchDebouncer{
+		lastSeen: make(map[int64]time.Time),
+		ttl:      ttl,
+	}
+}
+
+// shouldTouch returns true when clientID has not been touched within ttl
+// and records now as the most recent touch. ttl <= 0 disables debouncing
+// (every call returns true) so tests can exercise the underlying path.
+func (d *clientTouchDebouncer) shouldTouch(clientID int64, now time.Time) bool {
+	if d.ttl <= 0 {
+		return true
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if last, ok := d.lastSeen[clientID]; ok && now.Sub(last) < d.ttl {
+		return false
+	}
+	d.lastSeen[clientID] = now
+	return true
 }
 
 // GrantClientScope records a time-bounded scope expansion for a client,

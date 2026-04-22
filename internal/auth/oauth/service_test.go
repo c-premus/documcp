@@ -64,3 +64,69 @@ func TestClientTouchTimeout(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// clientTouchDebouncer (code-quality M4)
+// ---------------------------------------------------------------------------
+
+func TestClientTouchDebouncer(t *testing.T) {
+	t.Parallel()
+
+	t.Run("first call passes, repeat within ttl skips", func(t *testing.T) {
+		t.Parallel()
+
+		d := newClientTouchDebouncer(time.Minute)
+		now := time.Unix(1_700_000_000, 0)
+
+		if !d.shouldTouch(42, now) {
+			t.Fatal("first call should fire")
+		}
+		if d.shouldTouch(42, now.Add(10*time.Second)) {
+			t.Error("repeat call within ttl should be debounced")
+		}
+	})
+
+	t.Run("call after ttl window passes again", func(t *testing.T) {
+		t.Parallel()
+
+		d := newClientTouchDebouncer(time.Minute)
+		now := time.Unix(1_700_000_000, 0)
+
+		if !d.shouldTouch(42, now) {
+			t.Fatal("first call should fire")
+		}
+		if !d.shouldTouch(42, now.Add(2*time.Minute)) {
+			t.Error("call past ttl should fire again")
+		}
+	})
+
+	t.Run("distinct clients are tracked independently", func(t *testing.T) {
+		t.Parallel()
+
+		d := newClientTouchDebouncer(time.Minute)
+		now := time.Unix(1_700_000_000, 0)
+
+		if !d.shouldTouch(1, now) {
+			t.Error("client 1 first call should fire")
+		}
+		if !d.shouldTouch(2, now) {
+			t.Error("client 2 first call should fire even though client 1 just touched")
+		}
+		if d.shouldTouch(1, now.Add(time.Second)) {
+			t.Error("client 1 repeat should be debounced")
+		}
+	})
+
+	t.Run("zero ttl disables debouncing", func(t *testing.T) {
+		t.Parallel()
+
+		d := newClientTouchDebouncer(0)
+		now := time.Unix(1_700_000_000, 0)
+
+		for i := range 3 {
+			if !d.shouldTouch(7, now.Add(time.Duration(i)*time.Nanosecond)) {
+				t.Errorf("call %d should fire when ttl is zero", i)
+			}
+		}
+	})
+}

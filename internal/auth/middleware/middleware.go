@@ -49,8 +49,9 @@ type bearerResult struct {
 }
 
 // authenticateBearerToken extracts and validates a bearer token from the
-// Authorization header value. On success it fires-and-forgets
-// TouchClientLastUsed and optionally loads the associated user.
+// Authorization header value. On success it triggers a debounced background
+// last_used_at update via the oauth service and optionally loads the
+// associated user.
 func authenticateBearerToken(ctx context.Context, authHeader string, oauthService *oauth.Service, logger *slog.Logger) (*bearerResult, error) {
 	bearerToken := strings.TrimPrefix(authHeader, "Bearer ")
 	if bearerToken == authHeader {
@@ -62,13 +63,7 @@ func authenticateBearerToken(ctx context.Context, authHeader string, oauthServic
 		return nil, errInvalidToken
 	}
 
-	go func(id int64) {
-		touchCtx, cancel := context.WithTimeout(context.Background(), oauthService.ClientTouchTimeout())
-		defer cancel()
-		if err := oauthService.TouchClientLastUsed(touchCtx, id); err != nil {
-			logger.Warn("updating oauth client last_used_at", "client_id", id, "error", err)
-		}
-	}(token.ClientID)
+	oauthService.TouchClientLastUsedAsync(token.ClientID, logger)
 
 	result := &bearerResult{token: token}
 	if token.UserID.Valid {

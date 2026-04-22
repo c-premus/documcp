@@ -159,7 +159,7 @@ func (h *Handler) registerDocumentTools() {
 
 	mcp.AddTool(h.server, &mcp.Tool{
 		Name:        "create_document",
-		Description: "Create a new document (markdown or html). Auto-indexed for search.",
+		Description: "Create a new document. Required: `title`, `content`, `file_type` (`markdown` or `html` — binary formats must be uploaded via REST). Optional: description, tags, is_public. Auto-indexed for search.",
 		Annotations: &mcp.ToolAnnotations{
 			// Additive only — creating a document doesn't modify or remove
 			// anything else. Each call yields a new document, so it's not idempotent.
