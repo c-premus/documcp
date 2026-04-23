@@ -48,9 +48,14 @@ describe('sse store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     stubEventSource()
+    // Fake timers so a scheduleReconnect() setTimeout from the onerror path
+    // doesn't fire after afterEach unstubs EventSource.
+    vi.useFakeTimers()
   })
 
   afterEach(() => {
+    vi.clearAllTimers()
+    vi.useRealTimers()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
