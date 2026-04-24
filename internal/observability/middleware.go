@@ -32,10 +32,20 @@ func Tracing(tracerName string) func(http.Handler) http.Handler {
 			tracer := otel.Tracer(tracerName)
 			propagator := otel.GetTextMapPropagator()
 
-			ctx := propagator.Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+			parentCtx := propagator.Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+
+			// When an upstream proxy (e.g., Traefik) sends a valid but unsampled
+			// traceparent, its own root span never reaches Tempo. Adopting that
+			// trace_id anyway produces orphan traces ("root span not yet received"
+			// in Grafana). Discard unsampled parents so DocuMCP becomes the trace
+			// root instead — cross-service correlation is preserved when upstream
+			// DID sample, and orphan traces are avoided when it didn't.
+			if sc := trace.SpanContextFromContext(parentCtx); sc.IsValid() && !sc.IsSampled() {
+				parentCtx = r.Context()
+			}
 
 			spanName := fmt.Sprintf("%s %s", r.Method, r.URL.Path)
-			ctx, span := tracer.Start(ctx, spanName,
+			ctx, span := tracer.Start(parentCtx, spanName,
 				trace.WithSpanKind(trace.SpanKindServer),
 			)
 			defer span.End()
