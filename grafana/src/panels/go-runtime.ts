@@ -336,7 +336,7 @@ export function queueJobRatePanel(): PanelBuilder {
   const panel = new PanelBuilder()
     .title('Queue Job Rate')
     .description('Jobs dispatched, completed, and failed per second by type')
-    .gridPos({ h: 8, w: 12, x: 0, y: 58 })
+    .gridPos({ h: 8, w: 12, x: 0, y: 67 })
     .unit('ops');
 
   applyTimeseriesStyle(panel);
@@ -368,7 +368,7 @@ export function queueJobDurationPanel(): PanelBuilder {
   const panel = new PanelBuilder()
     .title('Queue Job Duration (P95)')
     .description('P95 job execution time by type')
-    .gridPos({ h: 8, w: 12, x: 12, y: 58 })
+    .gridPos({ h: 8, w: 12, x: 12, y: 67 })
     .unit('s');
 
   applyTimeseriesStyle(panel);
