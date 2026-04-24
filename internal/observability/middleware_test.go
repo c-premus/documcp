@@ -7,6 +7,11 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/c-premus/documcp/internal/observability"
 )
@@ -250,6 +255,100 @@ func TestTracing_SkipsHealthAndMetricsPaths(t *testing.T) {
 			}
 			if rec.Code != http.StatusOK {
 				t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+			}
+		})
+	}
+}
+
+func TestTracing_UnsampledUpstreamParentStartsFreshRoot(t *testing.T) {
+	// Exercises the orphan-trace fix: when Traefik (or any upstream proxy)
+	// sends a valid traceparent with sampled=0, its root span will never be
+	// exported. Adopting that trace_id anyway would leave Tempo with child
+	// spans whose root is never received. DocuMCP should discard an
+	// unsampled inbound parent and start a fresh root instead.
+	//
+	// Not parallel — mutates the global TracerProvider and propagator.
+
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+		sdktrace.WithSpanProcessor(recorder),
+	)
+	prevTP := otel.GetTracerProvider()
+	prevProp := otel.GetTextMapPropagator()
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prevTP)
+		otel.SetTextMapPropagator(prevProp)
+	})
+
+	const (
+		upstreamTraceID = "00000000000000000000000000000abc"
+		upstreamSpanID  = "0000000000000def"
+	)
+
+	cases := []struct {
+		name             string
+		traceparent      string
+		wantFreshRoot    bool
+		wantInheritedTID bool
+	}{
+		{
+			name:             "unsampled upstream produces fresh root",
+			traceparent:      "00-" + upstreamTraceID + "-" + upstreamSpanID + "-00",
+			wantFreshRoot:    true,
+			wantInheritedTID: false,
+		},
+		{
+			name:             "sampled upstream is preserved as parent",
+			traceparent:      "00-" + upstreamTraceID + "-" + upstreamSpanID + "-01",
+			wantFreshRoot:    false,
+			wantInheritedTID: true,
+		},
+		{
+			name:             "no traceparent starts fresh root",
+			traceparent:      "",
+			wantFreshRoot:    true,
+			wantInheritedTID: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder.Reset()
+
+			inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+			handler := observability.Tracing("test-tracer")(inner)
+
+			req := httptest.NewRequest(http.MethodGet, "/traced", http.NoBody)
+			if tc.traceparent != "" {
+				req.Header.Set("traceparent", tc.traceparent)
+			}
+			handler.ServeHTTP(httptest.NewRecorder(), req)
+
+			spans := recorder.Ended()
+			if len(spans) != 1 {
+				t.Fatalf("ended spans = %d, want 1", len(spans))
+			}
+			span := spans[0]
+
+			parent := span.Parent()
+			gotFreshRoot := !parent.IsValid()
+			if gotFreshRoot != tc.wantFreshRoot {
+				t.Errorf("fresh root = %v, want %v (parent=%+v)", gotFreshRoot, tc.wantFreshRoot, parent)
+			}
+
+			tid := span.SpanContext().TraceID().String()
+			gotInherited := tid == upstreamTraceID
+			if gotInherited != tc.wantInheritedTID {
+				t.Errorf("inherited trace_id = %v (trace_id=%s), want %v", gotInherited, tid, tc.wantInheritedTID)
+			}
+
+			if span.SpanKind() != trace.SpanKindServer {
+				t.Errorf("span kind = %v, want SpanKindServer", span.SpanKind())
 			}
 		})
 	}
