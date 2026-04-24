@@ -56,7 +56,7 @@ export function recentTracesPanel(): PanelBuilder {
     .description(
       'Recent traces from Tempo — click trace ID to explore full span tree',
     )
-    .gridPos({ h: 10, w: 24, x: 0, y: 76 })
+    .gridPos({ h: 10, w: 24, x: 0, y: 85 })
     .datasource(TEMPO_DATASOURCE)
     .withTarget(
       new TempoQueryBuilder()
@@ -89,7 +89,7 @@ export function serviceMapPanel(): NodeGraphPanelBuilder {
     .description(
       'Service dependency graph for DocuMCP stack derived from Tempo service graph metrics',
     )
-    .gridPos({ h: 12, w: 24, x: 0, y: 86 })
+    .gridPos({ h: 12, w: 24, x: 0, y: 95 })
     .datasource(TEMPO_DATASOURCE)
     .withTarget(
       new TempoQueryBuilder()
