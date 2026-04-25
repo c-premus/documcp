@@ -13,6 +13,7 @@ import ToggleCell from '../components/shared/ToggleCell.vue'
 import TruncatedText from '../components/shared/TruncatedText.vue'
 import RelativeTimeCell from '../components/shared/RelativeTimeCell.vue'
 import UserRowActions from '../components/users/UserRowActions.vue'
+import UserSessionsModal from '../components/users/UserSessionsModal.vue'
 
 import { useUsersStore, type User } from '../stores/users'
 
@@ -25,6 +26,9 @@ const perPage = ref(20)
 
 const deleteTarget = ref<User | null>(null)
 const showDeleteDialog = computed(() => deleteTarget.value !== null)
+
+const sessionsTarget = ref<User | null>(null)
+const showSessionsDialog = computed(() => sessionsTarget.value !== null)
 
 async function loadUsers(): Promise<void> {
   try {
@@ -130,6 +134,9 @@ const columns: ColumnDef<User, unknown>[] = [
         onDelete: (user) => {
           deleteTarget.value = user as User
         },
+        onSessions: (user) => {
+          sessionsTarget.value = user as User
+        },
       }),
   },
 ]
@@ -184,6 +191,13 @@ const columns: ColumnDef<User, unknown>[] = [
       variant="danger"
       @confirm="handleDeleteConfirm"
       @cancel="handleDeleteCancel"
+    />
+
+    <!-- Sessions Modal -->
+    <UserSessionsModal
+      :open="showSessionsDialog"
+      :user="sessionsTarget"
+      @close="sessionsTarget = null"
     />
   </div>
 </template>

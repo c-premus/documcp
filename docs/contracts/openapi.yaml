@@ -2459,6 +2459,115 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/admin/users/{id}/sessions:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      operationId: adminListUserSessions
+      tags: [Admin]
+      summary: List active session IDs for a user
+      description: |
+        Returns the IDs of every Redis-backed session currently attached to
+        this user. Sessions appear in the index when a Save call carries a
+        non-zero `user_id` — pre-auth sessions and the separate id_token
+        session are excluded by design. When the session store is not
+        configured the array is empty rather than an error.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Active session IDs
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { type: string }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    delete:
+      operationId: adminRevokeAllUserSessions
+      tags: [Admin]
+      summary: Revoke every session for a user
+      description: |
+        Drops every session attached to the user. Returns the number of
+        sessions that were removed so the UI can render a confirmation. Used
+        as a "kick this user" admin action; auto-fires after a successful
+        delete or admin-demote anyway, so explicit calls are rarely needed.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Sessions revoked
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [revoked]
+                        properties:
+                          revoked: { type: integer, minimum: 0 }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/users/{id}/sessions/{sessionID}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+      - name: sessionID
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      operationId: adminRevokeUserSession
+      tags: [Admin]
+      summary: Revoke a single session by ID
+      description: |
+        Drops the named session row from Redis and detaches it from the
+        user's session index. Unknown session IDs are a 200 — the operation
+        is idempotent.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Session revoked
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessEnvelope"
+                  - type: object
+                    properties:
+                      message: { type: string }
+        "400":
+          description: Missing session ID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503":
+          description: Session store not configured
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorEnvelope" }
+
   /api/admin/external-services/reorder:
     put:
       operationId: adminReorderExternalServices

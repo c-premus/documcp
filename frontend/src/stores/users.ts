@@ -84,6 +84,55 @@ export const useUsersStore = defineStore('users', () => {
     )
   }
 
+  // Session-management state is kept in the same store but separate refs so a
+  // session-modal open doesn't blank the user-list loading skeleton.
+  const sessionIDs = ref<string[]>([])
+  const sessionsLoading = ref(false)
+  const sessionsError = ref<string | null>(null)
+
+  async function fetchUserSessions(id: number): Promise<string[]> {
+    return withLoading(
+      sessionsLoading,
+      sessionsError,
+      async () => {
+        const response = await apiFetch<{ data: string[] }>(`/api/admin/users/${id}/sessions`)
+        sessionIDs.value = response.data
+        return response.data
+      },
+      'Failed to fetch sessions',
+    )
+  }
+
+  async function revokeUserSession(userID: number, sessionID: string): Promise<void> {
+    return withLoading(
+      sessionsLoading,
+      sessionsError,
+      async () => {
+        await apiFetch(`/api/admin/users/${userID}/sessions/${encodeURIComponent(sessionID)}`, {
+          method: 'DELETE',
+        })
+        sessionIDs.value = sessionIDs.value.filter((s) => s !== sessionID)
+      },
+      'Failed to revoke session',
+    )
+  }
+
+  async function revokeAllUserSessions(userID: number): Promise<number> {
+    return withLoading(
+      sessionsLoading,
+      sessionsError,
+      async () => {
+        const response = await apiFetch<{ data: { revoked: number } }>(
+          `/api/admin/users/${userID}/sessions`,
+          { method: 'DELETE' },
+        )
+        sessionIDs.value = []
+        return response.data.revoked
+      },
+      'Failed to revoke sessions',
+    )
+  }
+
   return {
     users,
     total,
@@ -92,5 +141,11 @@ export const useUsersStore = defineStore('users', () => {
     fetchUsers,
     toggleAdmin,
     deleteUser,
+    sessionIDs,
+    sessionsLoading,
+    sessionsError,
+    fetchUserSessions,
+    revokeUserSession,
+    revokeAllUserSessions,
   }
 })

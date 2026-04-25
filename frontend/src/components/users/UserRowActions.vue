@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { TrashIcon } from '@heroicons/vue/24/outline'
+import { ComputerDesktopIcon, TrashIcon } from '@heroicons/vue/24/outline'
 
 interface UserLike {
   readonly id: number
@@ -12,16 +12,31 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   delete: [user: UserLike]
+  sessions: [user: UserLike]
 }>()
 
 function onDelete(event: MouseEvent): void {
   event.stopPropagation()
   emit('delete', props.user)
 }
+
+function onSessions(event: MouseEvent): void {
+  event.stopPropagation()
+  emit('sessions', props.user)
+}
 </script>
 
 <template>
   <div class="flex items-center gap-2">
+    <button
+      type="button"
+      class="text-text-muted hover:text-indigo-600 dark:hover:text-indigo-400"
+      title="View active sessions"
+      aria-label="View active sessions"
+      @click="onSessions"
+    >
+      <ComputerDesktopIcon class="h-5 w-5" />
+    </button>
     <button
       type="button"
       class="text-text-muted hover:text-red-600 dark:hover:text-red-400"
