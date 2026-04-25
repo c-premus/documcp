@@ -28,6 +28,41 @@ type mockUserRepo struct {
 	toggleAdminFn  func(ctx context.Context, id int64) error
 }
 
+// recordingSessionRevoker captures every call so tests can assert on what the
+// handler asked the store to do without spinning up miniredis.
+type recordingSessionRevoker struct {
+	listFn       func(ctx context.Context, userID int64) ([]string, error)
+	revokeOneFn  func(ctx context.Context, sessionID string) error
+	revokeAllFn  func(ctx context.Context, userID int64) (int, error)
+	listCalls    []int64
+	revokeOneIDs []string
+	revokeAllIDs []int64
+}
+
+func (m *recordingSessionRevoker) ListUserSessions(ctx context.Context, userID int64) ([]string, error) {
+	m.listCalls = append(m.listCalls, userID)
+	if m.listFn != nil {
+		return m.listFn(ctx, userID)
+	}
+	return nil, nil
+}
+
+func (m *recordingSessionRevoker) RevokeSession(ctx context.Context, sessionID string) error {
+	m.revokeOneIDs = append(m.revokeOneIDs, sessionID)
+	if m.revokeOneFn != nil {
+		return m.revokeOneFn(ctx, sessionID)
+	}
+	return nil
+}
+
+func (m *recordingSessionRevoker) RevokeUserSessions(ctx context.Context, userID int64) (int, error) {
+	m.revokeAllIDs = append(m.revokeAllIDs, userID)
+	if m.revokeAllFn != nil {
+		return m.revokeAllFn(ctx, userID)
+	}
+	return 0, nil
+}
+
 func (m *mockUserRepo) ListUsers(ctx context.Context, query string, limit, offset int) ([]model.User, int, error) {
 	if m.listUsersFn != nil {
 		return m.listUsersFn(ctx, query, limit, offset)
@@ -71,6 +106,14 @@ func withAuthUser(r *http.Request, user *model.User) *http.Request {
 	return r.WithContext(ctx)
 }
 
+func chiCtxWithParams(r *http.Request, kv ...string) *http.Request {
+	rctx := chi.NewRouteContext()
+	for i := 0; i+1 < len(kv); i += 2 {
+		rctx.URLParams.Add(kv[i], kv[i+1])
+	}
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
+
 // ---------------------------------------------------------------------------
 // Tests: List
 // ---------------------------------------------------------------------------
@@ -87,7 +130,7 @@ func TestUserHandler_List_Success(t *testing.T) {
 		},
 	}
 
-	h := NewUserHandler(repo, testutil.DiscardLogger())
+	h := NewUserHandler(repo, nil, testutil.DiscardLogger())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/users?limit=10&offset=0", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -126,7 +169,7 @@ func TestUserHandler_List_DefaultLimitOffset(t *testing.T) {
 		},
 	}
 
-	h := NewUserHandler(repo, testutil.DiscardLogger())
+	h := NewUserHandler(repo, nil, testutil.DiscardLogger())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/users", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -150,7 +193,7 @@ func TestUserHandler_List_Error(t *testing.T) {
 		},
 	}
 
-	h := NewUserHandler(repo, testutil.DiscardLogger())
+	h := NewUserHandler(repo, nil, testutil.DiscardLogger())
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/users", http.NoBody)
 	rec := httptest.NewRecorder()
 
@@ -174,7 +217,7 @@ func TestUserHandler_Show_Success(t *testing.T) {
 		},
 	}
 
-	h := NewUserHandler(repo, testutil.DiscardLogger())
+	h := NewUserHandler(repo, nil, testutil.DiscardLogger())
 	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/1", http.NoBody), "1")
 	rec := httptest.NewRecorder()
 
@@ -194,7 +237,7 @@ func TestUserHandler_Show_NotFound(t *testing.T) {
 		},
 	}
 
-	h := NewUserHandler(repo, testutil.DiscardLogger())
+	h := NewUserHandler(repo, nil, testutil.DiscardLogger())
 	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/999", http.NoBody), "999")
 	rec := httptest.NewRecorder()
 
@@ -208,7 +251,7 @@ func TestUserHandler_Show_NotFound(t *testing.T) {
 func TestUserHandler_Show_InvalidID(t *testing.T) {
 	t.Parallel()
 
-	h := NewUserHandler(&mockUserRepo{}, testutil.DiscardLogger())
+	h := NewUserHandler(&mockUserRepo{}, nil, testutil.DiscardLogger())
 	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/abc", http.NoBody), "abc")
 	rec := httptest.NewRecorder()
 
@@ -228,7 +271,7 @@ func TestUserHandler_Delete_Success(t *testing.T) {
 
 	repo := &mockUserRepo{}
 
-	h := NewUserHandler(repo, testutil.DiscardLogger())
+	h := NewUserHandler(repo, nil, testutil.DiscardLogger())
 
 	// Set a different user as the current user so self-deletion check passes.
 	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/2", http.NoBody), "2")
@@ -245,7 +288,7 @@ func TestUserHandler_Delete_Success(t *testing.T) {
 func TestUserHandler_Delete_SelfDeletion(t *testing.T) {
 	t.Parallel()
 
-	h := NewUserHandler(&mockUserRepo{}, testutil.DiscardLogger())
+	h := NewUserHandler(&mockUserRepo{}, nil, testutil.DiscardLogger())
 
 	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/42", http.NoBody), "42")
 	req = withAuthUser(req, &model.User{ID: 42, Name: "Self"})
@@ -258,6 +301,49 @@ func TestUserHandler_Delete_SelfDeletion(t *testing.T) {
 	}
 }
 
+func TestUserHandler_Delete_RevokesUserSessions(t *testing.T) {
+	t.Parallel()
+
+	rev := &recordingSessionRevoker{
+		revokeAllFn: func(_ context.Context, _ int64) (int, error) { return 3, nil },
+	}
+	h := NewUserHandler(&mockUserRepo{}, rev, testutil.DiscardLogger())
+
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/2", http.NoBody), "2")
+	req = withAuthUser(req, &model.User{ID: 99})
+	rec := httptest.NewRecorder()
+
+	h.Delete(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if len(rev.revokeAllIDs) != 1 || rev.revokeAllIDs[0] != 2 {
+		t.Fatalf("RevokeUserSessions calls = %v, want [2]", rev.revokeAllIDs)
+	}
+}
+
+func TestUserHandler_Delete_RevokerErrorDoesNotFailRequest(t *testing.T) {
+	t.Parallel()
+
+	rev := &recordingSessionRevoker{
+		revokeAllFn: func(_ context.Context, _ int64) (int, error) {
+			return 0, errors.New("redis down")
+		},
+	}
+	h := NewUserHandler(&mockUserRepo{}, rev, testutil.DiscardLogger())
+
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/2", http.NoBody), "2")
+	req = withAuthUser(req, &model.User{ID: 99})
+	rec := httptest.NewRecorder()
+
+	h.Delete(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (revoker error must not fail user delete)", rec.Code, http.StatusOK)
+	}
+}
+
 func TestUserHandler_Delete_RepoError(t *testing.T) {
 	t.Parallel()
 
@@ -267,7 +353,7 @@ func TestUserHandler_Delete_RepoError(t *testing.T) {
 		},
 	}
 
-	h := NewUserHandler(repo, testutil.DiscardLogger())
+	h := NewUserHandler(repo, nil, testutil.DiscardLogger())
 
 	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/2", http.NoBody), "2")
 	req = withAuthUser(req, &model.User{ID: 99})
@@ -293,7 +379,7 @@ func TestUserHandler_ToggleAdmin_Success(t *testing.T) {
 		},
 	}
 
-	h := NewUserHandler(repo, testutil.DiscardLogger())
+	h := NewUserHandler(repo, nil, testutil.DiscardLogger())
 
 	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/2/toggle-admin", http.NoBody), "2")
 	req = withAuthUser(req, &model.User{ID: 99})
@@ -309,7 +395,7 @@ func TestUserHandler_ToggleAdmin_Success(t *testing.T) {
 func TestUserHandler_ToggleAdmin_SelfDemotion(t *testing.T) {
 	t.Parallel()
 
-	h := NewUserHandler(&mockUserRepo{}, testutil.DiscardLogger())
+	h := NewUserHandler(&mockUserRepo{}, nil, testutil.DiscardLogger())
 
 	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/42/toggle-admin", http.NoBody), "42")
 	req = withAuthUser(req, &model.User{ID: 42})
@@ -322,6 +408,58 @@ func TestUserHandler_ToggleAdmin_SelfDemotion(t *testing.T) {
 	}
 }
 
+func TestUserHandler_ToggleAdmin_DemoteRevokesSessions(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockUserRepo{
+		findUserByIDFn: func(_ context.Context, id int64) (*model.User, error) {
+			return &model.User{ID: id, IsAdmin: false}, nil // post-toggle state: demoted
+		},
+	}
+	rev := &recordingSessionRevoker{
+		revokeAllFn: func(_ context.Context, _ int64) (int, error) { return 1, nil },
+	}
+	h := NewUserHandler(repo, rev, testutil.DiscardLogger())
+
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/5/toggle-admin", http.NoBody), "5")
+	req = withAuthUser(req, &model.User{ID: 99})
+	rec := httptest.NewRecorder()
+
+	h.ToggleAdmin(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if len(rev.revokeAllIDs) != 1 || rev.revokeAllIDs[0] != 5 {
+		t.Fatalf("RevokeUserSessions calls = %v, want [5]", rev.revokeAllIDs)
+	}
+}
+
+func TestUserHandler_ToggleAdmin_PromoteDoesNotRevokeSessions(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockUserRepo{
+		findUserByIDFn: func(_ context.Context, id int64) (*model.User, error) {
+			return &model.User{ID: id, IsAdmin: true}, nil // post-toggle state: promoted
+		},
+	}
+	rev := &recordingSessionRevoker{}
+	h := NewUserHandler(repo, rev, testutil.DiscardLogger())
+
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/5/toggle-admin", http.NoBody), "5")
+	req = withAuthUser(req, &model.User{ID: 99})
+	rec := httptest.NewRecorder()
+
+	h.ToggleAdmin(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if len(rev.revokeAllIDs) != 0 {
+		t.Fatalf("RevokeUserSessions calls = %v, want none on promote", rev.revokeAllIDs)
+	}
+}
+
 func TestUserHandler_ToggleAdmin_RepoError(t *testing.T) {
 	t.Parallel()
 
@@ -331,7 +469,7 @@ func TestUserHandler_ToggleAdmin_RepoError(t *testing.T) {
 		},
 	}
 
-	h := NewUserHandler(repo, testutil.DiscardLogger())
+	h := NewUserHandler(repo, nil, testutil.DiscardLogger())
 	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/5/toggle-admin", http.NoBody), "5")
 	req = withAuthUser(req, &model.User{ID: 99})
 	rec := httptest.NewRecorder()
@@ -353,7 +491,7 @@ func TestUserHandler_ToggleAdmin_FindAfterToggleError(t *testing.T) {
 		},
 	}
 
-	h := NewUserHandler(repo, testutil.DiscardLogger())
+	h := NewUserHandler(repo, nil, testutil.DiscardLogger())
 	req := chiCtxWithParam(httptest.NewRequest(http.MethodPost, "/api/admin/users/5/toggle-admin", http.NoBody), "5")
 	req = withAuthUser(req, &model.User{ID: 99})
 	rec := httptest.NewRecorder()
@@ -448,4 +586,139 @@ func TestNewUserResponse(t *testing.T) {
 			t.Errorf("UpdatedAt = %q, want %q", resp.UpdatedAt, wantTime)
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Tests: ListSessions / RevokeSession / RevokeAllSessions
+// ---------------------------------------------------------------------------
+
+func TestUserHandler_ListSessions_ReturnsIDs(t *testing.T) {
+	t.Parallel()
+
+	rev := &recordingSessionRevoker{
+		listFn: func(_ context.Context, _ int64) ([]string, error) {
+			return []string{"abc", "def"}, nil
+		},
+	}
+	h := NewUserHandler(&mockUserRepo{}, rev, testutil.DiscardLogger())
+
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/7/sessions", http.NoBody), "7")
+	rec := httptest.NewRecorder()
+
+	h.ListSessions(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	data, ok := resp["data"].([]any)
+	if !ok {
+		t.Fatalf("data = %v, want array", resp["data"])
+	}
+	if len(data) != 2 {
+		t.Fatalf("len(data) = %d, want 2", len(data))
+	}
+}
+
+func TestUserHandler_ListSessions_NilStoreReturnsEmpty(t *testing.T) {
+	t.Parallel()
+
+	h := NewUserHandler(&mockUserRepo{}, nil, testutil.DiscardLogger())
+
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodGet, "/api/admin/users/7/sessions", http.NoBody), "7")
+	rec := httptest.NewRecorder()
+
+	h.ListSessions(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+func TestUserHandler_RevokeSession_DeletesByID(t *testing.T) {
+	t.Parallel()
+
+	rev := &recordingSessionRevoker{}
+	h := NewUserHandler(&mockUserRepo{}, rev, testutil.DiscardLogger())
+
+	req := chiCtxWithParams(
+		httptest.NewRequest(http.MethodDelete, "/api/admin/users/7/sessions/abc", http.NoBody),
+		"id", "7",
+		"sessionID", "abc",
+	)
+	rec := httptest.NewRecorder()
+
+	h.RevokeSession(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if len(rev.revokeOneIDs) != 1 || rev.revokeOneIDs[0] != "abc" {
+		t.Fatalf("RevokeSession calls = %v, want [abc]", rev.revokeOneIDs)
+	}
+}
+
+func TestUserHandler_RevokeSession_MissingIDIs400(t *testing.T) {
+	t.Parallel()
+
+	h := NewUserHandler(&mockUserRepo{}, &recordingSessionRevoker{}, testutil.DiscardLogger())
+
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/7/sessions/", http.NoBody), "7")
+	rec := httptest.NewRecorder()
+
+	h.RevokeSession(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUserHandler_RevokeSession_NilStoreIs503(t *testing.T) {
+	t.Parallel()
+
+	h := NewUserHandler(&mockUserRepo{}, nil, testutil.DiscardLogger())
+
+	req := chiCtxWithParams(
+		httptest.NewRequest(http.MethodDelete, "/api/admin/users/7/sessions/abc", http.NoBody),
+		"id", "7",
+		"sessionID", "abc",
+	)
+	rec := httptest.NewRecorder()
+
+	h.RevokeSession(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func TestUserHandler_RevokeAllSessions_ReturnsCount(t *testing.T) {
+	t.Parallel()
+
+	rev := &recordingSessionRevoker{
+		revokeAllFn: func(_ context.Context, _ int64) (int, error) { return 4, nil },
+	}
+	h := NewUserHandler(&mockUserRepo{}, rev, testutil.DiscardLogger())
+
+	req := chiCtxWithParam(httptest.NewRequest(http.MethodDelete, "/api/admin/users/7/sessions", http.NoBody), "7")
+	rec := httptest.NewRecorder()
+
+	h.RevokeAllSessions(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	data := resp["data"].(map[string]any)
+	if data["revoked"].(float64) != 4 {
+		t.Fatalf("revoked = %v, want 4", data["revoked"])
+	}
 }

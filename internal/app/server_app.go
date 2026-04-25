@@ -173,7 +173,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	gitTemplateSvc := service.NewGitTemplateService(f.GitTemplateRepo, riverClient, f.Encryptor, logger)
 	gitTemplateH := apihandler.NewGitTemplateHandler(gitTemplateSvc, f.GitTemplateRepo, logger)
 	externalServiceH := apihandler.NewExternalServiceHandler(externalServiceSvc, f.ExternalServiceRepo, riverClient, f.KiwixFactory, f.ControlBus, logger)
-	userH := apihandler.NewUserHandler(f.OAuthRepo, logger)
+	userH := apihandler.NewUserHandler(f.OAuthRepo, sessionStore, logger)
 	oauthClientSvc := service.NewOAuthClientService(f.OAuthRepo, logger)
 	oauthClientH := apihandler.NewOAuthClientHandler(f.OAuthRepo, oauthClientSvc, logger)
 

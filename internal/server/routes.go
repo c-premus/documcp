@@ -440,6 +440,9 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 					r.Get("/{id}", deps.Handlers.UserHandler.Show)
 					r.Delete("/{id}", deps.Handlers.UserHandler.Delete)
 					r.Post("/{id}/toggle-admin", deps.Handlers.UserHandler.ToggleAdmin)
+					r.Get("/{id}/sessions", deps.Handlers.UserHandler.ListSessions)
+					r.Delete("/{id}/sessions", deps.Handlers.UserHandler.RevokeAllSessions)
+					r.Delete("/{id}/sessions/{sessionID}", deps.Handlers.UserHandler.RevokeSession)
 				})
 			}
 
