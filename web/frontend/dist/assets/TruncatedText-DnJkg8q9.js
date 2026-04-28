@@ -1,0 +1,1 @@
+import{A as e,b as t,ft as n,h as r,ht as i}from"./helpers-DbDpLHIC.js";var a=[`title`],o=t({__name:`TruncatedText`,props:{value:{},mono:{type:Boolean,default:!1},maxWidth:{default:`max-w-xs`}},setup(t){return(o,s)=>(e(),r(`span`,{class:n([`block truncate`,[t.maxWidth,t.mono?`font-mono text-xs`:``]]),title:t.value},i(t.value),11,a))}});export{o as t};

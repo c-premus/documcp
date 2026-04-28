@@ -1,1 +1,0 @@
-import{A as e,b as t,d as n,h as r,mt as i}from"./helpers-BjeU0uxY.js";var a=t({__name:`FileTypeCell`,props:{value:{}},setup(t){let a=t,o=n(()=>a.value.toUpperCase());return(t,n)=>(e(),r(`span`,null,i(o.value),1))}});export{a as t};
