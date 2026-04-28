@@ -14,6 +14,7 @@ import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
 import FileTypeCell from '../components/shared/FileTypeCell.vue'
 import RelativeTimeCell from '../components/shared/RelativeTimeCell.vue'
 import DocumentTrashRowActions from '../components/documents/DocumentTrashRowActions.vue'
+import DocumentTrashMobileCard from '../components/documents/DocumentTrashMobileCard.vue'
 
 const auth = useAuthStore()
 const store = useDocumentsStore()
@@ -165,7 +166,16 @@ function handleBulkPurgeCancel(): void {
 
     <!-- Data Table -->
     <template v-else>
-      <DataTable :data="store.documents" :columns="columns" :loading="store.loading" />
+      <DataTable :data="store.documents" :columns="columns" :loading="store.loading">
+        <template #mobile-card="{ row }">
+          <DocumentTrashMobileCard
+            :document="row as Document"
+            :can-purge="auth.isAdmin"
+            @restore="handleRestore"
+            @purge="(doc: Document) => (purgeTarget = doc)"
+          />
+        </template>
+      </DataTable>
 
       <Pagination
         :page="page"
