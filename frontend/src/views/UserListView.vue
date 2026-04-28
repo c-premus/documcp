@@ -14,6 +14,7 @@ import TruncatedText from '../components/shared/TruncatedText.vue'
 import RelativeTimeCell from '../components/shared/RelativeTimeCell.vue'
 import UserRowActions from '../components/users/UserRowActions.vue'
 import UserSessionsModal from '../components/users/UserSessionsModal.vue'
+import UserMobileCard from '../components/users/UserMobileCard.vue'
 
 import { useUsersStore, type User } from '../stores/users'
 
@@ -171,7 +172,16 @@ const columns: ColumnDef<User, unknown>[] = [
 
     <!-- Data Table -->
     <template v-else>
-      <DataTable :data="users" :columns="columns" :loading="loading" />
+      <DataTable :data="users" :columns="columns" :loading="loading">
+        <template #mobile-card="{ row }">
+          <UserMobileCard
+            :user="row as User"
+            @toggle-admin="handleToggleAdmin"
+            @delete="(user) => (deleteTarget = user as User)"
+            @sessions="(user) => (sessionsTarget = user as User)"
+          />
+        </template>
+      </DataTable>
 
       <Pagination
         :page="page"
