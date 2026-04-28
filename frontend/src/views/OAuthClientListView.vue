@@ -15,6 +15,7 @@ import RelativeTimeCell from '../components/shared/RelativeTimeCell.vue'
 import OAuthClientCreateModal from '../components/oauth/OAuthClientCreateModal.vue'
 import OAuthGrantTypeChips from '../components/oauth/OAuthGrantTypeChips.vue'
 import OAuthClientRowActions from '../components/oauth/OAuthClientRowActions.vue'
+import OAuthClientMobileCard from '../components/oauth/OAuthClientMobileCard.vue'
 import SecretDisplayModal from '../components/oauth/SecretDisplayModal.vue'
 
 import { useOAuthClientsStore, type OAuthClient } from '../stores/oauthClients'
@@ -211,7 +212,14 @@ const columns: ColumnDef<OAuthClient, unknown>[] = [
 
     <!-- Data Table -->
     <template v-else>
-      <DataTable :data="clients" :columns="columns" :loading="loading" />
+      <DataTable :data="clients" :columns="columns" :loading="loading">
+        <template #mobile-card="{ row }">
+          <OAuthClientMobileCard
+            :client="row as OAuthClient"
+            @delete="(client: OAuthClient) => (deleteTarget = client)"
+          />
+        </template>
+      </DataTable>
 
       <Pagination
         :page="page"

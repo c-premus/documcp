@@ -13,6 +13,7 @@ import ToggleCell from '../components/shared/ToggleCell.vue'
 import PriorityReorder from '../components/shared/PriorityReorder.vue'
 import ExternalServiceModal from '../components/external-services/ExternalServiceModal.vue'
 import ExternalServiceRowActions from '../components/external-services/ExternalServiceRowActions.vue'
+import ExternalServiceMobileCard from '../components/external-services/ExternalServiceMobileCard.vue'
 
 import { useExternalServicesStore } from '../stores/externalServices'
 import type { ExternalService } from '../stores/externalServices'
@@ -324,7 +325,22 @@ const columns: ColumnDef<ExternalService, unknown>[] = [
         :loading="store.loading"
         :clickable="true"
         @row-click="handleRowClick"
-      />
+      >
+        <template #mobile-card="{ row }">
+          <ExternalServiceMobileCard
+            :service="row as ExternalService"
+            :syncing="syncingUUIDs.has((row as ExternalService).uuid)"
+            :can-move-up="canMoveUp(row as ExternalService)"
+            :can-move-down="canMoveDown(row as ExternalService)"
+            @sync="handleSync"
+            @health-check="handleHealthCheck"
+            @edit="openEditModal"
+            @delete="(service: ExternalService) => (deleteTarget = service)"
+            @toggle-enabled="handleToggleEnabled"
+            @move-priority="handleMovePriority"
+          />
+        </template>
+      </DataTable>
 
       <Pagination
         :page="page"
