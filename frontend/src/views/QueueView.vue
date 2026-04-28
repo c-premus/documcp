@@ -14,6 +14,7 @@ import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
 import QueueJobRowActions from '../components/queue/QueueJobRowActions.vue'
 import QueueJobErrorCell from '../components/queue/QueueJobErrorCell.vue'
+import QueueJobMobileCard from '../components/queue/QueueJobMobileCard.vue'
 
 const store = useQueueStore()
 
@@ -222,7 +223,15 @@ const columns: ColumnDef<FailedJob, unknown>[] = [
             description="All jobs are running smoothly."
           />
 
-          <DataTable v-else :data="store.failedJobs" :columns="columns" :loading="store.loading" />
+          <DataTable v-else :data="store.failedJobs" :columns="columns" :loading="store.loading">
+            <template #mobile-card="{ row }">
+              <QueueJobMobileCard
+                :job="row as FailedJob"
+                @retry="handleRetry"
+                @delete="(job: FailedJob) => (deleteTarget = job)"
+              />
+            </template>
+          </DataTable>
         </TabPanel>
       </TabPanels>
     </TabGroup>
