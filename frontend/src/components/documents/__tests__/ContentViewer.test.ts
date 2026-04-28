@@ -1,9 +1,24 @@
-import { describe, it, expect } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
 import ContentViewer from '@/components/documents/ContentViewer.vue'
 
+const mermaidInitialize = vi.fn()
+const mermaidRender = vi.fn()
+
+vi.mock('mermaid', () => ({
+  default: {
+    initialize: (config: Record<string, unknown>) => mermaidInitialize(config),
+    render: (id: string, source: string) => mermaidRender(id, source),
+  },
+}))
+
+beforeEach(() => {
+  mermaidInitialize.mockReset()
+  mermaidRender.mockReset()
+})
+
 function mountViewer(props: { content: string; fileType: string }) {
-  return mount(ContentViewer, { props })
+  return mount(ContentViewer, { props, attachTo: document.body })
 }
 
 describe('ContentViewer', () => {
@@ -115,6 +130,72 @@ describe('ContentViewer', () => {
       const pre = wrapper.find('pre')
       expect(pre.exists()).toBe(true)
       expect(pre.text()).toBe('')
+    })
+  })
+
+  describe('mermaid rendering', () => {
+    it('does not load mermaid when no diagram blocks are present', async () => {
+      mountViewer({ content: '# Just a heading', fileType: 'markdown' })
+      await flushPromises()
+
+      expect(mermaidRender).not.toHaveBeenCalled()
+    })
+
+    it('replaces a fenced mermaid block with the rendered SVG', async () => {
+      mermaidRender.mockResolvedValue({ svg: '<svg data-testid="diag"><g/></svg>' })
+
+      const wrapper = mountViewer({
+        content: '```mermaid\ngraph TD\n  A --> B\n```\n',
+        fileType: 'markdown',
+      })
+      await flushPromises()
+
+      expect(mermaidRender).toHaveBeenCalledTimes(1)
+      const [, source] = mermaidRender.mock.calls[0]!
+      expect(source).toContain('graph TD')
+      expect(source).toContain('A --> B')
+
+      const diagram = wrapper.find('.mermaid-diagram')
+      expect(diagram.exists()).toBe(true)
+      expect(diagram.find('[data-testid="diag"]').exists()).toBe(true)
+      expect(wrapper.find('code.language-mermaid').exists()).toBe(false)
+    })
+
+    it('leaves the code block intact when mermaid render fails', async () => {
+      mermaidRender.mockRejectedValue(new Error('parse error'))
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const wrapper = mountViewer({
+        content: '```mermaid\ninvalid syntax\n```\n',
+        fileType: 'markdown',
+      })
+      await flushPromises()
+
+      expect(mermaidRender).toHaveBeenCalledTimes(1)
+      expect(wrapper.find('.mermaid-diagram').exists()).toBe(false)
+      expect(wrapper.find('code.language-mermaid').exists()).toBe(true)
+
+      consoleSpy.mockRestore()
+    })
+
+    it('does not re-render an already-processed mermaid block on content updates', async () => {
+      mermaidRender.mockResolvedValue({ svg: '<svg/>' })
+
+      const wrapper = mountViewer({
+        content: '```mermaid\ngraph TD\n  A --> B\n```\n',
+        fileType: 'markdown',
+      })
+      await flushPromises()
+      expect(mermaidRender).toHaveBeenCalledTimes(1)
+
+      // Force a re-render by changing fileType (renderedContent recomputes).
+      await wrapper.setProps({ fileType: 'md' })
+      await flushPromises()
+
+      // Still 1 — the data-mermaid-rendered marker prevents the re-walk
+      // from picking up the same source twice. The content is the same
+      // diagram so a second render call would be wasted work.
+      expect(mermaidRender).toHaveBeenCalledTimes(1)
     })
   })
 })
