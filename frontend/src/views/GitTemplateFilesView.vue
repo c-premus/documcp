@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline'
 
 import TreeNode from '../components/shared/TreeNode.vue'
+import ContentViewer from '../components/documents/ContentViewer.vue'
 import { useGitTemplatesStore, buildTree } from '../stores/gitTemplates'
 import type { TreeItem } from '../stores/gitTemplates'
 
@@ -22,6 +23,21 @@ const selectedPath = ref('')
 const fileContent = ref('')
 const fileLoading = ref(false)
 const fileName = ref('')
+
+const contentFileType = computed(() => {
+  const lower = fileName.value.toLowerCase()
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) {
+    return 'markdown'
+  }
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) {
+    return 'html'
+  }
+  return 'text'
+})
+
+const isProseFile = computed(
+  () => contentFileType.value === 'markdown' || contentFileType.value === 'html',
+)
 
 onMounted(async () => {
   loading.value = true
@@ -54,6 +70,12 @@ async function handleFileSelect(path: string): Promise<void> {
   }
 }
 
+function backToTree(): void {
+  selectedPath.value = ''
+  fileContent.value = ''
+  fileName.value = ''
+}
+
 function goBack(): void {
   router.push('/git-templates')
 }
@@ -82,11 +104,15 @@ function goBack(): void {
       />
     </div>
 
-    <!-- Two-pane layout -->
-    <div v-else class="flex gap-4 h-[calc(100vh-12rem)]">
+    <!-- Two-pane on md+, state-machine pane swap on <md -->
+    <div v-else class="flex flex-col gap-4 md:h-[calc(100vh-12rem)] md:flex-row">
       <!-- Left sidebar: file tree -->
       <div
-        class="w-72 shrink-0 overflow-y-auto rounded-lg border border-border-default bg-bg-surface p-2"
+        :class="[
+          'overflow-y-auto rounded-lg border border-border-default bg-bg-surface p-2',
+          'md:w-72 md:shrink-0',
+          selectedPath ? 'hidden md:block' : '',
+        ]"
       >
         <template v-if="tree.length > 0">
           <TreeNode
@@ -102,19 +128,32 @@ function goBack(): void {
 
       <!-- Right main: file content viewer -->
       <div
-        class="flex-1 overflow-hidden rounded-lg border border-border-default bg-bg-surface flex flex-col"
+        :class="[
+          'overflow-hidden rounded-lg border border-border-default bg-bg-surface flex flex-col',
+          'md:flex-1',
+          !selectedPath ? 'hidden md:flex' : '',
+        ]"
       >
         <template v-if="selectedPath === ''">
-          <div class="flex items-center justify-center h-full text-text-disabled text-sm">
+          <div class="flex items-center justify-center h-full text-text-disabled text-sm py-12">
             Select a file to view its contents.
           </div>
         </template>
         <template v-else>
-          <!-- File header -->
+          <!-- File header (mobile-only back button + path) -->
           <div
             class="flex items-center gap-2 border-b border-border-default px-4 py-2 bg-bg-surface-alt"
           >
-            <span class="font-mono text-sm text-text-secondary">{{ selectedPath }}</span>
+            <button
+              type="button"
+              class="md:hidden text-text-muted hover:text-text-secondary"
+              title="Back to files"
+              aria-label="Back to files"
+              @click="backToTree"
+            >
+              <ArrowLeftIcon class="h-5 w-5" />
+            </button>
+            <span class="truncate font-mono text-sm text-text-secondary">{{ selectedPath }}</span>
           </div>
 
           <!-- File content -->
@@ -123,11 +162,16 @@ function goBack(): void {
               class="h-6 w-6 animate-spin rounded-full border-2 border-border-input border-t-indigo-600 dark:border-t-indigo-400"
             />
           </div>
-          <pre
-            v-else
-            class="flex-1 overflow-auto p-4 text-sm leading-relaxed text-text-primary font-mono whitespace-pre-wrap break-words"
-            >{{ fileContent }}</pre
-          >
+          <div v-else class="flex-1 overflow-auto">
+            <div v-if="isProseFile" class="p-4">
+              <ContentViewer :content="fileContent" :file-type="contentFileType" />
+            </div>
+            <pre
+              v-else
+              class="p-4 text-sm leading-relaxed text-text-primary font-mono whitespace-pre-wrap break-words"
+              >{{ fileContent }}</pre
+            >
+          </div>
         </template>
       </div>
     </div>
