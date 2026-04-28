@@ -1,7 +1,7 @@
 <script setup lang="ts" generic="T">
 import { FlexRender, getCoreRowModel, getSortedRowModel, useVueTable } from '@tanstack/vue-table'
 import type { ColumnDef, SortingState } from '@tanstack/vue-table'
-import { ref } from 'vue'
+import { computed, ref, useSlots } from 'vue'
 
 const props = defineProps<{
   readonly data: T[]
@@ -10,11 +10,20 @@ const props = defineProps<{
   readonly clickable?: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   'row-click': [row: T]
 }>()
 
+const slots = useSlots()
+const hasMobileCard = computed(() => Boolean(slots['mobile-card']))
+
 const sorting = ref<SortingState>([])
+
+function activateRow(row: T): void {
+  if (props.clickable) {
+    emit('row-click', row)
+  }
+}
 
 const table = useVueTable({
   get data() {
@@ -48,7 +57,37 @@ const table = useVueTable({
       />
       <span class="sr-only">Loading…</span>
     </div>
-    <table v-else class="min-w-full divide-y divide-border-default">
+    <ul
+      v-else-if="hasMobileCard"
+      role="list"
+      class="md:hidden divide-y divide-border-default bg-bg-surface"
+    >
+      <li
+        v-for="row in table.getRowModel().rows"
+        :key="row.id"
+        :class="[
+          clickable
+            ? 'cursor-pointer hover:bg-bg-hover focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus'
+            : '',
+        ]"
+        :tabindex="clickable ? 0 : undefined"
+        :role="clickable ? 'link' : undefined"
+        @click="activateRow(row.original)"
+        @keydown.enter="activateRow(row.original)"
+      >
+        <slot name="mobile-card" :row="row.original" />
+      </li>
+      <li
+        v-if="table.getRowModel().rows.length === 0"
+        class="px-4 py-12 text-center text-sm text-text-muted"
+      >
+        <slot name="empty">No data available.</slot>
+      </li>
+    </ul>
+    <table
+      v-if="!loading"
+      :class="['min-w-full divide-y divide-border-default', hasMobileCard ? 'hidden md:table' : '']"
+    >
       <thead class="bg-bg-surface-alt">
         <tr>
           <th

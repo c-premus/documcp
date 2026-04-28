@@ -20,6 +20,7 @@ import VisibilityCell from '../components/shared/VisibilityCell.vue'
 import UploadModal from '../components/documents/UploadModal.vue'
 import DocumentEditModal from '../components/documents/DocumentEditModal.vue'
 import DocumentRowActions from '../components/documents/DocumentRowActions.vue'
+import DocumentMobileCard from '../components/documents/DocumentMobileCard.vue'
 
 const FILE_TYPE_OPTIONS = [
   'All',
@@ -260,7 +261,16 @@ function handleUploaded(): void {
         :loading="store.loading"
         :clickable="true"
         @row-click="handleRowClick"
-      />
+      >
+        <template #mobile-card="{ row }">
+          <DocumentMobileCard
+            :document="row as Document"
+            @edit="handleEdit"
+            @view="handleView"
+            @delete="handleDelete"
+          />
+        </template>
+      </DataTable>
 
       <Pagination
         :page="page"

@@ -120,4 +120,73 @@ describe('DataTable', () => {
     expect(['ascending', 'descending']).toContain(secondSort)
     expect(secondSort).not.toBe(firstSort)
   })
+
+  it('does not render a mobile-card list when no mobile-card slot is provided', () => {
+    const wrapper = mountTable()
+
+    expect(wrapper.find('ul[role="list"]').exists()).toBe(false)
+  })
+
+  it('renders a mobile-card list when a mobile-card slot is provided', () => {
+    const wrapper = mountTable(
+      {},
+      {
+        'mobile-card': ({ row }: { row: TestRow }) =>
+          h('div', { class: 'card' }, `card-${row.name}`),
+      },
+    )
+
+    const list = wrapper.find('ul[role="list"]')
+    expect(list.exists()).toBe(true)
+    const cards = list.findAll('.card')
+    expect(cards).toHaveLength(2)
+    expect(cards[0]!.text()).toBe('card-Alice')
+    expect(cards[1]!.text()).toBe('card-Bob')
+  })
+
+  it('emits row-click from a mobile card when clickable is true', async () => {
+    const wrapper = mountTable(
+      { clickable: true },
+      {
+        'mobile-card': ({ row }: { row: TestRow }) =>
+          h('div', { class: 'card' }, `card-${row.name}`),
+      },
+    )
+
+    const cardItems = wrapper.findAll('ul[role="list"] > li')
+    await cardItems[0]!.trigger('click')
+
+    expect(wrapper.emitted('row-click')).toBeTruthy()
+    expect(wrapper.emitted('row-click')![0]).toEqual([sampleData[0]])
+  })
+
+  it('does not emit row-click from a mobile card when clickable is false', async () => {
+    const wrapper = mountTable(
+      {},
+      {
+        'mobile-card': ({ row }: { row: TestRow }) =>
+          h('div', { class: 'card' }, `card-${row.name}`),
+      },
+    )
+
+    const cardItems = wrapper.findAll('ul[role="list"] > li')
+    await cardItems[0]!.trigger('click')
+
+    expect(wrapper.emitted('row-click')).toBeUndefined()
+  })
+
+  it('renders empty slot in the mobile-card list when data is empty', () => {
+    const wrapper = mountTable(
+      { data: [] },
+      {
+        'mobile-card': ({ row }: { row: TestRow }) =>
+          h('div', { class: 'card' }, `card-${row.name}`),
+        empty: () => h('span', 'Nothing on mobile'),
+      },
+    )
+
+    const list = wrapper.find('ul[role="list"]')
+    expect(list.exists()).toBe(true)
+    expect(list.text()).toContain('Nothing on mobile')
+  })
 })
