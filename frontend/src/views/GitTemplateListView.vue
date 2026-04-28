@@ -14,6 +14,7 @@ import RelativeTimeCell from '../components/shared/RelativeTimeCell.vue'
 import GitTemplateCreateModal from '../components/git-templates/GitTemplateCreateModal.vue'
 import GitTemplateEditModal from '../components/git-templates/GitTemplateEditModal.vue'
 import GitTemplateRowActions from '../components/git-templates/GitTemplateRowActions.vue'
+import GitTemplateMobileCard from '../components/git-templates/GitTemplateMobileCard.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useGitTemplatesStore } from '../stores/gitTemplates'
 import type { GitTemplate } from '../stores/gitTemplates'
@@ -228,7 +229,18 @@ const columns = computed(() => (auth.isAdmin ? [...baseColumns, actionsColumn] :
         :loading="store.loading"
         :clickable="true"
         @row-click="handleRowClick"
-      />
+      >
+        <template #mobile-card="{ row }">
+          <GitTemplateMobileCard
+            :template="row as GitTemplate"
+            :syncing="syncingUuids.has((row as GitTemplate).uuid)"
+            :is-admin="auth.isAdmin"
+            @edit="(template: GitTemplate) => (editTarget = template)"
+            @sync="handleSync"
+            @delete="(template: GitTemplate) => (deleteTarget = template)"
+          />
+        </template>
+      </DataTable>
 
       <Pagination
         :page="page"

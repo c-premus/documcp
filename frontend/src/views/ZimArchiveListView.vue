@@ -12,6 +12,7 @@ import Pagination from '../components/shared/Pagination.vue'
 import StatusBadge from '../components/shared/StatusBadge.vue'
 import SearchInput from '../components/shared/SearchInput.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
+import ZimArchiveMobileCard from '../components/zim/ZimArchiveMobileCard.vue'
 
 const CATEGORY_OPTIONS = ['All', 'devdocs', 'wikipedia', 'stack_exchange', 'other'] as const
 const LANGUAGE_OPTIONS = ['All', 'en', 'es', 'fr', 'de', 'zh', 'ja', 'pt', 'ru'] as const
@@ -198,7 +199,11 @@ function handleRowClick(row: ZimArchive): void {
         :loading="store.loading"
         :clickable="true"
         @row-click="handleRowClick"
-      />
+      >
+        <template #mobile-card="{ row }">
+          <ZimArchiveMobileCard :archive="row as ZimArchive" />
+        </template>
+      </DataTable>
 
       <Pagination
         :page="page"
