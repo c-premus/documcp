@@ -4,20 +4,12 @@ All notable changes to DocuMCP-Go are documented in this file.
 
 The format is based on [Keep a Changelog]. The project follows
 [Semantic Versioning] with the **pre-v1.0 convention that breaking changes bump
-minor, not major** — codified by the auto-release workflow in
-`.forgejo/workflows/version-release.yaml`. A `feat!:` or `BREAKING CHANGE`
-commit while `MAJOR=0` produces a minor bump; v1.0.0 is reserved for an
-explicit manual cut.
-
-This file is the canonical record of release content because the GitHub mirror
-squash-merges every dev → main change, collapsing per-commit history. Detailed
-per-finding closure rationale lives in [`docs/audit/README.md`]; per-session
-project narrative lives in [`memory-bank/progress.md`].
+minor, not major** — a `feat!:` or `BREAKING CHANGE` commit while the major
+version is `0` produces a minor bump; `v1.0.0` is reserved for an explicit
+manual cut.
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
 [Semantic Versioning]: https://semver.org/spec/v2.0.0.html
-[`docs/audit/README.md`]: docs/audit/README.md
-[`memory-bank/progress.md`]: memory-bank/progress.md
 
 ## [Unreleased]
 
@@ -51,23 +43,11 @@ project narrative lives in [`memory-bank/progress.md`].
   as raw text on every viewport). Code files keep their existing raw `<pre>`
   display — syntax highlighting is a separate scope.
 
-### Removed
-
-- **`docs/audit/2026-04-15.md` and `2026-04-18.md` source audit docs**
-  pruned. Three release lines deep, fully closed; the `docs/audit/README.md`
-  closure log captures every finding's disposition + commit + rationale.
-  Convention paragraph updated: only the most recent archived pass is
-  retained; older passes are pruned once their closures are logged.
-
 ## [0.26.1] — 2026-04-28
 
 ### Security
 
 - **postcss → 8.5.10** (Renovate, transitive dev-dep CVE).
-
-### Changed
-
-- **catthehacker/ubuntu:act-22.04** docker digest bump (Renovate).
 
 ## [0.26.0] — 2026-04-25
 
@@ -89,8 +69,8 @@ project narrative lives in [`memory-bank/progress.md`].
 ### Fixed
 
 - **Grafana dashboard panel rows**: panels were placed in the wrong section
-  rows after a previous reorganization; PR #125 restored the correct
-  groupings.
+  rows after a previous reorganization; the correct groupings are now
+  restored.
 
 ### Notes
 
@@ -123,8 +103,8 @@ project narrative lives in [`memory-bank/progress.md`].
 - **`deploy.yaml` Grafana dashboard path.** Provisioned dashboards now go to
   `dashboards/documcp/` instead of the retired `dashboards/applications/`
   bucket; the missing-path issue had blocked v0.25.0 from production.
-- **SSE reconnect goroutine leak in tests** (`9fe33a0`): fake timers stop
-  the reconnect goroutine that kept running after test teardown.
+- **SSE reconnect goroutine leak in tests**: fake timers stop the reconnect
+  goroutine that kept running after test teardown.
 
 ## [0.25.0] — 2026-04-22
 
@@ -161,10 +141,10 @@ project narrative lives in [`memory-bank/progress.md`].
 
 - **First boot invalidates all existing session cookies.** Users
   re-authenticate once through OIDC. Same no-grandfathering precedent as
-  RFC 8707 and Session 2's `login_at` rollout. Pre-v1 minor bump (feat!
-  → minor per project convention).
-- **30-day session MaxAge** removed from deferred findings — superseded by
-  the 7-day `OAUTH_SESSION_ABSOLUTE_MAX_AGE` cap from v0.24.0.
+  the v0.24.0 `login_at` rollout and the v0.20.0 RFC 8707 audience binding.
+  Pre-v1 minor bump (feat! → minor per project convention).
+- **30-day session `MaxAge`** is now bounded by the 7-day
+  `OAUTH_SESSION_ABSOLUTE_MAX_AGE` cap introduced in v0.24.0.
 
 ## [0.24.1] — 2026-04-22
 
@@ -183,9 +163,9 @@ project narrative lives in [`memory-bank/progress.md`].
 ### Changed
 
 - **`ZimArchiveRepository.List` returns `(rows, total, error)`** via
-  `COUNT(*) OVER ()` in a single query. `CountFiltered` deleted. Audit H2
-  now closed across all four list repos (documents, oauth_clients, users,
-  zim_archives).
+  `COUNT(*) OVER ()` in a single query. `CountFiltered` deleted.
+  Single-RTT pagination now applies across all four list repos: documents,
+  oauth_clients, users, zim_archives.
 - **Stable query text** on external service / zim archive list queries:
   absent filters bind as typed NULL via `($N::text IS NULL OR col = $N)`,
   preserving pgx prepared-statement cache hits across repeated admin renders.
@@ -296,7 +276,7 @@ project narrative lives in [`memory-bank/progress.md`].
 
 ## [0.23.1] — 2026-04-18
 
-Idempotent re-tag — same commit as v0.23.0 (`c47ddc1`). Auto-release workflow
+Idempotent re-tag — same commit as v0.23.0. The auto-release workflow
 re-emitted the tag; no new commits.
 
 ## [0.23.0] — 2026-04-18
@@ -378,8 +358,8 @@ re-emitted the tag; no new commits.
 
 ## [0.20.1] — 2026-04-16
 
-Multi-audit-doc closure round (PR #104) — security, api-design, database,
-code-quality, frontend findings batched as one. Sets up the v0.21.0 release.
+Cross-cutting fix bundle across security, api-design, database,
+code-quality, and frontend. Sets up the v0.21.0 release.
 
 ## [0.20.0] — 2026-04-15
 
@@ -457,9 +437,6 @@ Code-quality refactor + blog updates.
 - **Horizontal scale-out infrastructure** — Redis EventBus with synchronous
   `SUBSCRIBE` ACK; cross-instance SSE fan-out; distributed rate limiting via
   `httprate-redis`.
-- **Forgejo CI unification** — `test` job runs unit + integration (`-tags
-  integration`) on a `docker` runner with DinD socket, matching the GitHub
-  CI shape.
 
 ## [0.15.0] — 2026-04-11
 
