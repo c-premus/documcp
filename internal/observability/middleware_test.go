@@ -260,12 +260,14 @@ func TestTracing_SkipsHealthAndMetricsPaths(t *testing.T) {
 	}
 }
 
-func TestTracing_UnsampledUpstreamParentStartsFreshRoot(t *testing.T) {
-	// Exercises the orphan-trace fix: when Traefik (or any upstream proxy)
-	// sends a valid traceparent with sampled=0, its root span will never be
-	// exported. Adopting that trace_id anyway would leave Tempo with child
-	// spans whose root is never received. DocuMCP should discard an
-	// unsampled inbound parent and start a fresh root instead.
+func TestTracing_AlwaysRootsAndLinksInboundTrace(t *testing.T) {
+	// DocuMCP always becomes the trace root for inbound HTTP, even when an
+	// upstream sent a valid sampled traceparent. The Cloudflare Tunnel +
+	// Traefik chain routinely produces orphan traces because the actual
+	// root span never reaches our Tempo, so adopting any inbound parent
+	// would leave Grafana's trace search with "root span not yet received"
+	// rows and blank request names. The inbound SpanContext is preserved
+	// as a span link so the upstream trace_id stays queryable.
 	//
 	// Not parallel — mutates the global TracerProvider and propagator.
 
@@ -289,28 +291,24 @@ func TestTracing_UnsampledUpstreamParentStartsFreshRoot(t *testing.T) {
 	)
 
 	cases := []struct {
-		name             string
-		traceparent      string
-		wantFreshRoot    bool
-		wantInheritedTID bool
+		name              string
+		traceparent       string
+		wantLinkedTraceID string // empty = no link expected
 	}{
 		{
-			name:             "unsampled upstream produces fresh root",
-			traceparent:      "00-" + upstreamTraceID + "-" + upstreamSpanID + "-00",
-			wantFreshRoot:    true,
-			wantInheritedTID: false,
+			name:              "unsampled upstream produces fresh root with inbound link",
+			traceparent:       "00-" + upstreamTraceID + "-" + upstreamSpanID + "-00",
+			wantLinkedTraceID: upstreamTraceID,
 		},
 		{
-			name:             "sampled upstream is preserved as parent",
-			traceparent:      "00-" + upstreamTraceID + "-" + upstreamSpanID + "-01",
-			wantFreshRoot:    false,
-			wantInheritedTID: true,
+			name:              "sampled upstream produces fresh root with inbound link",
+			traceparent:       "00-" + upstreamTraceID + "-" + upstreamSpanID + "-01",
+			wantLinkedTraceID: upstreamTraceID,
 		},
 		{
-			name:             "no traceparent starts fresh root",
-			traceparent:      "",
-			wantFreshRoot:    true,
-			wantInheritedTID: false,
+			name:              "no traceparent starts fresh root with no link",
+			traceparent:       "",
+			wantLinkedTraceID: "",
 		},
 	}
 
@@ -335,20 +333,34 @@ func TestTracing_UnsampledUpstreamParentStartsFreshRoot(t *testing.T) {
 			}
 			span := spans[0]
 
-			parent := span.Parent()
-			gotFreshRoot := !parent.IsValid()
-			if gotFreshRoot != tc.wantFreshRoot {
-				t.Errorf("fresh root = %v, want %v (parent=%+v)", gotFreshRoot, tc.wantFreshRoot, parent)
+			if parent := span.Parent(); parent.IsValid() {
+				t.Errorf("span has parent %+v, want fresh root", parent)
 			}
 
-			tid := span.SpanContext().TraceID().String()
-			gotInherited := tid == upstreamTraceID
-			if gotInherited != tc.wantInheritedTID {
-				t.Errorf("inherited trace_id = %v (trace_id=%s), want %v", gotInherited, tid, tc.wantInheritedTID)
+			if tid := span.SpanContext().TraceID().String(); tid == upstreamTraceID {
+				t.Errorf("trace_id = %s, want a fresh trace_id (not the inbound one)", tid)
 			}
 
 			if span.SpanKind() != trace.SpanKindServer {
 				t.Errorf("span kind = %v, want SpanKindServer", span.SpanKind())
+			}
+
+			links := span.Links()
+			if tc.wantLinkedTraceID == "" {
+				if len(links) != 0 {
+					t.Errorf("got %d links, want 0", len(links))
+				}
+				return
+			}
+
+			if len(links) != 1 {
+				t.Fatalf("got %d links, want 1", len(links))
+			}
+			if got := links[0].SpanContext.TraceID().String(); got != tc.wantLinkedTraceID {
+				t.Errorf("linked trace_id = %s, want %s", got, tc.wantLinkedTraceID)
+			}
+			if got := links[0].SpanContext.SpanID().String(); got != upstreamSpanID {
+				t.Errorf("linked span_id = %s, want %s", got, upstreamSpanID)
 			}
 		})
 	}

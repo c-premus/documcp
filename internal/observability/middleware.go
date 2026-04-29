@@ -34,19 +34,27 @@ func Tracing(tracerName string) func(http.Handler) http.Handler {
 
 			parentCtx := propagator.Extract(r.Context(), propagation.HeaderCarrier(r.Header))
 
-			// When an upstream proxy (e.g., Traefik) sends a valid but unsampled
-			// traceparent, its own root span never reaches Tempo. Adopting that
-			// trace_id anyway produces orphan traces ("root span not yet received"
-			// in Grafana). Discard unsampled parents so DocuMCP becomes the trace
-			// root instead — cross-service correlation is preserved when upstream
-			// DID sample, and orphan traces are avoided when it didn't.
-			if sc := trace.SpanContextFromContext(parentCtx); sc.IsValid() && !sc.IsSampled() {
+			// Always re-root at DocuMCP for inbound HTTP. The
+			// `Cloudflare Tunnel → Traefik → documcp` chain routinely
+			// lands a parent_span_id whose root span never reaches our
+			// Tempo (Cloudflare doesn't export there; Traefik adopts
+			// the inbound parent rather than rooting fresh). Adopting
+			// such a parent — whether sampled or not — produces orphan
+			// traces ("root span not yet received" in Grafana) and
+			// strips the request span's name from the trace search.
+			// The inbound SpanContext is preserved as a span link so
+			// the original trace_id stays queryable via TraceQL
+			// `link.traceId` when both ends share a backend.
+			var spanLinks []trace.Link
+			if sc := trace.SpanContextFromContext(parentCtx); sc.IsValid() {
+				spanLinks = []trace.Link{{SpanContext: sc}}
 				parentCtx = r.Context()
 			}
 
 			spanName := fmt.Sprintf("%s %s", r.Method, r.URL.Path)
 			ctx, span := tracer.Start(parentCtx, spanName,
 				trace.WithSpanKind(trace.SpanKindServer),
+				trace.WithLinks(spanLinks...),
 			)
 			defer span.End()
 
