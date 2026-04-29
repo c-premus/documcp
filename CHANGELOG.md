@@ -1,605 +1,1021 @@
 # Changelog
 
-All notable changes to DocuMCP-Go are documented in this file.
+All notable changes to this project are documented here. The format is based on
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
+adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with the
+**pre-v1.0 convention that breaking changes bump minor, not major** — a
+`feat!:` or `BREAKING CHANGE` commit while the major version is `0` produces a
+minor bump; `v1.0.0` is reserved for an explicit manual cut.
 
-The format is based on [Keep a Changelog]. The project follows
-[Semantic Versioning] with the **pre-v1.0 convention that breaking changes bump
-minor, not major** — a `feat!:` or `BREAKING CHANGE` commit while the major
-version is `0` produces a minor bump; `v1.0.0` is reserved for an explicit
-manual cut.
-
-[Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
-[Semantic Versioning]: https://semver.org/spec/v2.0.0.html
+This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
+`BREAKING`. CI, test, refactor, and docs commits are visible in the git log
+but intentionally omitted here to keep the changelog signal-dense.
 
 ## [Unreleased]
 
-## [0.27.0] — 2026-04-29
-
-### Added
-
-- **Frontend mobile-card layouts on every list view.** The shared
-  `DataTable.vue` gained a `mobile-card` slot that renders a card-stacked
-  layout at `<md` while the existing table stays at `md+`. Per-domain card
-  SFCs follow the same convention as the row-action SFCs:
-  `DocumentMobileCard`, `DocumentTrashMobileCard`, `UserMobileCard` (with
-  inline admin toggle), `OAuthClientMobileCard`, `ExternalServiceMobileCard`
-  (toggle + priority controls), `ZimArchiveMobileCard`,
-  `GitTemplateMobileCard` (admin-gated actions), `QueueJobMobileCard` (full
-  error message in `role="alert"` rather than the desktop's 80-char title-attr
-  truncation). Desktop is pixel-identical; views without a `mobile-card` slot
-  keep the existing table at all viewports.
-- **Mermaid diagram rendering in `ContentViewer`.** Fenced ` ```mermaid `
-  blocks in markdown documents (DocumentDetailView) and git template files
-  (GitTemplateFilesView) now render as SVG via dynamically-imported Mermaid
-  v11.14.0. Main bundle unchanged at 38.51 KB / 12.90 KB gzipped — Mermaid
-  core + per-diagram-type chunks (flowchart, sequence, gantt, …) load only
-  when a diagram is rendered, and only for the specific diagram type used.
-  `securityLevel: 'strict'` disables click handlers and external href in
-  Mermaid's output. Render failures `console.warn` and leave the source
-  block intact rather than failing silently. Light/dark theme detected via
-  `html.dark` class.
-- **GitTemplateFilesView mobile + markdown.** State-machine pane swap on
-  `<md` (tree visible until selection, content visible after, mobile-only
-  "Back to files" button); markdown / HTML files now route through
-  `ContentViewer` (the desktop-only `<pre>` block kept rendering README.md
-  as raw text on every viewport). Code files keep their existing raw `<pre>`
-  display — syntax highlighting is a separate scope.
-- **`CHANGELOG.md`** at the repo root, in [Keep a Changelog] format.
-  Canonical record of release content because the GitHub mirror
-  squash-merges every dev → main change, collapsing per-commit history.
-
-### Notes
-
-- No re-auth required at deploy. No schema changes. Pure frontend release.
-- Mermaid v11 transitively pulls `uuid <14.0.0` (moderate advisory on a
-  buffer-bounds path that requires caller-supplied buffers). Not exploitable
-  in our integration; watching for an upstream `uuid` bump.
-
-## [0.26.1] — 2026-04-28
-
-### Security
-
-- **postcss → 8.5.10** (Renovate, transitive dev-dep CVE).
-
-## [0.26.0] — 2026-04-25
-
-### Added
-
-- **Admin sessions revocation bundle.** Three new admin endpoints under
-  `/api/admin/users/{id}/sessions` — `GET` (list session IDs), `DELETE
-  /{sessionID}` (revoke one), `DELETE` (revoke all + return count). Backed
-  by the v0.25.0 Redis-backed session store's `RevokeSession` /
-  `RevokeUserSessions` / `ListUserSessions` primitives. Vue 3 admin UI
-  surfaces this via `UserSessionsModal` reachable from `UserRowActions`.
-- **Auto-revoke on user delete + admin demote.** `UserHandler.Delete` calls
-  `RevokeUserSessions` after the repo write succeeds; `ToggleAdmin` calls it
-  only when the post-toggle `IsAdmin` is `false` (demote — the threat-shaped
-  event). Promote is a no-op because middleware re-reads `is_admin` per
-  request. Best-effort: revoker errors `Warn`-log without failing the user
-  op, mirroring the orphaned-blob cleanup pattern.
-
-### Fixed
-
-- **Grafana dashboard panel rows**: panels were placed in the wrong section
-  rows after a previous reorganization; the correct groupings are now
-  restored.
-
-### Notes
-
-- No re-auth required at deploy. Schema unchanged from v0.25.x.
-- Local-test wiring: `UserHandler` accepts a narrow `sessionRevoker`
-  interface; nil revoker keeps existing test fixtures compiling and running
-  with the auto-revoke + new endpoints as no-ops.
-
-## [0.25.2] — 2026-04-24
-
-### Fixed
-
-- **Tracing root-span orphan in Grafana / Tempo.** HTTP middleware now
-  checks `SpanContextFromContext(parentCtx).IsSampled()` before starting the
-  request span. When upstream (Traefik / mcp-gate) sends a valid but
-  unsampled `traceparent`, the middleware swaps `parentCtx` back to
-  `r.Context()` so DocuMCP starts a fresh trace root. Cross-service
-  correlation preserved when upstream did sample; orphan traces eliminated
-  when it didn't. The `AlwaysSample` choice (see `tracer.go` header) by
-  itself didn't undo the parent link extracted from inbound traceparent.
-
-## [0.25.1] — 2026-04-23
-
-### Security
-
-- **`golang.org/x/image` → v0.39.0** (CVE-2026-33813).
-
-### Fixed
-
-- **`deploy.yaml` Grafana dashboard path.** Provisioned dashboards now go to
-  `dashboards/documcp/` instead of the retired `dashboards/applications/`
-  bucket; the missing-path issue had blocked v0.25.0 from production.
-- **SSE reconnect goroutine leak in tests**: fake timers stop the reconnect
-  goroutine that kept running after test teardown.
-
-## [0.25.0] — 2026-04-22
-
-### Added
-
-- **Redis-backed session store** replacing `sessions.NewCookieStore`. Cookie
-  carries only a securecookie-signed session ID; the Values payload (`user_id`,
-  `login_at`, OIDC state, `id_token`) lives at Redis `session:<id>`. Per-user
-  index at `user-sessions:<id>` (Set) populated on every `Save` carrying a
-  non-zero `user_id`. New `RevokeSession` / `RevokeUserSessions` /
-  `ListUserSessions` primitives unlock server-side revocation. TTL =
-  min(`SessionMaxAge`, `SessionAbsoluteMaxAge`).
-- **`ENCRYPTION_KEY` rotation runbook** with versioned ciphertext
-  `v<hex>$<base64>`. New `ENCRYPTION_KEY_PREVIOUS` env var holds a retired
-  key for decrypt-only fallback. `documcp rekey` Cobra subcommand walks
-  `external_services.api_key` and `git_templates.git_token`, re-encrypting
-  every row that isn't already under the primary. Idempotent; exits non-zero
-  when `ENCRYPTION_KEY` is empty.
-- **SSE stream session re-validation** on every heartbeat tick.
-  `SSEHandler` accepts a `SessionValidator` (FindUserByID +
-  FindAccessTokenByID) and re-checks user existence, token revocation /
-  expiry, and admin status. Failure drops the stream; client reconnects
-  through fresh middleware. Demoted users on the user stream update their
-  filter state in place.
-- **Device-flow brute-force counter in Redis.** `oauth.DeviceFailureLimiter`
-  wraps `BareRedisClient` with `INCR` + `EXPIRE NX` MULTI pipeline.
-  Fixed-window (TTL set once, never refreshed) so attackers can't extend the
-  window by trickling. Keyed on `user_id`. Configurable via
-  `OAUTH_DEVICE_FAILURE_LIMIT` (default 5) and `OAUTH_DEVICE_FAILURE_WINDOW`
-  (default `1h`). Replaces the session-cookie counter that was defeated by
-  clearing cookies.
-
-### Breaking
-
-- **First boot invalidates all existing session cookies.** Users
-  re-authenticate once through OIDC. Same no-grandfathering precedent as
-  the v0.24.0 `login_at` rollout and the v0.20.0 RFC 8707 audience binding.
-  Pre-v1 minor bump (feat! → minor per project convention).
-- **30-day session `MaxAge`** is now bounded by the 7-day
-  `OAUTH_SESSION_ABSOLUTE_MAX_AGE` cap introduced in v0.24.0.
-
-## [0.24.1] — 2026-04-22
-
-### Added
-
-- **MCP contract regression test** drives the real SDK client against all
-  four `{ZimEnabled, GitTemplatesEnabled}` combinations; asserts the
-  SDK-published `ListTools` / `ListPrompts` set matches the contract's
-  conditional-registration partitions.
-- **Search query retention** — `SearchQueryRepository.DeleteOlderThan` +
-  `CleanupSearchQueriesWorker` (River periodic, default `0 3 * * *`).
-  Configurable via `SEARCH_QUERY_RETENTION` (default `2160h` / 90 days; `0`
-  disables). Bounds table growth at the source; `PopularQueries` aggregation
-  scan is bounded as a consequence.
-
-### Changed
-
-- **`ZimArchiveRepository.List` returns `(rows, total, error)`** via
-  `COUNT(*) OVER ()` in a single query. `CountFiltered` deleted.
-  Single-RTT pagination now applies across all four list repos: documents,
-  oauth_clients, users, zim_archives.
-- **Stable query text** on external service / zim archive list queries:
-  absent filters bind as typed NULL via `($N::text IS NULL OR col = $N)`,
-  preserving pgx prepared-statement cache hits across repeated admin renders.
-- **`viewHarness.ts`** consolidates Pinia + fetch + auth scaffolding across
-  8 view test files (−188 lines net).
-- **`QueueJobErrorCell.vue`** extracted; `grep "h('"` across `src/views/*.vue`
-  now returns zero hits — every cell is a one-line wrapper over a shared SFC.
-
-### Removed
-
-- Dead `notifications` / `add()` / `remove()` toast API in
-  `stores/notifications.ts` (zero consumers; `vue-sonner`'s `toast` covers
-  the actual use case).
-
-## [0.24.0] — 2026-04-22
-
-### Added
-
-- **Session `login_at` + absolute lifetime.** `OAUTH_SESSION_ABSOLUTE_MAX_AGE`
-  env (default `168h` / 7d). Sessions without a `login_at` anchor are treated
-  as stale.
-- **Versioned HMAC token hashes.** Hashes prefixed `v<version>$<hex>`;
-  version byte derived as the first hex char of `sha256(secret)` so it
-  remains stable when a secret moves from primary to retired. `ValidateAccessToken`,
-  `ExchangeAuthorizationCode`, `RefreshAccessToken`, `ExchangeDeviceCode`
-  iterate configured keys on verify. Boot fails when both keys derive to the
-  same version byte (1/16 collision).
-- **Logout opt-in OAuth token revocation.** `?revoke_oauth=true` query param
-  triggers `RevokeUserTokensSince(userID, login_at)` in one transaction.
-  Frontend store action `logout({ revokeOAuth: true })` appends the param.
-- **Per-route rate limits** on `/api` root (300/min before bearer-token DB
-  lookup) and `/oauth/authorize*` (30/min).
-- **Strict `client_secret_basic` discipline.** Token endpoint accepts
-  `Authorization: Basic` per RFC 6749 §2.3.1. Both Basic and body credentials
-  → 400. `application/json` → 415 (form-encoded only per RFC 6749 §3.2).
-- **Token replay detection.** Auth-code + refresh lineage share one
-  `authorization_code_id`; reuse on either side revokes the entire
-  descendant set. Prometheus counter exposes the signal.
-- **`SafeTransportAllowPrivate` installed into go-git** via `InstallProtocol`
-  registry under `sync.Once`. Plugs the DNS-rebinding TOCTOU on private-IP
-  rebind for git clone.
-- **Foundation rollback** is now a LIFO `[]func()` stack — each resource
-  acquisition pushes a cleanup; a single top-of-function deferred loop drains
-  in reverse on init failure.
-- **`foundationCtx`** threaded into `NewRedisEventBus` + `ControlBus.Subscribe`
-  so long-running subscribers unwind on shutdown.
-- **`DocumentPipeline` role-interface split** into `documentReader`,
-  `documentWriter`, `documentTrash`. Future sub-handlers can take the
-  narrower role they need.
-
-### Breaking
-
-- **`/api/search/unified` REST shape aligned with MCP** (pre-v1 breaking).
-  Drops `offset` (returns 400 when sent), flattens the `data`/`meta` wrapper
-  to top-level `query` / `results` / `returned` / `totals` /
-  `sources_searched` / `processing_time_ms` / `hint`.
-- **No grandfathering for sessions without `login_at`.** Users re-auth once
-  through OIDC after deploy.
-
-### Fixed
-
-- **`/oauth/revoke` 500 → 401** on bad client credentials. New
-  `oauth.ErrInvalidClientCredentials` sentinel maps to `401 invalid_client`
-  with `WWW-Authenticate: Basic realm="oauth"` per RFC 6749 §5.2.
-- **HMAC-to-SHA256 silent fallback removed.** `oauth.NewService` returns an
-  error when `hmacKeys` is empty; `ServerApp` propagates so `serve` refuses
-  to boot without a derivable HMAC key.
-- **`RevokeScopeGrant` client_id check.** `DeleteScopeGrant(id, clientID)`
-  scopes the DELETE to both columns; returns 404 when no grant with that ID
-  belongs to the client in the URL.
-- **Autocomplete + popular-queries scoping.** `SuggestTitles(userID, isAdmin)`
-  applies the same visibility predicate as full-text search.
-  `/api/search/popular` is now admin-only — global aggregation has no
-  per-caller scoping.
-- **`ReplaceTags` 50 RTT → 1 RTT** via single multi-row VALUES.
-- **List endpoints two-RTT → one-RTT** via `COUNT(*) OVER () AS total`
-  pattern across `documents`, `oauth_clients`, `users` (zim_archives in
-  v0.24.1).
-- **Debounced `TouchClientLastUsed`** with 30 s in-memory TTL.
-- **DashboardView raw fetch** replaced with `apiFetch` (now triggers the
-  401 redirect interceptor on session expiry).
-
-### Notes
-
-- L2 reverted: `localhost` restored as a valid loopback host. The stricter
-  RFC 8252 §7.3 numeric-only reading broke every MCP dev client that
-  registers `http://localhost:PORT/callback`.
-
-## [0.23.2] — 2026-04-19
-
-### Added
-
-- **Decompression-bomb runtime budget** across PDF / DOCX / XLSX / EPUB
-  extractors.
-- **Sentry event scrubbing** before send.
-- **Extractor metadata sanitization** before JSONB persistence.
-
-### Changed
-
-- **`HKDF_SALT` required in every environment** (validation rejects empty
-  and values under 16 characters).
-- **S3 upload migrated to `feature/s3/transfermanager`** (replaces deprecated
-  `s3manager`).
-
-### Security
-
-- Renovate-driven Go / Docker / CI action bumps.
-
-## [0.23.1] — 2026-04-18
-
-Idempotent re-tag — same commit as v0.23.0. The auto-release workflow
-re-emitted the tag; no new commits.
-
-## [0.23.0] — 2026-04-18
-
-### Added
-
-- **`withLoading` composable** wraps the standard Pinia async-action pattern
-  (`loading=true / error=null / try / catch / set-error / finally /
-  loading=false`). Required `fallbackMessage` forces per-action wording.
-  Adopted across 6 stores (~168 lines removed).
-- **`aria-current="true"`** on `TreeNode` selected file.
-
-### Changed
-
-- **3 component tests rewritten behavior-first** (`ConfirmDialog`,
-  `DataTable`, `TreeNode`) — Tailwind-class assertions removed.
-
-## [0.22.0] — 2026-04-18
-
-### Added
-
-- **JSONB metadata storage** (migrations 000015–000019) — `metadata`,
-  `tags`, `manifest` columns converted from TEXT to JSONB.
-- **Search vector JSONB-path extraction** — `documents.search_vector` extends
-  to include `metadata` JSONB-path tokens via STORED expression with
-  `CASE WHEN jsonb_typeof(col) = 'array' THEN col::text ELSE ''`.
-- **Extractor metadata persistence** — `DocumentPipeline` marshals
-  `result.Metadata` to JSONB on extract.
-
-### Removed
-
-- **EPUB content-header baking** — Dublin Core metadata now flows through the
-  JSONB path instead of being concatenated into extracted content.
-
-## [0.21.1] — 2026-04-17
-
-### Added
-
-- **`search_documents` snippets** flag-gated via `WithSnippets`. `ts_headline`
-  on full content is expensive (worst case 1 GB at LIMIT 100 over 10 MB
-  docs); off by default. Markdown `**` highlight markers (MCP clients are
-  LLMs that render JSON as-is).
-
-### Fixed
-
-- **OAuth scope grants identity** — `LEFT JOIN users` so a grant whose
-  granter's user row was deleted is still listed (and revocable).
-
-## [0.21.0] — 2026-04-16
-
-### Changed
-
-- **Stateless MCP handler.** `StreamableHTTPOptions.Stateless: true`. Each
-  POST creates a temporary session that closes after the response; any
-  replica serves any request without sticky affinity. `GET /documcp` returns
-  405. Traefik `sticky.cookie.*` labels removed.
-- **`unified_search` is discovery-only.** Single merged page; pagination
-  unsupported. Response includes per-source `totals` and a `hint` redirecting
-  to source-specific paginated tools.
-- **MCP `variables` shape** changed from JSON-encoded string to typed
-  `map[string]string` with `additionalProperties: { type: string,
-  maxLength: 10240 }`. LLMs emit malformed JSON in string params often
-  enough to make the typed shape a real bug fix.
-
-### Added
-
-- **Grafana alert rules as code** — `NoRiverLeader` (5 min on
-  `documcp_river_leader_active == 0`) and `ReadinessFailing` (2 min on
-  `documcp_ready == 0`).
-- **`/health/ready` real-query check** via uninstrumented `BarePgxPool` ping.
-  Self-collecting `documcp_ready` gauge so Prometheus sees the same signal
-  even without probe traffic.
-- **Operations runbook** (`docs/OPERATIONS.md`) — pg_dump / pg_restore,
-  FSBlob rsync, S3Blob `aws s3 sync` / `rclone`.
+### Fixes
 
-### Removed
+- fix(observability): always re-root inbound HTTP traces
 
-- **Sticky-session config** in Traefik (now superseded by stateless MCP).
+## [0.27.0] - 2026-04-29
 
-## [0.20.1] — 2026-04-16
+### Features
 
-Cross-cutting fix bundle across security, api-design, database,
-code-quality, and frontend. Sets up the v0.21.0 release.
+- feat(frontend): mermaid diagram rendering in ContentViewer
+- feat(frontend): mobile + markdown for git template file viewer
+- feat(frontend): mobile card for QueueView with full error visibility
+- feat(frontend): mobile cards for ZimArchives + GitTemplates views
+- feat(frontend): mobile cards for OAuthClients + ExternalServices views
+- feat(frontend): mobile cards for Users + DocumentTrash views
+- feat(frontend): mobile card view for DataTable + Documents pilot
 
-## [0.20.0] — 2026-04-15
+## [0.26.1] - 2026-04-28
 
-### Added
+### Maintenance
 
-- **RFC 8707 audience binding (strict).** Bearer tokens carry a `resource`
-  column bound at `/oauth/authorize`. `/documcp` and `/api` middleware
-  reject tokens with NULL or mismatched audience.
+- chore(deps): update dependency postcss to v8.5.10 [security]
+- chore(deps): update catthehacker/ubuntu:act-22.04 docker digest to c8b6f14
 
-### Breaking
+## [0.26.0] - 2026-04-25
 
-- **No grandfathering.** Legacy tokens (NULL `resource`) require re-auth.
-  No observe mode.
+### Features
 
-### Changed
+- feat(auth): revoke admin sessions on demote/delete + admin UI
 
-- **README configuration audit** — env vars cross-checked against
-  `.env.example` and `docs/CONFIGURATION.md`; doc tables match deployed
-  binary.
+### Fixes
 
-## [0.19.0] — 2026-04-13
+- fix(grafana): put panels in the correct section rows
 
-### Added
+## [0.25.2] - 2026-04-24
 
-- **MCP server icons** in the `initialize` response (favicon + admin-panel
-  branding).
+### Fixes
 
-### Changed
+- fix(observability): discard unsampled upstream traceparent
 
-- Renovate-driven dependency bumps.
-- Lint fixes — golangci-lint config refinement.
+## [0.25.1] - 2026-04-23
 
-## [0.18.2] — 2026-04-13
+### Fixes
 
-### Added
+- fix(deps): bump golang.org/x/image to v0.39.0 (CVE-2026-33813)
 
-- **AWS SDK S3 EventStream DoS mitigation** — `aws-sdk-go-v2/service/s3`
-  bumped for advisory.
+## [0.25.0] - 2026-04-22
 
-## [0.18.1] — 2026-04-13
+### Features
 
-Code-quality refactor + blog updates.
+- feat(session): back sessions with redis for server-side revocation
+- feat(crypto): rotate ENCRYPTION_KEY without a flag day
+- feat(sse): revalidate user and token on each heartbeat
 
-## [0.18.0] — 2026-04-12
+### Fixes
 
-### Added
+- fix(kiwix): read zim file_size from OPDS acquisition link length
+- fix(security): back device-flow counter with redis
+- fix(grafana): show real user traffic in traces + log rows
 
-- **EPUB extractor** — stdlib-only (`archive/zip` + `encoding/xml` +
-  `bluemonday` + `htmltomarkdown`). Parses `META-INF/container.xml` → OPF
-  rootfile → spine-ordered XHTML chapters. Dublin Core metadata persists to
-  `documents.metadata` JSONB.
+## [0.24.0] - 2026-04-22
 
-### Fixed
+### BREAKING CHANGES
 
-- **Session cookie SameSite + Secure flags** in production.
+- feat(api)!: align /api/search/unified with MCP discovery-only model
 
-## [0.17.0] — 2026-04-12
+### Features
 
-### Added
+- feat(api)!: align /api/search/unified with MCP discovery-only model
+- feat(api): wire tags + include_snippets query params on REST search
 
-- **Non-admin RBAC.** Regular users upload, edit, delete their own documents
-  (ownership enforced server-side via `checkOwnership` returning 404 — not
-  403 — to prevent information disclosure). Admin surface (users, OAuth
-  clients, external services, queue) hidden via `v-if="auth.isAdmin"` +
-  `requiresAdmin` route meta.
-- **User-scoped SSE stream** — non-admin events filter on
-  `event.UserID == user.ID`. Events with `UserID=0` (scheduler jobs, legacy
-  in-flight) are admin-only.
-- **RP-Initiated Logout** with discovery + `id_token_hint`.
+### Fixes
 
-## [0.16.0] — 2026-04-12
+- fix(oauth): map /oauth/revoke errors per RFC 7009 §2.2
+- fix(oauth): versioned HMAC token hashes with rotation support
+- fix(security): anchor session lifetime and revoke in-session tokens
+- fix(oauth): restore localhost as valid loopback host
+- fix(search): close autocomplete + popular-queries cross-tenant leaks
+- fix(frontend): close 2026-04-21 audit Tier 1 frontend items
+- fix(git): install SSRF-safe HTTP transport into go-git
+- fix: close 2026-04-21 audit code-quality + docs items
+- fix(oauth): close 2026-04-21 audit Tier 1 OAuth security items
 
-### Added
+### Maintenance
 
-- **Horizontal scale-out infrastructure** — Redis EventBus with synchronous
-  `SUBSCRIBE` ACK; cross-instance SSE fan-out; distributed rate limiting via
-  `httprate-redis`.
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 2ccc5b1
+- chore(deps): update dependency typescript to v6.0.3
 
-## [0.15.0] — 2026-04-11
+## [0.23.2] - 2026-04-19
 
-### Security
+### Fixes
 
-- Security follow-up on the v0.14.x scope grants redesign.
-- Devcontainer fix.
+- fix(storage): migrate S3 upload to feature/s3/transfermanager
+- fix(deps): update go dependencies
+- fix(service): sanitize extractor metadata before JSONB persistence
+- fix(config): require HKDF_SALT in every environment
+- fix(observability): scrub sensitive data in Sentry events
+- fix(extractor): enforce decompression budget at runtime
 
-## [0.14.x] — 2026-04-08 to 2026-04-10
+### Maintenance
 
-### Added
+- chore(deps): update sigstore/cosign-installer action to v3.10.1
+- chore(deps): update actions/cache action to v5.0.5
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to e4abd88
+- chore(deps): update docker dependencies
+- chore(deps): update catthehacker/ubuntu:act-22.04 docker digest to 450293e
+- chore(deps): pin dependencies
 
-- **OAuth scope grants** — time-bounded per `(client_id, granted_by)`,
-  TTL via `OAUTH_SCOPE_GRANT_TTL`. Replaces permanent `ExpandClientScope`
-  widening. Grant fires at POST approve, never at GET render.
-- **Third-party-grantable ceiling** = registered scopes ∖ {`admin`,
-  `services:write`}.
-
-### Security
-
-- `unhead` bumped to 2.1.13.
-
-## [0.13.x] — 2026-04-04 to 2026-04-06
-
-### Added
-
-- **Native TLS termination** (`TLS_ENABLED=true`) with self-signed ECDSA
-  P-256 fallback for loopback. TLS 1.2 minimum, X25519 + P-256, AEAD-only.
-- **Typed status constants** — `DocumentStatus`, `GitTemplateStatus`,
-  `ExternalServiceStatus`, `DeviceCodeStatus` in `internal/model/`. CHECK
-  constraints (migration 000014) pin the DB.
-
-### Fixed
-
-- **PDF text fragmentation** — `cleanText` post-processor joins continuation
-  lines that the library splits at text-object boundaries.
-- **OIDC provider discovery retry** with exponential backoff.
-
-### Security
-
-- Vite 8.0.3 → 8.0.5 (advisory).
-
-## [0.12.x] — 2026-04-03 to 2026-04-04
-
-### Added
-
-- **MCP server icons** preview.
-- **Document management UI polish** — bulk operations, filter persistence,
-  test coverage expansion.
-- **Secret scanning + frontend dependency audit** in CI.
-
-### Fixed
-
-- **Trace noise from readiness probes** — `BarePgxPool` and
-  `BareRedisClient` carry no tracer attached, so `/health/ready` emits no
-  spans.
-- **Safari OAuth popup compat** — JS redirect; CSP `form-action` override.
-- **Favicon at root** for Claude.ai connector discovery.
-
-## [0.11.0] — 2026-04-03
-
-### Added
-
-- **OAuth + a11y + version consistency hardening.**
-- **ZIM fan-out caps** — `selectArchives()` capped at `federatedMaxArchives`
-  (default 10). Semaphore capacity 10. `MaxIdleConnsPerHost=10`. 5 s fan-out
-  timeout.
-
-## [0.10.x] — 2026-04-03
-
-### Added
-
-- **`list_documents` MCP tool.**
-- **External-connection tracing** (Kiwix, Git, OIDC).
-- **Trace correlation** via `slog` + OTEL.
-
-### Fixed
-
-- **Path traversal guard** — `security.SafeStoragePath` before any `os.Open`
-  / `os.Remove` on DB-sourced paths.
-- **Worker tracing** — River v0.32 doesn't propagate OTEL context; workers
-  open root spans via `workerTracer.Start`.
-- **Redis readiness** — dedicated rate-limit client with no retries; main
-  client used for EventBus and app queries.
-- **OAuth grant + path traversal hardening.**
-- **Safari 303 redirect** for OAuth POST (prevents POST replay).
-- **Multi-arch Docker via cross-compilation** (replaces emulated builds).
-- **Docker Hub cleanup by digest, not tag** (handles re-pushed tags).
-
-## [0.0.1 – 0.9.x] — 2026-03-30 to 2026-04-02 (bootstrap)
-
-Project bootstrap phase — rapid iteration as scaffolding came together. Key
-landings:
-
-- **MCP protocol server** (Go SDK, 16 tools + 6 prompts).
-- **OAuth 2.1 authorization server** — auth code + PKCE, refresh,
-  revocation, device flow (RFC 8628), dynamic registration (RFC 7591),
-  RFC 9728 PRM.
-- **OIDC authentication** — sub-only identity, admin groups +
-  bootstrap-email fallback.
-- **Document pipeline** — PDF / DOCX / XLSX / HTML / Markdown extractors
-  (EPUB landed in v0.18.0). Dual-path storage (upload vs inline create).
-- **Search** — PostgreSQL FTS on STORED tsvector columns. Federated across
-  documents / ZIM / git templates with per-source totals.
-- **External services** — Kiwix (XML fulltext + JSON suggest + DOM walker
-  HTML→text), git templates (go-git pure-Go), Confluence (later removed in
-  v0.25.x line — see project brief).
-- **Vue 3 admin SPA** — Pinia 3, Vite 8, Tailwind v4, behavior-first tests.
-- **River v0.32 queue** on shared pgxpool — 7 workers / 3 queues / 6
-  periodic jobs. Redis EventBus.
-- **OTEL tracing + Prometheus metrics + slog** — `AlwaysSample`, trimmed
-  span names via `otelpgx`, trace-free readiness via bare pool.
-- **AES-256-GCM at rest**, comprehensive SSRF allowlist, path traversal via
-  `os.Root`, bcrypt 72-byte guard, rate-limit-before-auth on unauth paths.
-- **Forgejo (primary) + GitHub Actions (mirror) CI**, SHA-pinned, multi-arch
-  Docker, Sigstore keyless signing on GitHub release, Renovate on `dev`.
-- **Distroless ~45 MB single Cobra binary** (`serve`, `worker`, `migrate`,
-  `version`, `health` subcommands).
-- **Native TLS** with self-signed fallback; FSBlob + S3Blob (direct on
-  `aws-sdk-go-v2`).
-- **Several CVE remediations + Dependabot / CodeQL findings closures.**
-
-Per-tag detail for this range lives in git tags (`git log v0.0.1..v0.9.7
---first-parent --pretty='%h %ai %s'`).
-
-[Unreleased]: https://github.com/c-premus/DocuMCP-go/compare/v0.27.0...HEAD
-[0.27.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.27.0
-[0.26.1]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.26.1
-[0.26.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.26.0
-[0.25.2]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.25.2
-[0.25.1]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.25.1
-[0.25.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.25.0
-[0.24.1]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.24.1
-[0.24.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.24.0
-[0.23.2]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.23.2
-[0.23.1]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.23.1
-[0.23.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.23.0
-[0.22.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.22.0
-[0.21.1]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.21.1
-[0.21.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.21.0
-[0.20.1]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.20.1
-[0.20.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.20.0
-[0.19.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.19.0
-[0.18.2]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.18.2
-[0.18.1]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.18.1
-[0.18.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.18.0
-[0.17.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.17.0
-[0.16.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.16.0
-[0.15.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.15.0
-[0.14.x]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.14.2
-[0.13.x]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.13.3
-[0.12.x]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.12.2
-[0.11.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.11.0
-[0.10.x]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.10.4
+## [0.23.0] - 2026-04-18
+
+### Features
+
+- feat(frontend): withLoading composable + behavior-first test polish
+
+## [0.22.0] - 2026-04-18
+
+### Features
+
+- feat(db): index metadata JSONB in search_vector
+- feat(db): JSONB storage + extractor metadata persistence
+
+### Fixes
+
+- fix(deps): bump go-git to v5.18.0 (GHSA-3xc5-wrhm-f963)
+
+## [0.21.1] - 2026-04-17
+
+### Fixes
+
+- fix(frontend): replace Scalar viewer with /openapi.yaml link
+- fix(oauth): show granter identity on admin scope-grants listing
+- fix(mcp): wire include_snippets on search_documents
+
+## [0.21.0] - 2026-04-16
+
+### BREAKING CHANGES
+
+- fix(mcp)!: drop offset from unified_search; surface per-source totals
+- fix(mcp)!: drop offset from unified_search; surface per-source totals
+- ci(release): pre-v1 breaking downgrade + better release notes
+
+### Features
+
+- feat(ops): close architecture audit — backup docs, leader gauge, readiness probe, alerts
+
+### Fixes
+
+- fix(deps): bump dompurify 3.3.3 → 3.4.0
+- fix(mcp)!: drop offset from unified_search; surface per-source totals
+
+### Maintenance
+
+- chore(supply-chain): close audit findings
+
+## [0.20.1] - 2026-04-16
+
+### Fixes
+
+- fix(frontend): close frontend.md audit findings
+- fix(search): restore trigram fallback operator
+- fix(db): tighten schema constraints and cap unbounded lists
+- fix(db): denormalize documents search_vector to STORED column
+- fix(api): close findings from api-design audit
+- fix(security): close HIGH + MEDIUM findings from v0.21.0 audit
+
+## [0.20.0] - 2026-04-15
+
+### Features
+
+- feat(auth): bind OAuth tokens to RFC 8707 resource indicator
+
+## [0.19.0] - 2026-04-13
+
+### Features
+
+- feat(mcp): add websiteUrl and data URI favicon to server icons
+
+### Fixes
+
+- fix(deps): update go dependencies
+
+### Maintenance
+
+- chore(deps): bump frontend deps + sentry-go, fix lint
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to b70f50f
+
+## [0.18.2] - 2026-04-13
+
+### Maintenance
+
+- chore(deps): bump aws-sdk-go-v2/service/s3 v1.92.1 → v1.99.0
+
+## [0.18.0] - 2026-04-12
+
+### Features
+
+- feat(epub): add EPUB document extraction support
+
+### Fixes
+
+- fix(auth): move id_token to separate cookie
+
+## [0.17.0] - 2026-04-12
+
+### Features
+
+- feat(rbac): add non-admin user support with ownership-based document access
+- feat(admin): add OAuth client detail view with scope grants and River UI integration
+
+### Fixes
+
+- fix(security): address 7 findings from round-6 audit
+
+## [0.16.0] - 2026-04-12
+
+### Features
+
+- feat(scale): horizontal scale-out via Blob storage, sticky MCP sessions, and cross-replica Kiwix invalidation
+
+## [0.15.0] - 2026-04-11
+
+### Features
+
+- feat(mcp): annotate write tools and test scope enforcement
+
+### Fixes
+
+- fix(devcontainer): decouple Go toolchain from base image
+- fix(service): enforce document tag bounds at service layer
+- fix(auth): validate OIDC provider URL and apply SSRF-safe transport
+
+## [0.14.2] - 2026-04-10
+
+### Fixes
+
+- fix(deps): bump unhead to 2.1.13 via @scalar/api-reference
+
+## [0.14.1] - 2026-04-10
+
+### Fixes
+
+- fix(deps): update dependency marked to v18
+- fix(deps): update go dependencies
+
+### Maintenance
+
+- chore(deps): update https://github.com/docker/build-push-action action to v7.1.0
+- chore(deps): update frontend dependencies
+- chore(deps): update docker/build-push-action action to v7.1.0
+- chore(deps): update dependency @types/node to v24.12.2
+- chore(deps): update traefik:v3.6 docker digest to 5ae9c34
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to f3ba591
+- chore(deps): update catthehacker/ubuntu:act-22.04 docker digest to 754f20d
+
+## [0.14.0] - 2026-04-08
+
+### Features
+
+- feat(oauth): replace permanent scope widening with time-bounded grants
+
+### Fixes
+
+- fix(security): harden containers, clean partial clones, prune stale lint rule
+- fix(security): close audit round 5 findings
+- fix(security): close audit round 4 findings
+- fix(security): close audit round 3 findings
+- fix(security): close audit round 2 and tune Kiwix fan-out
+- fix(security): harden PDF extractor and close audit findings
+
+## [0.13.3] - 2026-04-06
+
+### Fixes
+
+- fix(deps): update vite 8.0.3 → 8.0.5 (security)
+
+## [0.13.2] - 2026-04-06
+
+### Fixes
+
+- fix(pdf): rejoin fragmented text from PDF text objects
+- fix(deps): update go dependencies
+
+### Maintenance
+
+- chore(deps): lock file maintenance
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 5e66d07
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 8248aad
+
+## [0.13.0] - 2026-04-04
+
+### Features
+
+- feat(server): add native TLS termination with self-signed fallback
+
+## [0.12.2] - 2026-04-04
+
+### Fixes
+
+- fix(auth): retry OIDC provider discovery with exponential backoff
+
+## [0.12.1] - 2026-04-03
+
+### Fixes
+
+- fix(observability): eliminate trace noise from readiness probes
+
+## [0.12.0] - 2026-04-03
+
+### Features
+
+- feat(mcp): add server icons and title to initialize response
+
+## [0.11.0] - 2026-04-03
+
+### Features
+
+- feat(oidc): add otelhttp tracing to OIDC HTTP client
+- feat(ui): modern favicon set with PWA manifest and OAuth dark mode
+
+### Fixes
+
+- fix: webmanifest Content-Type and CountClients test
+- fix(ui): set webmanifest Content-Type for CI environments
+- fix(version): consistent version across platform
+- fix(search): cap ZIM fan-out and add concurrency semaphore
+- fix(oauth): deduplicate scope strings at parse boundary
+- fix(a11y): remaining WCAG 2.1 AA polish pass
+- fix(oauth): handle 204 in apiFetch and return 404 on missing client
+- fix(a11y): WCAG 2.1 AA compliance across OAuth pages and admin SPA
+- fix(ui): serve favicons and manifest from root paths
+- fix(oauth): match dark mode background to SPA theme
+- fix(oauth): restore client scope expansion on admin approval
+- fix(oauth): enforce scope intersection across all grant flows
+
+## [0.10.4] - 2026-04-03
+
+### Fixes
+
+- fix(oauth): use JS redirect for Safari popup compat
+
+## [0.10.3] - 2026-04-03
+
+### Fixes
+
+- fix(oauth): override CSP form-action on redirects
+
+## [0.10.1] - 2026-04-03
+
+### Fixes
+
+- fix(server): serve favicon.ico at root for Claude.ai
+
+## [0.10.0] - 2026-04-03
+
+### Features
+
+- feat(documents): add edit modal, visibility badges, content re-upload, and tag autocomplete
+
+### Fixes
+
+- fix(lint): resolve gosec and sloglint issues
+- fix(ci): add resilience to Docker Hub cleanup step
+
+## [0.9.7] - 2026-04-02
+
+### Fixes
+
+- fix(ci): delete Docker Hub images by digest, not just tags
+
+### Maintenance
+
+- chore(deps): lock file maintenance
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 4cd17e1
+- chore(deps): lock file maintenance
+- chore(deps): update dependencies and CI actions
+
+## [0.9.6] - 2026-04-02
+
+### Fixes
+
+- fix(ci): add network=host to buildx driver for registry access
+- fix(docker): use native builds with cross-compilation for multi-arch
+- fix(ci): sort Docker Hub tags client-side before cleanup
+
+## [0.9.5] - 2026-04-02
+
+### Fixes
+
+- fix(observability): fix empty SQL panels and add db_system filtering
+
+### Maintenance
+
+- chore(frontend): bump CI Node.js 22→24 and update dev deps
+
+## [0.9.4] - 2026-04-02
+
+### Fixes
+
+- fix(security): harden OAuth grant, path traversal, JSON response, and CI pinning
+
+## [0.9.3] - 2026-04-02
+
+### Fixes
+
+- fix(redis): revert unnecessary go-redis downgrade
+
+## [0.9.2] - 2026-04-02
+
+### Fixes
+
+- fix(redis): downgrade go-redis to v9.17.3 to restore connection pooling
+
+### Maintenance
+
+- chore(devcontainer): add gh, redis-cli, and psql
+
+## [0.9.1] - 2026-04-02
+
+### Fixes
+
+- fix(redis): disable CLIENT SETINFO to eliminate unread data warnings
+
+## [0.9.0] - 2026-04-02
+
+### Features
+
+- feat(mcp): add list_documents tool for document discovery
+- feat(observability): add root spans to River workers, fix trace explorer
+- feat(observability): trace external connections, fix Redis state management
+- feat(ci): add Grafana dashboard validation and deploy workflow
+- feat(observability): add Sentry/GlitchTip error tracking
+- feat(hardening): security and code quality improvements from multi-agent review
+- feat(redis): add Redis for distributed rate limiting and cross-instance SSE
+- feat(security): add client_ip to request logs, auth failure logging
+- feat(frontend): add interactive API docs page via Scalar
+- feat(server): redirect root URL to admin panel
+- feat(frontend): refine light mode palette with slate tones and indigo accents
+- feat(security): encrypt external service API keys at rest
+- feat(search): include DevDocs archives in unified search fan-out
+- feat(zim): add search fallback and consolidate migrations
+- feat(search): add file-level FTS for git templates
+- feat: pre-release backlog cleanup
+- feat(ci): add self-hosted Renovate workflow for Forgejo
+- feat(search): use Meilisearch to select relevant archives for Kiwix fan-out
+- feat(ci): add version-release workflow for automated releases
+- feat(search): add two-way DB↔Meilisearch index reconciliation
+- feat(mcp): add federated ZIM article search to unified_search
+- feat(ui): mobile nav drawer, user dropdown, and responsive tables
+- feat(oauth): track last_used_at on bearer token validation
+- feat(frontend): add sync button for external services, rebuild dist
+- feat(frontend): show document content inline, fix download button
+- feat(frontend): dark mode + WCAG 2.1 AA accessibility
+- feat(auth): OIDC admin groups, dual auth middleware, and SPA asset fix
+- feat(auth): fine-grained access control with scopes and document ownership
+- feat(auth): wire RequireScope middleware and implement OAuthClient.Show
+- feat: test coverage, response standardization, and docs cleanup
+- feat(phase11): Add security tests, remove old admin UI, mount SPA at /admin
+- feat(frontend): Add remaining admin pages and complete Vue SPA
+- feat(frontend): Add core admin pages and shared components
+- feat(api): Add dashboard stats, user CRUD, document restore/purge
+- feat(frontend): Add Vue 3 + TypeScript SPA scaffold
+- feat(queue): Migrate to River Postgres-native job queue
+- feat(scheduler,api): Add 6 maintenance jobs and 4 REST API endpoints
+- feat(skills): Migrate Forgejo skills to fj CLI
+- feat(security): Add trusted proxy RealIP middleware with CIDR validation
+- feat(grafana): Add Grafana Foundation SDK dashboard generator for Go version
+- feat(scheduler): Add cron scheduler for external service sync jobs
+- feat(test): Add integration tests with testcontainers-go
+- feat(security): Add CSRF, rate limiting, security headers, and hardening
+- feat(observability): Add tracing, metrics, tests, CI/CD, deployment
+- feat(admin): Implement admin web UI with templ + htmx
+- feat(wire): Wire MCP tool handlers, DI, and routes
+- feat(api): Implement REST API handlers for all external services
+- feat(services): Add external service management, repository extensions, indexer methods
+- feat(clients): Implement external service clients for ZIM, Confluence, Git
+- feat(pipeline): Implement Phase 3 document processing pipeline and search
+- feat(oauth): Implement Phase 2B OAuth 2.1 server and OIDC authentication
+- feat: Implement Phase 2A MCP server with 18 tools and 7 prompts
+- feat: Implement Phase 1 foundation (config, database, models, HTTP server, DI)
+- feat: Initialize repo with claude-template and Go devcontainer
+
+### Fixes
+
+- fix(redis): dedicated rate limit client to prevent unread data warnings
+- fix(oauth): use 303 See Other for Safari POST-redirect
+- fix(redis): add ContextTimeoutEnabled, explicit timeouts and retries
+- fix(security): add path traversal guard to document pipeline
+- fix(redis): decouple readiness pings from HTTP request context
+- fix(grafana): align dashboard with new tracing instrumentation
+- fix(observability): document count gauge, Redis RESP2 switch
+- fix(observability): trace correlation + Redis pool churn
+- fix(observability): accept URL format for OTEL endpoint
+- fix(grafana): correct service name filters and add observability docs
+- fix(grafana): correct document count metric name in dashboard
+- fix(observability): derive OTEL service version from build ldflags
+- fix(ci): use FORGEJO_TOKEN secret for release creation
+- fix(observability): use explicit sampler to fix missing traces behind reverse proxy
+- fix(frontend): exclude generated API code from coverage and prettier
+- fix(deps): upgrade typescript-eslint to 8.58.0 for TypeScript 6 support
+- fix(deps): update go dependencies
+- fix(redis): force RESP2 protocol to prevent connection pool churn
+- fix(ci): remove Trivy scan from Forgejo release workflow
+- fix(ci): use correct image tag for Trivy scan in GitHub release
+- fix(ci): install Trivy binary on Forgejo runner
+- fix(auth): resolve data race on token HMAC key
+- fix(security): use session state for OAuth redirect URI
+- fix(security): resolve 6 Dependabot alerts + 2 CodeQL findings
+- fix(git): replace exec-based git with go-git, fix health check SSRF
+- fix(deps): upgrade x/image to v0.38.0 (CVE-2026-33809)
+- fix(docker): set WORKDIR / in distroless stage
+- fix(ci): use internal registry hostname for Docker login
+- fix(api): return 422 for URL validation errors, not 500
+- fix(security): skip unspecified IPs in SSRF validation
+- fix(server): close MCP sessions on shutdown
+- fix(crypto): hex-decode ENCRYPTION_KEY for full AES-256 entropy
+- fix(server): check XFF before X-Real-IP in RealIP
+- fix(config): use comma splitting for env var slices
+- fix(docker): bump runtime Alpine 3.21 → 3.22 for CVE remediation
+- fix(ci): resolve Forgejo release workflow and Docker build failures
+- fix(zim): overhaul Kiwix search with XML parsing and error resilience
+- fix: resolve failing tests and lint warnings
+- fix: anchor build artifact patterns in .gitignore
+- fix(frontend): wire SSE events to stores for live reactivity
+- fix(security): harden auth, ILIKE escaping, and SSRF policy
+- fix(zim): use suggest endpoint for non-FT archives and clean HTML whitespace
+- fix(migration): add goose StatementBegin/End for PL/pgSQL function
+- fix(oauth): expand client scope on authenticated approval
+- fix(ci): use github.token for Forgejo registry auth
+- fix(security): add path traversal guard to purge handlers
+- fix(security): comprehensive security remediation (14 work packages)
+- fix(ci): replace bc with shell arithmetic, upgrade tsconfig to ES2023
+- fix(mcp): correct stale parameter names and tool refs in 5 prompts
+- fix(ci): replace rsync with find+cp in GitHub sync
+- fix(sse): wire River job events to EventBus for real-time UI updates
+- fix(mcp): add Kiwix hot-reload, full index verification, sources fix
+- fix(security): resolve 11 findings from code quality audit
+- fix(frontend): run openapi-ts before build to generate API client
+- fix(security): resolve 5 low findings from security assessment
+- fix(security): resolve 7 medium findings from security assessment
+- fix(security): block unauthenticated MCP, enforce document ownership
+- fix(oauth): add missing last_used_at column and fix null guard
+- fix(api): resolve git template file 404 from encoded path slashes
+- fix(security): replace gorilla/csrf with net/http.CrossOriginProtection
+- fix(security): MaxBytesReader on all form endpoints, lint v2.11.3 fixes
+- fix(shutdown): two-stage shutdown to handle persistent MCP SSE sessions
+- fix(api): add real pagination to ZIM archives and git templates
+- fix(ui): layout, pagination, cursors, and a11y polish
+- fix(sse): singleton store, initial flush, and external theme script
+- fix(ui): dashboard grid, SSE indicator, favicons, and CSP hash
+- fix(sse): fix 504 timeout, write deadline, and slow shutdown
+- fix(kiwix): resolve versioned content IDs and fix search parameters
+- fix(queue): wire River sync jobs, fix UniqueOpts, track health status
+- fix: resolve nil-interface crash, index cleanup, SSRF, and doc content
+- fix(mcp): resolve tool discovery by replacing any with concrete types
+- fix(server): OAuth CSRF, scope validation, and MCP timeout
+- fix: pre-deploy hardening across security, compliance, and UX
+- fix: comprehensive remediation across security, data integrity, and performance
+- fix(security): comprehensive security audit fixes
+- fix(security): production config, logger injection, ACL, CSP, DNS rebinding
+- fix(security): SSRF, XSS, open redirect, header injection
+- fix(security): Add admin auth guard, sanitize error messages, move SSE under admin
+- fix(ci): Mount DinD socket instead of nested DinD service container
+- fix(ci): Fix integration test and security scan failures
+- fix(ci): Add DinD for integration tests, fix lint, drop GitHub CI
+- fix(security): Remediate critical and high audit findings
+- fix(ci): use correct action refs for Forgejo runner
+- fix(devcontainer): workspace mount
+
+### Maintenance
+
+- chore(devcontainer): update PostgreSQL volume mount for PG 18
+- chore(deps): remove deprecated @types/dompurify
+- chore(deps): update dependency typescript to v6
+- chore(deps): update docker dependencies
+- chore(deps): update docker/setup-qemu-action action to v4
+- chore(deps): update github/codeql-action action to v4
+- chore(deps): update https://github.com/docker/setup-qemu-action action to v4
+- chore(deps): update node.js to v24
+- chore(deps): lock file maintenance
+- chore(deps): update dependency typescript to v6
+- chore(deps): update https://github.com/docker/setup-qemu-action action to v3.7.0
+- chore(deps): update https://github.com/actions/setup-go action to v6.4.0
+- chore(deps): update docker/setup-qemu-action action to v3.7.0
+- chore(deps): update actions/setup-go action to v6.4.0
+- chore(deps): update dependency @types/node to v22.19.15
+- chore(deps): update github/codeql-action digest to 5c8a8a6
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 7eec08c
+- chore(deps): pin dependencies
+- chore(deps): pin dependencies
+- chore(deps): pin catthehacker/ubuntu docker tag to 5258195
+- chore(frontend): bump major dependencies
+- chore: sync skills from claude-template upstream
+- chore: consolidate node_modules gitignore pattern
+- chore: remove stale Meilisearch and Confluence references
+- chore(ci): align workflows with mcp-gate patterns
+- chore: add GitHub mirror, CI/CD, and rename Go module
+- chore: add MIT license
+- chore(frontend): add ESLint, Prettier, and coverage thresholds
+- chore(devcontainer): auto-load .env via docker-compose env_file
+- chore: upgrade Go 1.25.6 → 1.26.1, pin versions in CI
+- chore(lint): upgrade to 3-tier golangci-lint config and fix 619 issues
+- chore(lint): resolve all 368 golangci-lint issues to zero
+- chore(lint): add golangci-lint v2 config with Google Go style rules
+- chore: remove dead code (RollbackMigration, AccessTokenFromContext, RedisConfig)
+- chore(docs): Remove PHP/Laravel-specific documentation
+- chore: Update memory bank and enable gopls plugin
+
+## [0.8.1] - 2026-04-02
+
+### Fixes
+
+- fix(redis): dedicated rate limit client to prevent unread data warnings
+- fix(oauth): use 303 See Other for Safari POST-redirect
+
+## [0.8.0] - 2026-04-01
+
+### Features
+
+- feat(mcp): add list_documents tool for document discovery
+
+### Fixes
+
+- fix(redis): add ContextTimeoutEnabled, explicit timeouts and retries
+
+## [0.7.0] - 2026-04-01
+
+### Features
+
+- feat(observability): add root spans to River workers, fix trace explorer
+
+### Fixes
+
+- fix(security): add path traversal guard to document pipeline
+- fix(redis): decouple readiness pings from HTTP request context
+
+## [0.6.0] - 2026-04-01
+
+### Features
+
+- feat(observability): trace external connections, fix Redis state management
+
+### Fixes
+
+- fix(grafana): align dashboard with new tracing instrumentation
+- fix(observability): document count gauge, Redis RESP2 switch
+
+## [0.5.1] - 2026-04-01
+
+### Fixes
+
+- fix(observability): trace correlation + Redis pool churn
+
+## [0.5.0] - 2026-04-01
+
+### Features
+
+- feat(ci): add Grafana dashboard validation and deploy workflow
+
+### Fixes
+
+- fix(observability): accept URL format for OTEL endpoint
+- fix(grafana): correct service name filters and add observability docs
+- fix(grafana): correct document count metric name in dashboard
+
+## [0.4.1] - 2026-03-31
+
+### Fixes
+
+- fix(observability): derive OTEL service version from build ldflags
+- fix(ci): use FORGEJO_TOKEN secret for release creation
+
+## [0.4.0] - 2026-03-31
+
+### Features
+
+- feat(observability): add Sentry/GlitchTip error tracking
+
+### Fixes
+
+- fix(observability): use explicit sampler to fix missing traces behind reverse proxy
+
+## [0.3.4] - 2026-03-31
+
+### Fixes
+
+- fix(frontend): exclude generated API code from coverage and prettier
+- fix(deps): upgrade typescript-eslint to 8.58.0 for TypeScript 6 support
+- fix(deps): update go dependencies
+
+### Maintenance
+
+- chore(deps): remove deprecated @types/dompurify
+- chore(deps): update dependency typescript to v6
+- chore(deps): update docker dependencies
+- chore(deps): update docker/setup-qemu-action action to v4
+- chore(deps): update github/codeql-action action to v4
+- chore(deps): update https://github.com/docker/setup-qemu-action action to v4
+- chore(deps): update node.js to v24
+- chore(deps): lock file maintenance
+- chore(deps): update dependency typescript to v6
+- chore(deps): update https://github.com/docker/setup-qemu-action action to v3.7.0
+- chore(deps): update https://github.com/actions/setup-go action to v6.4.0
+- chore(deps): update docker/setup-qemu-action action to v3.7.0
+- chore(deps): update actions/setup-go action to v6.4.0
+- chore(deps): update dependency @types/node to v22.19.15
+- chore(deps): update github/codeql-action digest to 5c8a8a6
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 7eec08c
+- chore(deps): pin dependencies
+- chore(deps): pin dependencies
+- chore(deps): pin catthehacker/ubuntu docker tag to 5258195
+
+## [0.3.3] - 2026-03-31
+
+### Fixes
+
+- fix(redis): force RESP2 protocol to prevent connection pool churn
+- fix(ci): remove Trivy scan from Forgejo release workflow
+
+## [0.3.2] - 2026-03-31
+
+### Fixes
+
+- fix(ci): use correct image tag for Trivy scan in GitHub release
+- fix(ci): install Trivy binary on Forgejo runner
+
+## [0.3.1] - 2026-03-31
+
+### Fixes
+
+- fix(auth): resolve data race on token HMAC key
+
+## [0.3.0] - 2026-03-31
+
+### Features
+
+- feat(hardening): security and code quality improvements from multi-agent review
+- feat(redis): add Redis for distributed rate limiting and cross-instance SSE
+
+## [0.2.2] - 2026-03-31
+
+### Fixes
+
+- fix(security): use session state for OAuth redirect URI
+
+## [0.2.1] - 2026-03-31
+
+### Fixes
+
+- fix(security): resolve 6 Dependabot alerts + 2 CodeQL findings
+
+## [0.2.0] - 2026-03-31
+
+### Features
+
+- feat(security): add client_ip to request logs, auth failure logging
+
+## [0.1.6] - 2026-03-30
+
+### Fixes
+
+- fix(git): replace exec-based git with go-git, fix health check SSRF
+
+## [0.1.5] - 2026-03-30
+
+### Fixes
+
+- fix(deps): upgrade x/image to v0.38.0 (CVE-2026-33809)
+
+## [0.1.4] - 2026-03-30
+
+### Fixes
+
+- fix(docker): set WORKDIR / in distroless stage
+
+## [0.1.3] - 2026-03-30
+
+### Fixes
+
+- fix(ci): use internal registry hostname for Docker login
+- fix(api): return 422 for URL validation errors, not 500
+- fix(security): skip unspecified IPs in SSRF validation
+
+## [0.1.0] - 2026-03-30
+
+### Features
+
+- feat(frontend): add interactive API docs page via Scalar
+- feat(server): redirect root URL to admin panel
+
+### Fixes
+
+- fix(server): close MCP sessions on shutdown
+- fix(crypto): hex-decode ENCRYPTION_KEY for full AES-256 entropy
+
+### Maintenance
+
+- chore(frontend): bump major dependencies
+
+## [0.0.3] - 2026-03-30
+
+### Fixes
+
+- fix(server): check XFF before X-Real-IP in RealIP
+- fix(config): use comma splitting for env var slices
+- fix(docker): bump runtime Alpine 3.21 → 3.22 for CVE remediation
+
+### Maintenance
+
+- chore: sync skills from claude-template upstream
+
+## [0.0.2] - 2026-03-30
+
+### Fixes
+
+- fix(ci): resolve Forgejo release workflow and Docker build failures
+
+## [0.0.1] - 2026-03-30
+
+### Features
+
+- feat(frontend): refine light mode palette with slate tones and indigo accents
+- feat(security): encrypt external service API keys at rest
+- feat(search): include DevDocs archives in unified search fan-out
+- feat(zim): add search fallback and consolidate migrations
+- feat(search): add file-level FTS for git templates
+- feat: pre-release backlog cleanup
+- feat(ci): add self-hosted Renovate workflow for Forgejo
+- feat(search): use Meilisearch to select relevant archives for Kiwix fan-out
+- feat(ci): add version-release workflow for automated releases
+- feat(search): add two-way DB↔Meilisearch index reconciliation
+- feat(mcp): add federated ZIM article search to unified_search
+- feat(ui): mobile nav drawer, user dropdown, and responsive tables
+- feat(oauth): track last_used_at on bearer token validation
+- feat(frontend): add sync button for external services, rebuild dist
+- feat(frontend): show document content inline, fix download button
+- feat(frontend): dark mode + WCAG 2.1 AA accessibility
+- feat(auth): OIDC admin groups, dual auth middleware, and SPA asset fix
+- feat(auth): fine-grained access control with scopes and document ownership
+- feat(auth): wire RequireScope middleware and implement OAuthClient.Show
+- feat: test coverage, response standardization, and docs cleanup
+- feat(phase11): Add security tests, remove old admin UI, mount SPA at /admin
+- feat(frontend): Add remaining admin pages and complete Vue SPA
+- feat(frontend): Add core admin pages and shared components
+- feat(api): Add dashboard stats, user CRUD, document restore/purge
+- feat(frontend): Add Vue 3 + TypeScript SPA scaffold
+- feat(queue): Migrate to River Postgres-native job queue
+- feat(scheduler,api): Add 6 maintenance jobs and 4 REST API endpoints
+- feat(skills): Migrate Forgejo skills to fj CLI
+- feat(security): Add trusted proxy RealIP middleware with CIDR validation
+- feat(grafana): Add Grafana Foundation SDK dashboard generator for Go version
+- feat(scheduler): Add cron scheduler for external service sync jobs
+- feat(test): Add integration tests with testcontainers-go
+- feat(security): Add CSRF, rate limiting, security headers, and hardening
+- feat(observability): Add tracing, metrics, tests, CI/CD, deployment
+- feat(admin): Implement admin web UI with templ + htmx
+- feat(wire): Wire MCP tool handlers, DI, and routes
+- feat(api): Implement REST API handlers for all external services
+- feat(services): Add external service management, repository extensions, indexer methods
+- feat(clients): Implement external service clients for ZIM, Confluence, Git
+- feat(pipeline): Implement Phase 3 document processing pipeline and search
+- feat(oauth): Implement Phase 2B OAuth 2.1 server and OIDC authentication
+- feat: Implement Phase 2A MCP server with 18 tools and 7 prompts
+- feat: Implement Phase 1 foundation (config, database, models, HTTP server, DI)
+- feat: Initialize repo with claude-template and Go devcontainer
+
+### Fixes
+
+- fix(zim): overhaul Kiwix search with XML parsing and error resilience
+- fix: resolve failing tests and lint warnings
+- fix: anchor build artifact patterns in .gitignore
+- fix(frontend): wire SSE events to stores for live reactivity
+- fix(security): harden auth, ILIKE escaping, and SSRF policy
+- fix(zim): use suggest endpoint for non-FT archives and clean HTML whitespace
+- fix(migration): add goose StatementBegin/End for PL/pgSQL function
+- fix(oauth): expand client scope on authenticated approval
+- fix(ci): use github.token for Forgejo registry auth
+- fix(security): add path traversal guard to purge handlers
+- fix(security): comprehensive security remediation (14 work packages)
+- fix(ci): replace bc with shell arithmetic, upgrade tsconfig to ES2023
+- fix(mcp): correct stale parameter names and tool refs in 5 prompts
+- fix(ci): replace rsync with find+cp in GitHub sync
+- fix(sse): wire River job events to EventBus for real-time UI updates
+- fix(mcp): add Kiwix hot-reload, full index verification, sources fix
+- fix(security): resolve 11 findings from code quality audit
+- fix(frontend): run openapi-ts before build to generate API client
+- fix(security): resolve 5 low findings from security assessment
+- fix(security): resolve 7 medium findings from security assessment
+- fix(security): block unauthenticated MCP, enforce document ownership
+- fix(oauth): add missing last_used_at column and fix null guard
+- fix(api): resolve git template file 404 from encoded path slashes
+- fix(security): replace gorilla/csrf with net/http.CrossOriginProtection
+- fix(security): MaxBytesReader on all form endpoints, lint v2.11.3 fixes
+- fix(shutdown): two-stage shutdown to handle persistent MCP SSE sessions
+- fix(api): add real pagination to ZIM archives and git templates
+- fix(ui): layout, pagination, cursors, and a11y polish
+- fix(sse): singleton store, initial flush, and external theme script
+- fix(ui): dashboard grid, SSE indicator, favicons, and CSP hash
+- fix(sse): fix 504 timeout, write deadline, and slow shutdown
+- fix(kiwix): resolve versioned content IDs and fix search parameters
+- fix(queue): wire River sync jobs, fix UniqueOpts, track health status
+- fix: resolve nil-interface crash, index cleanup, SSRF, and doc content
+- fix(mcp): resolve tool discovery by replacing any with concrete types
+- fix(server): OAuth CSRF, scope validation, and MCP timeout
+- fix: pre-deploy hardening across security, compliance, and UX
+- fix: comprehensive remediation across security, data integrity, and performance
+- fix(security): comprehensive security audit fixes
+- fix(security): production config, logger injection, ACL, CSP, DNS rebinding
+- fix(security): SSRF, XSS, open redirect, header injection
+- fix(security): Add admin auth guard, sanitize error messages, move SSE under admin
+- fix(ci): Mount DinD socket instead of nested DinD service container
+- fix(ci): Fix integration test and security scan failures
+- fix(ci): Add DinD for integration tests, fix lint, drop GitHub CI
+- fix(security): Remediate critical and high audit findings
+- fix(ci): use correct action refs for Forgejo runner
+- fix(devcontainer): workspace mount
+
+### Maintenance
+
+- chore: consolidate node_modules gitignore pattern
+- chore: remove stale Meilisearch and Confluence references
+- chore(ci): align workflows with mcp-gate patterns
+- chore: add GitHub mirror, CI/CD, and rename Go module
+- chore: add MIT license
+- chore(frontend): add ESLint, Prettier, and coverage thresholds
+- chore(devcontainer): auto-load .env via docker-compose env_file
+- chore: upgrade Go 1.25.6 → 1.26.1, pin versions in CI
+- chore(lint): upgrade to 3-tier golangci-lint config and fix 619 issues
+- chore(lint): resolve all 368 golangci-lint issues to zero
+- chore(lint): add golangci-lint v2 config with Google Go style rules
+- chore: remove dead code (RollbackMigration, AccessTokenFromContext, RedisConfig)
+- chore(docs): Remove PHP/Laravel-specific documentation
+- chore: Update memory bank and enable gopls plugin
+
+[Unreleased]: https://github.com/c-premus/documcp/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/c-premus/documcp/compare/v0.26.1...v0.27.0
+[0.26.1]: https://github.com/c-premus/documcp/compare/v0.26.0...v0.26.1
+[0.26.0]: https://github.com/c-premus/documcp/compare/v0.25.2...v0.26.0
+[0.25.2]: https://github.com/c-premus/documcp/compare/v0.25.1...v0.25.2
+[0.25.1]: https://github.com/c-premus/documcp/compare/v0.25.0...v0.25.1
+[0.25.0]: https://github.com/c-premus/documcp/compare/v0.24.1...v0.25.0
+[0.24.1]: https://github.com/c-premus/documcp/compare/v0.24.0...v0.24.1
+[0.24.0]: https://github.com/c-premus/documcp/compare/v0.23.2...v0.24.0
+[0.23.2]: https://github.com/c-premus/documcp/compare/v0.23.1...v0.23.2
+[0.23.1]: https://github.com/c-premus/documcp/compare/v0.23.0...v0.23.1
+[0.23.0]: https://github.com/c-premus/documcp/compare/v0.22.0...v0.23.0
+[0.22.0]: https://github.com/c-premus/documcp/compare/v0.21.1...v0.22.0
+[0.21.1]: https://github.com/c-premus/documcp/compare/v0.21.0...v0.21.1
+[0.21.0]: https://github.com/c-premus/documcp/compare/v0.20.1...v0.21.0
+[0.20.1]: https://github.com/c-premus/documcp/compare/v0.20.0...v0.20.1
+[0.20.0]: https://github.com/c-premus/documcp/compare/v0.19.0...v0.20.0
+[0.19.0]: https://github.com/c-premus/documcp/compare/v0.18.2...v0.19.0
+[0.18.2]: https://github.com/c-premus/documcp/compare/v0.18.1...v0.18.2
+[0.18.1]: https://github.com/c-premus/documcp/compare/v0.18.0...v0.18.1
+[0.18.0]: https://github.com/c-premus/documcp/compare/v0.17.0...v0.18.0
+[0.17.0]: https://github.com/c-premus/documcp/compare/v0.16.0...v0.17.0
+[0.16.0]: https://github.com/c-premus/documcp/compare/v0.15.0...v0.16.0
+[0.15.0]: https://github.com/c-premus/documcp/compare/v0.14.2...v0.15.0
+[0.14.2]: https://github.com/c-premus/documcp/compare/v0.14.1...v0.14.2
+[0.14.1]: https://github.com/c-premus/documcp/compare/v0.14.0...v0.14.1
+[0.14.0]: https://github.com/c-premus/documcp/compare/v0.13.3...v0.14.0
+[0.13.3]: https://github.com/c-premus/documcp/compare/v0.13.2...v0.13.3
+[0.13.2]: https://github.com/c-premus/documcp/compare/v0.13.1...v0.13.2
+[0.13.1]: https://github.com/c-premus/documcp/compare/v0.13.0...v0.13.1
+[0.13.0]: https://github.com/c-premus/documcp/compare/v0.12.2...v0.13.0
+[0.12.2]: https://github.com/c-premus/documcp/compare/v0.12.1...v0.12.2
+[0.12.1]: https://github.com/c-premus/documcp/compare/v0.12.0...v0.12.1
+[0.12.0]: https://github.com/c-premus/documcp/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/c-premus/documcp/compare/v0.10.4...v0.11.0
+[0.10.4]: https://github.com/c-premus/documcp/compare/v0.10.3...v0.10.4
+[0.10.3]: https://github.com/c-premus/documcp/compare/v0.10.2...v0.10.3
+[0.10.2]: https://github.com/c-premus/documcp/compare/v0.10.1...v0.10.2
+[0.10.1]: https://github.com/c-premus/documcp/compare/v0.10.0...v0.10.1
+[0.10.0]: https://github.com/c-premus/documcp/compare/v0.9.7...v0.10.0
+[0.9.7]: https://github.com/c-premus/documcp/compare/v0.9.6...v0.9.7
+[0.9.6]: https://github.com/c-premus/documcp/compare/v0.9.5...v0.9.6
+[0.9.5]: https://github.com/c-premus/documcp/compare/v0.9.4...v0.9.5
+[0.9.4]: https://github.com/c-premus/documcp/compare/v0.9.3...v0.9.4
+[0.9.3]: https://github.com/c-premus/documcp/compare/v0.9.2...v0.9.3
+[0.9.2]: https://github.com/c-premus/documcp/compare/v0.9.1...v0.9.2
+[0.9.1]: https://github.com/c-premus/documcp/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/c-premus/documcp/compare/v0.8.1...v0.9.0
+[0.8.1]: https://github.com/c-premus/documcp/compare/v0.8.0...v0.8.1
+[0.8.0]: https://github.com/c-premus/documcp/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/c-premus/documcp/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/c-premus/documcp/compare/v0.5.1...v0.6.0
+[0.5.1]: https://github.com/c-premus/documcp/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/c-premus/documcp/compare/v0.4.1...v0.5.0
+[0.4.1]: https://github.com/c-premus/documcp/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/c-premus/documcp/compare/v0.3.4...v0.4.0
+[0.3.4]: https://github.com/c-premus/documcp/compare/v0.3.3...v0.3.4
+[0.3.3]: https://github.com/c-premus/documcp/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/c-premus/documcp/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/c-premus/documcp/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/c-premus/documcp/compare/v0.2.2...v0.3.0
+[0.2.2]: https://github.com/c-premus/documcp/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/c-premus/documcp/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/c-premus/documcp/compare/v0.1.6...v0.2.0
+[0.1.6]: https://github.com/c-premus/documcp/compare/v0.1.5...v0.1.6
+[0.1.5]: https://github.com/c-premus/documcp/compare/v0.1.4...v0.1.5
+[0.1.4]: https://github.com/c-premus/documcp/compare/v0.1.3...v0.1.4
+[0.1.3]: https://github.com/c-premus/documcp/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/c-premus/documcp/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/c-premus/documcp/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/c-premus/documcp/compare/v0.0.3...v0.1.0
+[0.0.3]: https://github.com/c-premus/documcp/compare/v0.0.2...v0.0.3
+[0.0.2]: https://github.com/c-premus/documcp/compare/v0.0.1...v0.0.2
+[0.0.1]: https://github.com/c-premus/documcp/releases/tag/v0.0.1
