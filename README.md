@@ -209,7 +209,8 @@ Per-replica health is reported at `/health/ready`, which checks Postgres and Red
 
 | Document | Description |
 |----------|-------------|
-| [Changelog](CHANGELOG.md) | Per-release changes — canonical because the GitHub mirror squash-merges |
+| [Changelog](CHANGELOG.md) | Per-release changes (auto-generated from conventional-commit subjects) |
+| [Contributing](CONTRIBUTING.md) | How to send PRs, commit message format, dual-repo flow |
 | [Configuration](docs/CONFIGURATION.md) | Every environment variable, grouped by concern |
 | [OAuth Client Guide](docs/OAUTH_CLIENT_GUIDE.md) | Connecting AI agents, CLI tools, and Claude.ai |
 | [Operations](docs/OPERATIONS.md) | Backup / restore (Postgres + blob store), readiness monitoring, alert rules |
