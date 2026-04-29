@@ -13,6 +13,8 @@ manual cut.
 
 ## [Unreleased]
 
+## [0.27.0] — 2026-04-29
+
 ### Added
 
 - **Frontend mobile-card layouts on every list view.** The shared
@@ -42,6 +44,16 @@ manual cut.
   `ContentViewer` (the desktop-only `<pre>` block kept rendering README.md
   as raw text on every viewport). Code files keep their existing raw `<pre>`
   display — syntax highlighting is a separate scope.
+- **`CHANGELOG.md`** at the repo root, in [Keep a Changelog] format.
+  Canonical record of release content because the GitHub mirror
+  squash-merges every dev → main change, collapsing per-commit history.
+
+### Notes
+
+- No re-auth required at deploy. No schema changes. Pure frontend release.
+- Mermaid v11 transitively pulls `uuid <14.0.0` (moderate advisory on a
+  buffer-bounds path that requires caller-supplied buffers). Not exploitable
+  in our integration; watching for an upstream `uuid` bump.
 
 ## [0.26.1] — 2026-04-28
 
@@ -562,7 +574,8 @@ landings:
 Per-tag detail for this range lives in git tags (`git log v0.0.1..v0.9.7
 --first-parent --pretty='%h %ai %s'`).
 
-[Unreleased]: https://github.com/c-premus/DocuMCP-go/compare/v0.26.1...HEAD
+[Unreleased]: https://github.com/c-premus/DocuMCP-go/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.27.0
 [0.26.1]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.26.1
 [0.26.0]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.26.0
 [0.25.2]: https://github.com/c-premus/DocuMCP-go/releases/tag/v0.25.2
