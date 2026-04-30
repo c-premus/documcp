@@ -11,6 +11,14 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.27.2] - 2026-04-30
+
+### Fixes
+
+- fix(ci): use github.repository_owner for registry login username
+- fix(ci): use FORGE_TOKEN for container registry login
+- fix(ci): use FORGE_TOKEN PAT for version-release pushes
+
 ## [0.27.1] - 2026-04-30
 
 ### Fixes
@@ -25,6 +33,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.27.1
 - chore(ci): Rename FORGEJO_TOKEN secret reference to FORGE_TOKEN
 - chore(ci): switch GitHub mirror to filter-repo + auto-CHANGELOG
 
@@ -956,6 +965,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.27.2]: https://github.com/c-premus/documcp/compare/v0.27.1...v0.27.2
 [0.27.1]: https://github.com/c-premus/documcp/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/c-premus/documcp/compare/v0.26.1...v0.27.0
 [0.26.1]: https://github.com/c-premus/documcp/compare/v0.26.0...v0.26.1
