@@ -11,11 +11,22 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
-## [Unreleased]
+## [0.27.1] - 2026-04-30
 
 ### Fixes
 
+- fix(ci): use git clone --bare; the simpler form of the bypass
+- fix(ci): bypass git clone entirely; use git init --bare + fetch
+- fix(ci): detach workspace HEAD before mirror clone
+- fix(ci): clean worktree registry at --git-common-dir, not workspace .git
+- fix(deps): bump marked to 18.0.2 (GHSA-6v9c-7cg6-27q7)
+- fix(ci): nuke .git/worktrees before mirror clone
 - fix(observability): always re-root inbound HTTP traces
+
+### Maintenance
+
+- chore(ci): Rename FORGEJO_TOKEN secret reference to FORGE_TOKEN
+- chore(ci): switch GitHub mirror to filter-repo + auto-CHANGELOG
 
 ## [0.27.0] - 2026-04-29
 
@@ -945,7 +956,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
-[Unreleased]: https://github.com/c-premus/documcp/compare/v0.27.0...HEAD
+[0.27.1]: https://github.com/c-premus/documcp/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/c-premus/documcp/compare/v0.26.1...v0.27.0
 [0.26.1]: https://github.com/c-premus/documcp/compare/v0.26.0...v0.26.1
 [0.26.0]: https://github.com/c-premus/documcp/compare/v0.25.2...v0.26.0
