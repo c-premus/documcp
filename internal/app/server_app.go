@@ -152,7 +152,13 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 	})
 
 	// --- OIDC Handler ---
-	oidcH, err := oidc.New(context.Background(), oidc.Config{
+	// Use the foundation context so the background discovery goroutine inside
+	// New() (spawned when first-burst discovery fails) exits on shutdown.
+	// Operator errors (URL validation, missing JWKS in manual mode) fail
+	// fatally; transient discovery failures yield a not-ready handler that
+	// retries in the background — the route stays registered and returns 503
+	// until the provider becomes reachable.
+	oidcH, err := oidc.New(f.Ctx(), oidc.Config{
 		OIDCCfg:      cfg.OIDC,
 		SessionStore: sessionStore,
 		Repo:         f.OAuthRepo,
@@ -161,9 +167,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		AppURL:       cfg.App.URL,
 	})
 	if err != nil {
-		logger.Warn("OIDC provider discovery failed, OIDC login disabled", "error", err)
-	} else if oidcH != nil {
-		logger.Info("OIDC provider configured", "provider_url", cfg.OIDC.ProviderURL)
+		return nil, fmt.Errorf("oidc handler: %w", err)
 	}
 
 	// --- API Handlers ---

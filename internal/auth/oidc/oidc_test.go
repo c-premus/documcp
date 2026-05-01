@@ -12,7 +12,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	neturl "net/url"
+	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -248,25 +250,34 @@ func TestNew(t *testing.T) {
 		}
 	})
 
-	t.Run("returns error for invalid provider URL", func(t *testing.T) {
-		origRetries := discoveryMaxRetries
-		origDelay := discoveryBaseDelay
+	t.Run("not-ready handler when provider URL unreachable", func(t *testing.T) {
+		origRetries, origDelay, origInterval := discoveryMaxRetries, discoveryBaseDelay, discoveryRetryInterval
 		discoveryMaxRetries = 1
 		discoveryBaseDelay = 1 * time.Millisecond
+		discoveryRetryInterval = 1 * time.Hour // keep the bg goroutine quiet for the test window
 		defer func() {
 			discoveryMaxRetries = origRetries
 			discoveryBaseDelay = origDelay
+			discoveryRetryInterval = origInterval
 		}()
 
-		_, err := New(context.Background(), Config{
+		// t.Context() cancels at subtest cleanup so the background
+		// discoverLoop exits without leaking.
+		h, err := New(t.Context(), Config{
 			OIDCCfg: config.OIDCConfig{
 				ProviderURL: "http://invalid.localhost.test:1",
 				ClientID:    "test",
 			},
 			Logger: slog.Default(),
 		})
-		if err == nil {
-			t.Fatal("expected error for invalid provider URL")
+		if err != nil {
+			t.Fatalf("expected no error (handler enters not-ready state); got %v", err)
+		}
+		if h == nil {
+			t.Fatal("expected non-nil handler in not-ready state")
+		}
+		if h.readyState() != nil {
+			t.Fatal("expected not-ready handler when provider unreachable")
 		}
 	})
 
@@ -337,39 +348,41 @@ func TestNew(t *testing.T) {
 		}
 	})
 
-	t.Run("returns error after all retries exhausted", func(t *testing.T) {
-		origRetries := discoveryMaxRetries
-		origDelay := discoveryBaseDelay
+	t.Run("burst exhaustion hands off to background loop", func(t *testing.T) {
+		origRetries, origDelay, origInterval := discoveryMaxRetries, discoveryBaseDelay, discoveryRetryInterval
 		discoveryMaxRetries = 2
 		discoveryBaseDelay = 1 * time.Millisecond
+		discoveryRetryInterval = 1 * time.Hour
 		defer func() {
 			discoveryMaxRetries = origRetries
 			discoveryBaseDelay = origDelay
+			discoveryRetryInterval = origInterval
 		}()
 
-		_, err := New(context.Background(), Config{
+		h, err := New(t.Context(), Config{
 			OIDCCfg: config.OIDCConfig{
 				ProviderURL: "http://invalid.localhost.test:1",
 				ClientID:    "test",
 			},
 			Logger: slog.Default(),
 		})
-		if err == nil {
-			t.Fatal("expected error after all retries exhausted")
+		if err != nil {
+			t.Fatalf("expected no error (handler enters not-ready state); got %v", err)
 		}
-		if !strings.Contains(err.Error(), "after 2 attempts") {
-			t.Errorf("error should mention attempt count, got: %v", err)
+		if h == nil || h.readyState() != nil {
+			t.Fatal("expected non-nil not-ready handler after burst exhaustion")
 		}
 	})
 
-	t.Run("respects context cancellation during retry", func(t *testing.T) {
-		origRetries := discoveryMaxRetries
-		origDelay := discoveryBaseDelay
+	t.Run("ctx cancel during burst returns not-ready handler", func(t *testing.T) {
+		origRetries, origDelay, origInterval := discoveryMaxRetries, discoveryBaseDelay, discoveryRetryInterval
 		discoveryMaxRetries = 10
-		discoveryBaseDelay = 10 * time.Second // long delay — context should cancel first
+		discoveryBaseDelay = 10 * time.Second // long burst — ctx should cancel first
+		discoveryRetryInterval = 1 * time.Hour
 		defer func() {
 			discoveryMaxRetries = origRetries
 			discoveryBaseDelay = origDelay
+			discoveryRetryInterval = origInterval
 		}()
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -379,20 +392,233 @@ func TestNew(t *testing.T) {
 			cancel()
 		}()
 
-		_, err := New(ctx, Config{
+		h, err := New(ctx, Config{
 			OIDCCfg: config.OIDCConfig{
 				ProviderURL: "http://invalid.localhost.test:1",
 				ClientID:    "test",
 			},
 			Logger: slog.Default(),
 		})
-		if err == nil {
-			t.Fatal("expected error on context cancellation")
+		if err != nil {
+			t.Fatalf("expected no error on ctx cancel (handler enters not-ready); got %v", err)
 		}
-		if !errors.Is(err, context.Canceled) {
-			t.Errorf("expected context.Canceled, got: %v", err)
+		if h == nil || h.readyState() != nil {
+			t.Fatal("expected non-nil not-ready handler after ctx cancel")
 		}
 	})
+}
+
+// TestNotReadyHandler_Serves503 verifies that Login and Callback respond with
+// 503 + Retry-After while OIDC discovery hasn't yet succeeded — the route is
+// registered every boot, so the failure mode is "service unavailable" rather
+// than the previous "404 NotFound" (which looked like a deploy regression).
+func TestNotReadyHandler_Serves503(t *testing.T) {
+	origRetries, origDelay, origInterval := discoveryMaxRetries, discoveryBaseDelay, discoveryRetryInterval
+	discoveryMaxRetries = 1
+	discoveryBaseDelay = 1 * time.Millisecond
+	discoveryRetryInterval = 1 * time.Hour
+	defer func() {
+		discoveryMaxRetries = origRetries
+		discoveryBaseDelay = origDelay
+		discoveryRetryInterval = origInterval
+	}()
+
+	h, err := New(t.Context(), Config{
+		OIDCCfg: config.OIDCConfig{
+			ProviderURL: "http://invalid.localhost.test:1",
+			ClientID:    "test",
+		},
+		SessionStore: sessions.NewCookieStore([]byte("test-secret-key-32-bytes-long!!")),
+		Repo:         &mockUserRepo{},
+		Logger:       slog.Default(),
+	})
+	if err != nil || h == nil {
+		t.Fatalf("expected non-nil handler when provider unreachable; err=%v h=%v", err, h)
+	}
+	if h.readyState() != nil {
+		t.Fatal("handler should be not-ready before discovery succeeds")
+	}
+
+	t.Run("Login returns 503 with Retry-After", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
+		w := httptest.NewRecorder()
+		h.Login(w, req)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
+		}
+		if got := w.Header().Get("Retry-After"); got != "30" {
+			t.Errorf("Retry-After = %q, want %q", got, "30")
+		}
+	})
+
+	t.Run("Callback returns 503 with Retry-After", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/auth/callback?code=x&state=y", http.NoBody)
+		w := httptest.NewRecorder()
+		h.Callback(w, req)
+
+		if w.Code != http.StatusServiceUnavailable {
+			t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
+		}
+		if got := w.Header().Get("Retry-After"); got != "30" {
+			t.Errorf("Retry-After = %q, want %q", got, "30")
+		}
+	})
+
+	t.Run("Logout still clears session when not-ready", func(t *testing.T) {
+		// Logout intentionally proceeds without RP-Initiated Logout when the
+		// provider is mid-recovery — clearing the local cookie is more
+		// user-friendly than blocking logout on a transient OIDC outage.
+		req := httptest.NewRequest(http.MethodPost, "/auth/logout", http.NoBody)
+		w := httptest.NewRecorder()
+		h.Logout(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+		}
+		var body map[string]string
+		if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+			t.Fatalf("decoding response: %v", err)
+		}
+		if body["redirect_url"] != "/" {
+			t.Errorf("redirect_url = %q, want %q (no end_session_endpoint while not-ready)", body["redirect_url"], "/")
+		}
+	})
+}
+
+// TestNotReadyHandler_TransitionsWhenProviderRecovers proves that the
+// background discovery goroutine recovers — the handler flips from 503 to
+// serving normal redirects once the provider becomes reachable, with no
+// process restart. Uses a flag-controlled mock that returns 503 until the
+// test toggles it; the URL is stable so the handler keeps polling the same
+// endpoint across attempts.
+func TestNotReadyHandler_TransitionsWhenProviderRecovers(t *testing.T) {
+	origRetries, origDelay, origInterval := discoveryMaxRetries, discoveryBaseDelay, discoveryRetryInterval
+	discoveryMaxRetries = 1
+	discoveryBaseDelay = 1 * time.Millisecond
+	discoveryRetryInterval = 20 * time.Millisecond
+	defer func() {
+		discoveryMaxRetries = origRetries
+		discoveryBaseDelay = origDelay
+		discoveryRetryInterval = origInterval
+	}()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generating RSA key: %v", err)
+	}
+	var ready atomic.Bool
+	mux := http.NewServeMux()
+	var serverURL string
+	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		if !ready.Load() {
+			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		discovery := map[string]any{
+			"issuer":                                serverURL,
+			"authorization_endpoint":                serverURL + "/authorize",
+			"token_endpoint":                        serverURL + "/token",
+			"jwks_uri":                              serverURL + "/certs",
+			"end_session_endpoint":                  serverURL + "/end-session",
+			"id_token_signing_alg_values_supported": []string{"RS256"},
+			"subject_types_supported":               []string{"public"},
+			"response_types_supported":              []string{"code"},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(discovery)
+	})
+	_ = privateKey // JWKS not needed since we never exchange a token in this test
+	mockServer := httptest.NewServer(mux)
+	serverURL = mockServer.URL
+	defer mockServer.Close()
+
+	dctx := gooidc.InsecureIssuerURLContext(t.Context(), serverURL)
+
+	h, err := New(dctx, Config{
+		OIDCCfg: config.OIDCConfig{
+			ProviderURL:  serverURL,
+			ClientID:     "test-client-id",
+			ClientSecret: "test-client-secret",
+			RedirectURL:  "http://localhost:8080/auth/callback",
+		},
+		SessionStore: sessions.NewCookieStore([]byte("test-secret-key-32-bytes-long!!")),
+		Repo:         &mockUserRepo{},
+		Logger:       slog.Default(),
+		AppURL:       "http://localhost:8080",
+	})
+	if err != nil || h == nil {
+		t.Fatalf("expected non-nil handler; err=%v h=%v", err, h)
+	}
+	if h.readyState() != nil {
+		t.Fatal("handler should start not-ready when discovery is failing")
+	}
+
+	// Flip the provider on. Background loop should observe the success on its
+	// next tick (~20ms) and the handler transitions to ready.
+	ready.Store(true)
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if h.readyState() != nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if h.readyState() == nil {
+		t.Fatal("handler did not transition to ready within 1s of provider recovery")
+	}
+
+	// Sanity-check: Login now redirects to the provider instead of 503.
+	req := httptest.NewRequest(http.MethodGet, "/auth/login", http.NoBody)
+	w := httptest.NewRecorder()
+	h.Login(w, req)
+	if w.Code != http.StatusFound {
+		t.Errorf("after recovery, Login status = %d, want %d (redirect to provider)", w.Code, http.StatusFound)
+	}
+}
+
+// TestNotReadyHandler_GoroutineExitsOnCancel verifies the background
+// discovery goroutine exits cleanly when its context is canceled — guards
+// against a goroutine leak across server restarts.
+func TestNotReadyHandler_GoroutineExitsOnCancel(t *testing.T) {
+	origRetries, origDelay, origInterval := discoveryMaxRetries, discoveryBaseDelay, discoveryRetryInterval
+	discoveryMaxRetries = 1
+	discoveryBaseDelay = 1 * time.Millisecond
+	discoveryRetryInterval = 10 * time.Millisecond
+	defer func() {
+		discoveryMaxRetries = origRetries
+		discoveryBaseDelay = origDelay
+		discoveryRetryInterval = origInterval
+	}()
+
+	before := runtime.NumGoroutine()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	h, err := New(ctx, Config{
+		OIDCCfg: config.OIDCConfig{
+			ProviderURL: "http://invalid.localhost.test:1",
+			ClientID:    "test",
+		},
+		SessionStore: sessions.NewCookieStore([]byte("test-secret-key-32-bytes-long!!")),
+		Repo:         &mockUserRepo{},
+		Logger:       slog.Default(),
+	})
+	if err != nil || h == nil || h.readyState() != nil {
+		t.Fatalf("expected non-nil not-ready handler; err=%v", err)
+	}
+
+	cancel()
+
+	// Allow the goroutine a brief window to observe ctx.Done() and exit.
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if runtime.NumGoroutine() <= before {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("background discovery goroutine did not exit within 1s; goroutines before=%d after=%d", before, runtime.NumGoroutine())
 }
 
 func TestIsSafeRedirect(t *testing.T) {
@@ -1007,7 +1233,9 @@ func TestLogout(t *testing.T) {
 		defer server.Close()
 
 		// Clear end_session_endpoint to simulate a provider that doesn't support it.
-		h.endSessionEndpoint = ""
+		ds := h.readyState()
+		ds.endSessionEndpoint = ""
+		h.state.Store(ds)
 
 		req := httptest.NewRequest(http.MethodPost, "/auth/logout", http.NoBody)
 		w := httptest.NewRecorder()
