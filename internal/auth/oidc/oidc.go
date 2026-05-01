@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
@@ -48,11 +49,22 @@ type UserRepo interface {
 	UpdateUser(ctx context.Context, user *model.User) error
 }
 
+// discoveredState bundles the fields populated by OIDC provider discovery.
+// Held behind atomic.Pointer on Handler so it can be set asynchronously by
+// the background re-discovery goroutine without a lock on the request path.
+// state.Load() == nil signals "discovery has not yet succeeded" — handlers
+// return 503 with Retry-After in that window.
+type discoveredState struct {
+	provider           *gooidc.Provider // nil in manual-endpoint mode
+	oauth2Config       oauth2.Config
+	verifier           *gooidc.IDTokenVerifier
+	endSessionEndpoint string // RP-Initiated Logout endpoint (from discovery or manual config)
+}
+
 // Handler provides HTTP handlers for OIDC login/callback/logout.
 type Handler struct {
-	provider            *gooidc.Provider // nil in manual-endpoint mode
-	oauth2Config        oauth2.Config
-	verifier            *gooidc.IDTokenVerifier
+	state atomic.Pointer[discoveredState]
+
 	httpClient          *http.Client // instrumented with otelhttp for tracing
 	store               sessions.Store
 	repo                UserRepo
@@ -61,8 +73,20 @@ type Handler struct {
 	adminGroups         []string
 	bootstrapAdminEmail string // normalized lower-case; empty = disabled
 	providerURL         string // stored for OIDCProvider field in user records
-	endSessionEndpoint  string // RP-Initiated Logout endpoint (from discovery or manual config)
 	appURL              string // post_logout_redirect_uri target
+
+	// Inputs needed by the background discovery goroutine when state is not
+	// yet populated. Static after New().
+	clientID           string
+	clientSecret       string
+	redirectURL        string
+	scopes             []string
+	endSessionOverride string // OIDC_END_SESSION_URL when set; takes precedence over discovery
+
+	// Manual-endpoint-only fields. Empty when using auto-discovery.
+	manualAuthURL  string
+	manualTokenURL string
+	manualJWKSURL  string
 }
 
 // Config holds the dependencies for creating a new OIDC Handler.
@@ -81,10 +105,20 @@ type Config struct {
 // tied to OIDC being actually configured.
 var gobRegisterOnce sync.Once
 
-// New creates a new OIDC Handler. It discovers the provider configuration
-// from the well-known endpoint, or uses manually configured endpoints when
-// OIDC_AUTHORIZATION_URL and OIDC_TOKEN_URL are set (REQ-AUTH-003).
-// Returns nil if OIDC is not configured.
+// New creates a new OIDC Handler. Operator-error checks (URL validation,
+// missing JWKS in manual mode) fail synchronously and fatally. When the
+// provider must be discovered from a well-known endpoint, New attempts the
+// burst (1s/2s/4s backoff, ~7s total) inline so a fast-recovering provider
+// produces a ready handler at boot. If the burst fails, the handler is
+// returned in a not-ready state and a background goroutine retries on
+// `discoveryRetryInterval` until success or `ctx` is canceled. Login and
+// Callback return 503 + Retry-After while not ready; Logout still clears
+// the local session (RP-Initiated Logout falls back to a plain redirect).
+//
+// `ctx` controls both the inline burst and the background retry goroutine
+// — pass the foundation context so the goroutine exits on shutdown.
+//
+// Returns nil with no error when OIDC is not configured.
 func New(ctx context.Context, cfg Config) (*Handler, error) {
 	if cfg.OIDCCfg.ProviderURL == "" || cfg.OIDCCfg.ClientID == "" {
 		return nil, nil
@@ -113,6 +147,10 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 				return nil, fmt.Errorf("validating OIDC_JWKS_URL: %w", err)
 			}
 		}
+		// JWKS URL is required for token verification in manual mode.
+		if cfg.OIDCCfg.JWKSURL == "" {
+			return nil, errors.New("OIDC_JWKS_URL is required when using manual OIDC endpoints")
+		}
 	}
 	if cfg.OIDCCfg.EndSessionURL != "" {
 		if err := validateOIDCURL(cfg.OIDCCfg.EndSessionURL); err != nil {
@@ -132,89 +170,8 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 		Timeout:   30 * time.Second,
 		Transport: otelhttp.NewTransport(oidcBaseTransport()),
 	}
-	// go-oidc and golang.org/x/oauth2 both read the HTTP client from context.
-	ctx = context.WithValue(ctx, oauth2.HTTPClient, httpClient)
 
-	var (
-		provider           *gooidc.Provider
-		verifier           *gooidc.IDTokenVerifier
-		endpoint           oauth2.Endpoint
-		endSessionEndpoint string
-	)
-
-	if cfg.OIDCCfg.ManualEndpoints() {
-		// Manual endpoint configuration — skip auto-discovery.
-		endpoint = oauth2.Endpoint{
-			AuthURL:  cfg.OIDCCfg.AuthorizationURL,
-			TokenURL: cfg.OIDCCfg.TokenURL,
-		}
-		endSessionEndpoint = cfg.OIDCCfg.EndSessionURL
-
-		// JWKS URL is required for token verification in manual mode.
-		if cfg.OIDCCfg.JWKSURL == "" {
-			return nil, errors.New("OIDC_JWKS_URL is required when using manual OIDC endpoints")
-		}
-		keySet := gooidc.NewRemoteKeySet(ctx, cfg.OIDCCfg.JWKSURL)
-		verifier = gooidc.NewVerifier(cfg.OIDCCfg.ProviderURL, keySet, &gooidc.Config{
-			ClientID: cfg.OIDCCfg.ClientID,
-		})
-	} else {
-		// Auto-discovery from well-known endpoint with retry.
-		// Transient network failures (e.g. identity provider restarting) should
-		// not permanently disable OIDC login until the next container restart.
-		var lastErr error
-		for attempt := range discoveryMaxRetries {
-			provider, lastErr = gooidc.NewProvider(ctx, cfg.OIDCCfg.ProviderURL)
-			if lastErr == nil {
-				break
-			}
-			if attempt < discoveryMaxRetries-1 {
-				backoff := discoveryBaseDelay << attempt // 1s, 2s, 4s
-				cfg.Logger.Warn("OIDC provider discovery failed, retrying",
-					"error", lastErr, "attempt", attempt+1, "backoff", backoff)
-				select {
-				case <-time.After(backoff):
-				case <-ctx.Done():
-					return nil, fmt.Errorf("discovering OIDC provider: %w", ctx.Err())
-				}
-			}
-		}
-		if lastErr != nil {
-			return nil, fmt.Errorf("discovering OIDC provider after %d attempts: %w", discoveryMaxRetries, lastErr)
-		}
-		endpoint = provider.Endpoint()
-		verifier = provider.Verifier(&gooidc.Config{ClientID: cfg.OIDCCfg.ClientID})
-
-		// Extract end_session_endpoint from discovery document for RP-Initiated Logout.
-		// Manual config override takes precedence if set.
-		if cfg.OIDCCfg.EndSessionURL != "" {
-			endSessionEndpoint = cfg.OIDCCfg.EndSessionURL
-		} else {
-			var discoveryClaims struct {
-				EndSessionEndpoint string `json:"end_session_endpoint"`
-			}
-			if err := provider.Claims(&discoveryClaims); err == nil && discoveryClaims.EndSessionEndpoint != "" {
-				endSessionEndpoint = discoveryClaims.EndSessionEndpoint
-			}
-		}
-	}
-
-	oauth2Config := oauth2.Config{
-		ClientID:     cfg.OIDCCfg.ClientID,
-		ClientSecret: cfg.OIDCCfg.ClientSecret,
-		RedirectURL:  cfg.OIDCCfg.RedirectURL,
-		Endpoint:     endpoint,
-		Scopes:       scopes,
-	}
-
-	if endSessionEndpoint != "" {
-		cfg.Logger.Info("OIDC RP-Initiated Logout enabled", "end_session_endpoint", endSessionEndpoint)
-	}
-
-	return &Handler{
-		provider:            provider,
-		oauth2Config:        oauth2Config,
-		verifier:            verifier,
+	h := &Handler{
 		httpClient:          httpClient,
 		store:               cfg.SessionStore,
 		repo:                cfg.Repo,
@@ -223,9 +180,172 @@ func New(ctx context.Context, cfg Config) (*Handler, error) {
 		adminGroups:         cfg.OIDCCfg.AdminGroups,
 		bootstrapAdminEmail: strings.ToLower(strings.TrimSpace(cfg.OIDCCfg.BootstrapAdminEmail)),
 		providerURL:         cfg.OIDCCfg.ProviderURL,
-		endSessionEndpoint:  endSessionEndpoint,
 		appURL:              cfg.AppURL,
+		clientID:            cfg.OIDCCfg.ClientID,
+		clientSecret:        cfg.OIDCCfg.ClientSecret,
+		redirectURL:         cfg.OIDCCfg.RedirectURL,
+		scopes:              scopes,
+		endSessionOverride:  cfg.OIDCCfg.EndSessionURL,
+		manualAuthURL:       cfg.OIDCCfg.AuthorizationURL,
+		manualTokenURL:      cfg.OIDCCfg.TokenURL,
+		manualJWKSURL:       cfg.OIDCCfg.JWKSURL,
+	}
+
+	if cfg.OIDCCfg.ManualEndpoints() {
+		// Manual endpoint configuration — no network needed; build state synchronously.
+		state := h.buildManualState(ctx)
+		h.state.Store(state)
+		if state.endSessionEndpoint != "" {
+			cfg.Logger.Info("OIDC RP-Initiated Logout enabled", "end_session_endpoint", state.endSessionEndpoint)
+		}
+		return h, nil
+	}
+
+	// Auto-discovery: try the burst inline so a healthy provider produces a
+	// ready handler at boot. On failure, hand off to the goroutine — login
+	// returns 503 in the meantime, and the route is registered every boot.
+	if state, err := h.discoverBurst(ctx); err == nil {
+		h.state.Store(state)
+		cfg.Logger.Info("OIDC provider configured", "provider_url", cfg.OIDCCfg.ProviderURL)
+		if state.endSessionEndpoint != "" {
+			cfg.Logger.Info("OIDC RP-Initiated Logout enabled", "end_session_endpoint", state.endSessionEndpoint)
+		}
+	} else {
+		// Capture the retry interval at spawn time so the test fixture's defer
+		// (which restores the package var) can't race with the goroutine.
+		interval := discoveryRetryInterval
+		cfg.Logger.Warn("OIDC provider discovery failed at startup, retrying in background",
+			"error", err, "retry_interval", interval)
+		go h.discoverLoop(ctx, interval)
+	}
+
+	return h, nil
+}
+
+// buildManualState constructs discoveredState from manual endpoint config —
+// no provider discovery required, so this can never fail. Used only when
+// OIDC_AUTHORIZATION_URL + OIDC_TOKEN_URL + OIDC_JWKS_URL are set.
+func (h *Handler) buildManualState(ctx context.Context) *discoveredState {
+	mctx := context.WithValue(ctx, oauth2.HTTPClient, h.httpClient)
+	keySet := gooidc.NewRemoteKeySet(mctx, h.manualJWKSURL)
+	return &discoveredState{
+		oauth2Config: oauth2.Config{
+			ClientID:     h.clientID,
+			ClientSecret: h.clientSecret,
+			RedirectURL:  h.redirectURL,
+			Endpoint: oauth2.Endpoint{
+				AuthURL:  h.manualAuthURL,
+				TokenURL: h.manualTokenURL,
+			},
+			Scopes: h.scopes,
+		},
+		verifier:           gooidc.NewVerifier(h.providerURL, keySet, &gooidc.Config{ClientID: h.clientID}),
+		endSessionEndpoint: h.endSessionOverride,
+	}
+}
+
+// discoverBurst runs the same retry sequence as legacy New() — at most
+// `discoveryMaxRetries` attempts with exponential backoff (1s, 2s, 4s).
+// Returns the discovered state on success, or the last error after burst
+// exhaustion / context cancellation.
+func (h *Handler) discoverBurst(ctx context.Context) (*discoveredState, error) {
+	dctx := context.WithValue(ctx, oauth2.HTTPClient, h.httpClient)
+	var lastErr error
+	for attempt := range discoveryMaxRetries {
+		state, err := h.discoverOnce(dctx)
+		if err == nil {
+			return state, nil
+		}
+		lastErr = err
+		if attempt < discoveryMaxRetries-1 {
+			backoff := discoveryBaseDelay << attempt // 1s, 2s, 4s
+			h.logger.Warn("OIDC provider discovery failed, retrying",
+				"error", err, "attempt", attempt+1, "backoff", backoff)
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return nil, fmt.Errorf("discovering OIDC provider: %w", ctx.Err())
+			}
+		}
+	}
+	return nil, fmt.Errorf("discovering OIDC provider after %d attempts: %w", discoveryMaxRetries, lastErr)
+}
+
+// discoverLoop retries provider discovery on the supplied interval until it
+// succeeds or ctx is canceled. Runs in its own goroutine, one per Handler
+// instance per process lifetime. The interval is passed by value (rather than
+// read from the package var) so test code that mutates the var via defer
+// can't race with the in-flight goroutine.
+func (h *Handler) discoverLoop(ctx context.Context, interval time.Duration) {
+	dctx := context.WithValue(ctx, oauth2.HTTPClient, h.httpClient)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		state, err := h.discoverOnce(dctx)
+		if err != nil {
+			h.logger.Warn("OIDC background re-discovery failed",
+				"error", err, "next_attempt", interval)
+			continue
+		}
+		h.state.Store(state)
+		h.logger.Info("OIDC provider configured", "provider_url", h.providerURL)
+		if state.endSessionEndpoint != "" {
+			h.logger.Info("OIDC RP-Initiated Logout enabled", "end_session_endpoint", state.endSessionEndpoint)
+		}
+		return
+	}
+}
+
+// discoverOnce performs a single OIDC provider discovery attempt and builds
+// the corresponding discoveredState. The caller is responsible for context
+// + httpClient propagation (use a context with `oauth2.HTTPClient` set).
+func (h *Handler) discoverOnce(ctx context.Context) (*discoveredState, error) {
+	provider, err := gooidc.NewProvider(ctx, h.providerURL)
+	if err != nil {
+		return nil, err
+	}
+	endSessionEndpoint := h.endSessionOverride
+	if endSessionEndpoint == "" {
+		var discoveryClaims struct {
+			EndSessionEndpoint string `json:"end_session_endpoint"`
+		}
+		if claimsErr := provider.Claims(&discoveryClaims); claimsErr == nil {
+			endSessionEndpoint = discoveryClaims.EndSessionEndpoint
+		}
+	}
+	return &discoveredState{
+		provider: provider,
+		oauth2Config: oauth2.Config{
+			ClientID:     h.clientID,
+			ClientSecret: h.clientSecret,
+			RedirectURL:  h.redirectURL,
+			Endpoint:     provider.Endpoint(),
+			Scopes:       h.scopes,
+		},
+		verifier:           provider.Verifier(&gooidc.Config{ClientID: h.clientID}),
+		endSessionEndpoint: endSessionEndpoint,
 	}, nil
+}
+
+// readyState returns the discovered state, or nil if discovery hasn't yet
+// succeeded. Callers must check for nil and surface a 503 when not ready.
+func (h *Handler) readyState() *discoveredState {
+	return h.state.Load()
+}
+
+// writeNotReady writes 503 Service Unavailable with Retry-After when the
+// OIDC provider hasn't been discovered yet. Matches the http.Error pattern
+// used elsewhere in the package.
+func (h *Handler) writeNotReady(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "30")
+	http.Error(w, "OIDC provider not yet available, retry shortly", http.StatusServiceUnavailable)
 }
 
 const sessionName = "documcp_session"
@@ -236,12 +356,17 @@ const sessionName = "documcp_session"
 // ~4096-byte per-cookie limit and get silently dropped.
 const idTokenSessionName = "documcp_idt" //nolint:gosec // session cookie name, not a credential
 
-// discoveryMaxRetries and discoveryBaseDelay control OIDC provider discovery
-// retry behavior. With exponential backoff (1s, 2s, 4s) the total wait is ~7s
-// before giving up. Variables (not constants) so tests can override them.
+// discoveryMaxRetries, discoveryBaseDelay, and discoveryRetryInterval control
+// OIDC provider discovery retry behavior. The first three attempts run inline
+// from New() with exponential backoff (1s, 2s, 4s; total ~7s) so a healthy
+// provider produces a ready handler at boot. After that burst exhausts, the
+// background goroutine retries every `discoveryRetryInterval` until ctx
+// is canceled or discovery succeeds. Variables (not constants) so tests can
+// override them.
 var (
-	discoveryMaxRetries = 4
-	discoveryBaseDelay  = 1 * time.Second
+	discoveryMaxRetries    = 4
+	discoveryBaseDelay     = 1 * time.Second
+	discoveryRetryInterval = 30 * time.Second
 )
 
 // validateOIDCURL checks an operator-configured OIDC URL against the SSRF
@@ -262,8 +387,15 @@ var oidcBaseTransport = func() http.RoundTripper {
 	return security.SafeTransportAllowPrivate(10 * time.Second)
 }
 
-// Login handles GET /auth/login — redirects to the OIDC provider.
+// Login handles GET /auth/login — redirects to the OIDC provider. Returns
+// 503 with Retry-After when provider discovery hasn't yet succeeded.
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	ds := h.readyState()
+	if ds == nil {
+		h.writeNotReady(w)
+		return
+	}
+
 	state, err := generateState()
 	if err != nil {
 		h.logger.Error("generating OIDC state", "error", err)
@@ -299,11 +431,18 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, h.oauth2Config.AuthCodeURL(state, oauth2.SetAuthURLParam("nonce", nonce)), http.StatusFound)
+	http.Redirect(w, r, ds.oauth2Config.AuthCodeURL(state, oauth2.SetAuthURLParam("nonce", nonce)), http.StatusFound)
 }
 
-// Callback handles GET /auth/callback — processes the OIDC callback.
+// Callback handles GET /auth/callback — processes the OIDC callback. Returns
+// 503 with Retry-After when provider discovery hasn't yet succeeded.
 func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
+	ds := h.readyState()
+	if ds == nil {
+		h.writeNotReady(w)
+		return
+	}
+
 	session, err := h.store.Get(r, sessionName)
 	if err != nil {
 		// Stale/corrupt cookie — state will be empty, verification below fails with 400.
@@ -331,7 +470,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 
 	// Exchange code for token (use instrumented HTTP client for tracing).
 	exchangeCtx := context.WithValue(r.Context(), oauth2.HTTPClient, h.httpClient)
-	oauth2Token, err := h.oauth2Config.Exchange(exchangeCtx, r.URL.Query().Get("code"))
+	oauth2Token, err := ds.oauth2Config.Exchange(exchangeCtx, r.URL.Query().Get("code"))
 	if err != nil {
 		h.logger.Error("exchanging OIDC code", "error", err)
 		http.Error(w, "Authentication failed", http.StatusUnauthorized)
@@ -346,7 +485,7 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idToken, err := h.verifier.Verify(r.Context(), rawIDToken)
+	idToken, err := ds.verifier.Verify(r.Context(), rawIDToken)
 	if err != nil {
 		h.logger.Error("verifying ID token", "error", err)
 		http.Error(w, "Authentication failed", http.StatusUnauthorized)
@@ -464,8 +603,11 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	_ = session.Save(r, w)
 
 	redirectURL := "/"
-	if h.endSessionEndpoint != "" {
-		redirectURL = h.buildEndSessionURL(rawIDToken)
+	// RP-Initiated Logout requires a discovered end_session_endpoint. When the
+	// provider is mid-recovery we skip the upstream hop and just clear the
+	// local session — preserves user-visible logout even while OIDC is down.
+	if ds := h.readyState(); ds != nil && ds.endSessionEndpoint != "" {
+		redirectURL = h.buildEndSessionURL(ds.endSessionEndpoint, rawIDToken)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -498,9 +640,12 @@ func (h *Handler) revokeSessionTokens(ctx context.Context, session *sessions.Ses
 }
 
 // buildEndSessionURL constructs the RP-Initiated Logout URL per
-// OpenID Connect RP-Initiated Logout 1.0.
-func (h *Handler) buildEndSessionURL(idTokenHint string) string {
-	u, err := url.Parse(h.endSessionEndpoint)
+// OpenID Connect RP-Initiated Logout 1.0. The endSessionEndpoint is passed
+// in (rather than read off h) so callers must explicitly source it from a
+// discovered state — there's no "current" endpoint to read while waiting
+// for re-discovery.
+func (h *Handler) buildEndSessionURL(endSessionEndpoint, idTokenHint string) string {
+	u, err := url.Parse(endSessionEndpoint)
 	if err != nil {
 		h.logger.Error("parsing end_session_endpoint", "error", err)
 		return "/"
