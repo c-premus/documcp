@@ -82,23 +82,33 @@ func CaptureException(ctx context.Context, err error) {
 	}
 }
 
-// SetUser sets the Sentry user context for the current scope. When Sentry is
-// not initialized, this is a no-op.
-func SetUser(ctx context.Context, id int64, email string) {
+// SetUser sets the Sentry user context for the current scope, restricted to
+// the user's internal numeric ID. Email, IP, and username are deliberately
+// not set — those are PII and never leave the process. The scrub layer in
+// scrubSensitiveData enforces the same invariant defensively if any future
+// caller (e.g. sentryhttp.New attaching the request to the hub) re-introduces
+// them through a different path.
+//
+// When Sentry is not initialized (no DSN), this is a no-op.
+func SetUser(ctx context.Context, id int64) {
 	hub := sentry.GetHubFromContext(ctx)
 	if hub == nil {
 		hub = sentry.CurrentHub()
 	}
 	hub.Scope().SetUser(sentry.User{
-		ID:    strconv.FormatInt(id, 10),
-		Email: email,
+		ID: strconv.FormatInt(id, 10),
 	})
 }
 
-// scrubSensitiveData walks the event request and breadcrumbs, redacting
-// sensitive header values and dropping request bodies so bearer tokens,
-// session cookies, and internal API tokens never leave the process. It is
-// safe to call with a nil event or a nil Request.
+// scrubSensitiveData walks the event request, user, and breadcrumbs,
+// redacting sensitive header values, dropping request bodies, and clearing
+// PII fields on event.User so bearer tokens, session cookies, internal API
+// tokens, user emails, IP addresses, and usernames never leave the process.
+// It is safe to call with a nil event or a nil Request.
+//
+// User.ID is intentionally preserved — it's an opaque internal numeric
+// identifier, useful for correlating multiple events from the same user
+// without exposing any externally-meaningful data.
 func scrubSensitiveData(event *sentry.Event) {
 	if event == nil {
 		return
@@ -108,6 +118,12 @@ func scrubSensitiveData(event *sentry.Event) {
 		event.Request.Data = ""
 		event.Request.Cookies = ""
 	}
+	// Defensive scrub: SetUser only writes ID, but sentryhttp.New (if added)
+	// or any future hub-binding code path could populate Email/IPAddress/
+	// Username. Wipe them unconditionally.
+	event.User.Email = ""
+	event.User.IPAddress = ""
+	event.User.Username = ""
 	for _, bc := range event.Breadcrumbs {
 		scrubBreadcrumbData(bc)
 	}

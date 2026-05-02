@@ -178,7 +178,7 @@ The `SafeRecoverer` middleware captures panics via `sentry.RecoverWithContext()`
 
 ### User Context
 
-The auth middleware calls `SetUser(ctx, id, email)` to tag Sentry events with the authenticated user. Errors reported after authentication include user identity.
+The auth middleware calls `SetUser(ctx, id)` to tag Sentry events with the authenticated user's internal numeric ID. Email, IP address, and username are deliberately not transmitted — `BeforeSend` defensively scrubs `event.User.Email`, `event.User.IPAddress`, and `event.User.Username` even if a future caller (e.g. `sentryhttp.New`) populates them through a different code path. Only the opaque user ID survives the scrub, sufficient for correlating multiple events from the same user without exposing PII.
 
 ### Context-Aware Capture
 
