@@ -14,8 +14,12 @@ var workerCmd = &cobra.Command{
 	Long: `Start River queue workers to process background jobs (document extraction,
 indexing, sync, cleanup) and periodic scheduled tasks.
 
-A minimal health HTTP endpoint is exposed for Kubernetes liveness and readiness
-probes (default port 9090, configurable via WORKER_HEALTH_PORT).
+A minimal HTTP endpoint is exposed on the worker health port (default 9090,
+configurable via WORKER_HEALTH_PORT) with three surfaces:
+
+  /healthz, /health             — liveness probes
+  /readyz, /health/ready        — readiness probes (DB + Redis)
+  /metrics                      — Prometheus metrics (gated by INTERNAL_API_TOKEN)
 
 Examples:
   documcp worker                           # Process all queues

@@ -18,7 +18,12 @@ var healthCmd = &cobra.Command{
 server responds with 200 OK, or 1 otherwise. Designed for use in Docker
 healthchecks:
 
-  HEALTHCHECK CMD ["/documcp", "health"]`,
+  HEALTHCHECK CMD ["/documcp", "health"]
+
+The default port (8080) targets serve-mode. For worker-only containers, pass
+--port to match WORKER_HEALTH_PORT (default 9090):
+
+  HEALTHCHECK CMD ["/documcp", "health", "--port", "9090"]`,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		url := fmt.Sprintf("http://localhost:%d/health/ready", healthPort)
 

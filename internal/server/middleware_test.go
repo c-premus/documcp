@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/c-premus/documcp/internal/observability"
 )
 
 // mustParseCIDR is a test helper that parses a CIDR string or panics.
@@ -348,7 +350,7 @@ func TestInternalTokenAuth_ValidToken(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	handler := internalTokenAuth("my-secret-token")(inner)
+	handler := observability.InternalTokenAuth("my-secret-token")(inner)
 
 	r := httptest.NewRequest("GET", "/metrics", http.NoBody)
 	r.Header.Set("Authorization", "Bearer my-secret-token")
@@ -371,7 +373,7 @@ func TestInternalTokenAuth_WrongToken(t *testing.T) {
 		t.Error("inner handler should not be called")
 	})
 
-	handler := internalTokenAuth("correct-token")(inner)
+	handler := observability.InternalTokenAuth("correct-token")(inner)
 
 	r := httptest.NewRequest("GET", "/metrics", http.NoBody)
 	r.Header.Set("Authorization", "Bearer wrong-token")
@@ -391,7 +393,7 @@ func TestInternalTokenAuth_NoHeader(t *testing.T) {
 		t.Error("inner handler should not be called")
 	})
 
-	handler := internalTokenAuth("token")(inner)
+	handler := observability.InternalTokenAuth("token")(inner)
 
 	r := httptest.NewRequest("GET", "/metrics", http.NoBody)
 	w := httptest.NewRecorder()
@@ -410,7 +412,7 @@ func TestInternalTokenAuth_NotBearerScheme(t *testing.T) {
 		t.Error("inner handler should not be called")
 	})
 
-	handler := internalTokenAuth("token")(inner)
+	handler := observability.InternalTokenAuth("token")(inner)
 
 	r := httptest.NewRequest("GET", "/metrics", http.NoBody)
 	r.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
@@ -802,7 +804,7 @@ func TestInternalTokenAuth_EmptyBearerValue(t *testing.T) {
 		t.Error("inner handler should not be called")
 	})
 
-	h := internalTokenAuth("token")(inner)
+	h := observability.InternalTokenAuth("token")(inner)
 
 	r := httptest.NewRequest("GET", "/metrics", http.NoBody)
 	r.Header.Set("Authorization", "Bearer ")
@@ -822,7 +824,7 @@ func TestInternalTokenAuth_VariousWrongTokens(t *testing.T) {
 		t.Error("inner handler should not be called")
 	})
 
-	h := internalTokenAuth("correct-secret-token-value")(inner)
+	h := observability.InternalTokenAuth("correct-secret-token-value")(inner)
 
 	tokens := []struct {
 		name  string
