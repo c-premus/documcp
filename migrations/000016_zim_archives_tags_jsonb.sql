@@ -1,4 +1,23 @@
+-- lint-disable-file: historical migration (already deployed; see migrations/README.md "Historical record")
 -- +goose Up
+
+-- WARNING: TABLE-REWRITE MIGRATION
+-- This migration takes ACCESS EXCLUSIVE on `zim_archives` for the duration
+-- of the column-type cast plus the STORED-column rebuild, blocking all
+-- reads and writes. The rewrite is intrinsic: `ALTER COLUMN TYPE` with a
+-- USING clause and the subsequent `ADD COLUMN ... STORED` both materialize
+-- a new physical relation. Neither `+goose NO TRANSACTION` nor
+-- `CONCURRENTLY` helps for these shapes.
+--
+-- DEPLOYMENT: operators upgrading from PHP DocuMCP (or any pre-existing
+-- database with populated rows) should plan a write-downtime window
+-- proportional to row count. ZIM-archive rows are typically far smaller
+-- than `documents`, so the window is shorter than 000013/000019, but
+-- still scales with row count.
+--
+-- Future similar work should use the safe multi-step pattern documented in
+-- `migrations/README.md` (add new typed column + dual-write + backfill in
+-- batches + verify + swap + drop old) rather than an in-place type cast.
 
 -- Convert zim_archives.tags from TEXT (holding JSON-encoded []string) to
 -- native JSONB. Drop and rebuild the STORED search_vector column to

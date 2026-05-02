@@ -1,4 +1,23 @@
+-- lint-disable-file: historical migration (already deployed; see migrations/README.md "Historical record")
 -- +goose Up
+
+-- WARNING: TABLE-REWRITE MIGRATION
+-- This migration takes ACCESS EXCLUSIVE on `git_templates` for the duration
+-- of two column-type casts plus the STORED-column rebuild, blocking all
+-- reads and writes. The rewrite is intrinsic: each `ALTER COLUMN TYPE`
+-- with a USING clause and the `ADD COLUMN ... STORED` all materialize a
+-- new physical relation. Neither `+goose NO TRANSACTION` nor
+-- `CONCURRENTLY` helps for these shapes.
+--
+-- DEPLOYMENT: operators upgrading from PHP DocuMCP (or any pre-existing
+-- database with populated rows) should plan a write-downtime window
+-- proportional to row count × average README content size. Most git
+-- template tenants have low row counts; the window is typically small
+-- but grows with `readme_content` heap size.
+--
+-- Future similar work should use the safe multi-step pattern documented in
+-- `migrations/README.md` (add new typed column + dual-write + backfill in
+-- batches + verify + swap + drop old) rather than an in-place type cast.
 
 -- Convert git_templates.tags and git_templates.manifest from TEXT to
 -- JSONB. Drop and rebuild the STORED search_vector to replace the
