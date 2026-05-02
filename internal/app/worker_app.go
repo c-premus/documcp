@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/c-premus/documcp/internal/observability"
 	"github.com/c-premus/documcp/internal/queue"
 	"github.com/c-premus/documcp/internal/service"
 )
@@ -154,20 +155,34 @@ func (w *WorkerApp) Close() error {
 	return nil
 }
 
-// newHealthServer creates a minimal HTTP server for K8s liveness and readiness probes.
+// newHealthServer creates a minimal HTTP server with three surfaces:
+//
+//   - Liveness probes at /healthz and /health (alias). Always 200 if the
+//     process is running.
+//   - Readiness probes at /readyz and /health/ready (alias). 200 when both
+//     the database and Redis respond to Ping, 503 otherwise. Pings go through
+//     the uninstrumented BarePgxPool + BareRedisClient so the probe path
+//     emits no otelpgx/redisotel spans on every k8s poll.
+//   - Prometheus metrics at /metrics, gated by INTERNAL_API_TOKEN when set
+//     and exposed unauthenticated with a one-time WARN log when unset
+//     (mirrors serve-mode behavior in internal/server/routes.go).
+//
+// The path aliases let `documcp health --port <healthPort>` work in worker
+// mode without flag changes — the binary probes /health/ready, which now
+// resolves to the same handler as /readyz.
 func newHealthServer(port int, f *Foundation) *http.Server {
 	mux := http.NewServeMux()
 
-	// Liveness probe — always returns 200 if the process is running.
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+	// Liveness — process up. No I/O; always succeeds.
+	livenessHandler := func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprint(w, "ok")
-	})
+	}
+	mux.HandleFunc("GET /healthz", livenessHandler)
+	mux.HandleFunc("GET /health", livenessHandler)
 
-	// Readiness probe — verifies database and Redis connectivity via
-	// uninstrumented clients (BarePgxPool + BareRedisClient) so the probe
-	// path does not emit otelpgx/redisotel spans on every k8s poll.
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+	// Readiness — DB + Redis reachable through the uninstrumented clients.
+	readinessHandler := func(w http.ResponseWriter, r *http.Request) {
 		pingCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 		if err := f.BarePgxPool.Ping(pingCtx); err != nil {
@@ -182,7 +197,21 @@ func newHealthServer(port int, f *Foundation) *http.Server {
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprint(w, "ready")
-	})
+	}
+	mux.HandleFunc("GET /readyz", readinessHandler)
+	mux.HandleFunc("GET /health/ready", readinessHandler)
+
+	// Prometheus metrics — same auth contract as serve-mode.
+	if f.Metrics != nil {
+		metricsHandler := observability.MetricsHandler()
+		if token := f.Config.App.InternalAPIToken; token != "" {
+			metricsHandler = observability.InternalTokenAuth(token)(metricsHandler)
+		} else {
+			f.Logger.Warn("metrics endpoint exposed without authentication (INTERNAL_API_TOKEN not set)")
+		}
+		mux.Handle("GET /metrics", metricsHandler)
+		f.Logger.Info("Prometheus metrics endpoint registered", "path", "/metrics")
+	}
 
 	return &http.Server{
 		Addr:              net.JoinHostPort("0.0.0.0", strconv.Itoa(port)),

@@ -2,10 +2,7 @@ package server
 
 import (
 	"context"
-	"crypto/subtle"
-	"encoding/json"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -169,7 +166,7 @@ func (s *Server) registerInfraRoutes(deps Deps) {
 	if deps.Metrics != nil {
 		r.Group(func(r chi.Router) {
 			if deps.Tuning.InternalAPIToken != "" {
-				r.Use(internalTokenAuth(deps.Tuning.InternalAPIToken))
+				r.Use(observability.InternalTokenAuth(deps.Tuning.InternalAPIToken))
 			} else {
 				s.logger.Warn("metrics endpoint exposed without authentication (INTERNAL_API_TOKEN not set)")
 			}
@@ -552,37 +549,6 @@ func rateLimitByIP(count int, window time.Duration, rc *redis.Client) func(http.
 			PrefixKey: "documcp:rate",
 		}),
 	)
-}
-
-// internalTokenAuth returns a middleware that requires a bearer token matching
-// the configured internal API token. Used to protect operational endpoints
-// like /metrics and /health/ready.
-func internalTokenAuth(token string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			auth := r.Header.Get("Authorization")
-			if !strings.HasPrefix(auth, "Bearer ") {
-				jsonErrorResponse(w, http.StatusUnauthorized, "Bearer token required")
-				return
-			}
-			provided := strings.TrimPrefix(auth, "Bearer ")
-			if subtle.ConstantTimeCompare([]byte(provided), []byte(token)) != 1 {
-				jsonErrorResponse(w, http.StatusUnauthorized, "Invalid token")
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-// jsonErrorResponse writes a JSON error response consistent with the app's error format.
-func jsonErrorResponse(w http.ResponseWriter, status int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{
-		"error":   http.StatusText(status),
-		"message": message,
-	})
 }
 
 // PgxPoolPinger adapts *pgxpool.Pool to handler.DependencyPinger. Wrap the
