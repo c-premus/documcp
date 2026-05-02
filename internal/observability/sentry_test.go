@@ -99,7 +99,7 @@ func TestSetUser_NoHub(t *testing.T) {
 	t.Parallel()
 
 	// SetUser with a plain context should not panic.
-	observability.SetUser(context.Background(), 42, "user@example.com")
+	observability.SetUser(context.Background(), 42)
 }
 
 func TestSetUser_WithHub(t *testing.T) {
@@ -109,5 +109,31 @@ func TestSetUser_WithHub(t *testing.T) {
 	ctx := sentry.SetHubOnContext(context.Background(), hub)
 
 	// Should use the hub from context and not panic.
-	observability.SetUser(ctx, 99, "admin@example.com")
+	observability.SetUser(ctx, 99)
+}
+
+func TestSetUser_StoresIDOnly(t *testing.T) {
+	t.Parallel()
+
+	hub := sentry.NewHub(nil, sentry.NewScope())
+	ctx := sentry.SetHubOnContext(context.Background(), hub)
+
+	observability.SetUser(ctx, 42)
+
+	// Drive the scope through ApplyToEvent to inspect the stored User.
+	ev := sentry.NewEvent()
+	hub.Scope().ApplyToEvent(ev, nil, hub.Client())
+
+	if ev.User.ID != "42" {
+		t.Errorf("User.ID = %q, want \"42\"", ev.User.ID)
+	}
+	if ev.User.Email != "" {
+		t.Errorf("User.Email = %q, want empty (PII must not be set by SetUser)", ev.User.Email)
+	}
+	if ev.User.IPAddress != "" {
+		t.Errorf("User.IPAddress = %q, want empty", ev.User.IPAddress)
+	}
+	if ev.User.Username != "" {
+		t.Errorf("User.Username = %q, want empty", ev.User.Username)
+	}
 }

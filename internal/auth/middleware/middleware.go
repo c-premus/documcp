@@ -112,7 +112,7 @@ func setBearerContext(r *http.Request, result *bearerResult) *http.Request {
 	ctx := context.WithValue(r.Context(), AccessTokenContextKey, result.token)
 	if result.user != nil {
 		ctx = context.WithValue(ctx, UserContextKey, result.user)
-		observability.SetUser(ctx, result.user.ID, result.user.Email)
+		observability.SetUser(ctx, result.user.ID)
 	}
 	return r.WithContext(ctx)
 }
@@ -229,7 +229,7 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store, logger *
 			}
 
 			ctx := context.WithValue(r.Context(), UserContextKey, user)
-			observability.SetUser(ctx, user.ID, user.Email)
+			observability.SetUser(ctx, user.ID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -338,7 +338,7 @@ func SessionAuth(store sessions.Store, oauthService *oauth.Service, logger *slog
 			}
 
 			ctx := context.WithValue(r.Context(), UserContextKey, user)
-			observability.SetUser(ctx, user.ID, user.Email)
+			observability.SetUser(ctx, user.ID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

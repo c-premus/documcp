@@ -207,3 +207,31 @@ func TestScrubSensitiveData_NilBreadcrumbEntry(t *testing.T) {
 	// Must not panic on a nil breadcrumb pointer.
 	scrubSensitiveData(event)
 }
+
+func TestScrubSensitiveData_StripsUserPII(t *testing.T) {
+	t.Parallel()
+
+	event := &sentry.Event{
+		User: sentry.User{
+			ID:        "42",
+			Email:     "user@example.com",
+			IPAddress: "203.0.113.5",
+			Username:  "alice",
+		},
+	}
+
+	scrubSensitiveData(event)
+
+	if event.User.ID != "42" {
+		t.Errorf("User.ID = %q, want %q (ID must survive scrub for correlation)", event.User.ID, "42")
+	}
+	if event.User.Email != "" {
+		t.Errorf("User.Email = %q, want empty", event.User.Email)
+	}
+	if event.User.IPAddress != "" {
+		t.Errorf("User.IPAddress = %q, want empty", event.User.IPAddress)
+	}
+	if event.User.Username != "" {
+		t.Errorf("User.Username = %q, want empty", event.User.Username)
+	}
+}
