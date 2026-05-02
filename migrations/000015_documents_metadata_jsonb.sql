@@ -1,4 +1,23 @@
+-- lint-disable-file: historical migration (already deployed; see migrations/README.md "Historical record")
 -- +goose Up
+
+-- WARNING: TABLE-REWRITE MIGRATION
+-- This migration takes ACCESS EXCLUSIVE on `documents` and
+-- `document_versions` for the duration of the column-type cast, blocking
+-- all reads and writes. The rewrite is intrinsic: `ALTER COLUMN TYPE`
+-- with a USING clause rebuilds every row regardless of whether the
+-- existing values are NULL — Postgres has to materialize the new column
+-- type into the heap. Neither `+goose NO TRANSACTION` nor `CONCURRENTLY`
+-- helps for this shape.
+--
+-- DEPLOYMENT: operators upgrading from PHP DocuMCP (or any pre-existing
+-- database with populated rows) should plan a write-downtime window
+-- proportional to total row count across both tables. On a small tenant
+-- this is seconds; on millions of rows it can be minutes.
+--
+-- Future similar work should use the safe multi-step pattern documented in
+-- `migrations/README.md` (add new typed column + dual-write + backfill in
+-- batches + verify + swap + drop old) rather than an in-place type cast.
 
 -- Convert documents.metadata and document_versions.metadata from TEXT to
 -- JSONB. These columns have always held JSON payloads but were stored as

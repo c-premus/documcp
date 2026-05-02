@@ -1,3 +1,4 @@
+-- lint-disable-file: historical migration (already deployed; see migrations/README.md "Historical record")
 -- +goose Up
 
 -- CHECK constraints reify enum-like columns that were previously stored as

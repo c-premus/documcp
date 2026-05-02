@@ -1,4 +1,23 @@
+-- lint-disable-file: historical migration (already deployed; see migrations/README.md "Historical record")
 -- +goose Up
+
+-- WARNING: TABLE-REWRITE MIGRATION
+-- This migration takes ACCESS EXCLUSIVE on `documents` for the duration of
+-- the STORED-column rebuild, blocking all reads and writes. The rewrite is
+-- intrinsic: dropping `search_vector` and adding it back as a STORED
+-- generated column forces Postgres to materialize a new physical relation
+-- with the recomputed values for every row. Neither `+goose NO TRANSACTION`
+-- nor `CONCURRENTLY` helps for this shape.
+--
+-- DEPLOYMENT: operators upgrading from PHP DocuMCP (or any pre-existing
+-- database with populated documents) should plan a write-downtime window
+-- proportional to row count × average content size. On a small tenant
+-- this is seconds; on millions of rows of multi-MB content it can be
+-- minutes.
+--
+-- Future similar work should use the safe multi-step pattern documented in
+-- `migrations/README.md` (add nullable column + trigger + backfill in
+-- batches + verify + swap) rather than this in-place rewrite shape.
 
 -- Replace the trigger-driven `documents.search_vector` with a STORED generated
 -- column. Tags move from `document_tags` (separate table, read via trigger)

@@ -41,6 +41,9 @@ jobs:
         with:
           version: v2.11.4
 
+      - name: Migration safety lint
+        run: bash scripts/check-migrations.sh
+
   test:
     name: Test
     runs-on: ubuntu-latest
