@@ -11,11 +11,21 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.27.6] - 2026-05-02
+
+### Fixes
+
+- fix(security): override uuid to ^14.0.0
+
 ## [0.27.5] - 2026-05-01
 
 ### Fixes
 
 - fix(ci): harden version-release for partial-success and tag-indexer races
+
+### Maintenance
+
+- chore(changelog): update for v0.27.5
 
 ## [0.27.4] - 2026-05-01
 
@@ -996,6 +1006,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.27.6]: https://github.com/c-premus/documcp/compare/v0.27.5...v0.27.6
 [0.27.5]: https://github.com/c-premus/documcp/compare/v0.27.4...v0.27.5
 [0.27.4]: https://github.com/c-premus/documcp/compare/v0.27.3...v0.27.4
 [0.27.3]: https://github.com/c-premus/documcp/compare/v0.27.2...v0.27.3
