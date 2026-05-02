@@ -7,12 +7,13 @@
 -- tokens from earlier releases have no recorded parentage.
 --
 -- `oauth_access_tokens` is populated continuously after migration 000003.
--- `+goose NO TRANSACTION` lets us use `CREATE INDEX CONCURRENTLY`, which
--- builds the supporting partial index without blocking writes. The trade-off
--- is that statements run in autocommit. `IF NOT EXISTS` guards on the column
--- and index, plus a DO-block for the foreign-key constraint, make re-running
--- the migration safe — re-runs pick up wherever the previous attempt failed.
--- See `migrations/README.md` for the safe-migration convention.
+-- The `NO TRANSACTION` directive at the top lets us use `CREATE INDEX
+-- CONCURRENTLY`, which builds the supporting partial index without blocking
+-- writes. The trade-off is that statements run in autocommit. `IF NOT
+-- EXISTS` guards on the column and index, plus a DO-block for the
+-- foreign-key constraint, make re-running the migration safe — re-runs
+-- pick up wherever the previous attempt failed. See `migrations/README.md`
+-- for the safe-migration convention.
 
 -- +goose Up
 

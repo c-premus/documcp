@@ -7,8 +7,8 @@
 -- all reads and writes. The rewrite is intrinsic: `ALTER COLUMN TYPE`
 -- with a USING clause rebuilds every row regardless of whether the
 -- existing values are NULL — Postgres has to materialize the new column
--- type into the heap. Neither `+goose NO TRANSACTION` nor `CONCURRENTLY`
--- helps for this shape.
+-- type into the heap. Neither the `NO TRANSACTION` directive nor
+-- `CONCURRENTLY` helps for this shape.
 --
 -- DEPLOYMENT: operators upgrading from PHP DocuMCP (or any pre-existing
 -- database with populated rows) should plan a write-downtime window

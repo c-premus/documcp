@@ -6,7 +6,7 @@
 -- of two column-type casts plus the STORED-column rebuild, blocking all
 -- reads and writes. The rewrite is intrinsic: each `ALTER COLUMN TYPE`
 -- with a USING clause and the `ADD COLUMN ... STORED` all materialize a
--- new physical relation. Neither `+goose NO TRANSACTION` nor
+-- new physical relation. Neither the `NO TRANSACTION` directive nor
 -- `CONCURRENTLY` helps for these shapes.
 --
 -- DEPLOYMENT: operators upgrading from PHP DocuMCP (or any pre-existing

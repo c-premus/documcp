@@ -6,8 +6,8 @@
 -- the STORED-column rebuild, blocking all reads and writes. The rewrite is
 -- intrinsic: dropping `search_vector` and adding it back as a STORED
 -- generated column forces Postgres to materialize a new physical relation
--- with the recomputed values for every row. Neither `+goose NO TRANSACTION`
--- nor `CONCURRENTLY` helps for this shape.
+-- with the recomputed values for every row. Neither the `NO TRANSACTION`
+-- directive nor `CONCURRENTLY` helps for this shape.
 --
 -- DEPLOYMENT: operators upgrading from PHP DocuMCP (or any pre-existing
 -- database with populated documents) should plan a write-downtime window
