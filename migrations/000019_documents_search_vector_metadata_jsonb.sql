@@ -7,7 +7,7 @@
 -- is intrinsic: dropping `search_vector` and adding it back with the
 -- extended JSONB-path expression forces Postgres to materialize a new
 -- physical relation with the recomputed values for every row. Neither
--- `+goose NO TRANSACTION` nor `CONCURRENTLY` helps for this shape.
+-- the `NO TRANSACTION` directive nor `CONCURRENTLY` helps for this shape.
 --
 -- DEPLOYMENT: operators upgrading from PHP DocuMCP (or any pre-existing
 -- database with populated documents) should plan a write-downtime window
