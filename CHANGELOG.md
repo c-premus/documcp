@@ -11,6 +11,23 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.28.1] - 2026-05-03
+
+### Fixes
+
+- fix(deps): update go dependencies
+- fix(deps): update frontend dependencies
+
+### Maintenance
+
+- chore(deps): update sigstore/cosign-installer action to v4
+- chore(deps): update frontend dependencies
+- chore(deps): update https://github.com/actions/setup-node action to v6.4.0
+- chore(deps): update actions/setup-node action to v6.4.0
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to ef4afab
+- chore(deps): update docker dependencies
+- chore(deps): update catthehacker/ubuntu:act-22.04 docker digest to d1d8440
+
 ## [0.28.0] - 2026-05-02
 
 ### Features
@@ -24,6 +41,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.28.0
 - chore(migrations): add safety convention + CI lint
 
 ## [0.27.6] - 2026-05-02
@@ -1025,6 +1043,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.28.1]: https://github.com/c-premus/documcp/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/c-premus/documcp/compare/v0.27.6...v0.28.0
 [0.27.6]: https://github.com/c-premus/documcp/compare/v0.27.5...v0.27.6
 [0.27.5]: https://github.com/c-premus/documcp/compare/v0.27.4...v0.27.5
