@@ -141,6 +141,7 @@ func (s *Server) startRedirectServer() {
 		IdleTimeout:       30 * time.Second,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			target := "https://" + httpsHost + r.URL.RequestURI()
+			//nolint:gosec // G710: host portion is the server-configured TLS address; RequestURI() returns path+query only, never scheme or host
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
 		}),
 	}

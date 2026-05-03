@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"time"
 
@@ -162,8 +163,8 @@ func extractIP(r *http.Request, trustedProxies []*net.IPNet) string {
 			// spoofing via attacker-prepended entries at the front.
 			if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 				ips := strings.Split(xff, ",")
-				for i := len(ips) - 1; i >= 0; i-- {
-					candidate := strings.TrimSpace(ips[i])
+				for _, ip := range slices.Backward(ips) {
+					candidate := strings.TrimSpace(ip)
 					parsed := net.ParseIP(candidate)
 					if parsed == nil {
 						continue

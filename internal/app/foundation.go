@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -143,8 +144,8 @@ func NewFoundation(cfg *config.Config) (*Foundation, error) {
 		if initOK {
 			return
 		}
-		for i := len(rollback) - 1; i >= 0; i-- {
-			rollback[i]()
+		for _, fn := range slices.Backward(rollback) {
+			fn()
 		}
 	}()
 

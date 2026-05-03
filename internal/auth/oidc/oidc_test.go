@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	neturl "net/url"
 	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -1179,11 +1180,10 @@ func TestLogout(t *testing.T) {
 		logoutReq := httptest.NewRequest(http.MethodPost, "/auth/logout", http.NoBody)
 		callbackCookies := callbackW.Result().Cookies()
 		added := make(map[string]bool)
-		for i := len(callbackCookies) - 1; i >= 0; i-- {
-			name := callbackCookies[i].Name
-			if !added[name] && (name == sessionName || name == idTokenSessionName) {
-				logoutReq.AddCookie(callbackCookies[i])
-				added[name] = true
+		for _, c := range slices.Backward(callbackCookies) {
+			if !added[c.Name] && (c.Name == sessionName || c.Name == idTokenSessionName) {
+				logoutReq.AddCookie(c)
+				added[c.Name] = true
 			}
 		}
 		logoutW := httptest.NewRecorder()
@@ -1326,9 +1326,9 @@ func TestCallback_WritesLoginAtAnchor(t *testing.T) {
 	cookies := w.Result().Cookies()
 	verifyReq := httptest.NewRequest(http.MethodGet, "/any", http.NoBody)
 	added := make(map[string]bool)
-	for i := len(cookies) - 1; i >= 0; i-- {
-		if cookies[i].Name == sessionName && !added[sessionName] {
-			verifyReq.AddCookie(cookies[i])
+	for _, c := range slices.Backward(cookies) {
+		if c.Name == sessionName && !added[sessionName] {
+			verifyReq.AddCookie(c)
 			added[sessionName] = true
 		}
 	}
@@ -1373,8 +1373,7 @@ func TestLogout_RevokesOAuthTokensWhenOptedIn(t *testing.T) {
 		// name — matches how browsers resolve duplicate Set-Cookie headers.
 		cbCookies := callbackW.Result().Cookies()
 		added := make(map[string]bool)
-		for i := len(cbCookies) - 1; i >= 0; i-- {
-			c := cbCookies[i]
+		for _, c := range slices.Backward(cbCookies) {
 			if !added[c.Name] && (c.Name == sessionName || c.Name == idTokenSessionName) {
 				logoutReq.AddCookie(c)
 				added[c.Name] = true
@@ -1416,8 +1415,7 @@ func TestLogout_RevokesOAuthTokensWhenOptedIn(t *testing.T) {
 		logoutReq := httptest.NewRequest(http.MethodPost, "/auth/logout", http.NoBody)
 		cbCookies := callbackW.Result().Cookies()
 		added := make(map[string]bool)
-		for i := len(cbCookies) - 1; i >= 0; i-- {
-			c := cbCookies[i]
+		for _, c := range slices.Backward(cbCookies) {
 			if !added[c.Name] && (c.Name == sessionName || c.Name == idTokenSessionName) {
 				logoutReq.AddCookie(c)
 				added[c.Name] = true
