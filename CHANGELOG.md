@@ -11,6 +11,19 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.28.2] - 2026-05-03
+
+### Fixes
+
+- fix(lint): resolve golangci-lint v2.12.1 issues; pin devcontainer to v2.11.4
+
+### Maintenance
+
+- chore(deps): lock file maintenance
+- chore(deps): lock file maintenance
+- chore(deps): update ghcr.io/devcontainers/features/node docker tag to v2
+- chore(deps): update dependency golangci/golangci-lint to v2.12.1
+
 ## [0.28.1] - 2026-05-03
 
 ### Fixes
@@ -20,6 +33,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.28.1
 - chore(deps): update sigstore/cosign-installer action to v4
 - chore(deps): update frontend dependencies
 - chore(deps): update https://github.com/actions/setup-node action to v6.4.0
@@ -1043,6 +1057,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.28.2]: https://github.com/c-premus/documcp/compare/v0.28.1...v0.28.2
 [0.28.1]: https://github.com/c-premus/documcp/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/c-premus/documcp/compare/v0.27.6...v0.28.0
 [0.27.6]: https://github.com/c-premus/documcp/compare/v0.27.5...v0.27.6
