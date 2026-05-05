@@ -5,6 +5,7 @@
 [![Image Size](https://img.shields.io/docker/image-size/cpremus/documcp?sort=semver&label=image%20size)](https://hub.docker.com/r/cpremus/documcp)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/c-premus/documcp)](https://go.dev/)
 [![License](https://img.shields.io/github/license/c-premus/documcp)](LICENSE)
+[![SafeSkill 67/100](https://img.shields.io/badge/SafeSkill-67%2F100_Use%20with%20Caution-orange)](https://safeskill.dev/scan/c-premus-documcp)
 
 A documentation server that exposes knowledge bases through the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), enabling AI agents to search, read, and manage documentation.
 
