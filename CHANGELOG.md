@@ -11,6 +11,22 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.29.0] - 2026-05-05
+
+### Features
+
+- feat(auth): opt-in OAUTH_ACCEPT_EMPTY_RESOURCE for non-RFC-8707 MCP clients
+
+### Fixes
+
+- fix(deps): update frontend dependencies
+
+### Maintenance
+
+- chore(deps): lock file maintenance
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to fe98b73
+- chore(deps): lock file maintenance
+
 ## [0.28.2] - 2026-05-03
 
 ### Fixes
@@ -19,6 +35,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.28.2
 - chore(deps): lock file maintenance
 - chore(deps): lock file maintenance
 - chore(deps): update ghcr.io/devcontainers/features/node docker tag to v2
@@ -1057,6 +1074,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.29.0]: https://github.com/c-premus/documcp/compare/v0.28.2...v0.29.0
 [0.28.2]: https://github.com/c-premus/documcp/compare/v0.28.1...v0.28.2
 [0.28.1]: https://github.com/c-premus/documcp/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/c-premus/documcp/compare/v0.27.6...v0.28.0
