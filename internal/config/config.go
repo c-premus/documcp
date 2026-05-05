@@ -224,6 +224,12 @@ type OAuthConfig struct {
 	// may only request access tokens bound to one of these URIs. Defaults to
 	// [AppURL, AppURL+DocuMCP.Endpoint] when unset.
 	AllowedResources []string `mapstructure:"oauth_allowed_resources"`
+	// AcceptEmptyResource is an opt-in compatibility shim: when true, the
+	// audience-checking middleware accepts access tokens whose `resource`
+	// claim is empty / NULL (instead of rejecting). Tokens with a non-empty
+	// but mismatched resource still reject. Intended for non-RFC-8707 MCP
+	// clients (e.g. Open WebUI #18010); remove when upstream complies.
+	AcceptEmptyResource bool `mapstructure:"oauth_accept_empty_resource"`
 }
 
 // KiwixConfig holds Kiwix external service client settings.
@@ -399,6 +405,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oauth_scope_grant_ttl", 30*24*time.Hour) // 30 days; 0 = no expiry
 	v.SetDefault("oauth_device_failure_limit", 5)
 	v.SetDefault("oauth_device_failure_window", 1*time.Hour)
+	v.SetDefault("oauth_accept_empty_resource", false)
 
 	// Storage
 	v.SetDefault("storage_driver", "local")
@@ -597,6 +604,7 @@ func Load() (*Config, error) {
 		DeviceFailureLimit:      v.GetInt("oauth_device_failure_limit"),
 		DeviceFailureWindow:     v.GetDuration("oauth_device_failure_window"),
 		AllowedResources:        v.GetStringSlice("oauth_allowed_resources"),
+		AcceptEmptyResource:     v.GetBool("oauth_accept_empty_resource"),
 	}
 
 	cfg.Storage = StorageConfig{

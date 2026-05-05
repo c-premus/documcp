@@ -57,6 +57,11 @@ type Auth struct {
 	MCPResource           string // expected audience for the /documcp MCP endpoint
 	APIResource           string // expected audience for /api/* bearer-token requests
 	SessionAbsoluteMaxAge time.Duration
+	// AcceptEmptyResource is the OAUTH_ACCEPT_EMPTY_RESOURCE opt-in shim. When
+	// true, the audience-check middleware accepts tokens with empty/NULL
+	// `resource` claims (logging a WARN). Tokens with non-empty mismatched
+	// resources still reject. See issue #164.
+	AcceptEmptyResource bool
 }
 
 // Tuning groups operator-configured numeric limits applied to HTTP requests.
@@ -138,7 +143,7 @@ func (s *Server) registerInfraRoutes(deps Deps) {
 	if deps.Handlers.MCPHandler != nil && deps.Auth.OAuthService != nil {
 		r.Group(func(r chi.Router) {
 			r.Use(rateLimitByIP(60, time.Minute, deps.BareRedisClient))
-			r.Use(authmiddleware.BearerTokenWithAudience(deps.Auth.OAuthService, s.logger, deps.Auth.MCPResource))
+			r.Use(authmiddleware.BearerTokenWithAudience(deps.Auth.OAuthService, s.logger, deps.Auth.MCPResource, deps.Auth.AcceptEmptyResource))
 			r.Use(authmiddleware.RequireScope("mcp:access", s.logger))
 			r.Handle("/documcp/*", deps.Handlers.MCPHandler)
 			r.Handle("/documcp", deps.Handlers.MCPHandler)
@@ -262,7 +267,7 @@ func (s *Server) registerAPIRoutes(deps Deps) {
 		r.Use(rateLimitByIP(300, time.Minute, deps.BareRedisClient))
 		switch {
 		case deps.Auth.OAuthService != nil:
-			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.Auth.OAuthService, deps.Auth.SessionStore, s.logger, deps.Auth.APIResource, deps.Auth.SessionAbsoluteMaxAge))
+			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.Auth.OAuthService, deps.Auth.SessionStore, s.logger, deps.Auth.APIResource, deps.Auth.SessionAbsoluteMaxAge, deps.Auth.AcceptEmptyResource))
 		default:
 			r.Use(func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -503,7 +508,7 @@ func (s *Server) registerSPARoutes(deps Deps) {
 	// River UI — must be registered before the SPA catch-all so chi matches it first.
 	if deps.Handlers.RiverUIHandler != nil {
 		r.Route("/admin/river", func(r chi.Router) {
-			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.Auth.OAuthService, deps.Auth.SessionStore, s.logger, deps.Auth.APIResource, deps.Auth.SessionAbsoluteMaxAge))
+			r.Use(authmiddleware.BearerOrSessionWithAudience(deps.Auth.OAuthService, deps.Auth.SessionStore, s.logger, deps.Auth.APIResource, deps.Auth.SessionAbsoluteMaxAge, deps.Auth.AcceptEmptyResource))
 			r.Use(authmiddleware.RequireScope(authscope.Admin, s.logger))
 			r.Use(authmiddleware.RequireAdmin)
 			r.Use(riverUICSP)

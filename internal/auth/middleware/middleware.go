@@ -248,8 +248,11 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request, session *session
 // BearerTokenWithAudience validates a bearer token like BearerToken and
 // additionally requires that the token's RFC 8707 resource binding matches
 // expectedResource. Tokens minted before the audience-binding migration
-// (Resource is NULL) are rejected.
-func BearerTokenWithAudience(oauthService *oauth.Service, logger *slog.Logger, expectedResource string) func(http.Handler) http.Handler {
+// (Resource is NULL) are rejected unless acceptEmptyResource is true, in
+// which case empty / NULL resource claims are accepted (and a WARN is
+// logged) but non-empty mismatches still reject. See OAUTH_ACCEPT_EMPTY_RESOURCE
+// (issue #164) for the operator-opt-in compatibility shim.
+func BearerTokenWithAudience(oauthService *oauth.Service, logger *slog.Logger, expectedResource string, acceptEmptyResource bool) func(http.Handler) http.Handler {
 	inner := BearerToken(oauthService, logger)
 	return func(next http.Handler) http.Handler {
 		return inner(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -260,15 +263,7 @@ func BearerTokenWithAudience(oauthService *oauth.Service, logger *slog.Logger, e
 				jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
 				return
 			}
-			if !audienceMatches(token, expectedResource) {
-				logger.Warn("auth failed: token audience mismatch",
-					"client_ip", r.RemoteAddr,
-					"path", r.URL.Path,
-					"expected", expectedResource,
-					"token_resource", nullStringOrEmpty(token.Resource),
-				)
-				w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token", error_description="audience mismatch"`)
-				jsonError(w, http.StatusUnauthorized, "Token not valid for this resource")
+			if !checkAudience(w, r, logger, token, expectedResource, acceptEmptyResource) {
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -280,22 +275,14 @@ func BearerTokenWithAudience(oauthService *oauth.Service, logger *slog.Logger, e
 // BearerOrSession. The audience check applies only when the request is
 // authenticated by bearer token; session-cookie requests bypass the check
 // because sessions are not bound to a specific resource.
-func BearerOrSessionWithAudience(oauthService *oauth.Service, store sessions.Store, logger *slog.Logger, expectedResource string, absoluteMaxAge time.Duration) func(http.Handler) http.Handler {
+func BearerOrSessionWithAudience(oauthService *oauth.Service, store sessions.Store, logger *slog.Logger, expectedResource string, absoluteMaxAge time.Duration, acceptEmptyResource bool) func(http.Handler) http.Handler {
 	inner := BearerOrSession(oauthService, store, logger, absoluteMaxAge)
 	return func(next http.Handler) http.Handler {
 		return inner(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// If a token is present in context, the request was authenticated
 			// via bearer; enforce audience. Otherwise it's a session — pass.
 			token, ok := r.Context().Value(AccessTokenContextKey).(*model.OAuthAccessToken)
-			if ok && !audienceMatches(token, expectedResource) {
-				logger.Warn("auth failed: token audience mismatch",
-					"client_ip", r.RemoteAddr,
-					"path", r.URL.Path,
-					"expected", expectedResource,
-					"token_resource", nullStringOrEmpty(token.Resource),
-				)
-				w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token", error_description="audience mismatch"`)
-				jsonError(w, http.StatusUnauthorized, "Token not valid for this resource")
+			if ok && !checkAudience(w, r, logger, token, expectedResource, acceptEmptyResource) {
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -303,13 +290,37 @@ func BearerOrSessionWithAudience(oauthService *oauth.Service, store sessions.Sto
 	}
 }
 
-// audienceMatches returns true when the token's bound resource exactly equals
-// the expected resource. NULL/empty resource never matches.
-func audienceMatches(token *model.OAuthAccessToken, expected string) bool {
-	if !token.Resource.Valid || token.Resource.String == "" {
-		return false
+// checkAudience enforces the RFC 8707 audience binding on a bearer token.
+// Returns true when the request should proceed, false when the response has
+// already been written with a 401.
+//
+// The acceptEmptyResource flag is the OAUTH_ACCEPT_EMPTY_RESOURCE shim
+// (issue #164). Empty/NULL resource claims pass through with a WARN log;
+// non-empty mismatches always reject.
+func checkAudience(w http.ResponseWriter, r *http.Request, logger *slog.Logger, token *model.OAuthAccessToken, expectedResource string, acceptEmptyResource bool) bool {
+	emptyResource := !token.Resource.Valid || token.Resource.String == ""
+	if emptyResource {
+		if acceptEmptyResource {
+			logger.Warn("token has empty resource claim; accepting due to OAUTH_ACCEPT_EMPTY_RESOURCE=true",
+				"client_ip", r.RemoteAddr,
+				"path", r.URL.Path,
+				"client_id", token.ClientID,
+			)
+			return true
+		}
+	} else if token.Resource.String == expectedResource {
+		return true
 	}
-	return token.Resource.String == expected
+
+	logger.Warn("auth failed: token audience mismatch",
+		"client_ip", r.RemoteAddr,
+		"path", r.URL.Path,
+		"expected", expectedResource,
+		"token_resource", nullStringOrEmpty(token.Resource),
+	)
+	w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token", error_description="audience mismatch"`)
+	jsonError(w, http.StatusUnauthorized, "Token not valid for this resource")
+	return false
 }
 
 func nullStringOrEmpty(s sql.NullString) string {

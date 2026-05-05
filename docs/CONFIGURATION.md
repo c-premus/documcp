@@ -131,6 +131,31 @@ DocuMCP requires an OpenID Connect provider for user login. Set `OIDC_PROVIDER_U
 | `OAUTH_DEVICE_FAILURE_LIMIT` | No | `5` | Max failed `user_code` submissions per user within the window before the device-flow verification page is blocked. `0` disables. |
 | `OAUTH_DEVICE_FAILURE_WINDOW` | No | `1h` | Window over which failures are counted. Counter is keyed on `user_id` in Redis so it survives session-cookie resets. `0` disables. |
 | `OAUTH_ALLOWED_RESOURCES` | No | _derived_ | RFC 8707 resource indicator allowlist (comma-separated absolute URIs). Defaults to `[APP_URL, APP_URL+DOCUMCP_ENDPOINT]` |
+| `OAUTH_ACCEPT_EMPTY_RESOURCE` | No | `false` | Compatibility shim for non-RFC-8707 MCP clients (e.g. Open WebUI). When `true`, the audience-checking middleware accepts access tokens whose `resource` claim is empty / NULL; tokens with a non-empty mismatched resource still reject. Logs a `WARN` on every accepted empty-resource request. See [Accepting non-RFC-8707 clients](#accepting-non-rfc-8707-clients) below. |
+
+### Accepting non-RFC-8707 clients (`OAUTH_ACCEPT_EMPTY_RESOURCE`)
+
+DocuMCP enforces RFC 8707 audience binding strictly: every authenticated MCP
+or REST request requires the access token's `resource` claim to match the
+expected resource (`APP_URL+DOCUMCP_ENDPOINT` for `/documcp`, `APP_URL` for
+`/api`). The 2026-03-15 MCP Authorization spec mandates this.
+
+Some MCP clients in the wild don't yet send the `resource` parameter on
+`/oauth/authorize` or `/oauth/token`, most notably **Open WebUI**
+([upstream issue](https://github.com/open-webui/open-webui/issues/18010)).
+Their issued tokens carry an empty `resource` and 401 on every subsequent
+call with `auth failed: token audience mismatch`.
+
+Setting `OAUTH_ACCEPT_EMPTY_RESOURCE=true` relaxes the audience check on the
+empty branch only — tokens with a non-empty *mismatched* resource still reject.
+Every accepted empty-resource request emits a `WARN` log line including
+`client_ip`, `path`, and `client_id` so the shim is visible in logs and
+operators don't forget it's on.
+
+This is intended as a temporary operator opt-in until upstream clients
+implement RFC 8707. The flag is expected to be removed in a future major
+release; track upstream issues and flip back to `false` once your client(s)
+comply.
 
 ### Rotating the OAuth HMAC key (`OAUTH_SESSION_SECRET`)
 

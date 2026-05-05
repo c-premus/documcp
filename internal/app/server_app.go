@@ -291,6 +291,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 			MCPResource:           cfg.App.URL + cfg.DocuMCP.Endpoint,
 			APIResource:           cfg.App.URL,
 			SessionAbsoluteMaxAge: cfg.OAuth.SessionAbsoluteMaxAge,
+			AcceptEmptyResource:   cfg.OAuth.AcceptEmptyResource,
 		},
 		Tuning: server.Tuning{
 			MaxBodySize:      cfg.Server.MaxBodySize,
