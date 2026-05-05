@@ -62,7 +62,7 @@ Migrations run automatically on first start.
 
 > **OIDC required for login:** The admin panel authenticates users via an OpenID Connect provider. Set the `OIDC_*` variables in your `.env` file -- see `.env.example` for the full list.
 
-See [docs/OAUTH_CLIENT_GUIDE.md](docs/OAUTH_CLIENT_GUIDE.md) for connecting AI agents and CLI tools.
+See [docs/OAUTH_CLIENT_GUIDE.md](docs/OAUTH_CLIENT_GUIDE.md) for connecting AI agents and CLI tools. MCP clients that don't yet implement RFC 8707 resource indicators (e.g. Open WebUI) can be supported via the opt-in `OAUTH_ACCEPT_EMPTY_RESOURCE` flag — see [Accepting non-RFC-8707 clients](docs/CONFIGURATION.md#accepting-non-rfc-8707-clients-oauth_accept_empty_resource).
 
 ## Development
 
