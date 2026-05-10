@@ -1,6 +1,6 @@
 module github.com/c-premus/documcp
 
-go 1.26.2
+go 1.26.3
 
 require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.0
