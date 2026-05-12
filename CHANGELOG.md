@@ -11,6 +11,12 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.29.3] - 2026-05-12
+
+### Fixes
+
+- fix(security): bump mermaid to 11.15.0 for four 2026-05-11 advisories
+
 ## [0.29.2] - 2026-05-12
 
 ### Fixes
@@ -19,6 +25,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.29.2
 - chore(deps): update catthehacker/ubuntu:act-22.04 docker digest to 1f7ab65
 - chore(deps): update docker dependencies
 
@@ -1098,6 +1105,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.29.3]: https://github.com/c-premus/documcp/compare/v0.29.2...v0.29.3
 [0.29.2]: https://github.com/c-premus/documcp/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/c-premus/documcp/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/c-premus/documcp/compare/v0.28.2...v0.29.0
