@@ -11,6 +11,17 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.29.2] - 2026-05-12
+
+### Fixes
+
+- fix(security): bump go-git to v5.19.0 for GHSA-389r-gv7p-r3rp
+
+### Maintenance
+
+- chore(deps): update catthehacker/ubuntu:act-22.04 docker digest to 1f7ab65
+- chore(deps): update docker dependencies
+
 ## [0.29.1] - 2026-05-10
 
 ### Fixes
@@ -20,6 +31,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.29.1
 - chore(devcontainer): switch from host to bridge networking
 
 ## [0.29.0] - 2026-05-05
@@ -1086,6 +1098,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.29.2]: https://github.com/c-premus/documcp/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/c-premus/documcp/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/c-premus/documcp/compare/v0.28.2...v0.29.0
 [0.28.2]: https://github.com/c-premus/documcp/compare/v0.28.1...v0.28.2
