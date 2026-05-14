@@ -1130,3 +1130,209 @@ func TestMimeTypeForFileType(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// TestDocumentService_ReplaceInlineContent
+// ---------------------------------------------------------------------------
+
+func TestDocumentService_ReplaceInlineContent(t *testing.T) {
+	t.Parallel()
+
+	// existingInlineDoc returns a fresh markdown document with metadata that
+	// must survive a content replacement. Each subtest gets its own copy so
+	// in-place mutation by the service under test does not leak between runs.
+	existingInlineDoc := func() *model.Document {
+		return &model.Document{
+			ID:          7,
+			UUID:        "inline-uuid",
+			Title:       "Original Title",
+			FileType:    "markdown",
+			FilePath:    "", // inline
+			MIMEType:    "text/markdown",
+			Content:     sql.NullString{String: "old body", Valid: true},
+			ContentHash: sql.NullString{String: "oldhash", Valid: true},
+			WordCount:   sql.NullInt64{Int64: 2, Valid: true},
+			ProcessedAt: sql.NullTime{Time: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Valid: true},
+			FileSize:    int64(len("old body")),
+			IsPublic:    true,
+			UserID:      sql.NullInt64{Int64: 42, Valid: true},
+			Description: sql.NullString{String: "untouched desc", Valid: true},
+			Status:      model.DocumentStatusIndexed,
+		}
+	}
+
+	t.Run("success recomputes derived fields and preserves metadata", func(t *testing.T) {
+		t.Parallel()
+
+		var updatedDoc *model.Document
+		repo := &mockDocumentRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return existingInlineDoc(), nil
+			},
+			updateFn: func(_ context.Context, doc *model.Document) error {
+				updatedDoc = doc
+				return nil
+			},
+			findByIDFn: func(_ context.Context, id int64) (*model.Document, error) {
+				if id != 7 {
+					t.Errorf("FindByID called with %d, want 7", id)
+				}
+				return updatedDoc, nil
+			},
+		}
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
+
+		newContent := "freshly written body with five words"
+		doc, err := svc.ReplaceInlineContent(context.Background(), "inline-uuid", ReplaceInlineContentParams{
+			Content: newContent,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Body actually changed.
+		if doc.Content.String != newContent {
+			t.Errorf("Content = %q, want %q", doc.Content.String, newContent)
+		}
+
+		// Hash recomputed from new content.
+		wantHash := sha256.Sum256([]byte(newContent))
+		wantHashStr := hex.EncodeToString(wantHash[:])
+		if doc.ContentHash.String != wantHashStr {
+			t.Errorf("ContentHash = %q, want %q", doc.ContentHash.String, wantHashStr)
+		}
+
+		// Word count = strings.Fields-based count (6 words in "freshly written body with five words").
+		if doc.WordCount.Int64 != 6 {
+			t.Errorf("WordCount = %d, want 6", doc.WordCount.Int64)
+		}
+
+		// FileSize matches the new byte length.
+		if doc.FileSize != int64(len(newContent)) {
+			t.Errorf("FileSize = %d, want %d", doc.FileSize, len(newContent))
+		}
+
+		// ProcessedAt updated (newer than the seed timestamp).
+		if !doc.ProcessedAt.Valid {
+			t.Fatal("ProcessedAt is not valid; expected updated timestamp")
+		}
+		seed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		if !doc.ProcessedAt.Time.After(seed) {
+			t.Errorf("ProcessedAt = %v, want after %v", doc.ProcessedAt.Time, seed)
+		}
+
+		// Status stays indexed (no extraction worker).
+		if doc.Status != model.DocumentStatusIndexed {
+			t.Errorf("Status = %q, want %q", doc.Status, model.DocumentStatusIndexed)
+		}
+
+		// Metadata fields preserved.
+		if doc.Title != "Original Title" {
+			t.Errorf("Title mutated to %q", doc.Title)
+		}
+		if doc.FileType != "markdown" {
+			t.Errorf("FileType mutated to %q", doc.FileType)
+		}
+		if doc.Description.String != "untouched desc" {
+			t.Errorf("Description mutated to %q", doc.Description.String)
+		}
+		if !doc.IsPublic {
+			t.Error("IsPublic flipped to false")
+		}
+		if !doc.UserID.Valid || doc.UserID.Int64 != 42 {
+			t.Errorf("UserID mutated to %+v", doc.UserID)
+		}
+
+		// ErrorMessage cleared even though we didn't seed one (defensive).
+		if doc.ErrorMessage.Valid {
+			t.Errorf("ErrorMessage left set: %+v", doc.ErrorMessage)
+		}
+	})
+
+	t.Run("file-backed document returns ErrFileBackedDocument", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockDocumentRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				doc := existingInlineDoc()
+				doc.FilePath = "pdf/inline-uuid.pdf" // file-backed
+				doc.FileType = "pdf"
+				return doc, nil
+			},
+			updateFn: func(_ context.Context, _ *model.Document) error {
+				t.Fatal("Update must not be called for file-backed docs")
+				return nil
+			},
+		}
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
+
+		_, err := svc.ReplaceInlineContent(context.Background(), "inline-uuid", ReplaceInlineContentParams{Content: "new"})
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !errors.Is(err, ErrFileBackedDocument) {
+			t.Errorf("errors.Is(err, ErrFileBackedDocument) = false, err = %q", err.Error())
+		}
+	})
+
+	t.Run("not found returns ErrNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockDocumentRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return nil, sql.ErrNoRows
+			},
+		}
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
+
+		_, err := svc.ReplaceInlineContent(context.Background(), "missing", ReplaceInlineContentParams{Content: "new"})
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("errors.Is(err, ErrNotFound) = false, err = %v", err)
+		}
+	})
+
+	t.Run("repository update error is wrapped", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockDocumentRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return existingInlineDoc(), nil
+			},
+			updateFn: func(_ context.Context, _ *model.Document) error {
+				return errors.New("disk full")
+			},
+		}
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
+
+		_, err := svc.ReplaceInlineContent(context.Background(), "inline-uuid", ReplaceInlineContentParams{Content: "new"})
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "updating document content") {
+			t.Errorf("error %q does not contain %q", err.Error(), "updating document content")
+		}
+	})
+
+	t.Run("FindByID error after update is wrapped", func(t *testing.T) {
+		t.Parallel()
+
+		repo := &mockDocumentRepo{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return existingInlineDoc(), nil
+			},
+			updateFn: func(_ context.Context, _ *model.Document) error { return nil },
+			findByIDFn: func(_ context.Context, _ int64) (*model.Document, error) {
+				return nil, errors.New("connection closed")
+			},
+		}
+		svc := NewDocumentService(repo, testutil.DiscardLogger())
+
+		_, err := svc.ReplaceInlineContent(context.Background(), "inline-uuid", ReplaceInlineContentParams{Content: "new"})
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "re-fetching updated document") {
+			t.Errorf("error %q does not contain %q", err.Error(), "re-fetching updated document")
+		}
+	})
+}

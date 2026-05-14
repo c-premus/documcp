@@ -18,6 +18,11 @@ import (
 	"github.com/c-premus/documcp/internal/service"
 )
 
+// maxInlineDocumentContentBytes caps the body of an inline (markdown / html)
+// document at 10 MB. Applied to both create_document and
+// replace_document_content so the two surfaces enforce the same upper bound.
+const maxInlineDocumentContentBytes = 10 * 1024 * 1024
+
 // --- Response types ---
 
 type searchDocumentsResponse struct {
@@ -78,6 +83,12 @@ type updateDocumentResponse struct {
 	Success  bool         `json:"success"`
 	Message  string       `json:"message"`
 	Document *documentRef `json:"document"`
+}
+
+type replaceDocumentContentResponse struct {
+	Success  bool          `json:"success"`
+	Message  string        `json:"message"`
+	Document *documentMeta `json:"document"`
 }
 
 type deleteDocumentResponse struct {
@@ -175,6 +186,16 @@ func (h *Handler) registerDocumentTools() {
 			IdempotentHint:  true,
 		},
 	}, h.handleUpdateDocument)
+
+	mcp.AddTool(h.server, &mcp.Tool{
+		Name: "replace_document_content",
+		Description: "Replace the body of an existing markdown or html document while preserving its metadata (title, description, tags, visibility, ownership).\n\n" +
+			"**Scope:** inline documents only — `file_type` must be `markdown` or `html`. Binary file-backed documents (`pdf`, `docx`, `xlsx`, `epub`) cannot be updated via MCP; use the REST endpoint `POST /api/documents/{uuid}/content` instead.\n\n" +
+			"**Behavior:** full overwrite, not a patch. Content hash, word count, and processed-at timestamp are recomputed; full-text search index updates automatically. Document UUID, file type, tags, ownership, and visibility are unchanged.",
+		Annotations: &mcp.ToolAnnotations{
+			DestructiveHint: &boolTrue,
+		},
+	}, h.handleReplaceDocumentContent)
 
 	mcp.AddTool(h.server, &mcp.Tool{
 		Name:        "delete_document",
@@ -416,7 +437,7 @@ func (h *Handler) handleCreateDocument(
 	if input.Title == "" || len(input.Title) > 255 {
 		return nil, createDocumentResponse{}, errors.New("title is required and must be at most 255 characters")
 	}
-	if input.Content == "" || len(input.Content) > 10*1024*1024 {
+	if input.Content == "" || len(input.Content) > maxInlineDocumentContentBytes {
 		return nil, createDocumentResponse{}, errors.New("content is required and must be at most 10 MB")
 	}
 	if input.FileType != "markdown" && input.FileType != "html" {
@@ -502,6 +523,60 @@ func (h *Handler) handleUpdateDocument(
 			FileType:  doc.FileType,
 			CreatedAt: dto.FormatNullTime(doc.CreatedAt),
 		},
+	}, nil
+}
+
+func (h *Handler) handleReplaceDocumentContent(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	input dto.ReplaceDocumentContentInput,
+) (*mcp.CallToolResult, replaceDocumentContentResponse, error) {
+	if err := requireMCPScope(ctx, authscope.MCPWrite); err != nil {
+		return nil, replaceDocumentContentResponse{}, errors.New("mcp:write scope required for replacing document content")
+	}
+
+	// Validate inputs.
+	if input.Content == "" {
+		return nil, replaceDocumentContentResponse{}, errors.New("content is required")
+	}
+	if len(input.Content) > maxInlineDocumentContentBytes {
+		return nil, replaceDocumentContentResponse{}, errors.New("content must be at most 10 MB")
+	}
+
+	// Non-admin users can only modify their own documents. Returns
+	// "document not found" for M2M tokens and non-owners — same shape as
+	// update_document / delete_document to avoid existence leaks.
+	if err := h.checkDocumentOwnership(ctx, input.UUID); err != nil {
+		return nil, replaceDocumentContentResponse{}, err
+	}
+
+	doc, err := h.documentService.ReplaceInlineContent(ctx, input.UUID, service.ReplaceInlineContentParams{
+		Content: input.Content,
+	})
+	switch {
+	case errors.Is(err, service.ErrNotFound):
+		return nil, replaceDocumentContentResponse{}, errors.New("document not found")
+	case errors.Is(err, service.ErrFileBackedDocument):
+		// Framed as a schema-shape rejection: the existence of the doc is
+		// already established by the preceding ownership check, so disclosing
+		// the doc's file type to point the caller at the right surface is
+		// operational guidance, not an information leak.
+		return nil, replaceDocumentContentResponse{}, errors.New(
+			"replace_document_content only accepts markdown or html documents; use REST POST /api/documents/{uuid}/content for file-backed documents",
+		)
+	case err != nil:
+		return nil, replaceDocumentContentResponse{}, fmt.Errorf("replacing document content: %w", err)
+	}
+
+	tags, err := h.documentService.TagsForDocument(ctx, doc.ID)
+	if err != nil {
+		return nil, replaceDocumentContentResponse{}, fmt.Errorf("loading tags: %w", err)
+	}
+
+	return nil, replaceDocumentContentResponse{
+		Success:  true,
+		Message:  fmt.Sprintf("Document %q content replaced successfully.", doc.Title),
+		Document: buildDocumentMeta(doc, tags),
 	}, nil
 }
 

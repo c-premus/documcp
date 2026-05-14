@@ -55,6 +55,13 @@ type UpdateDocumentParams struct {
 	Tags        []string
 }
 
+// ReplaceInlineContentParams holds the input for replacing the body of an
+// inline (markdown / html) document. File-backed documents must use the
+// REST file-upload path, which dispatches the extraction worker.
+type ReplaceInlineContentParams struct {
+	Content string
+}
+
 // DocumentService orchestrates document CRUD operations.
 type DocumentService struct {
 	repo   DocumentRepo
@@ -165,6 +172,45 @@ func (s *DocumentService) Update(ctx context.Context, docUUID string, params Upd
 		return nil, fmt.Errorf("re-fetching updated document: %w", err)
 	}
 
+	return updated, nil
+}
+
+// ReplaceInlineContent overwrites the body of an inline (markdown / html)
+// document. Recomputes ContentHash, WordCount, FileSize, and ProcessedAt; the
+// document's other metadata (Title, Description, Tags, IsPublic, UserID,
+// FileType) is preserved. Returns ErrFileBackedDocument when called on a
+// document that was created via file upload — those have a non-empty
+// FilePath and must be updated via the REST endpoint that re-runs the
+// extraction worker. The STORED search_vector column reindexes inside the
+// same UPDATE; no separate reindex call is needed.
+func (s *DocumentService) ReplaceInlineContent(ctx context.Context, docUUID string, params ReplaceInlineContentParams) (*model.Document, error) {
+	doc, err := s.FindByUUID(ctx, docUUID)
+	if err != nil {
+		return nil, err
+	}
+	if doc.FilePath != "" {
+		return nil, ErrFileBackedDocument
+	}
+
+	hash := sha256.Sum256([]byte(params.Content))
+	now := time.Now()
+
+	doc.Content = sql.NullString{String: params.Content, Valid: true}
+	doc.ContentHash = sql.NullString{String: hex.EncodeToString(hash[:]), Valid: true}
+	doc.WordCount = sql.NullInt64{Int64: int64(len(strings.Fields(params.Content))), Valid: true}
+	doc.ProcessedAt = sql.NullTime{Time: now, Valid: true}
+	doc.FileSize = int64(len(params.Content))
+	doc.Status = model.DocumentStatusIndexed
+	doc.ErrorMessage = sql.NullString{}
+
+	if err = s.repo.Update(ctx, doc); err != nil {
+		return nil, fmt.Errorf("updating document content: %w", err)
+	}
+
+	updated, err := s.repo.FindByID(ctx, doc.ID)
+	if err != nil {
+		return nil, fmt.Errorf("re-fetching updated document: %w", err)
+	}
 	return updated, nil
 }
 

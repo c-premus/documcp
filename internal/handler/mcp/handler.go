@@ -25,6 +25,7 @@ type documentServicer interface {
 	TagsForDocument(ctx context.Context, documentID int64) ([]model.DocumentTag, error)
 	Create(ctx context.Context, params service.CreateDocumentParams) (*model.Document, error)
 	Update(ctx context.Context, uuid string, params service.UpdateDocumentParams) (*model.Document, error)
+	ReplaceInlineContent(ctx context.Context, uuid string, params service.ReplaceInlineContentParams) (*model.Document, error)
 	Delete(ctx context.Context, uuid string) error
 }
 
@@ -88,6 +89,7 @@ const serverInstructions = `Documentation knowledge base with full-text search.
 - ` + "`read_document`" + ` - Retrieve document content by UUID. Supports ` + "`summary_only`" + ` and ` + "`max_paragraphs`" + `.
 - ` + "`create_document`" + ` - Create documents (markdown, pdf, docx, xlsx, html, epub). Auto-indexed for search.
 - ` + "`update_document`" + ` - Modify title, description, tags, or visibility.
+- ` + "`replace_document_content`" + ` - Replace the body of a markdown or html document. Inline-only; file-backed documents (pdf, docx, xlsx, epub) must use the REST ` + "`/api/documents/{uuid}/content`" + ` endpoint.
 - ` + "`delete_document`" + ` - Remove documents (ownership required).
 
 **ZIM Archives** (offline documentation: DevDocs, Wikipedia, Stack Exchange)

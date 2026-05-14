@@ -39,6 +39,16 @@ type UpdateDocumentInput struct {
 	Tags        []string `json:"tags,omitempty" jsonschema:"New tags (replaces existing)"`
 }
 
+// ReplaceDocumentContentInput holds parameters for replacing the body of an
+// inline (markdown / html) document. Metadata (title, description, tags,
+// visibility) is preserved; only the content changes. Binary file-backed
+// documents (pdf, docx, xlsx, epub) are rejected — those must be updated
+// via the REST POST /api/documents/{uuid}/content endpoint.
+type ReplaceDocumentContentInput struct {
+	UUID    string `json:"uuid" jsonschema:"Document UUID,required"`
+	Content string `json:"content" jsonschema:"New full document content (max 10 MB). Replaces the existing body entirely.,required"`
+}
+
 // DeleteDocumentInput holds parameters for deleting a document by UUID.
 type DeleteDocumentInput struct {
 	UUID string `json:"uuid" jsonschema:"UUID of document to delete,required"`

@@ -98,11 +98,12 @@ func mapToSearchResult(m map[string]any) search.SearchResult {
 // --- Mock implementations ---
 
 type mockDocumentService struct {
-	findByUUIDFn func(ctx context.Context, uuid string) (*model.Document, error)
-	tagsForDocFn func(ctx context.Context, docID int64) ([]model.DocumentTag, error)
-	createFn     func(ctx context.Context, params service.CreateDocumentParams) (*model.Document, error)
-	updateFn     func(ctx context.Context, uuid string, params service.UpdateDocumentParams) (*model.Document, error)
-	deleteFn     func(ctx context.Context, uuid string) error
+	findByUUIDFn    func(ctx context.Context, uuid string) (*model.Document, error)
+	tagsForDocFn    func(ctx context.Context, docID int64) ([]model.DocumentTag, error)
+	createFn        func(ctx context.Context, params service.CreateDocumentParams) (*model.Document, error)
+	updateFn        func(ctx context.Context, uuid string, params service.UpdateDocumentParams) (*model.Document, error)
+	replaceInlineFn func(ctx context.Context, uuid string, params service.ReplaceInlineContentParams) (*model.Document, error)
+	deleteFn        func(ctx context.Context, uuid string) error
 }
 
 func (m *mockDocumentService) FindByUUID(ctx context.Context, uuid string) (*model.Document, error) {
@@ -129,6 +130,13 @@ func (m *mockDocumentService) Create(ctx context.Context, params service.CreateD
 func (m *mockDocumentService) Update(ctx context.Context, uuid string, params service.UpdateDocumentParams) (*model.Document, error) {
 	if m.updateFn != nil {
 		return m.updateFn(ctx, uuid, params)
+	}
+	return nil, nil
+}
+
+func (m *mockDocumentService) ReplaceInlineContent(ctx context.Context, uuid string, params service.ReplaceInlineContentParams) (*model.Document, error) {
+	if m.replaceInlineFn != nil {
+		return m.replaceInlineFn(ctx, uuid, params)
 	}
 	return nil, nil
 }
