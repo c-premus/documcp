@@ -11,11 +11,21 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.30.0] - 2026-05-14
+
+### Features
+
+- feat(mcp): add replace_document_content tool for inline markdown/html
+
 ## [0.29.3] - 2026-05-12
 
 ### Fixes
 
 - fix(security): bump mermaid to 11.15.0 for four 2026-05-11 advisories
+
+### Maintenance
+
+- chore(changelog): update for v0.29.3
 
 ## [0.29.2] - 2026-05-12
 
@@ -1105,6 +1115,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.0]: https://github.com/c-premus/documcp/compare/v0.29.3...v0.30.0
 [0.29.3]: https://github.com/c-premus/documcp/compare/v0.29.2...v0.29.3
 [0.29.2]: https://github.com/c-premus/documcp/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/c-premus/documcp/compare/v0.29.0...v0.29.1
