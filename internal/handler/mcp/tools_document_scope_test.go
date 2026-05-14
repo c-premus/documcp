@@ -69,6 +69,16 @@ func TestMCPWriteTools_RequireMCPWriteScope(t *testing.T) {
 				return err
 			},
 		},
+		{
+			name: "replace_document_content",
+			call: func(ctx context.Context) error {
+				_, _, err := h.handleReplaceDocumentContent(ctx, nil, dto.ReplaceDocumentContentInput{
+					UUID:    "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+					Content: "new body",
+				})
+				return err
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -103,8 +113,14 @@ func TestMCPWriteTools_AcceptMCPWriteScope(t *testing.T) {
 		updateFn: func(_ context.Context, _ string, _ service.UpdateDocumentParams) (*model.Document, error) {
 			return stubDoc, nil
 		},
+		replaceInlineFn: func(_ context.Context, _ string, _ service.ReplaceInlineContentParams) (*model.Document, error) {
+			return stubDoc, nil
+		},
+		// checkDocumentOwnership consults FindByUUID even for admins.
+		findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+			return stubDoc, nil
+		},
 		deleteFn: func(_ context.Context, _ string) error { return nil },
-		// Admin bypass in checkDocumentOwnership: no FindByUUID call needed for admin.
 	}
 	h := &Handler{documentService: svc, documentRepo: &mockDocumentRepo{}}
 
@@ -127,6 +143,15 @@ func TestMCPWriteTools_AcceptMCPWriteScope(t *testing.T) {
 	t.Run("delete_document", func(t *testing.T) {
 		_, _, err := h.handleDeleteDocument(ctx, nil, dto.DeleteDocumentInput{
 			UUID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		})
+		if err != nil && errors.Is(err, errInsufficientScope) {
+			t.Errorf("rejected a mcp:write token: %v", err)
+		}
+	})
+	t.Run("replace_document_content", func(t *testing.T) {
+		_, _, err := h.handleReplaceDocumentContent(ctx, nil, dto.ReplaceDocumentContentInput{
+			UUID:    "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+			Content: "new body",
 		})
 		if err != nil && errors.Is(err, errInsufficientScope) {
 			t.Errorf("rejected a mcp:write token: %v", err)

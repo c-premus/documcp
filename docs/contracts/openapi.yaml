@@ -757,6 +757,11 @@ paths:
         for text extraction. Metadata (title, description, tags, visibility) is preserved.
         Requires authentication. Rate limit: `api-write` (30/min).
 
+        This endpoint is for file-backed documents (PDF, DOCX, XLSX, HTML, EPUB,
+        Markdown uploaded as files). To replace the body of inline markdown or html
+        documents created via the MCP `create_document` tool, use the MCP
+        `replace_document_content` tool instead.
+
         **Required scope:** `documents:write`
       security:
         - bearerAuth: []

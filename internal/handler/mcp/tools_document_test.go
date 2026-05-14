@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/c-premus/documcp/internal/dto"
 	"github.com/c-premus/documcp/internal/model"
 	"github.com/c-premus/documcp/internal/repository"
+	"github.com/c-premus/documcp/internal/service"
 )
 
 func TestTruncateContent(t *testing.T) {
@@ -711,6 +713,260 @@ func TestHandleListDocuments(t *testing.T) {
 		}
 		if doc1.Tags[0] != "report" {
 			t.Errorf("doc[1].Tags = %v, want [report]", doc1.Tags)
+		}
+	})
+}
+
+// TestHandleReplaceDocumentContent covers the success path and every error
+// branch of handleReplaceDocumentContent: input validation, ownership
+// rejection, the file-backed-document schema-shape rejection, and service
+// error mapping. Scope rejection lives in tools_document_scope_test.go.
+func TestHandleReplaceDocumentContent(t *testing.T) {
+	t.Parallel()
+
+	const ownerID int64 = 7
+	const docUUID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+	// writeAccessToken carries mcp:write so the per-handler scope guard passes.
+	writeAccessToken := &model.OAuthAccessToken{
+		Scope: sql.NullString{String: "mcp:access mcp:read mcp:write", Valid: true},
+	}
+	ownerCtx := func() context.Context {
+		c := context.WithValue(context.Background(), authmiddleware.AccessTokenContextKey, writeAccessToken)
+		return context.WithValue(c, authmiddleware.UserContextKey, &model.User{ID: ownerID, IsAdmin: false})
+	}
+	adminCtx := func() context.Context {
+		c := context.WithValue(context.Background(), authmiddleware.AccessTokenContextKey, writeAccessToken)
+		return context.WithValue(c, authmiddleware.UserContextKey, &model.User{ID: 999, IsAdmin: true})
+	}
+	m2mCtx := func() context.Context {
+		// M2M = token without a user context.
+		return context.WithValue(context.Background(), authmiddleware.AccessTokenContextKey, writeAccessToken)
+	}
+
+	inlineDoc := func() *model.Document {
+		return &model.Document{
+			ID:          1,
+			UUID:        docUUID,
+			Title:       "Replaceable",
+			FileType:    "markdown",
+			FilePath:    "",
+			IsPublic:    true,
+			UserID:      sql.NullInt64{Int64: ownerID, Valid: true},
+			Description: sql.NullString{String: "desc", Valid: true},
+			Status:      model.DocumentStatusIndexed,
+		}
+	}
+
+	t.Run("success returns documentMeta with refreshed body", func(t *testing.T) {
+		t.Parallel()
+
+		var calledWith service.ReplaceInlineContentParams
+		svc := &mockDocumentService{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) {
+				return inlineDoc(), nil
+			},
+			replaceInlineFn: func(_ context.Context, _ string, params service.ReplaceInlineContentParams) (*model.Document, error) {
+				calledWith = params
+				doc := inlineDoc()
+				doc.Content = sql.NullString{String: params.Content, Valid: true}
+				doc.WordCount = sql.NullInt64{Int64: 3, Valid: true}
+				doc.ContentHash = sql.NullString{String: "newhash", Valid: true}
+				doc.ProcessedAt = sql.NullTime{Time: time.Now(), Valid: true}
+				return doc, nil
+			},
+			tagsForDocFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) {
+				return []model.DocumentTag{{Tag: "go"}}, nil
+			},
+		}
+		h := &Handler{documentService: svc, documentRepo: &mockDocumentRepo{}}
+
+		_, resp, err := h.handleReplaceDocumentContent(ownerCtx(), nil, dto.ReplaceDocumentContentInput{
+			UUID:    docUUID,
+			Content: "new body here",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !resp.Success {
+			t.Error("response Success = false")
+		}
+		if resp.Document == nil {
+			t.Fatal("response Document is nil")
+		}
+		if resp.Document.ContentHash != "newhash" {
+			t.Errorf("Document.ContentHash = %q, want %q", resp.Document.ContentHash, "newhash")
+		}
+		if len(resp.Document.Tags) != 1 || resp.Document.Tags[0] != "go" {
+			t.Errorf("Document.Tags = %v, want [go]", resp.Document.Tags)
+		}
+		if calledWith.Content != "new body here" {
+			t.Errorf("service called with content %q, want %q", calledWith.Content, "new body here")
+		}
+	})
+
+	t.Run("admin bypass: non-owner admin succeeds", func(t *testing.T) {
+		t.Parallel()
+
+		svc := &mockDocumentService{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) { return inlineDoc(), nil },
+			replaceInlineFn: func(_ context.Context, _ string, _ service.ReplaceInlineContentParams) (*model.Document, error) {
+				return inlineDoc(), nil
+			},
+			tagsForDocFn: func(_ context.Context, _ int64) ([]model.DocumentTag, error) { return nil, nil },
+		}
+		h := &Handler{documentService: svc, documentRepo: &mockDocumentRepo{}}
+
+		_, _, err := h.handleReplaceDocumentContent(adminCtx(), nil, dto.ReplaceDocumentContentInput{
+			UUID:    docUUID,
+			Content: "ok",
+		})
+		if err != nil {
+			t.Fatalf("admin should pass ownership check: %v", err)
+		}
+	})
+
+	t.Run("empty content rejected", func(t *testing.T) {
+		t.Parallel()
+
+		h := &Handler{documentService: &mockDocumentService{}, documentRepo: &mockDocumentRepo{}}
+		_, _, err := h.handleReplaceDocumentContent(ownerCtx(), nil, dto.ReplaceDocumentContentInput{
+			UUID:    docUUID,
+			Content: "",
+		})
+		if err == nil || !strings.Contains(err.Error(), "content is required") {
+			t.Errorf("expected content-required error, got %v", err)
+		}
+	})
+
+	t.Run("oversize content rejected", func(t *testing.T) {
+		t.Parallel()
+
+		h := &Handler{documentService: &mockDocumentService{}, documentRepo: &mockDocumentRepo{}}
+		// One byte over the 10 MB cap.
+		body := strings.Repeat("x", maxInlineDocumentContentBytes+1)
+		_, _, err := h.handleReplaceDocumentContent(ownerCtx(), nil, dto.ReplaceDocumentContentInput{
+			UUID:    docUUID,
+			Content: body,
+		})
+		if err == nil || !strings.Contains(err.Error(), "10 MB") {
+			t.Errorf("expected 10 MB cap error, got %v", err)
+		}
+	})
+
+	t.Run("M2M token rejected as not found", func(t *testing.T) {
+		t.Parallel()
+
+		svc := &mockDocumentService{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) { return inlineDoc(), nil },
+			replaceInlineFn: func(_ context.Context, _ string, _ service.ReplaceInlineContentParams) (*model.Document, error) {
+				t.Fatal("replaceInline must not be called when ownership rejects")
+				return nil, nil
+			},
+		}
+		h := &Handler{documentService: svc, documentRepo: &mockDocumentRepo{}}
+
+		_, _, err := h.handleReplaceDocumentContent(m2mCtx(), nil, dto.ReplaceDocumentContentInput{
+			UUID:    docUUID,
+			Content: "ok",
+		})
+		if err == nil || err.Error() != "document not found" {
+			t.Errorf("expected exact \"document not found\", got %v", err)
+		}
+	})
+
+	t.Run("non-owner rejected as not found", func(t *testing.T) {
+		t.Parallel()
+
+		svc := &mockDocumentService{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) { return inlineDoc(), nil },
+			replaceInlineFn: func(_ context.Context, _ string, _ service.ReplaceInlineContentParams) (*model.Document, error) {
+				t.Fatal("replaceInline must not be called when ownership rejects")
+				return nil, nil
+			},
+		}
+		h := &Handler{documentService: svc, documentRepo: &mockDocumentRepo{}}
+
+		// Non-admin, non-owner user.
+		ctx := context.WithValue(context.Background(), authmiddleware.AccessTokenContextKey, writeAccessToken)
+		ctx = context.WithValue(ctx, authmiddleware.UserContextKey, &model.User{ID: ownerID + 1, IsAdmin: false})
+
+		_, _, err := h.handleReplaceDocumentContent(ctx, nil, dto.ReplaceDocumentContentInput{
+			UUID:    docUUID,
+			Content: "ok",
+		})
+		if err == nil || err.Error() != "document not found" {
+			t.Errorf("expected exact \"document not found\", got %v", err)
+		}
+	})
+
+	t.Run("file-backed document rejected with schema-shape error", func(t *testing.T) {
+		t.Parallel()
+
+		svc := &mockDocumentService{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) { return inlineDoc(), nil },
+			replaceInlineFn: func(_ context.Context, _ string, _ service.ReplaceInlineContentParams) (*model.Document, error) {
+				return nil, service.ErrFileBackedDocument
+			},
+		}
+		h := &Handler{documentService: svc, documentRepo: &mockDocumentRepo{}}
+
+		_, _, err := h.handleReplaceDocumentContent(ownerCtx(), nil, dto.ReplaceDocumentContentInput{
+			UUID:    docUUID,
+			Content: "ok",
+		})
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		// Message must steer the caller toward the REST endpoint.
+		if !strings.Contains(err.Error(), "markdown or html") {
+			t.Errorf("error %q does not mention the markdown/html scope", err.Error())
+		}
+		if !strings.Contains(err.Error(), "/api/documents/{uuid}/content") {
+			t.Errorf("error %q does not point at the REST endpoint", err.Error())
+		}
+	})
+
+	t.Run("service ErrNotFound maps to not found", func(t *testing.T) {
+		t.Parallel()
+
+		svc := &mockDocumentService{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) { return inlineDoc(), nil },
+			replaceInlineFn: func(_ context.Context, _ string, _ service.ReplaceInlineContentParams) (*model.Document, error) {
+				return nil, service.ErrNotFound
+			},
+		}
+		h := &Handler{documentService: svc, documentRepo: &mockDocumentRepo{}}
+
+		_, _, err := h.handleReplaceDocumentContent(ownerCtx(), nil, dto.ReplaceDocumentContentInput{
+			UUID:    docUUID,
+			Content: "ok",
+		})
+		if err == nil || err.Error() != "document not found" {
+			t.Errorf("expected exact \"document not found\", got %v", err)
+		}
+	})
+
+	t.Run("other service error is wrapped", func(t *testing.T) {
+		t.Parallel()
+
+		svc := &mockDocumentService{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) { return inlineDoc(), nil },
+			replaceInlineFn: func(_ context.Context, _ string, _ service.ReplaceInlineContentParams) (*model.Document, error) {
+				return nil, errors.New("db gone")
+			},
+		}
+		h := &Handler{documentService: svc, documentRepo: &mockDocumentRepo{}}
+
+		_, _, err := h.handleReplaceDocumentContent(ownerCtx(), nil, dto.ReplaceDocumentContentInput{
+			UUID:    docUUID,
+			Content: "ok",
+		})
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "replacing document content") {
+			t.Errorf("error %q does not contain expected wrapper", err.Error())
 		}
 	})
 }

@@ -16,7 +16,7 @@
   "server": {
     "name": "DocuMCP Server",
     "version": "1.0.0",
-    "instructions": "Documentation knowledge base with full-text search.\n\n**Unified Search**\n- `unified_search` - Discovery search across ALL sources (documents, templates, archives, wikis) in one request. Returns a single page of top-ranked results; pagination is not supported. Response includes per-source totals so callers can drill into a type-specific tool for deep search.\n\n**Documents**\n- `list_documents` - List all accessible documents with optional filters (file type, status). Paginated.\n- `search_documents` - Full-text search with filters (file type, tags). Returns metadata and snippets.\n- `read_document` - Retrieve document content by UUID. Supports `summary_only` and `max_paragraphs`.\n- `create_document` - Create text-based documents (markdown or html). Binary formats (pdf, docx, xlsx, epub) must be uploaded via the REST API. Auto-indexed for search.\n- `update_document` - Modify title, description, tags, or visibility.\n- `delete_document` - Remove documents (ownership required).\n\n**ZIM Archives** (offline documentation: DevDocs, Wikipedia, Stack Exchange)\n- `list_zim_archives` - List available archives with category/language filters.\n- `search_zim` - Search within an archive. `suggest` matches titles, `fulltext` searches content.\n- `read_zim_article` - Retrieve article content. Supports `summary_only` and `max_paragraphs`.\n\n**Git Templates** (project bootstrapping: CLAUDE.md, Memory Bank)\n- `list_git_templates` - List available templates with category filter.\n- `search_git_templates` - Full-text search across README files and metadata.\n- `get_template_structure` - View folder tree, essential files, and required variables.\n- `get_template_file` - Retrieve file content with optional variable substitution.\n- `get_deployment_guide` - Get deployment instructions with all essential files.\n- `download_template` - Download a complete template as a base64-encoded archive (zip or tar.gz). Reduces deployment from ~45 API calls to 1.\n\n**Prompts**\n- `document_analysis` - Analyze documents (summarize, compare, extract, assess). Supports multiple documents.\n- `search_query_builder` - Query construction assistance.\n- `knowledge_base_builder` - Guide document creation and organization.\n- `git_template_setup` - Template discovery, preview, and deployment.\n- `zim_research` - Research across ZIM archives.\n- `cross_source_research` - Research across all sources (Documents, ZIM, Git Templates).\n\n**Availability**: ZIM tools require Kiwix service configuration. Git Template tools are enabled by default. Document tools are always available. Configure services in Admin panel under External Services.\n\n**Access Control**: Document modifications require ownership. Public documents are readable by all.",
+    "instructions": "Documentation knowledge base with full-text search.\n\n**Unified Search**\n- `unified_search` - Discovery search across ALL sources (documents, templates, archives, wikis) in one request. Returns a single page of top-ranked results; pagination is not supported. Response includes per-source totals so callers can drill into a type-specific tool for deep search.\n\n**Documents**\n- `list_documents` - List all accessible documents with optional filters (file type, status). Paginated.\n- `search_documents` - Full-text search with filters (file type, tags). Returns metadata and snippets.\n- `read_document` - Retrieve document content by UUID. Supports `summary_only` and `max_paragraphs`.\n- `create_document` - Create text-based documents (markdown or html). Binary formats (pdf, docx, xlsx, epub) must be uploaded via the REST API. Auto-indexed for search.\n- `update_document` - Modify title, description, tags, or visibility.\n- `replace_document_content` - Replace the body of a markdown or html document. Inline-only; binary file-backed documents must use the REST `/api/documents/{uuid}/content` endpoint.\n- `delete_document` - Remove documents (ownership required).\n\n**ZIM Archives** (offline documentation: DevDocs, Wikipedia, Stack Exchange)\n- `list_zim_archives` - List available archives with category/language filters.\n- `search_zim` - Search within an archive. `suggest` matches titles, `fulltext` searches content.\n- `read_zim_article` - Retrieve article content. Supports `summary_only` and `max_paragraphs`.\n\n**Git Templates** (project bootstrapping: CLAUDE.md, Memory Bank)\n- `list_git_templates` - List available templates with category filter.\n- `search_git_templates` - Full-text search across README files and metadata.\n- `get_template_structure` - View folder tree, essential files, and required variables.\n- `get_template_file` - Retrieve file content with optional variable substitution.\n- `get_deployment_guide` - Get deployment instructions with all essential files.\n- `download_template` - Download a complete template as a base64-encoded archive (zip or tar.gz). Reduces deployment from ~45 API calls to 1.\n\n**Prompts**\n- `document_analysis` - Analyze documents (summarize, compare, extract, assess). Supports multiple documents.\n- `search_query_builder` - Query construction assistance.\n- `knowledge_base_builder` - Guide document creation and organization.\n- `git_template_setup` - Template discovery, preview, and deployment.\n- `zim_research` - Research across ZIM archives.\n- `cross_source_research` - Research across all sources (Documents, ZIM, Git Templates).\n\n**Availability**: ZIM tools require Kiwix service configuration. Git Template tools are enabled by default. Document tools are always available. Configure services in Admin panel under External Services.\n\n**Access Control**: Document modifications require ownership. Public documents are readable by all.",
     "pagination": {
       "default_length": 100,
       "max_length": 100,
@@ -333,6 +333,41 @@
         "contentType": "application/json",
         "schema": {
           "description": "JSON object with: success (boolean), message (string), document ({uuid, title, updated_at})"
+        }
+      }
+    },
+    {
+      "name": "replace_document_content",
+      "title": "Replace Document Content",
+      "description": "Replace the body of an existing markdown or html document while preserving its metadata (title, description, tags, visibility, ownership). Only the document owner (or an admin) can replace content.\n\n**Scope:** inline documents only. Binary file-backed documents (`pdf`, `docx`, `xlsx`, `epub`) are rejected — use the REST endpoint `POST /api/documents/{uuid}/content` to upload a new file instead. The full-text search index is updated automatically.",
+      "annotations": {
+        "destructiveHint": true
+      },
+      "conditional": null,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Document UUID"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 10485760,
+            "description": "New full document content. Replaces the existing body entirely (max 10 MB)."
+          }
+        },
+        "required": [
+          "uuid",
+          "content"
+        ]
+      },
+      "responseFormat": {
+        "type": "text",
+        "contentType": "application/json",
+        "schema": {
+          "description": "JSON object with: success (boolean), message (string), document ({uuid, title, description, file_type, word_count, is_public, tags, content_hash, created_at, updated_at, processed_at})"
         }
       }
     },
@@ -1144,6 +1179,7 @@
     "read_document",
     "create_document",
     "update_document",
+    "replace_document_content",
     "delete_document",
     "list_zim_archives",
     "search_zim",
@@ -1171,6 +1207,7 @@
       "read_document",
       "create_document",
       "update_document",
+      "replace_document_content",
       "delete_document",
       "document_analysis",
       "search_query_builder",
