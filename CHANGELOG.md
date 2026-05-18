@@ -11,11 +11,33 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.30.1] - 2026-05-18
+
+### Fixes
+
+- fix(deps): update go dependencies
+- fix(deps): update frontend dependencies
+
+### Maintenance
+
+- chore(deps): update docker dependencies
+- chore(deps): update catthehacker/ubuntu:act-22.04 docker digest to 19ee450
+- chore(deps): refresh frontend lockfile + dist after renovate sweep
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 64acc02
+- chore(deps): update dependency @types/node to v24.12.3
+- chore(deps): update dependency golangci/golangci-lint to v2.12.2
+- chore(deps): update sigstore/cosign-installer action to v4.1.2
+- chore(deps): lock file maintenance
+
 ## [0.30.0] - 2026-05-14
 
 ### Features
 
 - feat(mcp): add replace_document_content tool for inline markdown/html
+
+### Maintenance
+
+- chore(changelog): update for v0.30.0
 
 ## [0.29.3] - 2026-05-12
 
@@ -1115,6 +1137,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.1]: https://github.com/c-premus/documcp/compare/v0.30.0...v0.30.1
 [0.30.0]: https://github.com/c-premus/documcp/compare/v0.29.3...v0.30.0
 [0.29.3]: https://github.com/c-premus/documcp/compare/v0.29.2...v0.29.3
 [0.29.2]: https://github.com/c-premus/documcp/compare/v0.29.1...v0.29.2
