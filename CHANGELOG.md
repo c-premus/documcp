@@ -11,6 +11,33 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.30.2] - 2026-05-23
+
+### Fixes
+
+- fix(deps): update module golang.org/x/net to v0.55.0 [security]
+- fix(deps): update frontend dependencies
+- fix(deps): update go dependencies
+- fix(deps): update module golang.org/x/crypto to v0.52.0 [security]
+- fix(deps): update module github.com/go-git/go-git/v5 to v5.19.1 [security]
+
+### Maintenance
+
+- chore(deps): update dependency tsx to v4.22.3
+- chore(deps): lock file maintenance
+- chore(deps): update https://github.com/docker/setup-buildx-action action to v4.1.0
+- chore(deps): update https://github.com/docker/login-action action to v4.2.0
+- chore(deps): update https://github.com/docker/build-push-action action to v7.2.0
+- chore(deps): update docker/setup-buildx-action action to v4.1.0
+- chore(deps): update docker/metadata-action action to v6.1.0
+- chore(deps): update docker/login-action action to v4.2.0
+- chore(deps): update docker/build-push-action action to v7.2.0
+- chore(deps): update https://github.com/golangci/golangci-lint-action action to v9.2.1
+- chore(deps): update golangci/golangci-lint-action action to v9.2.1
+- chore(deps): update dependency @types/node to v24.12.4
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 47421f2
+- chore(deps): update docker dependencies
+
 ## [0.30.1] - 2026-05-18
 
 ### Fixes
@@ -20,6 +47,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.30.1
 - chore(deps): update docker dependencies
 - chore(deps): update catthehacker/ubuntu:act-22.04 docker digest to 19ee450
 - chore(deps): refresh frontend lockfile + dist after renovate sweep
@@ -1137,6 +1165,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.2]: https://github.com/c-premus/documcp/compare/v0.30.1...v0.30.2
 [0.30.1]: https://github.com/c-premus/documcp/compare/v0.30.0...v0.30.1
 [0.30.0]: https://github.com/c-premus/documcp/compare/v0.29.3...v0.30.0
 [0.29.3]: https://github.com/c-premus/documcp/compare/v0.29.2...v0.29.3
