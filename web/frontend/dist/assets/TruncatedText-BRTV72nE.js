@@ -1,0 +1,1 @@
+import{Et as e,Ot as t,mt as n,rt as r,st as i}from"./index-CAccBQYi.js";var a=[`title`],o=i({__name:`TruncatedText`,props:{value:{},mono:{type:Boolean,default:!1},maxWidth:{default:`max-w-xs`}},setup(i){return(o,s)=>(n(),r(`span`,{class:e([`block truncate`,[i.maxWidth,i.mono?`font-mono text-xs`:``]]),title:i.value},t(i.value),11,a))}});export{o as t};
