@@ -1,0 +1,1 @@
+import{$ as e,Ot as t,mt as n,rt as r,st as i}from"./index-CAccBQYi.js";var a=i({__name:`FileTypeCell`,props:{value:{}},setup(i){let a=i,o=e(()=>a.value.toUpperCase());return(e,i)=>(n(),r(`span`,null,t(o.value),1))}});export{a as t};
