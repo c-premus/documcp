@@ -401,4 +401,3 @@ func TestDecrypt_UnknownVersionErrors(t *testing.T) {
 		t.Fatal("expected error for unknown version byte")
 	}
 }
-
