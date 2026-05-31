@@ -129,4 +129,3 @@ func TestNewHealthServer_MetricsAbsentWhenMetricsNil(t *testing.T) {
 		t.Errorf("GET /metrics with nil Metrics: code = %d, want 404", w.Code)
 	}
 }
-

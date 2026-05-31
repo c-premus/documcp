@@ -103,23 +103,23 @@ type SchedulerConfig struct {
 
 // AppConfig holds general application settings.
 type AppConfig struct {
-	Name               string        `mapstructure:"app_name"`
-	Env                string        `mapstructure:"app_env"`
-	Debug              bool          `mapstructure:"app_debug"`
-	URL                string        `mapstructure:"app_url"`
-	Timezone           string        `mapstructure:"app_timezone"`
-	InternalAPIToken   string        `mapstructure:"internal_api_token"`
-	EncryptionKey      string        `mapstructure:"encryption_key"`
-	EncryptionKeyBytes []byte        // Decoded from EncryptionKey (hex); populated by Validate()
+	Name               string `mapstructure:"app_name"`
+	Env                string `mapstructure:"app_env"`
+	Debug              bool   `mapstructure:"app_debug"`
+	URL                string `mapstructure:"app_url"`
+	Timezone           string `mapstructure:"app_timezone"`
+	InternalAPIToken   string `mapstructure:"internal_api_token"`
+	EncryptionKey      string `mapstructure:"encryption_key"`
+	EncryptionKeyBytes []byte // Decoded from EncryptionKey (hex); populated by Validate()
 	// EncryptionKeyPrevious is an optional retired key retained for decrypt
 	// only. When set, ciphertext written under the retired key remains
 	// readable until a `documcp rekey` pass re-encrypts it under the current
 	// primary. Same 32-byte hex format as EncryptionKey.
-	EncryptionKeyPrevious      string `mapstructure:"encryption_key_previous"`
-	EncryptionKeyPreviousBytes []byte // Decoded from EncryptionKeyPrevious (hex); populated by Validate()
-	QueueStopTimeout   time.Duration `mapstructure:"app_queue_stop_timeout"`
-	TracerStopTimeout  time.Duration `mapstructure:"app_tracer_stop_timeout"`
-	SSRFDialerTimeout  time.Duration `mapstructure:"ssrf_dialer_timeout"`
+	EncryptionKeyPrevious      string        `mapstructure:"encryption_key_previous"`
+	EncryptionKeyPreviousBytes []byte        // Decoded from EncryptionKeyPrevious (hex); populated by Validate()
+	QueueStopTimeout           time.Duration `mapstructure:"app_queue_stop_timeout"`
+	TracerStopTimeout          time.Duration `mapstructure:"app_tracer_stop_timeout"`
+	SSRFDialerTimeout          time.Duration `mapstructure:"ssrf_dialer_timeout"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -507,17 +507,17 @@ func Load() (*Config, error) {
 
 	// Populate each section by binding env vars and unmarshalling.
 	cfg.App = AppConfig{
-		Name:              v.GetString("app_name"),
-		Env:               v.GetString("app_env"),
-		Debug:             v.GetBool("app_debug"),
-		URL:               v.GetString("app_url"),
-		Timezone:          v.GetString("app_timezone"),
-		InternalAPIToken:       v.GetString("internal_api_token"),
-		EncryptionKey:          v.GetString("encryption_key"),
-		EncryptionKeyPrevious:  v.GetString("encryption_key_previous"),
-		QueueStopTimeout:       v.GetDuration("app_queue_stop_timeout"),
-		TracerStopTimeout: v.GetDuration("app_tracer_stop_timeout"),
-		SSRFDialerTimeout: v.GetDuration("ssrf_dialer_timeout"),
+		Name:                  v.GetString("app_name"),
+		Env:                   v.GetString("app_env"),
+		Debug:                 v.GetBool("app_debug"),
+		URL:                   v.GetString("app_url"),
+		Timezone:              v.GetString("app_timezone"),
+		InternalAPIToken:      v.GetString("internal_api_token"),
+		EncryptionKey:         v.GetString("encryption_key"),
+		EncryptionKeyPrevious: v.GetString("encryption_key_previous"),
+		QueueStopTimeout:      v.GetDuration("app_queue_stop_timeout"),
+		TracerStopTimeout:     v.GetDuration("app_tracer_stop_timeout"),
+		SSRFDialerTimeout:     v.GetDuration("ssrf_dialer_timeout"),
 	}
 
 	cfg.Server = ServerConfig{
