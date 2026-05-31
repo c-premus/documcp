@@ -4,15 +4,19 @@ package pdf
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
 	lpdf "github.com/ledongthuc/pdf"
 	pdfcpuapi "github.com/pdfcpu/pdfcpu/pkg/api"
+	pdfcpumodel "github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 
 	"github.com/c-premus/documcp/internal/extractor"
 )
@@ -28,6 +32,15 @@ const (
 	defaultExtractionTimeout = 2 * time.Minute
 )
 
+// pdfcpuConfigOnce pins pdfcpu to its in-memory default configuration the
+// first time an extractor is constructed. Without this, NewDefaultConfiguration
+// tries to materialize a config dir under os.UserConfigDir()/os.TempDir() and
+// panics via fault.Fail if it can't write there — a real risk on the distroless
+// runtime (no HOME, read-only filesystem). Done under sync.Once from the
+// constructor rather than init() to honor the project's no-init-side-effects
+// rule (mirrors the go-git InstallProtocol pattern).
+var pdfcpuConfigOnce sync.Once
+
 // PDFExtractor extracts text from PDF files via pure Go libraries.
 //
 //nolint:revive // exported stutter is intentional; renaming would be a breaking change
@@ -37,6 +50,7 @@ type PDFExtractor struct {
 
 // New creates a new PDFExtractor with default limits.
 func New() *PDFExtractor {
+	pdfcpuConfigOnce.Do(pdfcpuapi.DisableConfigDir)
 	return &PDFExtractor{
 		maxExtractedTextSize: defaultMaxExtractedTextSize,
 	}
@@ -112,10 +126,34 @@ func extractText(filePath string, maxSize int64) (text string, err error) {
 
 	f, r, err := lpdf.Open(filePath)
 	if err != nil {
-		return "", fmt.Errorf("opening PDF: %w", err)
+		// ledongthuc/pdf can't open PDFs that are encrypted with an empty
+		// user password but owner-level restrictions — common for documents
+		// that open fine in any viewer yet disallow copy/print. It also
+		// mis-derives the key for the /EncryptMetadata false case, reporting
+		// "encrypted PDF: invalid password". pdfcpu reads these with the empty
+		// password, so decrypt to a scratch file and extract from the copy.
+		if !isEncryptedPDFError(err) {
+			return "", fmt.Errorf("opening PDF: %w", err)
+		}
+		decryptedPath, derr := decryptToTempPDF(filePath)
+		if derr != nil {
+			return "", fmt.Errorf("opening encrypted PDF: %w", derr)
+		}
+		defer func() { _ = os.Remove(decryptedPath) }()
+
+		f, r, err = lpdf.Open(decryptedPath)
+		if err != nil {
+			return "", fmt.Errorf("opening decrypted PDF: %w", err)
+		}
 	}
 	defer func() { _ = f.Close() }()
 
+	return extractPlainText(r, maxSize)
+}
+
+// extractPlainText walks every page of an opened reader, accumulating plain
+// text while bounding memory by checking the running size after each page.
+func extractPlainText(r *lpdf.Reader, maxSize int64) (string, error) {
 	pages := r.NumPage()
 	fonts := make(map[string]*lpdf.Font)
 
@@ -141,6 +179,46 @@ func extractText(filePath string, maxSize int64) (text string, err error) {
 	}
 
 	return cleanText(buf.String()), nil
+}
+
+// isEncryptedPDFError reports whether err from lpdf.Open indicates the file is
+// encrypted (rather than malformed or absent). The empty-user-password case
+// surfaces as the typed ErrInvalidPassword sentinel; unsupported encryption
+// variants surface as plain errors whose text mentions encryption — no typed
+// sentinel exists for those, so a substring check is the available signal.
+func isEncryptedPDFError(err error) bool {
+	if errors.Is(err, lpdf.ErrInvalidPassword) {
+		return true
+	}
+	return strings.Contains(err.Error(), "encryption")
+}
+
+// decryptToTempPDF writes a decrypted copy of an empty-user-password PDF to a
+// scratch file via pdfcpu and returns its path. The caller owns removal. A
+// genuinely password-protected PDF (non-empty user password) fails here, which
+// correctly propagates as an extraction error.
+//
+// The scratch file is created alongside the source so it inherits the same
+// writable location (the worker's temp dir in production) rather than relying
+// on a system temp dir, which isn't guaranteed writable on the distroless
+// runtime.
+func decryptToTempPDF(srcPath string) (string, error) {
+	tmp, err := os.CreateTemp(filepath.Dir(srcPath), "documcp-pdf-decrypt-*.pdf")
+	if err != nil {
+		return "", fmt.Errorf("creating scratch file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	// pdfcpu's DecryptFile reopens the output path itself.
+	_ = tmp.Close()
+
+	conf := pdfcpumodel.NewDefaultConfiguration()
+	conf.ValidationMode = pdfcpumodel.ValidationRelaxed
+
+	if err := pdfcpuapi.DecryptFile(srcPath, tmpPath, conf); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("pdfcpu decrypt: %w", err)
+	}
+	return tmpPath, nil
 }
 
 // Compiled regexes for PDF text cleanup.
