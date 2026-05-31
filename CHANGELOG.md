@@ -11,6 +11,12 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.30.4] - 2026-05-31
+
+### Fixes
+
+- fix(extractor): extract text from owner-restricted encrypted PDFs
+
 ## [0.30.3] - 2026-05-31
 
 ### Fixes
@@ -25,6 +31,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.30.3
 - chore(renovate): hold dep PRs until minimumReleaseAge is met
 - chore(deps): update module golang.org/x/image to v0.41.0 [security] (#214)
 - chore(renovate): enable auto-merge for non-major updates after green CI
@@ -1193,6 +1200,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.4]: https://github.com/c-premus/documcp/compare/v0.30.3...v0.30.4
 [0.30.3]: https://github.com/c-premus/documcp/compare/v0.30.2...v0.30.3
 [0.30.2]: https://github.com/c-premus/documcp/compare/v0.30.1...v0.30.2
 [0.30.1]: https://github.com/c-premus/documcp/compare/v0.30.0...v0.30.1
