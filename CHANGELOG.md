@@ -11,6 +11,33 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.30.3] - 2026-05-31
+
+### Fixes
+
+- fix(ci): authenticate version-release main push as a real user
+- fix(frontend): regenerate lockfile and rebuild embedded dist for dep bump
+- fix(deps): update frontend dependencies
+- fix(frontend): rebuild embedded dist to match current deps
+- fix(deps): update frontend dependencies
+- fix(deps): update go dependencies
+- fix(deploy): pull production image from Forgejo registry
+
+### Maintenance
+
+- chore(renovate): hold dep PRs until minimumReleaseAge is met
+- chore(deps): update module golang.org/x/image to v0.41.0 [security] (#214)
+- chore(renovate): enable auto-merge for non-major updates after green CI
+- chore(deps): lock file maintenance
+- chore(deps): update https://github.com/docker/setup-qemu-action action to v4.1.0
+- chore(deps): update docker/setup-qemu-action action to v4.1.0
+- chore(deps): update redis:8-alpine docker digest to 0916059
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 955e3a5
+- chore(renovate): run daily instead of weekly
+- chore(deps): update dependency vite to v8.0.14
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 7dcbae0
+- chore(devcontainer): pin forgejo-cli install with --locked
+
 ## [0.30.2] - 2026-05-23
 
 ### Fixes
@@ -23,6 +50,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.30.2
 - chore(deps): update dependency tsx to v4.22.3
 - chore(deps): lock file maintenance
 - chore(deps): update https://github.com/docker/setup-buildx-action action to v4.1.0
@@ -1165,6 +1193,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.3]: https://github.com/c-premus/documcp/compare/v0.30.2...v0.30.3
 [0.30.2]: https://github.com/c-premus/documcp/compare/v0.30.1...v0.30.2
 [0.30.1]: https://github.com/c-premus/documcp/compare/v0.30.0...v0.30.1
 [0.30.0]: https://github.com/c-premus/documcp/compare/v0.29.3...v0.30.0
