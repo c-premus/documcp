@@ -59,6 +59,31 @@ func TestPDFExtractor_Extract_CanceledContext(t *testing.T) {
 	}
 }
 
+func TestPDFExtractor_Extract_EncryptedEmptyUserPassword(t *testing.T) {
+	t.Parallel()
+
+	// sample-encrypted.pdf is encrypted with an empty user password but an
+	// owner password + restricted permissions (AES-256). It opens in any
+	// viewer yet ledongthuc/pdf rejects it ("malformed PDF: 256-bit
+	// encryption key" / "encrypted PDF: invalid password"); the extractor
+	// must transparently decrypt via pdfcpu and recover the text.
+	_, thisFile, _, _ := runtime.Caller(0)
+	fixturePath := filepath.Join(filepath.Dir(thisFile), "..", "..", "testutil", "testdata", "sample-encrypted.pdf")
+
+	ext := pdf.New()
+	result, err := ext.Extract(context.Background(), fixturePath)
+	if err != nil {
+		t.Fatalf("Extract() on encrypted PDF: unexpected error: %v", err)
+	}
+
+	if result.Content == "" {
+		t.Error("Extract() Content is empty, want non-empty text from decrypted PDF")
+	}
+	if result.WordCount <= 0 {
+		t.Errorf("Extract() WordCount = %d, want > 0", result.WordCount)
+	}
+}
+
 func TestPDFExtractor_Extract_SamplePDF(t *testing.T) {
 	t.Parallel()
 
