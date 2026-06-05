@@ -11,11 +11,26 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.30.6] - 2026-06-05
+
+### Fixes
+
+- fix(security): bump Go to 1.26.4 for stdlib CVEs
+
+### Maintenance
+
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 7ddbf89
+- chore(deps): update catthehacker/ubuntu:act-22.04 docker digest to 16ef580
+
 ## [0.30.5] - 2026-06-01
 
 ### Fixes
 
 - fix(ci): dedupe duplicate release builds via per-tag concurrency group
+
+### Maintenance
+
+- chore(changelog): update for v0.30.5
 
 ## [0.30.4] - 2026-05-31
 
@@ -1210,6 +1225,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.6]: https://github.com/c-premus/documcp/compare/v0.30.5...v0.30.6
 [0.30.5]: https://github.com/c-premus/documcp/compare/v0.30.4...v0.30.5
 [0.30.4]: https://github.com/c-premus/documcp/compare/v0.30.3...v0.30.4
 [0.30.3]: https://github.com/c-premus/documcp/compare/v0.30.2...v0.30.3
