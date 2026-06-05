@@ -1,7 +1,11 @@
 version: "2"
 
 run:
-  timeout: 5m
+  # 10m (not 5m) to absorb cold-cache package-loading runs: CI's setup-go uses
+  # cache: false, so the first lint after a Go toolchain bump (which invalidates
+  # the version-keyed build/lint cache) must type-check the whole dependency
+  # graph from scratch. A 5m ceiling clipped exactly that case at ~5m19s.
+  timeout: 10m
 
 linters:
   default: none
