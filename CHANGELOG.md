@@ -21,6 +21,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.30.8
 - chore(deps): lock file maintenance frontend dependencies
 - chore(deps): update gitleaks/gitleaks-action action to v3 (#228)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 459b7e2
@@ -1255,6 +1256,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.9]: https://github.com/c-premus/documcp/compare/v0.30.8...v0.30.9
 [0.30.8]: https://github.com/c-premus/documcp/compare/v0.30.7...v0.30.8
 [0.30.7]: https://github.com/c-premus/documcp/compare/v0.30.6...v0.30.7
 [0.30.6]: https://github.com/c-premus/documcp/compare/v0.30.5...v0.30.6
