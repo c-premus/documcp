@@ -11,6 +11,23 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.30.10] - 2026-06-15
+
+### Fixes
+
+- fix(frontend): regenerate lockfile + rebuild embedded dist for vue 3.5.38
+- fix(deps): update frontend dependencies
+
+### Maintenance
+
+- chore(devcontainer): auto-authenticate fj from .devcontainer/.env
+
+## [0.30.9] - 2026-06-14
+
+### Maintenance
+
+- chore(changelog): update for v0.30.9
+
 ## [0.30.8] - 2026-06-14
 
 ### Fixes
@@ -1256,6 +1273,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.10]: https://github.com/c-premus/documcp/compare/v0.30.9...v0.30.10
 [0.30.9]: https://github.com/c-premus/documcp/compare/v0.30.8...v0.30.9
 [0.30.8]: https://github.com/c-premus/documcp/compare/v0.30.7...v0.30.8
 [0.30.7]: https://github.com/c-premus/documcp/compare/v0.30.6...v0.30.7
