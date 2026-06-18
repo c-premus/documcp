@@ -21,7 +21,7 @@
     "@sentry/vue": "10.57.0",
     "@tanstack/vue-table": "8.21.3",
     "date-fns": "4.4.0",
-    "dompurify": "3.4.9",
+    "dompurify": "3.4.11",
     "marked": "18.0.5",
     "mermaid": "^11.15.0",
     "pinia": "3.0.4",
@@ -55,6 +55,6 @@
     "vue-tsc": "3.3.4"
   },
   "overrides": {
-    "dompurify": "3.4.9"
+    "dompurify": "3.4.11"
   }
 }
