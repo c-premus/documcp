@@ -11,12 +11,22 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.30.12] - 2026-06-23
+
+### Fixes
+
+- fix(ci): run CI on renovate/** branch pushes, drop pull_request trigger
+
 ## [0.30.11] - 2026-06-19
 
 ### Fixes
 
 - fix(frontend): bump undici to 7.28.0 and rebuild embedded dist for dompurify 3.4.11
 - fix(deps): update dependency dompurify to v3.4.11 [security]
+
+### Maintenance
+
+- chore(changelog): update for v0.30.11
 
 ## [0.30.10] - 2026-06-15
 
@@ -1281,6 +1291,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.12]: https://github.com/c-premus/documcp/compare/v0.30.11...v0.30.12
 [0.30.11]: https://github.com/c-premus/documcp/compare/v0.30.10...v0.30.11
 [0.30.10]: https://github.com/c-premus/documcp/compare/v0.30.9...v0.30.10
 [0.30.9]: https://github.com/c-premus/documcp/compare/v0.30.8...v0.30.9
