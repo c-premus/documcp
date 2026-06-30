@@ -11,10 +11,22 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.30.17] - 2026-06-30
+
+### Fixes
+
+- fix(deps): update go dependencies to v1.27.3 (#250)
+
+### Maintenance
+
+- chore(deps): update actions/cache action to v6.1.0 (#248)
+- chore(deps): update actions/attest-build-provenance action to v4.1.1 (#247)
+
 ## [0.30.16] - 2026-06-28
 
 ### Maintenance
 
+- chore(changelog): update for v0.30.16
 - chore(deps): update frontend dependencies to v10.5.2 (#245)
 - chore(deps): update actions/cache action to v6
 
@@ -1340,6 +1352,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.17]: https://github.com/c-premus/documcp/compare/v0.30.16...v0.30.17
 [0.30.16]: https://github.com/c-premus/documcp/compare/v0.30.15...v0.30.16
 [0.30.15]: https://github.com/c-premus/documcp/compare/v0.30.14...v0.30.15
 [0.30.14]: https://github.com/c-premus/documcp/compare/v0.30.13...v0.30.14
