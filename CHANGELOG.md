@@ -11,6 +11,18 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.30.19] - 2026-07-04
+
+### Fixes
+
+- fix(frontend): regenerate lockfile + rebuild embedded dist
+- fix(deps): update frontend dependencies
+
+### Maintenance
+
+- chore(deps): update frontend dependencies to v11.16.0 (#254)
+- chore(deps): update actions/checkout action to v7
+
 ## [0.30.18] - 2026-07-03
 
 ### Fixes
@@ -20,6 +32,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.30.18
 - chore(deps): update https://github.com/golangci/golangci-lint-action action to v9.3.0 (#253)
 - chore(skills): pull memory-bank archiving guidance from ai-coding-template
 - chore(deps): update golangci/golangci-lint-action action to v9.3.0 (#251)
@@ -1366,6 +1379,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.19]: https://github.com/c-premus/documcp/compare/v0.30.18...v0.30.19
 [0.30.18]: https://github.com/c-premus/documcp/compare/v0.30.17...v0.30.18
 [0.30.17]: https://github.com/c-premus/documcp/compare/v0.30.16...v0.30.17
 [0.30.16]: https://github.com/c-premus/documcp/compare/v0.30.15...v0.30.16
