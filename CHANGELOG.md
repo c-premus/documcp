@@ -11,6 +11,20 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.30.20] - 2026-07-05
+
+### Fixes
+
+- fix(deps): update frontend dependencies to v10.63.0 (#256)
+
+### Maintenance
+
+- chore(deps): update frontend dependencies to v8.1.3 (#261)
+- chore(deps): update https://github.com/docker/setup-qemu-action action to v4.2.0 (#260)
+- chore(deps): update https://github.com/docker/build-push-action action to v7.3.0 (#259)
+- chore(deps): update docker/build-push-action action to v7.3.0 (#258)
+- chore(deps): update docker/setup-qemu-action action to v4.2.0 (#257)
+
 ## [0.30.19] - 2026-07-04
 
 ### Fixes
@@ -20,6 +34,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.30.19
 - chore(deps): update frontend dependencies to v11.16.0 (#254)
 - chore(deps): update actions/checkout action to v7
 
@@ -1379,6 +1394,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.20]: https://github.com/c-premus/documcp/compare/v0.30.19...v0.30.20
 [0.30.19]: https://github.com/c-premus/documcp/compare/v0.30.18...v0.30.19
 [0.30.18]: https://github.com/c-premus/documcp/compare/v0.30.17...v0.30.18
 [0.30.17]: https://github.com/c-premus/documcp/compare/v0.30.16...v0.30.17
