@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"time"
 
@@ -540,15 +541,28 @@ func riverUICSP(next http.Handler) http.Handler {
 	})
 }
 
+// keyByResolvedIP is the httprate key function. It keys off r.RemoteAddr,
+// which the RealIP middleware (installed first in Routes) has already rewritten
+// to the real client IP — honoring forwarded headers only from TrustedProxies.
+// So the trust model lives in RealIP, not here; httprate's own KeyByIP /
+// KeyByRealIP are deprecated because they can't know that. CanonicalizeIP
+// buckets IPv6 clients by their /64. Mirrors the pre-v0.16 httprate.KeyByIP.
+func keyByResolvedIP(r *http.Request) (string, error) {
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		ip = r.RemoteAddr
+	}
+	return httprate.CanonicalizeIP(ip), nil
+}
+
 // rateLimitByIP creates an IP-based rate limiter. When a Redis client is
 // provided, counters are shared across all server instances. When nil (tests),
 // it falls back to the default in-memory counter.
 func rateLimitByIP(count int, window time.Duration, rc *redis.Client) func(http.Handler) http.Handler {
 	if rc == nil {
-		return httprate.LimitByIP(count, window)
+		return httprate.LimitBy(count, window, keyByResolvedIP)
 	}
-	return httprate.Limit(count, window,
-		httprate.WithKeyByIP(),
+	return httprate.LimitBy(count, window, keyByResolvedIP,
 		httprateredis.WithRedisLimitCounter(&httprateredis.Config{
 			Client:    rc,
 			PrefixKey: "documcp:rate",
