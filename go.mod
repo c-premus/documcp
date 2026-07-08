@@ -2,7 +2,7 @@ module github.com/c-premus/documcp
 
 go 1.26
 
-toolchain go1.26.4
+toolchain go1.26.5
 
 require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.2
