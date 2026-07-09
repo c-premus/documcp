@@ -11,6 +11,28 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.30.21] - 2026-07-09
+
+### Fixes
+
+- fix(deps): update go dependencies to v5.3.1 (#273)
+- fix(deps): update go dependencies to v0.22.0 (#271)
+- fix(server): migrate rate limiter to httprate v0.16 LimitBy API
+- fix(deps): update go dependencies
+
+### Maintenance
+
+- chore(deps): update go toolchain directive to v1.26.5 [security] (#272)
+- chore(deps): update https://github.com/docker/login-action action to v4.4.0 (#270)
+- chore(deps): update dependency tsx to v4.23.0 (#269)
+- chore(deps): update docker/login-action action to v4.4.0 (#268)
+- chore(deps): update https://github.com/docker/setup-buildx-action action to v4.2.0 (#267)
+- chore(deps): update dependency tsx to v4.22.5 (#266)
+- chore(deps): update https://github.com/docker/login-action action to v4.3.0 (#265)
+- chore(deps): update docker/setup-buildx-action action to v4.2.0 (#264)
+- chore(deps): update docker/metadata-action action to v6.2.0 (#263)
+- chore(deps): update docker/login-action action to v4.3.0 (#262)
+
 ## [0.30.20] - 2026-07-05
 
 ### Fixes
@@ -19,6 +41,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.30.20
 - chore(deps): update frontend dependencies to v8.1.3 (#261)
 - chore(deps): update https://github.com/docker/setup-qemu-action action to v4.2.0 (#260)
 - chore(deps): update https://github.com/docker/build-push-action action to v7.3.0 (#259)
@@ -1394,6 +1417,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.21]: https://github.com/c-premus/documcp/compare/v0.30.20...v0.30.21
 [0.30.20]: https://github.com/c-premus/documcp/compare/v0.30.19...v0.30.20
 [0.30.19]: https://github.com/c-premus/documcp/compare/v0.30.18...v0.30.19
 [0.30.18]: https://github.com/c-premus/documcp/compare/v0.30.17...v0.30.18
