@@ -15,7 +15,7 @@ require (
 	github.com/aws/smithy-go v1.27.3
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/exaring/otelpgx v0.11.1
-	github.com/getsentry/sentry-go v0.47.0
+	github.com/getsentry/sentry-go v0.48.0
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/go-chi/httprate v0.16.0
 	github.com/go-chi/httprate-redis v0.7.0
