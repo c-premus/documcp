@@ -26,7 +26,7 @@
     "mermaid": "^11.15.0",
     "pinia": "3.0.4",
     "vue": "3.5.39",
-    "vue-router": "5.1.0",
+    "vue-router": "5.2.0",
     "vue-sonner": "2.0.9"
   },
   "devDependencies": {
