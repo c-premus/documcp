@@ -11,11 +11,35 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.30.32] - 2026-07-25
+
+### Fixes
+
+- fix(deps): regenerate frontend lockfile and rebuild dist for grouped bumps
+- fix(deps): update frontend dependencies
+- fix(deps): pin @vue/server-renderer to $vue to unblock vue bumps
+- fix(deps): pin brace-expansion to 5.0.8 via override for GHSA-mh99-v99m-4gvg
+- fix(deps): bump brace-expansion to clear GHSA-3jxr-9vmj-r5cp (high)
+- fix(deps): update go dependencies (#306)
+
+### Maintenance
+
+- chore(deps): update module google.golang.org/grpc to v1.82.1 [security]
+- chore(deps): update https://github.com/actions/checkout action to v7
+- chore(deps): update https://github.com/actions/setup-go action to v7
+- chore(deps): update actions/setup-go action to v7
+- chore(deps): update https://github.com/actions/setup-node action to v7
+- chore(deps): update actions/setup-node action to v7
+
 ## [0.30.31] - 2026-07-19
 
 ### Fixes
 
 - fix(deps): update frontend dependencies to v5.2.0 (#304)
+
+### Maintenance
+
+- chore(changelog): update for v0.30.31
 
 ## [0.30.30] - 2026-07-18
 
@@ -1529,6 +1553,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.32]: https://github.com/c-premus/documcp/compare/v0.30.31...v0.30.32
 [0.30.31]: https://github.com/c-premus/documcp/compare/v0.30.30...v0.30.31
 [0.30.30]: https://github.com/c-premus/documcp/compare/v0.30.29...v0.30.30
 [0.30.29]: https://github.com/c-premus/documcp/compare/v0.30.28...v0.30.29
