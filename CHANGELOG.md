@@ -11,10 +11,26 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.30.36] - 2026-07-28
+
+### Fixes
+
+- fix(deps): update go dependencies to v0.41.0 (#325)
+- fix(deps): update frontend dependencies to v10.68.0 (#321)
+- fix(deps): update go dependencies to v1.24.1 (#320)
+
+### Maintenance
+
+- chore(deps): update frontend dependencies to v10.8.0 (#326)
+- chore(deps): update frontend dependencies to v8.5.23 (#324)
+- chore(deps): update https://github.com/docker/login-action action to v4.5.1 (#323)
+- chore(deps): update docker/login-action action to v4.5.1 (#322)
+
 ## [0.30.35] - 2026-07-27
 
 ### Maintenance
 
+- chore(changelog): update for v0.30.35
 - chore(deps): update https://github.com/docker/login-action action to v4.5.0 (#319)
 - chore(deps): update docker/login-action action to v4.5.0 (#318)
 
@@ -1585,6 +1601,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.36]: https://github.com/c-premus/documcp/compare/v0.30.35...v0.30.36
 [0.30.35]: https://github.com/c-premus/documcp/compare/v0.30.34...v0.30.35
 [0.30.34]: https://github.com/c-premus/documcp/compare/v0.30.33...v0.30.34
 [0.30.33]: https://github.com/c-premus/documcp/compare/v0.30.32...v0.30.33
