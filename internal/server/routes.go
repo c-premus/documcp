@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"net/http"
 	"time"
@@ -559,15 +560,39 @@ func keyByResolvedIP(r *http.Request) (string, error) {
 // provided, counters are shared across all server instances. When nil (tests),
 // it falls back to the default in-memory counter.
 func rateLimitByIP(count int, window time.Duration, rc *redis.Client) func(http.Handler) http.Handler {
-	if rc == nil {
-		return httprate.LimitBy(count, window, keyByResolvedIP)
+	opts := []httprate.Option{
+		// httprate's default onRateLimited writes plain text via http.Error,
+		// which breaks the one-envelope invariant for REST clients. The
+		// Retry-After and X-RateLimit-* headers are already staged by the
+		// limiter before this runs, so only the body needs replacing.
+		httprate.WithLimitHandler(func(w http.ResponseWriter, _ *http.Request) {
+			writeJSONError(w, http.StatusTooManyRequests,
+				"Rate limit exceeded. See the Retry-After header for when to retry.")
+		}),
+		// httprate's default onError is worse than a shape mismatch: it writes
+		// err.Error() straight to the client under 428 Precondition Required.
+		// That leaks limiter-backend detail (Redis addresses, dial errors) to
+		// unauthenticated callers under a status that misdescribes the failure.
+		// The limiter fails closed when its counter errors, so 503 is the
+		// honest code; the real error goes to the log, not the response.
+		httprate.WithErrorHandler(func(w http.ResponseWriter, _ *http.Request, err error) {
+			// Identify the limiter by its own configuration rather than by the
+			// request path: count/window pins down the call site just as well,
+			// and keeping request-controlled strings out of the log line avoids
+			// the log-injection surface (gosec G706) entirely.
+			slog.Error("rate limiter backend error; failing closed",
+				"error", err, "limit", count, "window", window)
+			writeJSONError(w, http.StatusServiceUnavailable,
+				"Rate limiting is temporarily unavailable. Please retry shortly.")
+		}),
 	}
-	return httprate.LimitBy(count, window, keyByResolvedIP,
-		httprateredis.WithRedisLimitCounter(&httprateredis.Config{
+	if rc != nil {
+		opts = append(opts, httprateredis.WithRedisLimitCounter(&httprateredis.Config{
 			Client:    rc,
 			PrefixKey: "documcp:rate",
-		}),
-	)
+		}))
+	}
+	return httprate.LimitBy(count, window, keyByResolvedIP, opts...)
 }
 
 // PgxPoolPinger adapts *pgxpool.Pool to handler.DependencyPinger. Wrap the

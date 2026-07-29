@@ -2,6 +2,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -14,6 +15,26 @@ import (
 	"github.com/getsentry/sentry-go"
 	"github.com/go-chi/chi/v5/middleware"
 )
+
+// writeJSONError emits the project's REST error envelope from the middleware
+// layer, where the api package's unexported errorResponse is out of reach.
+//
+// Middleware that rejects a request before it reaches a handler still owes the
+// caller the same response shape — a client that parses errors as JSON should
+// not have to special-case the status codes that happen to originate from
+// middleware. The global slog logger is used here for the same reason
+// api/response.go does: there is no context.Context in scope, and an encode
+// failure requires a broken io.Writer.
+func writeJSONError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(map[string]any{
+		"error":   http.StatusText(status),
+		"message": message,
+	}); err != nil {
+		slog.Warn("failed to encode JSON error response", "error", err, "status", status)
+	}
+}
 
 // SecurityHeaders returns middleware that adds recommended security headers to
 // every response. The hstsMaxAge parameter controls the HSTS max-age directive
@@ -48,6 +69,14 @@ func SecurityHeaders(hstsMaxAge int) func(http.Handler) http.Handler {
 func SafeRecoverer(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Wrap so the recover path can tell whether the handler already
+			// committed a response. SafeRecoverer runs before RequestLogger and
+			// the metrics middleware, which do their own wrapping downstream —
+			// their wrappers are invisible here, so this one is needed.
+			// chi's NewWrapResponseWriter picks a variant that preserves
+			// http.Flusher and http.Hijacker when the underlying writer has
+			// them, so SSE streams and connection upgrades are unaffected.
+			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			defer func() {
 				if rvr := recover(); rvr != nil {
 					reqID := middleware.GetReqID(r.Context())
@@ -66,10 +95,24 @@ func SafeRecoverer(logger *slog.Logger) func(http.Handler) http.Handler {
 					if r.Header.Get("Connection") == "Upgrade" {
 						return
 					}
-					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					// Once a status or any body has gone out, the response is
+					// committed: WriteHeader again is a no-op that logs
+					// "superfluous WriteHeader", and appending an envelope
+					// would corrupt whatever the client already received.
+					// Bail out and let the truncated response stand — the log
+					// line above is the record of what happened.
+					if ww.Status() != 0 || ww.BytesWritten() > 0 {
+						logger.Warn("panic after response was committed; body may be truncated",
+							"request_id", reqID,
+							"status", ww.Status(),
+							"bytes_written", ww.BytesWritten(),
+						)
+						return
+					}
+					writeJSONError(ww, http.StatusInternalServerError, "An unexpected error occurred.")
 				}
 			}()
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(ww, r)
 		})
 	}
 }

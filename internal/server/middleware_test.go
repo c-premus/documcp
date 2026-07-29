@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bufio"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -11,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-chi/httprate"
 
 	"github.com/c-premus/documcp/internal/observability"
 )
@@ -1240,4 +1244,200 @@ func TestSecurityHeaders_CacheControl(t *testing.T) {
 	if got != "no-store" {
 		t.Errorf("Cache-Control = %q, want %q", got, "no-store")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Rate limiter error envelope
+// ---------------------------------------------------------------------------
+
+// decodeErrorEnvelope asserts the body is the project's REST error envelope and
+// returns it. A plain-text body fails here, which is the regression this guards.
+func decodeErrorEnvelope(t *testing.T, rr *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	if ct := rr.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("body is not JSON (%v); raw = %q", err, rr.Body.String())
+	}
+	for _, k := range []string{"error", "message"} {
+		if _, ok := body[k]; !ok {
+			t.Errorf("envelope missing %q key; got %v", k, body)
+		}
+	}
+	return body
+}
+
+func TestRateLimitByIPReturnsErrorEnvelope(t *testing.T) {
+	t.Parallel()
+
+	// nil Redis client -> in-memory counter, so this needs no infrastructure.
+	const limit = 2
+	mw := rateLimitByIP(limit, time.Minute, nil)
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	var limited *httptest.ResponseRecorder
+	for range limit + 1 {
+		req := httptest.NewRequest(http.MethodPost, "/api/documents", http.NoBody)
+		req.RemoteAddr = "192.0.2.50:1234"
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code == http.StatusTooManyRequests {
+			limited = rr
+			break
+		}
+	}
+	if limited == nil {
+		t.Fatalf("never hit the rate limit after %d requests", limit+1)
+	}
+
+	body := decodeErrorEnvelope(t, limited)
+	if got := body["error"]; got != http.StatusText(http.StatusTooManyRequests) {
+		t.Errorf("error = %v, want %q", got, http.StatusText(http.StatusTooManyRequests))
+	}
+	// httprate stages Retry-After before invoking the limit handler; the custom
+	// handler must not clobber it, since the message points the caller at it.
+	if limited.Header().Get("Retry-After") == "" {
+		t.Error("Retry-After header missing from 429 response")
+	}
+}
+
+func TestRateLimitByIPBackendErrorDoesNotLeakDetail(t *testing.T) {
+	t.Parallel()
+
+	// httprate's default onError writes err.Error() to the client under 428.
+	// Drive the error path through a counter that always fails and assert we
+	// neither leak the message nor keep the misleading status.
+	const secret = "dial tcp 10.1.2.3:6379: connection refused"
+	mw := httprate.LimitBy(1, time.Minute, keyByResolvedIP,
+		httprate.WithLimitCounter(failingLimitCounter{err: errors.New(secret)}),
+		httprate.WithLimitHandler(func(w http.ResponseWriter, _ *http.Request) {
+			writeJSONError(w, http.StatusTooManyRequests, "Rate limit exceeded. See the Retry-After header for when to retry.")
+		}),
+		httprate.WithErrorHandler(func(w http.ResponseWriter, _ *http.Request, _ error) {
+			writeJSONError(w, http.StatusServiceUnavailable,
+				"Rate limiting is temporarily unavailable. Please retry shortly.")
+		}),
+	)
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/documents", http.NoBody)
+	req.RemoteAddr = "192.0.2.51:1234"
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusServiceUnavailable)
+	}
+	if rr.Code == http.StatusPreconditionRequired {
+		t.Error("status is httprate's default 428, which misdescribes a backend failure")
+	}
+	if strings.Contains(rr.Body.String(), secret) {
+		t.Errorf("response leaks the backend error detail: %q", rr.Body.String())
+	}
+	decodeErrorEnvelope(t, rr)
+}
+
+// failingLimitCounter is a httprate.LimitCounter whose every operation fails,
+// standing in for an unreachable Redis.
+type failingLimitCounter struct{ err error }
+
+func (f failingLimitCounter) Config(_ int, _ time.Duration)         {}
+func (f failingLimitCounter) Increment(_ string, _ time.Time) error { return f.err }
+func (f failingLimitCounter) IncrementBy(_ string, _ time.Time, _ int) error {
+	return f.err
+}
+func (f failingLimitCounter) Get(_ string, _, _ time.Time) (curr, prev int, err error) {
+	return 0, 0, f.err
+}
+
+func TestSafeRecoverer_EmitsErrorEnvelope(t *testing.T) {
+	t.Parallel()
+
+	inner := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		panic("boom with secret detail")
+	})
+	h := SafeRecoverer(slog.New(slog.DiscardHandler))(inner)
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/documents", http.NoBody))
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+	}
+	body := decodeErrorEnvelope(t, rr)
+	if got := body["error"]; got != http.StatusText(http.StatusInternalServerError) {
+		t.Errorf("error = %v, want %q", got, http.StatusText(http.StatusInternalServerError))
+	}
+	if msg, _ := body["message"].(string); strings.Contains(msg, "secret detail") {
+		t.Errorf("message leaks the panic value: %q", msg)
+	}
+}
+
+func TestSafeRecoverer_CommittedResponseIsNotCorrupted(t *testing.T) {
+	t.Parallel()
+
+	// A handler that panics *after* writing has already committed its status
+	// and part of its body. Appending an envelope there would produce a
+	// malformed response and a "superfluous WriteHeader" log, so the recoverer
+	// must leave the committed response alone.
+	const partial = `{"data":[{"id":1}`
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, partial)
+		panic("panicked mid-stream")
+	})
+	h := SafeRecoverer(slog.New(slog.DiscardHandler))(inner)
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/documents", http.NoBody))
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want the already-committed %d", rr.Code, http.StatusOK)
+	}
+	if got := rr.Body.String(); got != partial {
+		t.Errorf("body = %q, want the committed bytes %q with nothing appended", got, partial)
+	}
+	if strings.Contains(rr.Body.String(), "An unexpected error occurred") {
+		t.Error("recoverer appended an envelope to an already-committed response")
+	}
+}
+
+func TestSafeRecoverer_PreservesFlusherAndHijacker(t *testing.T) {
+	t.Parallel()
+
+	// SafeRecoverer wraps the ResponseWriter, which SSE (/api/events/stream)
+	// and connection upgrades depend on passing through intact.
+	var sawFlusher, sawHijacker bool
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, sawFlusher = w.(http.Flusher)
+		_, sawHijacker = w.(http.Hijacker)
+	})
+	h := SafeRecoverer(slog.New(slog.DiscardHandler))(inner)
+
+	// httptest.ResponseRecorder implements Flusher but not Hijacker, so assert
+	// Flusher against it and Hijacker against a writer that provides one.
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody))
+	if !sawFlusher {
+		t.Error("http.Flusher did not survive the wrap; SSE streaming would break")
+	}
+
+	h.ServeHTTP(hijackableRecorder{httptest.NewRecorder()}, httptest.NewRequest(http.MethodGet, "/api/events/stream", http.NoBody))
+	if !sawHijacker {
+		t.Error("http.Hijacker did not survive the wrap; connection upgrades would break")
+	}
+}
+
+// hijackableRecorder adds a no-op Hijack to ResponseRecorder so the wrapper
+// selects its hijack-capable variant.
+type hijackableRecorder struct{ *httptest.ResponseRecorder }
+
+func (hijackableRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return nil, nil, errors.New("not implemented")
 }
