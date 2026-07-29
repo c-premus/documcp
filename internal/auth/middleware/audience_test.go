@@ -48,6 +48,12 @@ func TestBearerTokenWithAudience(t *testing.T) {
 
 	const expected = "https://documcp.example.com/documcp"
 
+	// An audience-mismatch challenge cites the RFC 9728 metadata document for
+	// the resource the route guards, derived from expected per RFC 9728 §3.1.
+	const wantAudienceChallenge = `Bearer error="invalid_token", ` +
+		`error_description="audience mismatch", ` +
+		`resource_metadata="https://documcp.example.com/.well-known/oauth-protected-resource/documcp"`
+
 	t.Run("matching resource passes", func(t *testing.T) {
 		t.Parallel()
 		plain, repo := newAudienceTokenAndRepo(t, sql.NullString{String: expected, Valid: true})
@@ -80,8 +86,8 @@ func TestBearerTokenWithAudience(t *testing.T) {
 		if rr.Code != http.StatusUnauthorized {
 			t.Errorf("status = %d, want 401", rr.Code)
 		}
-		if got := rr.Header().Get("WWW-Authenticate"); got != `Bearer error="invalid_token", error_description="audience mismatch"` {
-			t.Errorf("WWW-Authenticate = %q", got)
+		if got := rr.Header().Get("WWW-Authenticate"); got != wantAudienceChallenge {
+			t.Errorf("WWW-Authenticate = %q, want %q", got, wantAudienceChallenge)
 		}
 	})
 
@@ -170,8 +176,8 @@ func TestBearerTokenWithAudience(t *testing.T) {
 		if rr.Code != http.StatusUnauthorized {
 			t.Errorf("status = %d, want 401", rr.Code)
 		}
-		if got := rr.Header().Get("WWW-Authenticate"); got != `Bearer error="invalid_token", error_description="audience mismatch"` {
-			t.Errorf("WWW-Authenticate = %q", got)
+		if got := rr.Header().Get("WWW-Authenticate"); got != wantAudienceChallenge {
+			t.Errorf("WWW-Authenticate = %q, want %q", got, wantAudienceChallenge)
 		}
 	})
 

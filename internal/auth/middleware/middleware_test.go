@@ -1552,3 +1552,154 @@ func TestAccessTokenContextKey(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// RFC 9728 / RFC 6750 challenge conformance
+// ---------------------------------------------------------------------------
+
+func TestResourceMetadataURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		resource string
+		want     string
+	}{
+		{
+			name:     "resource with path inserts well-known between authority and path",
+			resource: "https://docs.example.com/documcp",
+			want:     "https://docs.example.com/.well-known/oauth-protected-resource/documcp",
+		},
+		{
+			name:     "bare origin yields the unsuffixed document",
+			resource: "https://docs.example.com",
+			want:     "https://docs.example.com/.well-known/oauth-protected-resource",
+		},
+		{
+			name:     "trailing slash does not produce a doubled separator",
+			resource: "https://docs.example.com/",
+			want:     "https://docs.example.com/.well-known/oauth-protected-resource",
+		},
+		{
+			name:     "non-default port is preserved",
+			resource: "https://docs.example.com:8443/documcp",
+			want:     "https://docs.example.com:8443/.well-known/oauth-protected-resource/documcp",
+		},
+		{
+			name:     "query and fragment are dropped",
+			resource: "https://docs.example.com/documcp?a=1#frag",
+			want:     "https://docs.example.com/.well-known/oauth-protected-resource/documcp",
+		},
+		{
+			name:     "empty resource yields no URL",
+			resource: "",
+			want:     "",
+		},
+		{
+			name:     "scheme-less resource yields no URL rather than a malformed challenge",
+			resource: "docs.example.com/documcp",
+			want:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := ResourceMetadataURL(tt.resource); got != tt.want {
+				t.Errorf("ResourceMetadataURL(%q) = %q, want %q", tt.resource, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBearerChallengeHeader(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		c    bearerChallenge
+		want string
+	}{
+		{
+			name: "empty challenge is a bare Bearer",
+			c:    bearerChallenge{},
+			want: "Bearer",
+		},
+		{
+			name: "parameters render in RFC 6750 order",
+			c: bearerChallenge{
+				errCode:          "insufficient_scope",
+				errorDescription: "needs more",
+				scope:            "mcp:write",
+				resourceMetadata: "https://docs.example.com/.well-known/oauth-protected-resource",
+			},
+			want: `Bearer error="insufficient_scope", error_description="needs more", ` +
+				`scope="mcp:write", resource_metadata="https://docs.example.com/.well-known/oauth-protected-resource"`,
+		},
+		{
+			name: "unset parameters are omitted entirely",
+			c:    bearerChallenge{errCode: "invalid_token"},
+			want: `Bearer error="invalid_token"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.c.header(); got != tt.want {
+				t.Errorf("header() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRequireScopeChallengeNamesMissingScopeAndMetadata(t *testing.T) {
+	t.Parallel()
+
+	// A client that cannot see which scope it lacks has to guess at step-up;
+	// one that cannot see the metadata document has to guess at the AS.
+	token := &model.OAuthAccessToken{
+		ID:    1,
+		Scope: sql.NullString{String: "mcp:access mcp:read", Valid: true},
+	}
+	ctx := context.WithValue(context.Background(), AccessTokenContextKey, token)
+	ctx = context.WithValue(ctx, resourceMetadataContextKey,
+		"https://docs.example.com/.well-known/oauth-protected-resource/documcp")
+
+	req := httptest.NewRequest(http.MethodPost, "/documcp", http.NoBody).WithContext(ctx)
+	rr := httptest.NewRecorder()
+
+	RequireScope("mcp:write", slog.Default())(okHandler()).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusForbidden)
+	}
+	want := `Bearer error="insufficient_scope", scope="mcp:write", ` +
+		`resource_metadata="https://docs.example.com/.well-known/oauth-protected-resource/documcp"`
+	if got := rr.Header().Get("WWW-Authenticate"); got != want {
+		t.Errorf("WWW-Authenticate = %q, want %q", got, want)
+	}
+}
+
+func TestMissingTokenChallengeCitesResourceMetadata(t *testing.T) {
+	t.Parallel()
+
+	// The MCP authorization flow opens with "401 -> read resource_metadata from
+	// WWW-Authenticate", so the unauthenticated challenge is the one that most
+	// needs to carry it.
+	// No Authorization header, so the repo is never consulted.
+	mw := BearerTokenWithAudience(newTestOAuthService(&mockOAuthRepo{}), slog.Default(),
+		"https://docs.example.com/documcp", false)
+
+	req := httptest.NewRequest(http.MethodPost, "/documcp", http.NoBody)
+	rr := httptest.NewRecorder()
+	mw(okHandler()).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
+	}
+	want := `Bearer resource_metadata="https://docs.example.com/.well-known/oauth-protected-resource/documcp"`
+	if got := rr.Header().Get("WWW-Authenticate"); got != want {
+		t.Errorf("WWW-Authenticate = %q, want %q", got, want)
+	}
+}

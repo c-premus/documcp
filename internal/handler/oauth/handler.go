@@ -18,6 +18,7 @@ type Handler struct {
 	store          sessions.Store
 	oauthCfg       config.OAuthConfig
 	appURL         string
+	mcpEndpoint    string
 	logger         *slog.Logger
 	deviceFailures *oauth.DeviceFailureLimiter
 }
@@ -28,7 +29,12 @@ type Config struct {
 	SessionStore sessions.Store
 	OAuthCfg     config.OAuthConfig
 	AppURL       string
-	Logger       *slog.Logger
+	// MCPEndpoint is the request path of the MCP protected resource (e.g.
+	// "/documcp"). RFC 9728 metadata served under that suffix advertises the
+	// MCP scope vocabulary rather than the REST API's. Empty means every
+	// protected-resource request is treated as the API resource.
+	MCPEndpoint string
+	Logger      *slog.Logger
 	// DeviceFailureLimiter enforces per-user brute-force limits on the
 	// device-verification submit endpoint (security L6). Nil collapses to a
 	// no-op limiter for tests that don't exercise the counter.
@@ -46,6 +52,7 @@ func New(cfg Config) *Handler {
 		store:          cfg.SessionStore,
 		oauthCfg:       cfg.OAuthCfg,
 		appURL:         cfg.AppURL,
+		mcpEndpoint:    cfg.MCPEndpoint,
 		logger:         cfg.Logger,
 		deviceFailures: limiter,
 	}

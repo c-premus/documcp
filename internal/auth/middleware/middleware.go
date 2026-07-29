@@ -32,7 +32,89 @@ const (
 	UserContextKey contextKey = "user"
 	// AccessTokenContextKey is the context key for the validated access token.
 	AccessTokenContextKey contextKey = "access_token"
+	// resourceMetadataContextKey carries the RFC 9728 protected-resource
+	// metadata URL for the resource guarding the current route. The audience
+	// middlewares set it so that every downstream challenge — the 401 from
+	// BearerToken and the 403 from RequireScope alike — can cite the same
+	// document without threading it through each signature.
+	resourceMetadataContextKey contextKey = "resource_metadata"
 )
+
+// ResourceMetadataURL derives the RFC 9728 §3.1 protected-resource metadata URL
+// for a resource identifier: the well-known segment is inserted between the
+// authority and the resource's path, so https://host/documcp yields
+// https://host/.well-known/oauth-protected-resource/documcp.
+//
+// Returns "" for input that is not an absolute URL, which callers treat as
+// "omit resource_metadata from the challenge" rather than emitting a malformed
+// one.
+func ResourceMetadataURL(resource string) string {
+	if resource == "" {
+		return ""
+	}
+	u, err := url.Parse(resource)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	u.Path = "/.well-known/oauth-protected-resource" + strings.TrimSuffix(u.Path, "/")
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
+}
+
+// withResourceMetadata returns a request carrying the protected-resource
+// metadata URL, when one could be derived.
+func withResourceMetadata(r *http.Request, metadataURL string) *http.Request {
+	if metadataURL == "" {
+		return r
+	}
+	return r.WithContext(context.WithValue(r.Context(), resourceMetadataContextKey, metadataURL))
+}
+
+// bearerChallenge builds an RFC 6750 §3 WWW-Authenticate value.
+//
+// Both the errCode and scope parameters are optional: a bare "Bearer" is the
+// correct challenge when no token was supplied at all, while an
+// insufficient_scope response carries the scopes the client must add. The
+// resource_metadata parameter points clients at RFC 9728 discovery, which the
+// MCP authorization spec names as the first step of its authorization flow.
+type bearerChallenge struct {
+	errCode          string
+	errorDescription string
+	scope            string
+	resourceMetadata string
+}
+
+// header renders the challenge as a WWW-Authenticate header value.
+func (c bearerChallenge) header() string {
+	var params []string
+	add := func(k, v string) {
+		if v != "" {
+			// Values here are server-controlled (fixed error codes, registered
+			// scope tokens, and a URL built from config), none of which can
+			// contain a quote or backslash — so a plain quoted-string is safe.
+			params = append(params, k+`="`+v+`"`)
+		}
+	}
+	add("error", c.errCode)
+	add("error_description", c.errorDescription)
+	add("scope", c.scope)
+	add("resource_metadata", c.resourceMetadata)
+	if len(params) == 0 {
+		return "Bearer"
+	}
+	return "Bearer " + strings.Join(params, ", ")
+}
+
+// writeChallenge sets WWW-Authenticate and writes the JSON error body,
+// attaching the route's resource metadata URL when one is in context.
+func writeChallenge(w http.ResponseWriter, r *http.Request, status int, c bearerChallenge, message string) {
+	if md, ok := r.Context().Value(resourceMetadataContextKey).(string); ok {
+		c.resourceMetadata = md
+	}
+	w.Header().Set("WWW-Authenticate", c.header())
+	jsonError(w, status, message)
+}
 
 // Sentinel errors for auth helpers.
 var (
@@ -137,8 +219,7 @@ func BearerToken(oauthService *oauth.Service, logger *slog.Logger) func(http.Han
 					"path", r.URL.Path,
 					"method", r.Method,
 				)
-				w.Header().Set("WWW-Authenticate", `Bearer`)
-				jsonError(w, http.StatusUnauthorized, "Bearer token required")
+				writeChallenge(w, r, http.StatusUnauthorized, bearerChallenge{}, "Bearer token required")
 				return
 			}
 
@@ -150,16 +231,15 @@ func BearerToken(oauthService *oauth.Service, logger *slog.Logger) func(http.Han
 						"path", r.URL.Path,
 						"method", r.Method,
 					)
-					w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
-					jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
+					writeChallenge(w, r, http.StatusUnauthorized,
+						bearerChallenge{errCode: "invalid_token"}, "Invalid or expired token")
 				} else {
 					logger.Warn("auth failed: malformed bearer token",
 						"client_ip", r.RemoteAddr,
 						"path", r.URL.Path,
 						"method", r.Method,
 					)
-					w.Header().Set("WWW-Authenticate", `Bearer`)
-					jsonError(w, http.StatusUnauthorized, "Bearer token required")
+					writeChallenge(w, r, http.StatusUnauthorized, bearerChallenge{}, "Bearer token required")
 				}
 				return
 			}
@@ -189,16 +269,15 @@ func BearerOrSession(oauthService *oauth.Service, store sessions.Store, logger *
 							"path", r.URL.Path,
 							"method", r.Method,
 						)
-						w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
-						jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
+						writeChallenge(w, r, http.StatusUnauthorized,
+							bearerChallenge{errCode: "invalid_token"}, "Invalid or expired token")
 					} else {
 						logger.Warn("auth failed: malformed bearer token",
 							"client_ip", r.RemoteAddr,
 							"path", r.URL.Path,
 							"method", r.Method,
 						)
-						w.Header().Set("WWW-Authenticate", `Bearer`)
-						jsonError(w, http.StatusUnauthorized, "Bearer token required")
+						writeChallenge(w, r, http.StatusUnauthorized, bearerChallenge{}, "Bearer token required")
 					}
 					return
 				}
@@ -254,13 +333,14 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request, session *session
 // (issue #164) for the operator-opt-in compatibility shim.
 func BearerTokenWithAudience(oauthService *oauth.Service, logger *slog.Logger, expectedResource string, acceptEmptyResource bool) func(http.Handler) http.Handler {
 	inner := BearerToken(oauthService, logger)
+	metadataURL := ResourceMetadataURL(expectedResource)
 	return func(next http.Handler) http.Handler {
-		return inner(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		guarded := inner(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token, ok := r.Context().Value(AccessTokenContextKey).(*model.OAuthAccessToken)
 			if !ok {
 				// BearerToken should always set the token; defensive guard.
-				w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
-				jsonError(w, http.StatusUnauthorized, "Invalid or expired token")
+				writeChallenge(w, r, http.StatusUnauthorized,
+					bearerChallenge{errCode: "invalid_token"}, "Invalid or expired token")
 				return
 			}
 			if !checkAudience(w, r, logger, token, expectedResource, acceptEmptyResource) {
@@ -268,6 +348,12 @@ func BearerTokenWithAudience(oauthService *oauth.Service, logger *slog.Logger, e
 			}
 			next.ServeHTTP(w, r)
 		}))
+		// Inject before the inner chain runs: BearerToken writes its own 401s
+		// and never reaches the handler above, so the metadata URL has to be in
+		// context by the time it does.
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			guarded.ServeHTTP(w, withResourceMetadata(r, metadataURL))
+		})
 	}
 }
 
@@ -277,8 +363,9 @@ func BearerTokenWithAudience(oauthService *oauth.Service, logger *slog.Logger, e
 // because sessions are not bound to a specific resource.
 func BearerOrSessionWithAudience(oauthService *oauth.Service, store sessions.Store, logger *slog.Logger, expectedResource string, absoluteMaxAge time.Duration, acceptEmptyResource bool) func(http.Handler) http.Handler {
 	inner := BearerOrSession(oauthService, store, logger, absoluteMaxAge)
+	metadataURL := ResourceMetadataURL(expectedResource)
 	return func(next http.Handler) http.Handler {
-		return inner(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		guarded := inner(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// If a token is present in context, the request was authenticated
 			// via bearer; enforce audience. Otherwise it's a session — pass.
 			token, ok := r.Context().Value(AccessTokenContextKey).(*model.OAuthAccessToken)
@@ -287,6 +374,9 @@ func BearerOrSessionWithAudience(oauthService *oauth.Service, store sessions.Sto
 			}
 			next.ServeHTTP(w, r)
 		}))
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			guarded.ServeHTTP(w, withResourceMetadata(r, metadataURL))
+		})
 	}
 }
 
@@ -318,8 +408,10 @@ func checkAudience(w http.ResponseWriter, r *http.Request, logger *slog.Logger, 
 		"expected", expectedResource,
 		"token_resource", nullStringOrEmpty(token.Resource),
 	)
-	w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token", error_description="audience mismatch"`)
-	jsonError(w, http.StatusUnauthorized, "Token not valid for this resource")
+	writeChallenge(w, r, http.StatusUnauthorized, bearerChallenge{
+		errCode:          "invalid_token",
+		errorDescription: "audience mismatch",
+	}, "Token not valid for this resource")
 	return false
 }
 
@@ -418,8 +510,14 @@ func RequireScope(scope string, logger *slog.Logger) func(http.Handler) http.Han
 				"method", r.Method,
 				"required_scope", scope,
 			)
-			w.Header().Set("WWW-Authenticate", `Bearer error="insufficient_scope"`)
-			jsonError(w, http.StatusForbidden, "Insufficient scope")
+			// RFC 6750 §3.1: name the scope the client is missing so it can run
+			// a step-up authorization rather than guess. The MCP authorization
+			// spec asks for every scope the operation needs in one challenge —
+			// here that is exactly the one scope this route gates on.
+			writeChallenge(w, r, http.StatusForbidden, bearerChallenge{
+				errCode: "insufficient_scope",
+				scope:   scope,
+			}, "Insufficient scope")
 		})
 	}
 }

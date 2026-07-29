@@ -200,3 +200,38 @@ func DefaultScopes() string {
 		ServicesRead,
 	}, " ")
 }
+
+// MCPResourceScopes returns the scopes the MCP resource server actually
+// consults, in the order a client should think about them: endpoint admission
+// (MCPAccess, enforced by the /documcp route middleware) then per-tool
+// authority (MCPRead / MCPWrite, enforced by requireMCPScope in every tool
+// handler). No other registered scope is read anywhere under the MCP endpoint
+// — documents:*, search:*, zim:*, templates:*, and services:* gate the REST
+// API only.
+//
+// This is the RFC 9728 scopes_supported set advertised for the MCP protected
+// resource. Per the MCP authorization spec, scopes_supported is the minimal
+// set needed for basic functionality, not a catalog of every scope the
+// server knows about.
+func MCPResourceScopes() string {
+	return strings.Join([]string{MCPAccess, MCPRead, MCPWrite}, " ")
+}
+
+// APIResourceScopes returns the scopes advertised for the REST API protected
+// resource: every registered scope a bearer token can actually carry.
+//
+// The thirdPartyExcluded set (admin, services:write) is filtered out because
+// the consent paths refuse to grant those over a bearer token in the first
+// place — advertising them would tell a spec-following client to request
+// authority the server will always deny. See ThirdPartyGrantable.
+func APIResourceScopes() string {
+	out := make([]string, 0, len(All))
+	for s := range All {
+		if thirdPartyExcluded[s] {
+			continue
+		}
+		out = append(out, s)
+	}
+	slices.Sort(out)
+	return strings.Join(out, " ")
+}

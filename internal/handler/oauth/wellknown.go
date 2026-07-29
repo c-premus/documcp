@@ -34,6 +34,11 @@ func (h *Handler) AuthorizationServerMetadata(w http.ResponseWriter, r *http.Req
 		"scopes_supported":                 allScopesSorted(),
 		"protected_resources":              []string{issuer},
 		"resource_indicators_supported":    true,
+		// RFC 9207 §2.3 — required whenever the AS emits the iss parameter in
+		// authorization responses, which Authorize{Approve,Deny} now do. MCP
+		// clients key their iss validation on this flag; the MCP authorization
+		// spec expects the SHOULD to become a MUST in a future revision.
+		"authorization_response_iss_parameter_supported": true,
 	}
 
 	jsonResponse(w, http.StatusOK, metadata)
@@ -54,11 +59,26 @@ func (h *Handler) ProtectedResourceMetadata(w http.ResponseWriter, r *http.Reque
 	metadata := map[string]any{
 		"resource":                 resource,
 		"authorization_servers":    []string{issuer},
-		"scopes_supported":         allScopesSorted(),
+		"scopes_supported":         scopesForResource(suffix, h.mcpEndpoint),
 		"bearer_methods_supported": []string{"header"},
 	}
 
 	jsonResponse(w, http.StatusOK, metadata)
+}
+
+// scopesForResource returns the RFC 9728 scopes_supported list for the
+// protected resource identified by the path suffix of the metadata request.
+//
+// The two protected resources have disjoint scope vocabularies, so a single
+// combined list would misdirect clients: an MCP client following the spec's
+// scope-selection strategy requests everything in scopes_supported when the
+// 401 carries no scope challenge, and would otherwise ask for REST-only
+// authority it can never exercise over /documcp.
+func scopesForResource(suffix, mcpEndpoint string) []string {
+	if mcpEndpoint != "" && strings.TrimSuffix(suffix, "/") == strings.TrimSuffix(mcpEndpoint, "/") {
+		return authscope.ParseScopes(authscope.MCPResourceScopes())
+	}
+	return authscope.ParseScopes(authscope.APIResourceScopes())
 }
 
 // allScopesSorted returns all registered OAuth scopes in sorted order.

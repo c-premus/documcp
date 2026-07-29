@@ -1165,3 +1165,88 @@ func TestHandler_AuthorizeDeny(t *testing.T) {
 		assert.Contains(t, rr.Body.String(), "You may close this window")
 	})
 }
+
+// ---------------------------------------------------------------------------
+// RFC 9207 authorization server issuer identification
+// ---------------------------------------------------------------------------
+
+func TestAuthorizeResponsesCarryIssuer(t *testing.T) {
+	t.Parallel()
+
+	// RFC 9207 lets a client detect a mix-up attack by attributing the
+	// authorization response to an issuer before it redeems the code. The MCP
+	// authorization spec expects this SHOULD to become a MUST, so both the
+	// success and the error redirect carry iss.
+	//
+	// The value is percent-encoded inside the redirect query, which the
+	// JavaScript redirect template then JSON-encodes.
+	const wantIssParam = "iss=https%3A%2F%2Fexample.com"
+
+	t.Run("approval redirect carries iss", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+				return &model.OAuthClient{
+					ID:                      1,
+					ClientID:                "cid",
+					ClientName:              "Test App",
+					TokenEndpointAuthMethod: "none",
+					RedirectURIs:            `["https://example.com/cb"]`,
+				}, nil
+			},
+			CreateAuthorizationCodeFunc: func(_ context.Context, code *model.OAuthAuthorizationCode) error {
+				code.ID = 99
+				return nil
+			},
+		}
+		h, store := newHandlerWithRepo(repo)
+		store.session.Values["user_id"] = int64(42)
+		store.session.Values["oauth_pending_request"] = map[string]any{
+			"nonce":                 "test-nonce-value",
+			"client_id":             "cid",
+			"state":                 "my_state_",
+			"redirect_uri":          "https://example.com/cb",
+			"code_challenge":        "",
+			"code_challenge_method": "",
+			"scope":                 "mcp:access",
+			"timestamp":             time.Now().Unix(),
+		}
+
+		formBody := "client_id=cid&redirect_uri=https://example.com/cb&state=my_state_&scope=mcp:access&nonce=test-nonce-value"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/authorize/approve", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.AuthorizeApprove(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		body := rr.Body.String()
+		assert.Contains(t, body, "code=")
+		assert.Contains(t, body, wantIssParam)
+	})
+
+	t.Run("denial redirect carries iss", func(t *testing.T) {
+		t.Parallel()
+		h, store := newHandlerWithRepo(&mockOAuthRepo{})
+		store.session.Values["user_id"] = int64(42)
+		store.session.Values["oauth_pending_request"] = map[string]any{
+			"nonce":        "test-nonce-value",
+			"client_id":    "cid",
+			"state":        "my_state_",
+			"redirect_uri": "https://example.com/cb",
+			"timestamp":    time.Now().Unix(),
+		}
+
+		formBody := "nonce=test-nonce-value"
+		req := httptest.NewRequest(http.MethodPost, "/oauth/authorize/deny", strings.NewReader(formBody))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		h.AuthorizeDeny(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		body := rr.Body.String()
+		assert.Contains(t, body, "error=access_denied")
+		assert.Contains(t, body, wantIssParam)
+	})
+}

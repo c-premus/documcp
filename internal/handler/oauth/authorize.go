@@ -400,6 +400,7 @@ func (h *Handler) AuthorizeApprove(w http.ResponseWriter, r *http.Request) {
 	}
 	q := parsedRedirect.Query()
 	q.Set("code", code)
+	q.Set("iss", h.appURL)
 	if reqState != "" {
 		q.Set("state", reqState)
 	}
@@ -495,6 +496,9 @@ func (h *Handler) AuthorizeDeny(w http.ResponseWriter, r *http.Request) {
 		q := parsedRedirect.Query()
 		q.Set("error", "access_denied")
 		q.Set("error_description", "The resource owner denied the request")
+		// RFC 9207 §2 requires iss on error responses too — a client that
+		// cannot attribute a denial to an issuer cannot safely surface it.
+		q.Set("iss", h.appURL)
 		if state != "" {
 			q.Set("state", state)
 		}

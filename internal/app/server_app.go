@@ -147,6 +147,7 @@ func NewServerApp(f *Foundation, withWorker bool) (*ServerApp, error) {
 		SessionStore:         sessionStore,
 		OAuthCfg:             cfg.OAuth,
 		AppURL:               cfg.App.URL,
+		MCPEndpoint:          cfg.DocuMCP.Endpoint,
 		Logger:               logger,
 		DeviceFailureLimiter: deviceFailures,
 	})

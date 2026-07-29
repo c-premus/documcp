@@ -8,7 +8,28 @@ import (
 	"net/http/httptest"
 	"slices"
 	"testing"
+
+	authscope "github.com/c-premus/documcp/internal/auth/scope"
 )
+
+// scopesSupported decodes the scopes_supported array from a metadata response.
+func scopesSupported(t *testing.T, rr *httptest.ResponseRecorder) []string {
+	t.Helper()
+	body := decodeJSON(t, rr.Body)
+	raw, ok := body["scopes_supported"].([]any)
+	if !ok {
+		t.Fatal("scopes_supported is not an array")
+	}
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		s, ok := v.(string)
+		if !ok {
+			t.Fatalf("scopes_supported contains a non-string entry: %v", v)
+		}
+		out = append(out, s)
+	}
+	return out
+}
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -16,8 +37,9 @@ import (
 
 func newTestHandler(appURL string) *Handler {
 	return &Handler{
-		appURL: appURL,
-		logger: slog.New(slog.DiscardHandler),
+		appURL:      appURL,
+		mcpEndpoint: "/documcp",
+		logger:      slog.New(slog.DiscardHandler),
 	}
 }
 
@@ -377,20 +399,40 @@ func TestHandler_ProtectedResourceMetadata(t *testing.T) {
 		}
 	})
 
-	t.Run("scopes supported includes all scopes", func(t *testing.T) {
+	t.Run("api resource advertises only bearer-grantable scopes", func(t *testing.T) {
 		t.Parallel()
 
 		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", http.NoBody)
 		rr := httptest.NewRecorder()
 		h.ProtectedResourceMetadata(rr, req)
 
-		body := decodeJSON(t, rr.Body)
-		scopes, ok := body["scopes_supported"].([]any)
-		if !ok {
-			t.Fatal("scopes_supported is not an array")
+		scopes := scopesSupported(t, rr)
+
+		// A spec-following client requests everything in scopes_supported when
+		// the challenge carries no scope hint, so advertising a scope the
+		// consent ceiling always refuses would send it on a doomed round trip.
+		for _, forbidden := range []string{authscope.Admin, authscope.ServicesWrite} {
+			if slices.Contains(scopes, forbidden) {
+				t.Errorf("scopes_supported contains %q, which is never grantable to a third-party client", forbidden)
+			}
 		}
-		if len(scopes) != 12 {
-			t.Fatalf("scopes_supported length = %d, want 12", len(scopes))
+		if !slices.Contains(scopes, authscope.DocumentsRead) {
+			t.Errorf("scopes_supported = %v, want it to contain %q", scopes, authscope.DocumentsRead)
+		}
+	})
+
+	t.Run("mcp resource advertises only the scopes its tools consult", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource/documcp", http.NoBody)
+		rr := httptest.NewRecorder()
+		h.ProtectedResourceMetadata(rr, req)
+
+		scopes := scopesSupported(t, rr)
+
+		want := []string{authscope.MCPAccess, authscope.MCPRead, authscope.MCPWrite}
+		if !slices.Equal(scopes, want) {
+			t.Errorf("scopes_supported = %v, want %v", scopes, want)
 		}
 	})
 
@@ -438,4 +480,26 @@ func TestHandler_ProtectedResourceMetadata(t *testing.T) {
 			t.Errorf("resource = %v, want %q", body["resource"], want)
 		}
 	})
+}
+
+func TestAuthorizationServerMetadataAdvertisesIssuerParameter(t *testing.T) {
+	t.Parallel()
+
+	// RFC 9207 §2.3: an AS that emits iss MUST say so in its metadata, because
+	// clients key their "reject a response with no iss" rule on this flag.
+	h := newTestHandler("https://example.com")
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", http.NoBody)
+	rr := httptest.NewRecorder()
+
+	h.AuthorizationServerMetadata(rr, req)
+
+	body := decodeJSON(t, rr.Body)
+	got, ok := body["authorization_response_iss_parameter_supported"].(bool)
+	if !ok {
+		t.Fatalf("authorization_response_iss_parameter_supported missing or not a bool: %v",
+			body["authorization_response_iss_parameter_supported"])
+	}
+	if !got {
+		t.Error("authorization_response_iss_parameter_supported = false, want true — Authorize{Approve,Deny} both emit iss")
+	}
 }
