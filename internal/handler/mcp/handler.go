@@ -89,7 +89,7 @@ const serverInstructions = `Documentation knowledge base with full-text search.
 - ` + "`read_document`" + ` - Retrieve document content by UUID. Supports ` + "`summary_only`" + ` and ` + "`max_paragraphs`" + `.
 - ` + "`create_document`" + ` - Create documents (markdown, pdf, docx, xlsx, html, epub). Auto-indexed for search.
 - ` + "`update_document`" + ` - Modify title, description, tags, or visibility.
-- ` + "`replace_document_content`" + ` - Replace the body of a markdown or html document. Inline-only; file-backed documents (pdf, docx, xlsx, epub) must use the REST ` + "`/api/documents/{uuid}/content`" + ` endpoint.
+- ` + "`replace_document_content`" + ` - Replace the body of a markdown or html document. Inline content only: documents that were uploaded as a file are file-backed and must use the REST ` + "`/api/documents/{uuid}/content`" + ` endpoint — that includes pdf/docx/xlsx/epub and also uploaded markdown or html files.
 - ` + "`delete_document`" + ` - Remove documents (ownership required).
 
 **ZIM Archives** (offline documentation: DevDocs, Wikipedia, Stack Exchange)
@@ -253,8 +253,12 @@ func New(cfg Config) *Handler {
 	// Register prompts
 	h.registerPrompts(cfg.ZimEnabled, cfg.GitTemplatesEnabled)
 
-	// Create HTTP handler using the Streamable HTTP transport (protocol 2025-03-26).
-	// The SDK v1.4.1 requires Accept: application/json, text/event-stream on all
+	// Create HTTP handler using the Streamable HTTP transport. The negotiated
+	// protocol version is whatever the SDK's latestProtocolVersion is —
+	// 2025-11-25 on go-sdk v1.6.1, with 2025-06-18 and 2025-03-26 accepted for
+	// older clients. Do not restate a version here; it drifts. Ask the SDK.
+	//
+	// The SDK requires Accept: application/json, text/event-stream on all
 	// requests. We wrap with a middleware that adds text/event-stream when missing
 	// so Claude.ai clients that only send Accept: application/json still work.
 	//

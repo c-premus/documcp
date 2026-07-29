@@ -190,7 +190,7 @@ func (h *Handler) registerDocumentTools() {
 	mcp.AddTool(h.server, &mcp.Tool{
 		Name: "replace_document_content",
 		Description: "Replace the body of an existing markdown or html document while preserving its metadata (title, description, tags, visibility, ownership).\n\n" +
-			"**Scope:** inline documents only — `file_type` must be `markdown` or `html`. Binary file-backed documents (`pdf`, `docx`, `xlsx`, `epub`) cannot be updated via MCP; use the REST endpoint `POST /api/documents/{uuid}/content` instead.\n\n" +
+			"**Scope:** documents whose content is stored inline — those created via `create_document`. Documents that were *uploaded as a file* are file-backed and are rejected, regardless of type: that includes `pdf`, `docx`, `xlsx`, and `epub`, but also an uploaded `markdown` or `html` file. For any file-backed document, use the REST endpoint `POST /api/documents/{uuid}/content` instead.\n\n" +
 			"**Behavior:** full overwrite, not a patch. Content hash, word count, and processed-at timestamp are recomputed; full-text search index updates automatically. Document UUID, file type, tags, ownership, and visibility are unchanged.",
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &boolTrue,
@@ -557,12 +557,16 @@ func (h *Handler) handleReplaceDocumentContent(
 	case errors.Is(err, service.ErrNotFound):
 		return nil, replaceDocumentContentResponse{}, errors.New("document not found")
 	case errors.Is(err, service.ErrFileBackedDocument):
-		// Framed as a schema-shape rejection: the existence of the doc is
-		// already established by the preceding ownership check, so disclosing
-		// the doc's file type to point the caller at the right surface is
-		// operational guidance, not an information leak.
+		// Name file-backing as the reason, not the file type. The guard keys on
+		// a non-empty FilePath, so an uploaded *markdown* file lands here too —
+		// and telling that caller the tool "only accepts markdown" is both false
+		// and a dead end, since converting the type is not the fix. Disclosing
+		// the storage shape is operational guidance rather than an information
+		// leak: the preceding ownership check already established the doc exists.
 		return nil, replaceDocumentContentResponse{}, errors.New(
-			"replace_document_content only accepts markdown or html documents; use REST POST /api/documents/{uuid}/content for file-backed documents",
+			"this document is file-backed (uploaded as a file), so its content cannot be replaced inline; " +
+				"use REST POST /api/documents/{uuid}/content instead. This applies to any uploaded file, " +
+				"including markdown — replace_document_content only handles documents created with inline content",
 		)
 	case err != nil:
 		return nil, replaceDocumentContentResponse{}, fmt.Errorf("replacing document content: %w", err)

@@ -918,12 +918,20 @@ func TestHandleReplaceDocumentContent(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		// Message must steer the caller toward the REST endpoint.
-		if !strings.Contains(err.Error(), "markdown or html") {
-			t.Errorf("error %q does not mention the markdown/html scope", err.Error())
+		// Message must name file-backing as the reason and steer the caller to
+		// the REST endpoint.
+		if !strings.Contains(err.Error(), "file-backed") {
+			t.Errorf("error %q does not name file-backing as the reason", err.Error())
 		}
 		if !strings.Contains(err.Error(), "/api/documents/{uuid}/content") {
 			t.Errorf("error %q does not point at the REST endpoint", err.Error())
+		}
+		// The guard keys on a non-empty FilePath, not on file_type, so an
+		// uploaded markdown file reaches this branch too. Telling that caller
+		// the tool "only accepts markdown or html" is false and leaves them
+		// with no next step — the earlier wording did exactly that.
+		if strings.Contains(err.Error(), "only accepts markdown or html") {
+			t.Errorf("error %q blames the file type; the rejection is about file-backing", err.Error())
 		}
 	})
 
