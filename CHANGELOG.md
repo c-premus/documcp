@@ -11,6 +11,12 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.30.38] - 2026-07-30
+
+### Maintenance
+
+- chore(deps): update frontend dependencies to v17.8.0 (#327)
+
 ## [0.30.37] - 2026-07-29
 
 ### Fixes
@@ -18,6 +24,10 @@ but intentionally omitted here to keep the changelog signal-dense.
 - fix(api): use JSON error envelope in middleware
 - fix(mcp): correct file-backed rejection message
 - fix(oauth): align OAuth discovery with MCP spec
+
+### Maintenance
+
+- chore(changelog): update for v0.30.37
 
 ## [0.30.36] - 2026-07-28
 
@@ -1610,6 +1620,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.30.38]: https://github.com/c-premus/documcp/compare/v0.30.37...v0.30.38
 [0.30.37]: https://github.com/c-premus/documcp/compare/v0.30.36...v0.30.37
 [0.30.36]: https://github.com/c-premus/documcp/compare/v0.30.35...v0.30.36
 [0.30.35]: https://github.com/c-premus/documcp/compare/v0.30.34...v0.30.35
