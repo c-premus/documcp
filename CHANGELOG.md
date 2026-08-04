@@ -11,10 +11,26 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.0] - 2026-08-04
+
+### Features
+
+- feat(mcp): adopt go-sdk v1.7.0 / protocol 2026-07-28 (dual-era)
+
+### Fixes
+
+- fix(deps): update go dependencies
+- fix(deps): pin undici to ^7.29.0 for 5 high-severity advisories
+
+### Maintenance
+
+- chore(renovate): quarantine go-sdk from auto-merge and the go-deps group
+
 ## [0.30.42] - 2026-08-04
 
 ### Maintenance
 
+- chore(changelog): update for v0.30.42
 - chore(deps): update frontend dependencies to v3.3.9 (#336)
 
 ## [0.30.41] - 2026-08-03
@@ -1655,6 +1671,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.0]: https://github.com/c-premus/documcp/compare/v0.30.42...v0.31.0
 [0.30.42]: https://github.com/c-premus/documcp/compare/v0.30.41...v0.30.42
 [0.30.41]: https://github.com/c-premus/documcp/compare/v0.30.40...v0.30.41
 [0.30.40]: https://github.com/c-premus/documcp/compare/v0.30.39...v0.30.40
