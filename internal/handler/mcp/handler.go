@@ -255,8 +255,10 @@ func New(cfg Config) *Handler {
 
 	// Create HTTP handler using the Streamable HTTP transport. The negotiated
 	// protocol version is whatever the SDK's latestProtocolVersion is —
-	// 2025-11-25 on go-sdk v1.6.1, with 2025-06-18 and 2025-03-26 accepted for
-	// older clients. Do not restate a version here; it drifts. Ask the SDK.
+	// 2026-07-28 on go-sdk v1.7.0, with 2025-11-25 / 2025-06-18 / 2025-03-26
+	// accepted for older clients (the SDK is dual-era: a legacy client
+	// negotiates down, a modern client gets 2026-07-28, same handler). Do not
+	// restate a version here; it drifts. Ask the SDK.
 	//
 	// The SDK requires Accept: application/json, text/event-stream on all
 	// requests. We wrap with a middleware that adds text/event-stream when missing

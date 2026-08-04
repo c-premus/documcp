@@ -1,11 +1,11 @@
 {
   "metadata": {
     "maintenance": "Hand-maintained. Mirrors internal/handler/mcp/tools_*.go and internal/dto/mcp.go; update this file in the same change as any tool contract modification.",
-    "protocol_version": "2025-11-25",
-    "protocol_versions_accepted": ["2025-11-25", "2025-06-18", "2025-03-26"],
+    "protocol_version": "2026-07-28",
+    "protocol_versions_accepted": ["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26"],
     "protocol_version_source": "Negotiated by the SDK, not by this server: mcp/shared.go latestProtocolVersion. Re-check on every go-sdk bump.",
     "sdk": "github.com/modelcontextprotocol/go-sdk",
-    "sdk_version": "v1.6.1",
+    "sdk_version": "v1.7.0",
     "source_files": {
       "mcp_handler": "internal/handler/mcp/handler.go",
       "tools": "internal/handler/mcp/tools_*.go",

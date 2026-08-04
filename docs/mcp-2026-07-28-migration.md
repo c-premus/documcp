@@ -1,8 +1,13 @@
 # MCP 2026-07-28 Migration Plan
 
-**Status:** planned, not started
+**Status:** transport bump DONE on branch `feat/mcp-sdk-1.7.0` (2026-08-04) —
+SDK at v1.7.0, unknown-tool e2e test updated, full MCP suite + unit suite + lint
+green. REMAINING before prod: real-client verification (§4 Phase 2/6 — Claude.ai
+connected service + `mcp-remote`) and the Renovate guard on `main` (§1). DEFERRED
+as follow-ups: CIMD authorization (§4 Phase 4), optional gains (§4 Phase 5).
+Retire this file to `memory-bank/archive/` once real-client verification passes.
 **Written:** 2026-07-28
-**Current runtime:** go-sdk v1.6.1, negotiating protocol `2025-11-25`
+**Current runtime:** go-sdk v1.7.0, negotiating protocol `2026-07-28` (dual-era)
 
 ---
 

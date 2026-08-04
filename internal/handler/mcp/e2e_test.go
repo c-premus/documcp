@@ -227,16 +227,33 @@ func TestMCPProtocolEndToEnd(t *testing.T) {
 		assert.True(t, result.IsError, "missing mcp:write must surface as tool-level error")
 	})
 
-	t.Run("tools/call unknown tool: server errors, transport survives", func(t *testing.T) {
+	t.Run("tools/call unknown tool: server rejects the call and stays healthy", func(t *testing.T) {
+		// Under the 2026-07-28 stateless transport, an unknown tool is a
+		// params-level JSON-RPC error (CodeInvalidParams) that the streamable
+		// HTTP layer surfaces as a 400 — which tears down THIS client
+		// connection. (In the 2025-11-25 era the same error rode inside a 200
+		// and the client transport stayed reusable; that guarantee is gone.)
+		// The invariant that matters is server resilience: a bad request from
+		// one client must not wedge the server for anyone else. So we assert the
+		// error, then prove the server still serves a brand-new client.
 		_, err := session.CallTool(ctx, &mcp.CallToolParams{
 			Name:      "not_a_real_tool",
 			Arguments: map[string]any{},
 		})
 		require.Error(t, err, "unknown tool should yield a JSON-RPC error")
+		assert.Contains(t, err.Error(), "not_a_real_tool",
+			"error should identify the unknown tool")
 
-		// Transport must still be healthy after the error — use it again.
-		listed, err := session.ListTools(ctx, nil)
-		require.NoError(t, err, "transport should survive a tool-not-found error")
+		fresh := mcp.NewClient(&mcp.Implementation{Name: "e2e-recheck", Version: "0.0.0"}, nil)
+		freshSess, err := fresh.Connect(ctx, &mcp.StreamableClientTransport{
+			Endpoint:             srv.URL,
+			DisableStandaloneSSE: true,
+		}, nil)
+		require.NoError(t, err, "server should still accept new connections after a tool-not-found error")
+		t.Cleanup(func() { _ = freshSess.Close() })
+
+		listed, err := freshSess.ListTools(ctx, nil)
+		require.NoError(t, err, "server should still serve requests after a tool-not-found error")
 		assert.NotEmpty(t, listed.Tools)
 	})
 }
