@@ -24,6 +24,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.0
 - chore(renovate): quarantine go-sdk from auto-merge and the go-deps group
 
 ## [0.30.42] - 2026-08-04
@@ -1671,6 +1672,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.1]: https://github.com/c-premus/documcp/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/c-premus/documcp/compare/v0.30.42...v0.31.0
 [0.30.42]: https://github.com/c-premus/documcp/compare/v0.30.41...v0.30.42
 [0.30.41]: https://github.com/c-premus/documcp/compare/v0.30.40...v0.30.41
