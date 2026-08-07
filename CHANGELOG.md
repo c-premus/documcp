@@ -11,10 +11,23 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.3] - 2026-08-07
+
+### Fixes
+
+- fix(deps): update frontend dependencies to v18.0.9 (#345)
+- fix(deps): update go dependencies (#343)
+- fix(deps): update frontend dependencies (#342)
+
+### Maintenance
+
+- chore(deps): update dependency mermaid to v11.16.1 [security] (#344)
+
 ## [0.31.2] - 2026-08-06
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.2
 - chore(deps): update dependency tsx to v4.23.5 (#341)
 - chore(deps): update frontend dependencies to v17.9.0 (#340)
 - chore(deps): update dependency tsx to v4.23.4 (#339)
@@ -1686,6 +1699,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.3]: https://github.com/c-premus/documcp/compare/v0.31.2...v0.31.3
 [0.31.2]: https://github.com/c-premus/documcp/compare/v0.31.1...v0.31.2
 [0.31.1]: https://github.com/c-premus/documcp/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/c-premus/documcp/compare/v0.30.42...v0.31.0
