@@ -9,18 +9,27 @@ do.
 - **GitHub** (`github.com/c-premus/documcp`) is a public mirror.
 - The source of truth lives in a **private Forgejo** instance. Commits
   flow Forgejo → GitHub via `.forgejo/workflows/sync-github.yaml`, which
-  rewrites history with `git filter-repo` to strip internal paths
+  rewrites history with `git filter-repo` before force-pushing to GitHub.
+  The rewrite does two things: it strips internal paths
   (`.devcontainer/`, internal CI configs, dev-only docs, agent
-  configuration) before force-pushing to GitHub.
+  configuration), and it redacts internal infrastructure — private
+  hostnames become `example.com` placeholders, and maintainer and bot
+  commit identities are normalised to public addresses.
 
-This is one-way mirroring. Two consequences for contributors:
+This is one-way mirroring. Three consequences for contributors:
 
 1. **PRs are still welcome on GitHub.** Open them against `main`.
 2. **PR commits get rewritten when they land.** Your authored commits
    will appear in the public history (with your name and email
-   preserved), but their SHAs change on the next sync because the
+   preserved — redaction applies to maintainer and bot identities, not
+   to contributors'), but their SHAs change on the next sync because the
    filter-repo rewrite is whole-history. If you fork later, fetch fresh
    to avoid working against stale SHAs.
+3. **Some URLs in history are placeholders.** Where old commits
+   reference internal infrastructure, you will see `example.com`
+   hostnames rather than anything resolvable. Current code and docs
+   don't depend on these; if you hit one that seems load-bearing, open
+   an issue.
 
 ## How a contribution moves through the system
 

@@ -8,7 +8,7 @@ const SERVICE: ExternalService = {
   name: 'Local Kiwix',
   slug: 'local-kiwix',
   type: 'kiwix',
-  base_url: 'https://kiwix.local',
+  base_url: 'https://kiwix.example.com',
   priority: 1,
   status: 'healthy',
   is_enabled: true,
@@ -42,7 +42,7 @@ describe('ExternalServiceMobileCard', () => {
   it('renders the service name and base URL', () => {
     const wrapper = mountCard()
     expect(wrapper.get('h3').text()).toBe('Local Kiwix')
-    expect(wrapper.text()).toContain('https://kiwix.local')
+    expect(wrapper.text()).toContain('https://kiwix.example.com')
   })
 
   it('exposes the row-actions cluster with all four buttons', () => {

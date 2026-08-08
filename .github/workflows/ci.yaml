@@ -136,6 +136,22 @@ jobs:
       - name: Run tests
         run: cd frontend && npx vitest run
 
+      # web/frontend/dist/ is committed (it is go:embed'd into the Go
+      # binary), so anything Vite inlines at build time gets checked in.
+      # frontend/src/sentry.ts reads VITE_SENTRY_DSN from the environment;
+      # a build on a machine where that is exported bakes the DSN — host
+      # plus public key — into dist/assets/index-*.js.
+      - name: Guard against secrets baked into the committed bundle
+        run: |
+          set -euo pipefail
+          # Sentry/GlitchTip DSN shape: https://<hex key>@<host>/<project id>
+          if grep -rIlE 'https://[0-9a-f]{16,}@[^/[:space:]]+/[0-9]+' web/frontend/dist/ 2>/dev/null; then
+            echo "FAIL: the committed bundle contains a DSN-shaped credential (see files above)." >&2
+            echo "Rebuild with VITE_SENTRY_DSN unset and recommit web/frontend/dist/." >&2
+            exit 1
+          fi
+          echo "OK: no DSN-shaped credential in the committed bundle."
+
   grafana:
     name: Grafana Dashboard
     runs-on: ubuntu-latest
