@@ -1,6 +1,6 @@
 # Stage 1: Frontend build (always native — output is static files)
 # node:24-alpine — pinned for supply chain integrity
-FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:fb71d01345f11b708a3553c66e7c74074f2d506400ea81973343d915cb64eef0 AS frontend
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS frontend
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -45,7 +45,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 
 # Stage 3: Distroless static runtime — no shell, no package manager, no CVEs.
 # gcr.io/distroless/static:nonroot includes CA certificates and runs as UID 65534.
-FROM gcr.io/distroless/static:nonroot@sha256:963fa6c544fe5ce420f1f54fb88b6fb01479f054c8056d0f74cc2c6000df5240
+FROM gcr.io/distroless/static:nonroot@sha256:f7f8f729987ad0fdf6b05eeeae94b26e6a0f613bdf46feea7fc40f7bd72953e6
 
 # Reset working directory — distroless:nonroot defaults to /home/nonroot,
 # but our paths (binary, migrations) are at the filesystem root.

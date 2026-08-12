@@ -90,7 +90,7 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
+    image: postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
     environment:
       POSTGRES_DB: ${DB_DATABASE:?DB_DATABASE is required}
       POSTGRES_USER: ${DB_USERNAME:?DB_USERNAME is required}
@@ -116,7 +116,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:8-alpine@sha256:09160599abd229764c0fb44cb6be640294e1d360a54b19985ab4843dcf2d90f1
+    image: redis:8-alpine@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
     # Set a password for Redis. Generate one with: openssl rand -base64 32
     # Then set REDIS_PASSWORD in your .env file. The app service references the same variable.
     command: >-
@@ -144,7 +144,7 @@ services:
     restart: unless-stopped
 
   traefik:
-    image: traefik:v3.7@sha256:d6858791f9e74df44ca4014166647c41cdc2abd3bf2a71b832ca4e1c6a91b257
+    image: traefik:v3.7@sha256:9c3b91d5fb7770853ca5c1124a23c34bf2d9b47ffaebeab2614cbaf410dcb2ac
     command:
       - "--api.dashboard=false"
       - "--providers.docker=true"
