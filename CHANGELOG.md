@@ -11,10 +11,21 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.11] - 2026-08-13
+
+### Maintenance
+
+- chore(deps): update dependency tsx to v4.23.12 (#364)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 51194bb (#363)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 2577789
+- chore(deps): update docker dependencies (#361)
+- chore(deps): update catthehacker/ubuntu:act-22.04 docker digest to 83f119b (#360)
+
 ## [0.31.10] - 2026-08-12
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.10
 - chore(renovate): drop the prCreation gate that blocked branch creation
 - chore(renovate): exempt digest and pin updates from minimumReleaseAge
 
@@ -1778,6 +1789,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.11]: https://github.com/c-premus/documcp/compare/v0.31.10...v0.31.11
 [0.31.10]: https://github.com/c-premus/documcp/compare/v0.31.9...v0.31.10
 [0.31.9]: https://github.com/c-premus/documcp/compare/v0.31.8...v0.31.9
 [0.31.8]: https://github.com/c-premus/documcp/compare/v0.31.7...v0.31.8
