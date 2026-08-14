@@ -9,8 +9,12 @@ COPY docs/contracts/openapi.yaml ../docs/contracts/openapi.yaml
 RUN npm run build
 
 # Stage 2: Go build (always native — cross-compile for target arch)
-# golang:1.26.4-alpine — pinned for supply chain integrity
-FROM --platform=$BUILDPLATFORM golang:1.26.4-alpine@sha256:7a3e50096189ad57c9f9f865e7e4aa8585ed1585248513dc5cda498e2f41812c AS builder
+# golang:1.26.6-alpine — pinned for supply chain integrity.
+# This tag IS the shipped stdlib: the official golang image sets GOTOOLCHAIN=local,
+# so go.mod's `toolchain` directive is ignored here. A stale tag silently produces
+# a stale-stdlib binary with no build error (the bare `go` floor still passes).
+# ci.yaml's "Go toolchain agreement" step fails the build if the two disagree.
+FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine@sha256:af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df AS builder
 
 # Target architecture injected by Buildx (e.g., amd64, arm64).
 ARG TARGETARCH
