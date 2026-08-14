@@ -44,6 +44,29 @@ jobs:
       - name: Migration safety lint
         run: bash scripts/check-migrations.sh
 
+      # The official golang image sets GOTOOLCHAIN=local, so the container
+      # build IGNORES go.mod's `toolchain` directive — and because the bare
+      # `go` floor still passes, a stale builder tag produces a stale-stdlib
+      # binary with no error anywhere. That is not hypothetical: the builder
+      # sat on 1.26.4 while go.mod said 1.26.6, shipping 10 reachable stdlib
+      # CVEs (incl. GO-2026-4970, an os.Root escape that undercuts our own
+      # path-traversal defense) past a green CI. CI itself is immune — its
+      # setup-go reads go.mod — which is exactly why nothing caught it.
+      - name: Go toolchain agreement (go.mod vs Dockerfile)
+        run: |
+          set -euo pipefail
+          MOD=$(sed -n 's/^toolchain go\([0-9][0-9.]*\)[[:space:]]*$/\1/p' go.mod)
+          IMG=$(sed -n 's/^FROM .*[[:space:]]golang:\([0-9][0-9.]*\)-alpine@sha256:.*/\1/p' Dockerfile)
+          if [ -z "$MOD" ] || [ -z "$IMG" ]; then
+            echo "::error::Could not parse the Go version from go.mod ('$MOD') or Dockerfile ('$IMG') — the guard's pattern has drifted from the file format" >&2
+            exit 1
+          fi
+          if [ "$MOD" != "$IMG" ]; then
+            echo "::error::Go toolchain mismatch — go.mod toolchain is go$MOD but the Dockerfile builder is golang:$IMG-alpine. The Dockerfile is what actually ships; bump it (tag AND digest) to match." >&2
+            exit 1
+          fi
+          echo "Go toolchain agrees: go.mod=$MOD Dockerfile=$IMG"
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -97,14 +120,30 @@ jobs:
 
       - name: Build and scan binary
         run: |
+          set -uo pipefail
           go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
           go build -o bin/documcp ./cmd/documcp
-          govulncheck -mode=binary ./bin/documcp 2>&1 | tee /tmp/vulncheck.out || true
 
-          # Fail only if fixable vulnerabilities exist (have a "Fixed in" version).
-          # Unfixed vulns (Fixed in: N/A) are tracked but don't block CI.
-          if grep -q 'Fixed in: v' /tmp/vulncheck.out; then
-            echo "::error::Fixable vulnerabilities found — upgrade the affected modules"
+          # govulncheck: 0 = clean, 3 = vulnerabilities found, anything else =
+          # the tool itself failed. The previous `|| true` swallowed all three
+          # alike, so a crashed scan was indistinguishable from a clean one.
+          govulncheck -mode=binary ./bin/documcp > /tmp/vulncheck.out 2>&1 && STATUS=0 || STATUS=$?
+          cat /tmp/vulncheck.out
+
+          if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 3 ]; then
+            echo "::error::govulncheck failed to run (exit $STATUS) — the scan result is unknown, treating as failure"
+            exit 1
+          fi
+
+          # Fail on anything with a published fix; only "Fixed in: N/A" is
+          # genuinely unpatched and downgraded to a warning.
+          #
+          # NOTE: stdlib findings render as "Fixed in: net@go1.26.6" — with no
+          # leading "v". The previous gate matched 'Fixed in: v', so it could
+          # not fail on a stdlib CVE at all. Do NOT reintroduce a v-anchored
+          # pattern here.
+          if grep -E '^[[:space:]]*Fixed in:' /tmp/vulncheck.out | grep -qv 'N/A'; then
+            echo "::error::Fixable vulnerabilities found — upgrade the affected modules, or the Go toolchain in go.mod AND the Dockerfile builder image"
             exit 1
           fi
           if grep -q 'Vulnerability #' /tmp/vulncheck.out; then
