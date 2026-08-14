@@ -11,6 +11,18 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.13] - 2026-08-14
+
+### Fixes
+
+- fix(renovate): unbreak the golangci-lint pin and group the shipped toolchain
+- fix(ci): repair the govulncheck gate and catch Go toolchain drift
+- fix(security): bump builder image to Go 1.26.6, closing 10 stdlib CVEs
+
+### Maintenance
+
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 270488c (#373)
+
 ## [0.31.12] - 2026-08-14
 
 ### Fixes
@@ -20,6 +32,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.12
 - chore(deps): update dependency typescript-eslint to v8.67.0 (#368)
 - chore(deps): update go toolchain directive to v1.26.6 [security] (#372)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to a0c0b82 (#370)
@@ -1806,6 +1819,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.13]: https://github.com/c-premus/documcp/compare/v0.31.12...v0.31.13
 [0.31.12]: https://github.com/c-premus/documcp/compare/v0.31.11...v0.31.12
 [0.31.11]: https://github.com/c-premus/documcp/compare/v0.31.10...v0.31.11
 [0.31.10]: https://github.com/c-premus/documcp/compare/v0.31.9...v0.31.10
