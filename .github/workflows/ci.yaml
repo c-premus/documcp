@@ -36,10 +36,24 @@ jobs:
           key: go-${{ hashFiles('go.sum') }}
           restore-keys: go-
 
+      # skip-cache: the action's fact cache silently poisons lint results.
+      # golangci-lint stores staticcheck's inter-package facts under
+      # /root/.cache/golangci-lint, keyed on a 7-day bucket. On 2026-08-19 a run
+      # saved a truncated entry (11 MB, down from the 12 MB it restored); every
+      # later run restored it and lost the "(*testing.T).Fatal does not return"
+      # fact, so 36 correct `if x == nil { t.Fatal(...) }` guards were reported
+      # as SA5011 nil derefs across 9 test files. Nothing in the code changed —
+      # v2.12.2 + Go 1.26.6 report 0 issues locally from both a cold and a warm
+      # cache, and swapping one t.Fatal to t.Error reproduces CI's output byte
+      # for byte. A false red here is expensive: Renovate self-merges on green,
+      # so a stuck lint stalls the whole unattended pipeline until the bucket
+      # rotates. Re-deriving facts every run costs ~27s (72s vs 45s) and is
+      # cheap next to that.
       - name: Lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a  # v9.3.0
         with:
           version: v2.12.2
+          skip-cache: true
 
       - name: Migration safety lint
         run: bash scripts/check-migrations.sh
