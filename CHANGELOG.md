@@ -11,6 +11,23 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.18] - 2026-08-20
+
+### Fixes
+
+- fix(ci): disable the golangci-lint fact cache
+
+### Maintenance
+
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to e49d149 (#403)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 3a189fb (#401)
+- chore(deps): update traefik:v3.7 docker digest to 5203c3f (#402)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 5a99371 (#398)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to aa788da
+- chore(deps): update module github.com/moby/go-archive to v0.3.0 [security] (#396)
+- chore(renovate): split the TypeScript toolchain into its own group
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to fe47c58 (#395)
+
 ## [0.31.17] - 2026-08-18
 
 ### Fixes
@@ -20,6 +37,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.17
 - chore(deps): update dependency vue-tsc to v3.3.10 (#394)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 03dec87 (#393)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 95e78eb (#391)
@@ -1873,6 +1891,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.18]: https://github.com/c-premus/documcp/compare/v0.31.17...v0.31.18
 [0.31.17]: https://github.com/c-premus/documcp/compare/v0.31.16...v0.31.17
 [0.31.16]: https://github.com/c-premus/documcp/compare/v0.31.15...v0.31.16
 [0.31.15]: https://github.com/c-premus/documcp/compare/v0.31.14...v0.31.15
