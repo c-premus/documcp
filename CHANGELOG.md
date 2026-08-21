@@ -11,6 +11,17 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.20] - 2026-08-21
+
+### Fixes
+
+- fix(deps): update pinia to v4 and jsdom to v30
+
+### Maintenance
+
+- chore(renovate): regroup the Go toolchain and split blocked frontend majors
+- chore(ci): bump golangci-lint to v2.13.1 to unblock Go 1.27
+
 ## [0.31.19] - 2026-08-21
 
 ### Fixes
@@ -19,6 +30,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.19
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 23183a4 (#406)
 - chore(deps): update redis:8-alpine docker digest to becdda6 (#405)
 
@@ -1903,6 +1915,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.20]: https://github.com/c-premus/documcp/compare/v0.31.19...v0.31.20
 [0.31.19]: https://github.com/c-premus/documcp/compare/v0.31.18...v0.31.19
 [0.31.18]: https://github.com/c-premus/documcp/compare/v0.31.17...v0.31.18
 [0.31.17]: https://github.com/c-premus/documcp/compare/v0.31.16...v0.31.17
