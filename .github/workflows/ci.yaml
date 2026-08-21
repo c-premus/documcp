@@ -183,8 +183,17 @@ jobs:
         # the gate at the same severity bar.
         run: cd frontend && npm audit --audit-level=high
 
+      # `vue-tsc -b`, not `--noEmit`. frontend/tsconfig.json is a solution-style
+      # root: `"files": []` plus two `references`. `--noEmit` against it type-checks
+      # ZERO files and exits 0 in ~0.6s, so this step passed unconditionally and had
+      # never caught anything. Build mode follows the references and checks the real
+      # programs. Measured on the @tanstack/vue-table v9 branch (PR #410, 2026-08-21):
+      # `--noEmit` green, `-b` reports 89 errors across 10 files. Nothing unsafe ever
+      # shipped -- `npm run build` below runs `vue-tsc -b` too -- but it runs after the
+      # whole vitest suite, so type breakage surfaced as confusing runtime TypeErrors
+      # instead of typed diagnostics naming file and line.
       - name: Type check
-        run: cd frontend && npx vue-tsc --noEmit
+        run: cd frontend && npx vue-tsc -b
 
       - name: Run tests
         run: cd frontend && npx vitest run
