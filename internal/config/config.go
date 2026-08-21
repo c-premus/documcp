@@ -492,8 +492,7 @@ func Load() (*Config, error) {
 
 	// Read config file if it exists; missing file is not an error.
 	if err := v.ReadInConfig(); err != nil {
-		var notFound viper.ConfigFileNotFoundError
-		if !errors.As(err, &notFound) {
+		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
 			// If a specific path was requested, a missing file is an error.
 			if configPath != "" {
 				return nil, fmt.Errorf("reading config file: %w", err)

@@ -183,8 +183,7 @@ func (h *Handler) tokenDeviceCode(w http.ResponseWriter, r *http.Request, client
 	})
 	if err != nil {
 		// Check for typed device code errors (authorization_pending, slow_down, expired_token).
-		var dcErr *oauth.DeviceCodeError
-		if errors.As(err, &dcErr) {
+		if dcErr, ok := errors.AsType[*oauth.DeviceCodeError](err); ok {
 			// Only log non-pending errors — authorization_pending is normal polling.
 			if dcErr.Code != "authorization_pending" {
 				h.logger.Warn("oauth token failed: device code error",
