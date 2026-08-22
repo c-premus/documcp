@@ -11,6 +11,21 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.21] - 2026-08-22
+
+### Fixes
+
+- fix(deps): update module github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager to v0.3.14 (#415)
+- fix(deps): update go dependencies to v0.44.0
+- fix(ci): type-check the frontend with vue-tsc -b, not --noEmit
+
+### Maintenance
+
+- chore(deps): update gcr.io/distroless/static:nonroot docker digest to 1c2c046 (#414)
+- chore(deps): update go toolchain to v1.27.0
+- chore(deps): update frontend dependencies to v4.1.11
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 00699de
+
 ## [0.31.20] - 2026-08-21
 
 ### Fixes
@@ -19,6 +34,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.20
 - chore(renovate): regroup the Go toolchain and split blocked frontend majors
 - chore(ci): bump golangci-lint to v2.13.1 to unblock Go 1.27
 
@@ -1915,6 +1931,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.21]: https://github.com/c-premus/documcp/compare/v0.31.20...v0.31.21
 [0.31.20]: https://github.com/c-premus/documcp/compare/v0.31.19...v0.31.20
 [0.31.19]: https://github.com/c-premus/documcp/compare/v0.31.18...v0.31.19
 [0.31.18]: https://github.com/c-premus/documcp/compare/v0.31.17...v0.31.18
