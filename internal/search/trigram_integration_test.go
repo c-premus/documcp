@@ -27,9 +27,17 @@ import (
 var testPool *pgxpool.Pool
 
 func TestMain(m *testing.M) {
+	// Container teardown below runs in deferred calls, and neither a direct
+	// process exit nor a fatal log entry unwinds defers. Every exit path in
+	// this helper must therefore be a plain `return`, so the containers are
+	// always torn down; TestMain does nothing but propagate the status.
+	os.Exit(runIntegrationTests(m))
+}
+
+func runIntegrationTests(m *testing.M) int {
 	if _, err := exec.LookPath("docker"); err != nil {
 		log.Printf("skipping integration tests: docker not found in PATH")
-		os.Exit(0)
+		return 0
 	}
 
 	ctx := context.Background()
@@ -47,7 +55,7 @@ func TestMain(m *testing.M) {
 	)
 	if err != nil {
 		log.Printf("skipping integration tests: starting postgres container: %v", err)
-		os.Exit(0)
+		return 0
 	}
 
 	defer func() {
@@ -58,22 +66,25 @@ func TestMain(m *testing.M) {
 
 	dsn, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
-		log.Fatalf("getting connection string: %v", err)
+		log.Printf("getting connection string: %v", err)
+		return 1
 	}
 
 	testPool, err = pgxpool.New(ctx, dsn)
 	if err != nil {
-		log.Fatalf("connecting to test database: %v", err)
+		log.Printf("connecting to test database: %v", err)
+		return 1
 	}
 	defer testPool.Close()
 
 	sqlDB := database.SQLDBFromPool(testPool)
 	defer sqlDB.Close() //nolint:errcheck // best-effort cleanup in test teardown
 	if err := database.RunMigrations(sqlDB, "../../migrations"); err != nil {
-		log.Fatalf("running migrations: %v", err)
+		log.Printf("running migrations: %v", err)
+		return 1
 	}
 
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 // TestSearch_TrigramFallback is a regression guard for a double-bug in

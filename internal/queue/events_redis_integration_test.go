@@ -21,9 +21,17 @@ import (
 var testRedisClient *redis.Client
 
 func TestMain(m *testing.M) {
+	// Container teardown below runs in deferred calls, and neither a direct
+	// process exit nor a fatal log entry unwinds defers. Every exit path in
+	// this helper must therefore be a plain `return`, so the containers are
+	// always torn down; TestMain does nothing but propagate the status.
+	os.Exit(runIntegrationTests(m))
+}
+
+func runIntegrationTests(m *testing.M) int {
 	if _, err := exec.LookPath("docker"); err != nil {
 		log.Printf("skipping integration tests: docker not found in PATH")
-		os.Exit(0)
+		return 0
 	}
 
 	ctx := context.Background()
@@ -31,7 +39,7 @@ func TestMain(m *testing.M) {
 	container, err := tcredis.Run(ctx, "redis:8-alpine")
 	if err != nil {
 		log.Printf("skipping integration tests: starting redis container: %v", err)
-		os.Exit(0)
+		return 0
 	}
 
 	defer func() {
@@ -42,21 +50,24 @@ func TestMain(m *testing.M) {
 
 	connStr, err := container.ConnectionString(ctx)
 	if err != nil {
-		log.Fatalf("getting redis connection string: %v", err)
+		log.Printf("getting redis connection string: %v", err)
+		return 1
 	}
 
 	opts, err := redis.ParseURL(connStr)
 	if err != nil {
-		log.Fatalf("parsing redis URL: %v", err)
+		log.Printf("parsing redis URL: %v", err)
+		return 1
 	}
 
 	testRedisClient = redis.NewClient(opts)
 	if err := testRedisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("pinging redis: %v", err)
+		log.Printf("pinging redis: %v", err)
+		return 1
 	}
 	defer testRedisClient.Close()
 
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 func newTestBus(t *testing.T) *RedisEventBus {

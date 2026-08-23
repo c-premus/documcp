@@ -22,10 +22,18 @@ import (
 var testDSN string
 
 func TestMain(m *testing.M) {
+	// Container teardown below runs in deferred calls, and neither a direct
+	// process exit nor a fatal log entry unwinds defers. Every exit path in
+	// this helper must therefore be a plain `return`, so the containers are
+	// always torn down; TestMain does nothing but propagate the status.
+	os.Exit(runIntegrationTests(m))
+}
+
+func runIntegrationTests(m *testing.M) int {
 	// Skip gracefully if Docker is not available (e.g., CI without DinD).
 	if _, err := exec.LookPath("docker"); err != nil {
 		log.Printf("skipping integration tests: docker not found in PATH")
-		os.Exit(0)
+		return 0
 	}
 
 	ctx := context.Background()
@@ -43,7 +51,7 @@ func TestMain(m *testing.M) {
 	)
 	if err != nil {
 		log.Printf("skipping integration tests: starting postgres container: %v", err)
-		os.Exit(0)
+		return 0
 	}
 
 	defer func() {
@@ -54,10 +62,11 @@ func TestMain(m *testing.M) {
 
 	testDSN, err = pgContainer.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
-		log.Fatalf("getting connection string: %v", err)
+		log.Printf("getting connection string: %v", err)
+		return 1
 	}
 
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 func TestNewPgxPool_Success(t *testing.T) {
