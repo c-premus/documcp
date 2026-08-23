@@ -11,6 +11,23 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.22] - 2026-08-23
+
+### Fixes
+
+- fix(devcontainer): align golangci-lint pin with CI
+- fix(ci): reap leaked test containers with Ryuk
+- fix(test): run container teardown on TestMain exit
+- fix(deps): update module github.com/stretchr/testify to v1.12.1 (#420)
+- fix(deps): update frontend dependencies (#416)
+
+### Maintenance
+
+- chore(devcontainer): remove the fj CLI install
+- chore(deps): update https://github.com/docker/setup-buildx-action action to v4.3.0 (#418)
+- chore(deps): update docker/setup-buildx-action action to v4.3.0 (#417)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to e6b93e7 (#419)
+
 ## [0.31.21] - 2026-08-22
 
 ### Fixes
@@ -21,6 +38,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.21
 - chore(deps): update gcr.io/distroless/static:nonroot docker digest to 1c2c046 (#414)
 - chore(deps): update go toolchain to v1.27.0
 - chore(deps): update frontend dependencies to v4.1.11
@@ -1931,6 +1949,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.22]: https://github.com/c-premus/documcp/compare/v0.31.21...v0.31.22
 [0.31.21]: https://github.com/c-premus/documcp/compare/v0.31.20...v0.31.21
 [0.31.20]: https://github.com/c-premus/documcp/compare/v0.31.19...v0.31.20
 [0.31.19]: https://github.com/c-premus/documcp/compare/v0.31.18...v0.31.19
