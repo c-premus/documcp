@@ -11,6 +11,12 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.23] - 2026-08-23
+
+### Maintenance
+
+- chore(deps): update dependency vite to v8.2.2 (#421)
+
 ## [0.31.22] - 2026-08-23
 
 ### Fixes
@@ -23,6 +29,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.22
 - chore(devcontainer): remove the fj CLI install
 - chore(deps): update https://github.com/docker/setup-buildx-action action to v4.3.0 (#418)
 - chore(deps): update docker/setup-buildx-action action to v4.3.0 (#417)
@@ -1949,6 +1956,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.23]: https://github.com/c-premus/documcp/compare/v0.31.22...v0.31.23
 [0.31.22]: https://github.com/c-premus/documcp/compare/v0.31.21...v0.31.22
 [0.31.21]: https://github.com/c-premus/documcp/compare/v0.31.20...v0.31.21
 [0.31.20]: https://github.com/c-premus/documcp/compare/v0.31.19...v0.31.20
