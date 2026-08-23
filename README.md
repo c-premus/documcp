@@ -101,7 +101,7 @@ go test -tags integration ./...      # Integration tests (needs Docker)
 ```bash
 gofmt -w .                           # Format
 goimports -w .                       # Fix imports
-golangci-lint run                    # Lint (v2.11.4)
+golangci-lint run                    # Lint (v2.13.1)
 ```
 
 ### Frontend
