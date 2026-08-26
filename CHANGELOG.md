@@ -11,6 +11,20 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.26] - 2026-08-26
+
+### Fixes
+
+- fix(deps): update module riverqueue.com/riverui to v0.18.1 (#433)
+
+### Maintenance
+
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 5ab76d9 (#437)
+- chore(deps): update mcr.microsoft.com/devcontainers/base:debian docker digest to 38fd336 (#436)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 8903138 (#435)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 74d1c2c (#434)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 5731d07 (#432)
+
 ## [0.31.25] - 2026-08-25
 
 ### Fixes
@@ -20,6 +34,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.25
 - chore(deps): update dependency eslint to v10.9.0 (#428)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to cb7aa82 (#429)
 - chore(deps): update dependency vue-tsc to v3.3.11 (#427)
@@ -1984,6 +1999,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.26]: https://github.com/c-premus/documcp/compare/v0.31.25...v0.31.26
 [0.31.25]: https://github.com/c-premus/documcp/compare/v0.31.24...v0.31.25
 [0.31.24]: https://github.com/c-premus/documcp/compare/v0.31.23...v0.31.24
 [0.31.23]: https://github.com/c-premus/documcp/compare/v0.31.22...v0.31.23
