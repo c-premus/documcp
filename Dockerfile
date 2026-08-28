@@ -1,6 +1,6 @@
 # Stage 1: Frontend build (always native — output is static files)
 # node:24-alpine — pinned for supply chain integrity
-FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:705813e7dd798f8a69a2b0d8fb958ecafe5fc3b2a52139ae03a0379246301c4a AS frontend
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS frontend
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
