@@ -11,6 +11,16 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.32] - 2026-09-01
+
+### Fixes
+
+- fix(deps): update dependency @sentry/vue to v10.72.0 (#470)
+
+### Maintenance
+
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 291b819 (#471)
+
 ## [0.31.31] - 2026-08-31
 
 ### Fixes
@@ -21,6 +31,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.31
 - chore(deps): lock file maintenance (#467)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 6922c73 (#468)
 - chore(deps): update golangci-lint to v2.13.2 (#466)
@@ -2073,6 +2084,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.32]: https://github.com/c-premus/documcp/compare/v0.31.31...v0.31.32
 [0.31.31]: https://github.com/c-premus/documcp/compare/v0.31.30...v0.31.31
 [0.31.30]: https://github.com/c-premus/documcp/compare/v0.31.29...v0.31.30
 [0.31.29]: https://github.com/c-premus/documcp/compare/v0.31.28...v0.31.29
