@@ -11,10 +11,25 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.37] - 2026-09-06
+
+### Fixes
+
+- fix(deps): update go dependencies (#491)
+- fix(deps): update dependency vue-router to v5.3.1 (#496)
+
+### Maintenance
+
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 4e10f76 (#495)
+- chore(deps): update https://github.com/docker/setup-qemu-action action to v4.3.0 (#494)
+- chore(deps): update docker/setup-qemu-action action to v4.3.0 (#493)
+- chore(deps): update dependency globals to v17.12.0 (#492)
+
 ## [0.31.36] - 2026-09-05
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.36
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to b1a2260 (#489)
 - chore(deps): update traefik:v3.7 docker digest to f86a2ca (#490)
 
@@ -2136,6 +2151,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.37]: https://github.com/c-premus/documcp/compare/v0.31.36...v0.31.37
 [0.31.36]: https://github.com/c-premus/documcp/compare/v0.31.35...v0.31.36
 [0.31.35]: https://github.com/c-premus/documcp/compare/v0.31.34...v0.31.35
 [0.31.34]: https://github.com/c-premus/documcp/compare/v0.31.33...v0.31.34
