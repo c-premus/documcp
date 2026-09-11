@@ -2,12 +2,12 @@
 import { ref, watch, computed, h } from 'vue'
 import { toast } from 'vue-sonner'
 import { TrashIcon } from '@heroicons/vue/24/outline'
-import type { ColumnDef } from '@tanstack/vue-table'
 
 import { useAuthStore } from '@/stores/auth'
 import { useDocumentsStore } from '../stores/documents'
 import type { Document } from '../stores/documents'
 import DataTable from '../components/shared/DataTable.vue'
+import type { DataTableColumn } from '../utils/dataTable'
 import Pagination from '../components/shared/Pagination.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
@@ -38,7 +38,7 @@ async function handleRestore(doc: Document): Promise<void> {
   }
 }
 
-const columns = computed<ColumnDef<Document, unknown>[]>(() => [
+const columns = computed<DataTableColumn<Document>[]>(() => [
   {
     accessorKey: 'title',
     header: 'Title',
@@ -47,7 +47,6 @@ const columns = computed<ColumnDef<Document, unknown>[]>(() => [
   {
     accessorKey: 'file_type',
     header: 'File Type',
-    size: 100,
     enableSorting: true,
     cell: ({ getValue }) => h(FileTypeCell, { value: getValue<string>() }),
   },

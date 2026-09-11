@@ -3,11 +3,11 @@ import { ref, watch, computed, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { TrashIcon } from '@heroicons/vue/24/outline'
-import type { ColumnDef } from '@tanstack/vue-table'
 
 import { useDocumentsStore } from '../stores/documents'
 import type { Document } from '../stores/documents'
 import DataTable from '../components/shared/DataTable.vue'
+import type { DataTableColumn } from '../utils/dataTable'
 import Pagination from '../components/shared/Pagination.vue'
 import StatusBadge from '../components/shared/StatusBadge.vue'
 import SearchInput from '../components/shared/SearchInput.vue'
@@ -65,7 +65,7 @@ function handleDelete(doc: Document): void {
   deleteTarget.value = doc
 }
 
-const columns: ColumnDef<Document, unknown>[] = [
+const columns: DataTableColumn<Document>[] = [
   {
     accessorKey: 'title',
     header: 'Title',

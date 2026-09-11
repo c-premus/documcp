@@ -1,11 +1,14 @@
-<script setup lang="ts" generic="T">
-import { FlexRender, getCoreRowModel, getSortedRowModel, useVueTable } from '@tanstack/vue-table'
-import type { ColumnDef, SortingState } from '@tanstack/vue-table'
-import { computed, ref, useSlots } from 'vue'
+<script setup lang="ts" generic="T extends RowData">
+import { FlexRender, useTable } from '@tanstack/vue-table'
+import type { RowData } from '@tanstack/vue-table'
+import { computed, toRef, useSlots } from 'vue'
+
+import { dataTableFeatures } from '../../utils/dataTable'
+import type { DataTableColumn, DataTableFeatures } from '../../utils/dataTable'
 
 const props = defineProps<{
   readonly data: T[]
-  readonly columns: ColumnDef<T, unknown>[]
+  readonly columns: DataTableColumn<T>[]
   readonly loading?: boolean
   readonly clickable?: boolean
 }>()
@@ -17,32 +20,19 @@ const emit = defineEmits<{
 const slots = useSlots()
 const hasMobileCard = computed(() => Boolean(slots['mobile-card']))
 
-const sorting = ref<SortingState>([])
-
 function activateRow(row: T): void {
   if (props.clickable) {
     emit('row-click', row)
   }
 }
 
-const table = useVueTable({
-  get data() {
-    return props.data
-  },
-  get columns() {
-    return props.columns
-  },
-  state: {
-    get sorting() {
-      return sorting.value
-    },
-  },
-  onSortingChange: (updaterOrValue) => {
-    sorting.value =
-      typeof updaterOrValue === 'function' ? updaterOrValue(sorting.value) : updaterOrValue
-  },
-  getCoreRowModel: getCoreRowModel(),
-  getSortedRowModel: getSortedRowModel(),
+// Sorting state is owned by the table; nothing outside DataTable reads it.
+// Columns are never hidden, so rows render getAllCells() and the column
+// visibility feature is left unregistered.
+const table = useTable<DataTableFeatures, T>({
+  features: dataTableFeatures,
+  data: toRef(props, 'data'),
+  columns: toRef(props, 'columns'),
 })
 </script>
 
@@ -112,7 +102,7 @@ const table = useVueTable({
             @keydown.space.prevent="header.column.getToggleSortingHandler()?.($event)"
           >
             <div class="flex items-center gap-1">
-              <FlexRender :render="header.column.columnDef.header" :props="header.getContext()" />
+              <FlexRender :header="header" />
               <span
                 v-if="header.column.getIsSorted() === 'asc'"
                 class="text-indigo-600 dark:text-indigo-400"
@@ -141,14 +131,14 @@ const table = useVueTable({
           @keydown.enter="clickable ? $emit('row-click', row.original) : undefined"
         >
           <td
-            v-for="cell in row.getVisibleCells()"
+            v-for="cell in row.getAllCells()"
             :key="cell.id"
             :class="[
               'whitespace-nowrap px-3 py-4 text-sm text-text-muted',
               cell.column.columnDef.meta?.className,
             ]"
           >
-            <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
+            <FlexRender :cell="cell" />
           </td>
         </tr>
         <tr v-if="table.getRowModel().rows.length === 0">

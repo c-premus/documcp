@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, watch, computed, h } from 'vue'
 import { toast } from 'vue-sonner'
-import type { ColumnDef } from '@tanstack/vue-table'
 
 import DataTable from '../components/shared/DataTable.vue'
+import type { DataTableColumn } from '../utils/dataTable'
 import Pagination from '../components/shared/Pagination.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
@@ -199,7 +199,7 @@ function canMoveDown(service: ExternalService): boolean {
   return idx !== -1 && idx < sorted.length - 1
 }
 
-const columns: ColumnDef<ExternalService, unknown>[] = [
+const columns: DataTableColumn<ExternalService>[] = [
   {
     accessorKey: 'name',
     header: 'Name',

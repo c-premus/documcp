@@ -2,9 +2,9 @@
 import { ref, computed, watch, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
-import type { ColumnDef } from '@tanstack/vue-table'
 
 import DataTable from '../components/shared/DataTable.vue'
+import type { DataTableColumn } from '../utils/dataTable'
 import Pagination from '../components/shared/Pagination.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
@@ -112,7 +112,7 @@ function handleCreateSaved(): void {
   fetchData()
 }
 
-const baseColumns: ColumnDef<GitTemplate, unknown>[] = [
+const baseColumns: DataTableColumn<GitTemplate>[] = [
   {
     accessorKey: 'name',
     header: 'Name',
@@ -160,7 +160,7 @@ const baseColumns: ColumnDef<GitTemplate, unknown>[] = [
   },
 ]
 
-const actionsColumn: ColumnDef<GitTemplate, unknown> = {
+const actionsColumn: DataTableColumn<GitTemplate> = {
   id: 'actions',
   header: 'Actions',
   enableSorting: false,

@@ -3,11 +3,11 @@ import { ref, watch, computed, h } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { formatDistanceToNow } from 'date-fns'
-import type { ColumnDef } from '@tanstack/vue-table'
 
 import { useZimArchivesStore } from '../stores/zimArchives'
 import type { ZimArchive } from '../stores/zimArchives'
 import DataTable from '../components/shared/DataTable.vue'
+import type { DataTableColumn } from '../utils/dataTable'
 import Pagination from '../components/shared/Pagination.vue'
 import StatusBadge from '../components/shared/StatusBadge.vue'
 import SearchInput from '../components/shared/SearchInput.vue'
@@ -30,7 +30,7 @@ const hasActiveFilters = computed(
   () => search.value !== '' || categoryFilter.value !== 'All' || languageFilter.value !== 'All',
 )
 
-const columns: ColumnDef<ZimArchive, unknown>[] = [
+const columns: DataTableColumn<ZimArchive>[] = [
   {
     accessorKey: 'name',
     header: 'Name',

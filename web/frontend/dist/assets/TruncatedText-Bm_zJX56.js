@@ -1,0 +1,1 @@
+import{A as e,_t as t,b as n,h as r,mt as i}from"./helpers-gS8j50Bo.js";var a=[`title`],o=n({__name:`TruncatedText`,props:{value:{},mono:{type:Boolean,default:!1},maxWidth:{default:`max-w-xs`}},setup(n){return(o,s)=>(e(),r(`span`,{class:i([`block truncate`,[n.maxWidth,n.mono?`font-mono text-xs`:``]]),title:n.value},t(n.value),11,a))}});export{o as t};

@@ -2,9 +2,9 @@
 import { storeToRefs } from 'pinia'
 import { ref, watch, computed, h } from 'vue'
 import { toast } from 'vue-sonner'
-import type { ColumnDef } from '@tanstack/vue-table'
 
 import DataTable from '../components/shared/DataTable.vue'
+import type { DataTableColumn } from '../utils/dataTable'
 import Pagination from '../components/shared/Pagination.vue'
 import SearchInput from '../components/shared/SearchInput.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
@@ -86,7 +86,7 @@ function handleDeleteCancel(): void {
   deleteTarget.value = null
 }
 
-const columns: ColumnDef<User, unknown>[] = [
+const columns: DataTableColumn<User>[] = [
   {
     accessorKey: 'name',
     header: 'Name',

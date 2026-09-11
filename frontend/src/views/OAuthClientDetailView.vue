@@ -3,10 +3,10 @@ import { ref, h, watch, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { format, formatDistanceToNow } from 'date-fns'
-import type { ColumnDef } from '@tanstack/vue-table'
 
 import { useOAuthClientsStore, type ScopeGrant } from '@/stores/oauthClients'
 import DataTable from '@/components/shared/DataTable.vue'
+import type { DataTableColumn } from '@/utils/dataTable'
 import EmptyState from '@/components/shared/EmptyState.vue'
 import ConfirmDialog from '@/components/shared/ConfirmDialog.vue'
 import OAuthGrantTypeChips from '@/components/oauth/OAuthGrantTypeChips.vue'
@@ -56,7 +56,7 @@ async function handleRevoke(): Promise<void> {
   }
 }
 
-const grantColumns: ColumnDef<ScopeGrant, unknown>[] = [
+const grantColumns: DataTableColumn<ScopeGrant>[] = [
   {
     accessorKey: 'scope',
     header: 'Scope',

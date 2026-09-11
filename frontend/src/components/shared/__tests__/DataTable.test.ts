@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { h, nextTick } from 'vue'
 import DataTable from '@/components/shared/DataTable.vue'
-import type { ColumnDef } from '@tanstack/vue-table'
+import type { DataTableColumn } from '@/utils/dataTable'
 
 interface TestRow {
   id: number
@@ -10,7 +10,7 @@ interface TestRow {
   email: string
 }
 
-const columns: ColumnDef<TestRow, unknown>[] = [
+const columns: DataTableColumn<TestRow>[] = [
   { accessorKey: 'id', header: 'ID' },
   { accessorKey: 'name', header: 'Name' },
   { accessorKey: 'email', header: 'Email' },
@@ -50,6 +50,18 @@ describe('DataTable', () => {
     expect(rows[0]!.text()).toContain('Alice')
     expect(rows[0]!.text()).toContain('alice@example.com')
     expect(rows[1]!.text()).toContain('Bob')
+  })
+
+  it('re-renders when the data and columns props are replaced', async () => {
+    const wrapper = mountTable()
+
+    await wrapper.setProps({ data: [{ id: 3, name: 'Carol', email: 'carol@example.com' }] })
+    const rows = wrapper.findAll('tbody tr')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.text()).toContain('Carol')
+
+    await wrapper.setProps({ columns: columns.slice(0, 2) })
+    expect(wrapper.findAll('th')).toHaveLength(2)
   })
 
   it('shows loading spinner when loading is true', () => {
@@ -119,6 +131,86 @@ describe('DataTable', () => {
     expect(['ascending', 'descending']).toContain(firstSort)
     expect(['ascending', 'descending']).toContain(secondSort)
     expect(secondSort).not.toBe(firstSort)
+  })
+
+  describe('column definitions', () => {
+    const richColumns: DataTableColumn<TestRow>[] = [
+      { accessorKey: 'name', header: 'Name', meta: { className: 'name-col' } },
+      {
+        accessorKey: 'email',
+        header: 'Email',
+        enableSorting: false,
+        cell: ({ getValue }) => h('a', { class: 'email-link' }, getValue<string>()),
+      },
+      {
+        id: 'actions',
+        header: 'Actions',
+        cell: ({ row }) => h('button', { type: 'button' }, `Edit ${row.original.name}`),
+      },
+    ]
+
+    it('applies meta.className to both header and body cells', () => {
+      const wrapper = mountTable({ columns: richColumns })
+
+      expect(wrapper.findAll('th')[0]!.classes()).toContain('name-col')
+      expect(wrapper.findAll('tbody tr')[0]!.findAll('td')[0]!.classes()).toContain('name-col')
+    })
+
+    it('renders cell render functions with row data and cell values', () => {
+      const wrapper = mountTable({ columns: richColumns })
+
+      const firstRow = wrapper.findAll('tbody tr')[0]!
+      expect(firstRow.find('a.email-link').text()).toBe('alice@example.com')
+      expect(firstRow.find('button').text()).toBe('Edit Alice')
+    })
+
+    it('makes only accessor columns without enableSorting: false sortable', () => {
+      const wrapper = mountTable({ columns: richColumns })
+
+      const headers = wrapper.findAll('th')
+      expect(headers[0]!.attributes('tabindex')).toBe('0')
+      expect(headers[1]!.attributes('tabindex')).toBeUndefined()
+      expect(headers[2]!.attributes('tabindex')).toBeUndefined()
+    })
+  })
+
+  describe('row ordering', () => {
+    const unsorted: TestRow[] = [
+      { id: 2, name: 'Charlie', email: 'charlie@example.com' },
+      { id: 10, name: 'Alice', email: 'alice@example.com' },
+      { id: 1, name: 'Bob', email: 'bob@example.com' },
+    ]
+
+    function columnText(wrapper: ReturnType<typeof mountTable>, index: number): string[] {
+      return wrapper.findAll('tbody tr').map((row) => row.findAll('td')[index]!.text())
+    }
+
+    async function clickHeader(wrapper: ReturnType<typeof mountTable>, index: number) {
+      await wrapper.findAll('th')[index]!.trigger('click')
+      await nextTick()
+      await flushPromises()
+    }
+
+    it('sorts a string column ascending, then descending', async () => {
+      const wrapper = mountTable({ data: unsorted })
+      expect(columnText(wrapper, 1)).toEqual(['Charlie', 'Alice', 'Bob'])
+
+      await clickHeader(wrapper, 1)
+      expect(columnText(wrapper, 1)).toEqual(['Alice', 'Bob', 'Charlie'])
+
+      await clickHeader(wrapper, 1)
+      expect(columnText(wrapper, 1)).toEqual(['Charlie', 'Bob', 'Alice'])
+    })
+
+    it('sorts a numeric column numerically, descending first', async () => {
+      const wrapper = mountTable({ data: unsorted })
+
+      await clickHeader(wrapper, 0)
+      expect(columnText(wrapper, 0)).toEqual(['10', '2', '1'])
+
+      await clickHeader(wrapper, 0)
+      expect(columnText(wrapper, 0)).toEqual(['1', '2', '10'])
+    })
   })
 
   it('does not render a mobile-card list when no mobile-card slot is provided', () => {

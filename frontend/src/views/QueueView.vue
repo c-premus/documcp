@@ -4,11 +4,11 @@ import { toast } from 'vue-sonner'
 import { formatDistanceToNow } from 'date-fns'
 import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline'
 import { TabGroup, TabList, Tab, TabPanels, TabPanel } from '@headlessui/vue'
-import type { ColumnDef } from '@tanstack/vue-table'
 
 import { useQueueStore } from '../stores/queue'
 import type { FailedJob } from '../stores/queue'
 import DataTable from '../components/shared/DataTable.vue'
+import type { DataTableColumn } from '../utils/dataTable'
 import StatusBadge from '../components/shared/StatusBadge.vue'
 import EmptyState from '../components/shared/EmptyState.vue'
 import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
@@ -65,7 +65,7 @@ function handleDeleteCancel(): void {
   deleteTarget.value = null
 }
 
-const columns: ColumnDef<FailedJob, unknown>[] = [
+const columns: DataTableColumn<FailedJob>[] = [
   {
     accessorKey: 'id',
     header: 'ID',
