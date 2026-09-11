@@ -11,6 +11,16 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.43] - 2026-09-11
+
+### Fixes
+
+- fix(deps): update dependency @tanstack/vue-table to v9
+
+### Maintenance
+
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 965b516 (#525)
+
 ## [0.31.42] - 2026-09-11
 
 ### Fixes
@@ -21,6 +31,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.42
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 6888149 (#523)
 - chore(deps): update dependency typescript-eslint to v8.70.0 (#521)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 9327fbe (#518)
@@ -2224,6 +2235,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.43]: https://github.com/c-premus/documcp/compare/v0.31.42...v0.31.43
 [0.31.42]: https://github.com/c-premus/documcp/compare/v0.31.41...v0.31.42
 [0.31.41]: https://github.com/c-premus/documcp/compare/v0.31.40...v0.31.41
 [0.31.40]: https://github.com/c-premus/documcp/compare/v0.31.39...v0.31.40
