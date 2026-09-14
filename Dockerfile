@@ -49,7 +49,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 
 # Stage 3: Distroless static runtime — no shell, no package manager, no CVEs.
 # gcr.io/distroless/static:nonroot includes CA certificates and runs as UID 65534.
-FROM gcr.io/distroless/static:nonroot@sha256:1c2c046bc09ed40fad370b599a0b1ae7987f55b01e247cf27a7c27cd97e5bbc7
+FROM gcr.io/distroless/static:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
 
 # Reset working directory — distroless:nonroot defaults to /home/nonroot,
 # but our paths (binary, migrations) are at the filesystem root.
