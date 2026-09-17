@@ -97,6 +97,5 @@ watch(renderedContent, async () => {
   <pre
     v-else
     class="whitespace-pre-wrap text-sm text-text-secondary font-mono bg-bg-surface-alt p-4 rounded-lg"
-    >{{ content }}</pre
-  >
+    >{{ content }}</pre>
 </template>

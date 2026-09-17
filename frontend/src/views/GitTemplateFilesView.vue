@@ -169,8 +169,7 @@ function goBack(): void {
             <pre
               v-else
               class="p-4 text-sm leading-relaxed text-text-primary font-mono whitespace-pre-wrap break-words"
-              >{{ fileContent }}</pre
-            >
+              >{{ fileContent }}</pre>
           </div>
         </template>
       </div>

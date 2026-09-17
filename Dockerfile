@@ -9,7 +9,7 @@ COPY docs/contracts/openapi.yaml ../docs/contracts/openapi.yaml
 RUN npm run build
 
 # Stage 2: Go build (always native — cross-compile for target arch)
-# golang:1.26.6-alpine — pinned for supply chain integrity.
+# golang:<ver>-alpine@sha256 — pinned by tag and digest for supply chain integrity.
 # This tag IS the shipped stdlib: the official golang image sets GOTOOLCHAIN=local,
 # so go.mod's `toolchain` directive is ignored here. A stale tag silently produces
 # a stale-stdlib binary with no build error (the bare `go` floor still passes).
