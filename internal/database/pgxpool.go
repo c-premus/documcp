@@ -19,10 +19,14 @@ func NewPgxPool(ctx context.Context, dsn string, maxConns, minConns int32, maxCo
 	cfg.MinConns = minConns
 	cfg.MaxConnLifetime = maxConnLifetime
 	cfg.MaxConnIdleTime = maxConnIdleTime
-	cfg.ConnConfig.Tracer = otelpgx.NewTracer(
-		otelpgx.WithTrimSQLInSpanName(),
-		otelpgx.WithDisableQuerySpanNamePrefix(),
-	)
+	// otelpgx v0.12.0 made both of the options we used to pass here the
+	// default, per the OpenTelemetry database span conventions: the span name
+	// is the low-cardinality operation name ("SELECT") with no "query "
+	// prefix, and the full statement stays in the db.query.text attribute.
+	// The explicit options are now deprecated no-ops. Emitted span names are
+	// unchanged; to go back, the opt-ins are WithFullSQLInSpanName() and
+	// WithQuerySpanNamePrefix().
+	cfg.ConnConfig.Tracer = otelpgx.NewTracer()
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
