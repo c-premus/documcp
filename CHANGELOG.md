@@ -11,10 +11,30 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.50] - 2026-09-17
+
+### Fixes
+
+- fix(deps): regenerate the lockfile and bundle for mermaid 12
+- fix(deps): update dependency mermaid to v12
+- fix(deps): pin lodash-es 4.18.1 for mermaid 12's chevrotain
+- fix(observability): drop otelpgx options deprecated in v0.12.0
+- fix(deps): update go dependencies
+- fix(deps): update module github.com/modelcontextprotocol/go-sdk to v1.8.0
+
+### Maintenance
+
+- chore: fix stale version notes and the no-op frontend lint typecheck
+- chore(skills): rewrite the Forgejo skills around the MCP server
+- chore(devcontainer): use bash and drop the leftover forge tooling
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to ec3e4b4
+- chore(deps): update dependency @vitejs/plugin-vue to v6.0.9 (#553)
+
 ## [0.31.49] - 2026-09-17
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.49
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 33fd5cc (#552)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 92e5d71 (#551)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 372e46c (#550)
@@ -2305,6 +2325,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.50]: https://github.com/c-premus/documcp/compare/v0.31.49...v0.31.50
 [0.31.49]: https://github.com/c-premus/documcp/compare/v0.31.48...v0.31.49
 [0.31.48]: https://github.com/c-premus/documcp/compare/v0.31.47...v0.31.48
 [0.31.47]: https://github.com/c-premus/documcp/compare/v0.31.46...v0.31.47
