@@ -11,6 +11,20 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.51] - 2026-09-18
+
+### Fixes
+
+- fix(deps): update go dependencies (#557)
+
+### Maintenance
+
+- chore(deps): update docker dependencies (#558)
+- chore(deps): update dependency brace-expansion to v5.0.12 (#560)
+- chore(deps): update golang:1.27.1-alpine docker digest to e9bbdf2 (#561)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 3419e4b (#559)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to b9b32d7 (#556)
+
 ## [0.31.50] - 2026-09-17
 
 ### Fixes
@@ -24,6 +38,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.50
 - chore: fix stale version notes and the no-op frontend lint typecheck
 - chore(skills): rewrite the Forgejo skills around the MCP server
 - chore(devcontainer): use bash and drop the leftover forge tooling
@@ -2325,6 +2340,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.51]: https://github.com/c-premus/documcp/compare/v0.31.50...v0.31.51
 [0.31.50]: https://github.com/c-premus/documcp/compare/v0.31.49...v0.31.50
 [0.31.49]: https://github.com/c-premus/documcp/compare/v0.31.48...v0.31.49
 [0.31.48]: https://github.com/c-premus/documcp/compare/v0.31.47...v0.31.48
