@@ -11,6 +11,23 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.52] - 2026-09-19
+
+### Maintenance
+
+- chore(deps): update https://github.com/docker/build-push-action action to v7.4.0 (#566)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 521370d (#575)
+- chore(deps): update frontend dependencies (#570)
+- chore(deps): update dependency @types/node to v24.13.5 (#573)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 09507c3 (#572)
+- chore(deps): update docker/setup-qemu-action action to v4.4.0 (#568)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 255f98c (#569)
+- chore(deps): update docker/setup-buildx-action action to v4.4.0 (#567)
+- chore(deps): update docker/build-push-action action to v7.4.0 (#565)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to f8fa576 (#562)
+- chore(deps): update frontend dependencies to v5.0.1 (#564)
+- chore(deps): update golang:1.27.1-alpine docker digest to 4cb7ac9 (#563)
+
 ## [0.31.51] - 2026-09-18
 
 ### Fixes
@@ -19,6 +36,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.51
 - chore(deps): update docker dependencies (#558)
 - chore(deps): update dependency brace-expansion to v5.0.12 (#560)
 - chore(deps): update golang:1.27.1-alpine docker digest to e9bbdf2 (#561)
@@ -2340,6 +2358,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.52]: https://github.com/c-premus/documcp/compare/v0.31.51...v0.31.52
 [0.31.51]: https://github.com/c-premus/documcp/compare/v0.31.50...v0.31.51
 [0.31.50]: https://github.com/c-premus/documcp/compare/v0.31.49...v0.31.50
 [0.31.49]: https://github.com/c-premus/documcp/compare/v0.31.48...v0.31.49
