@@ -11,6 +11,23 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.55] - 2026-09-22
+
+### Fixes
+
+- fix(deps): update module github.com/aws/smithy-go to v1.28.2 (#594)
+
+### Maintenance
+
+- chore(deps): update dependency @types/node to v25.9.8 (#596)
+- chore(deps): update dependency @types/node to v24.13.6 (#595)
+- chore(deps): update dependency eslint to v10.11.0 (#593)
+- chore(deps): update redis:8-alpine docker digest to ba6e394 (#592)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to d9497ed (#591)
+- chore(deps): update golang:1.27.1-alpine docker digest to 8a5910f (#590)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to e155ebe (#588)
+- chore(deps): update docker dependencies (#589)
+
 ## [0.31.54] - 2026-09-21
 
 ### Fixes
@@ -19,6 +36,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.54
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to c87b1c5 (#586)
 - chore(deps): update postgres:18-alpine docker digest to 77f5851 (#587)
 - chore(deps): update dependency prettier to v3.9.8 (#585)
@@ -2390,6 +2408,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.55]: https://github.com/c-premus/documcp/compare/v0.31.54...v0.31.55
 [0.31.54]: https://github.com/c-premus/documcp/compare/v0.31.53...v0.31.54
 [0.31.53]: https://github.com/c-premus/documcp/compare/v0.31.52...v0.31.53
 [0.31.52]: https://github.com/c-premus/documcp/compare/v0.31.51...v0.31.52
