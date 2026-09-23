@@ -11,10 +11,19 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.31.57] - 2026-09-23
+
+### Maintenance
+
+- chore(docker): add Dozzle app icon label to the image
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to ea85669 (#601)
+- chore(deps): update dependency tsx to v4.23.15 (#600)
+
 ## [0.31.56] - 2026-09-23
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.56
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 9a02c0e (#599)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 7517f67 (#598)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to fb6b7c6 (#597)
@@ -2417,6 +2426,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.31.57]: https://github.com/c-premus/documcp/compare/v0.31.56...v0.31.57
 [0.31.56]: https://github.com/c-premus/documcp/compare/v0.31.55...v0.31.56
 [0.31.55]: https://github.com/c-premus/documcp/compare/v0.31.54...v0.31.55
 [0.31.54]: https://github.com/c-premus/documcp/compare/v0.31.53...v0.31.54
