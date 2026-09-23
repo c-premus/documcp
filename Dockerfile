@@ -61,6 +61,16 @@ COPY --from=builder /bin/documcp /documcp
 # Copy database migrations for goose.
 COPY --from=builder /src/migrations/ /migrations/
 
+# Dozzle app icon (https://dozzle.dev/guide/app-icons). Dozzle matches the last path
+# segment of the image name against a bundled dashboard-icons subset; "documcp-go" will
+# never be in it, so the icon rides inline as a data URI instead. Docker merges image
+# labels into every container's Config.Labels, which is what Dozzle reads — no compose
+# edit needed on the host. Value cap is 16KB; this is 1222 chars.
+# Source: frontend/public/logo-concept-1-transparent.svg. To regenerate after a logo
+# change: strip comments, collapse whitespace between tags, base64 the result, and
+# prefix "data:image/svg+xml;base64,".
+LABEL dev.dozzle.icon="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij48cGF0aCBkPSJNMTIgNiBMMzggNiBMNTAgMTggTDUwIDU2IEwxMiA1NiBaIiBmaWxsPSIjZjhmYWZjIiBzdHJva2U9IiM2NDc0OGIiIHN0cm9rZS13aWR0aD0iMS41Ii8+PHBhdGggZD0iTTM4IDYgTDM4IDE4IEw1MCAxOCIgZmlsbD0iI2UyZThmMCIgc3Ryb2tlPSIjNjQ3NDhiIiBzdHJva2Utd2lkdGg9IjEuNSIvPjxsaW5lIHgxPSIxOCIgeTE9IjI2IiB4Mj0iNDQiIHkyPSIyNiIgc3Ryb2tlPSIjNjQ3NDhiIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxsaW5lIHgxPSIxOCIgeTE9IjM0IiB4Mj0iMzgiIHkyPSIzNCIgc3Ryb2tlPSIjNjQ3NDhiIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxsaW5lIHgxPSIxOCIgeTE9IjQyIiB4Mj0iNDIiIHkyPSI0MiIgc3Ryb2tlPSIjNjQ3NDhiIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxjaXJjbGUgY3g9IjUwIiBjeT0iNTAiIHI9IjEwIiBmaWxsPSIjM2I4MmY2Ii8+PGNpcmNsZSBjeD0iNTAiIGN5PSI1MCIgcj0iNCIgZmlsbD0iI2ZmZmZmZiIvPjxwYXRoIGQ9Ik01NiA0NCBMNjAgNDAiIHN0cm9rZT0iIzNiODJmNiIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48cGF0aCBkPSJNNTggNTAgTDYyIDUwIiBzdHJva2U9IiMzYjgyZjYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PHBhdGggZD0iTTU2IDU2IEw2MCA2MCIgc3Ryb2tlPSIjM2I4MmY2IiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPg=="
+
 EXPOSE 8080 8443
 
 ENTRYPOINT ["/documcp"]
