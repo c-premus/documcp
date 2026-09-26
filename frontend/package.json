@@ -18,10 +18,10 @@
   "dependencies": {
     "@headlessui/vue": "1.7.23",
     "@heroicons/vue": "2.2.0",
-    "@sentry/vue": "10.75.2",
+    "@sentry/vue": "10.75.3",
     "@tanstack/vue-table": "9.2.4",
     "date-fns": "4.4.0",
-    "dompurify": "3.4.15",
+    "dompurify": "3.4.16",
     "marked": "18.0.14",
     "mermaid": "^12.0.0",
     "pinia": "4.0.3",
@@ -55,7 +55,7 @@
     "vue-tsc": "3.3.11"
   },
   "overrides": {
-    "dompurify": "3.4.15",
+    "dompurify": "3.4.16",
     "brace-expansion": "5.0.12",
     "@vue/server-renderer": "$vue",
     "lodash-es": "4.18.1"
