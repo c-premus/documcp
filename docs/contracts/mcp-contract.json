@@ -5,7 +5,7 @@
     "protocol_versions_accepted": ["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26"],
     "protocol_version_source": "Negotiated by the SDK, not by this server: mcp/shared.go latestProtocolVersion. Re-check on every go-sdk bump.",
     "sdk": "github.com/modelcontextprotocol/go-sdk",
-    "sdk_version": "v1.7.0",
+    "sdk_version": "v1.8.0",
     "source_files": {
       "mcp_handler": "internal/handler/mcp/handler.go",
       "tools": "internal/handler/mcp/tools_*.go",
@@ -410,9 +410,8 @@
         "idempotentHint": true
       },
       "conditional": {
-        "config_key": "documcp.zim.enabled",
-        "default": true,
-        "additional_check": "Kiwix external service must be configured (ExternalService::TYPE_KIWIX)"
+        "group": "zim",
+        "see": "conditionalRegistrationSummary.zim"
       },
       "inputSchema": {
         "type": "object",
@@ -462,9 +461,8 @@
         "idempotentHint": true
       },
       "conditional": {
-        "config_key": "documcp.zim.enabled",
-        "default": true,
-        "additional_check": "Kiwix external service must be configured (ExternalService::TYPE_KIWIX)"
+        "group": "zim",
+        "see": "conditionalRegistrationSummary.zim"
       },
       "inputSchema": {
         "type": "object",
@@ -516,9 +514,8 @@
         "idempotentHint": true
       },
       "conditional": {
-        "config_key": "documcp.zim.enabled",
-        "default": true,
-        "additional_check": "Kiwix external service must be configured (ExternalService::TYPE_KIWIX)"
+        "group": "zim",
+        "see": "conditionalRegistrationSummary.zim"
       },
       "inputSchema": {
         "type": "object",
@@ -565,8 +562,8 @@
         "idempotentHint": true
       },
       "conditional": {
-        "config_key": "documcp.git_templates.enabled",
-        "default": true
+        "group": "git_templates",
+        "see": "conditionalRegistrationSummary.git_templates"
       },
       "inputSchema": {
         "type": "object",
@@ -607,8 +604,8 @@
         "idempotentHint": true
       },
       "conditional": {
-        "config_key": "documcp.git_templates.enabled",
-        "default": true
+        "group": "git_templates",
+        "see": "conditionalRegistrationSummary.git_templates"
       },
       "inputSchema": {
         "type": "object",
@@ -655,8 +652,8 @@
         "idempotentHint": true
       },
       "conditional": {
-        "config_key": "documcp.git_templates.enabled",
-        "default": true
+        "group": "git_templates",
+        "see": "conditionalRegistrationSummary.git_templates"
       },
       "inputSchema": {
         "type": "object",
@@ -688,8 +685,8 @@
         "idempotentHint": true
       },
       "conditional": {
-        "config_key": "documcp.git_templates.enabled",
-        "default": true
+        "group": "git_templates",
+        "see": "conditionalRegistrationSummary.git_templates"
       },
       "inputSchema": {
         "type": "object",
@@ -734,8 +731,8 @@
         "idempotentHint": true
       },
       "conditional": {
-        "config_key": "documcp.git_templates.enabled",
-        "default": true
+        "group": "git_templates",
+        "see": "conditionalRegistrationSummary.git_templates"
       },
       "inputSchema": {
         "type": "object",
@@ -775,8 +772,8 @@
         "idempotentHint": true
       },
       "conditional": {
-        "config_key": "documcp.git_templates.enabled",
-        "default": true
+        "group": "git_templates",
+        "see": "conditionalRegistrationSummary.git_templates"
       },
       "inputSchema": {
         "type": "object",
@@ -1005,8 +1002,8 @@
       "title": "git_template_setup",
       "description": "Discover and deploy project templates (CLAUDE.md, Memory Bank). Args: intent*, category, depth",
       "conditional": {
-        "config_key": "documcp.git_templates.enabled",
-        "default": true
+        "group": "git_templates",
+        "see": "conditionalRegistrationSummary.git_templates"
       },
       "arguments": [
         {
@@ -1061,9 +1058,8 @@
       "title": "zim_research",
       "description": "Research ZIM archives (DevDocs, Wikipedia, Stack Exchange). Args: topic*, depth, preferred_sources",
       "conditional": {
-        "config_key": "documcp.zim.enabled",
-        "default": false,
-        "additional_check": "Kiwix external service must be configured (ExternalService::TYPE_KIWIX)"
+        "group": "zim",
+        "see": "conditionalRegistrationSummary.zim"
       },
       "arguments": [
         {
@@ -1176,7 +1172,6 @@
     }
   ],
   "toolRegistrationOrder": [
-    "unified_search",
     "list_documents",
     "search_documents",
     "read_document",
@@ -1184,6 +1179,7 @@
     "update_document",
     "replace_document_content",
     "delete_document",
+    "unified_search",
     "list_zim_archives",
     "search_zim",
     "read_zim_article",
@@ -1198,11 +1194,12 @@
     "document_analysis",
     "search_query_builder",
     "knowledge_base_builder",
+    "cross_source_research",
     "git_template_setup",
-    "zim_research",
-    "cross_source_research"
+    "zim_research"
   ],
   "conditionalRegistrationSummary": {
+    "note": "There are no config keys for ZIM or Git template availability. internal/app/server_app.go hard-codes ZimEnabled and GitTemplatesEnabled to true and always passes non-nil ZimArchiveRepo and GitTemplateRepo, so a normal deployment registers all 17 tools and 6 prompts. The conditions below only matter for tests or other callers of mcphandler.New.",
     "always_available": [
       "unified_search",
       "list_documents",
@@ -1217,9 +1214,10 @@
       "knowledge_base_builder",
       "cross_source_research"
     ],
-    "requires_kiwix_service": {
-      "config_key": "documcp.zim.enabled",
-      "external_service": "ExternalService::TYPE_KIWIX",
+    "zim": {
+      "tools_registered_when": "Config.ZimEnabled && Config.ZimArchiveRepo != nil (internal/handler/mcp/handler.go)",
+      "prompts_registered_when": "Config.ZimEnabled (internal/handler/mcp/prompts.go)",
+      "without_kiwix_service": "Still registered. list_zim_archives returns an empty list when no archives have been synced; search_zim and read_zim_article return success=false with message \"Kiwix service not configured\".",
       "tools": [
         "list_zim_archives",
         "search_zim",
@@ -1229,8 +1227,10 @@
         "zim_research"
       ]
     },
-    "requires_git_templates_enabled": {
-      "config_key": "documcp.git_templates.enabled",
+    "git_templates": {
+      "tools_registered_when": "Config.GitTemplatesEnabled && Config.GitTemplateRepo != nil (internal/handler/mcp/handler.go)",
+      "prompts_registered_when": "Config.GitTemplatesEnabled (internal/handler/mcp/prompts.go)",
+      "without_git_templates": "Still registered. List and search tools return empty results until an admin adds a Git template.",
       "tools": [
         "list_git_templates",
         "search_git_templates",

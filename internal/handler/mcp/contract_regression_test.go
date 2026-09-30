@@ -140,9 +140,9 @@ type mcpContract struct {
 }
 
 type conditionalRegistration struct {
-	AlwaysAvailable      []string         `json:"always_available"`
-	RequiresKiwixService featurePartition `json:"requires_kiwix_service"`
-	RequiresGitTemplates featurePartition `json:"requires_git_templates_enabled"`
+	AlwaysAvailable []string         `json:"always_available"`
+	ZIM             featurePartition `json:"zim"`
+	GitTemplates    featurePartition `json:"git_templates"`
 }
 
 type featurePartition struct {
@@ -201,10 +201,10 @@ func (c mcpContract) alwaysPrompts() []string {
 func (c mcpContract) expectedTools(zim, git bool) []string {
 	out := append([]string{}, c.alwaysTools()...)
 	if zim {
-		out = append(out, c.ConditionalRegistration.RequiresKiwixService.Tools...)
+		out = append(out, c.ConditionalRegistration.ZIM.Tools...)
 	}
 	if git {
-		out = append(out, c.ConditionalRegistration.RequiresGitTemplates.Tools...)
+		out = append(out, c.ConditionalRegistration.GitTemplates.Tools...)
 	}
 	slices.Sort(out)
 	return out
@@ -213,10 +213,10 @@ func (c mcpContract) expectedTools(zim, git bool) []string {
 func (c mcpContract) expectedPrompts(zim, git bool) []string {
 	out := append([]string{}, c.alwaysPrompts()...)
 	if zim {
-		out = append(out, c.ConditionalRegistration.RequiresKiwixService.Prompts...)
+		out = append(out, c.ConditionalRegistration.ZIM.Prompts...)
 	}
 	if git {
-		out = append(out, c.ConditionalRegistration.RequiresGitTemplates.Prompts...)
+		out = append(out, c.ConditionalRegistration.GitTemplates.Prompts...)
 	}
 	slices.Sort(out)
 	return out
