@@ -870,6 +870,37 @@ func TestLoad_NonExistentExplicitConfigFileReturnsError(t *testing.T) {
 	}
 }
 
+// TestLoadFile_ExplicitPathWinsOverEnv covers the --config flag: an explicit
+// path is read even when DOCUMCP_CONFIG_PATH points somewhere else, and a
+// missing explicit path is an error.
+func TestLoadFile_ExplicitPathWinsOverEnv(t *testing.T) {
+	dir := t.TempDir()
+	flagFile := dir + "/flag.yaml"
+	if err := os.WriteFile(flagFile, []byte("app_name: FromFlag\n"), 0o600); err != nil {
+		t.Fatalf("writing config file: %v", err)
+	}
+	setEnv(t, "DOCUMCP_CONFIG_PATH", "/nonexistent/path/config.yaml")
+	prev, existed := os.LookupEnv("APP_NAME")
+	if existed {
+		t.Cleanup(func() { _ = os.Setenv("APP_NAME", prev) })
+	} else {
+		t.Cleanup(func() { _ = os.Unsetenv("APP_NAME") })
+	}
+	_ = os.Unsetenv("APP_NAME")
+
+	cfg, err := LoadFile(flagFile)
+	if err != nil {
+		t.Fatalf("LoadFile() returned unexpected error: %v", err)
+	}
+	if cfg.App.Name != "FromFlag" {
+		t.Errorf("App.Name = %q, want %q", cfg.App.Name, "FromFlag")
+	}
+
+	if _, err := LoadFile(dir + "/missing.yaml"); err == nil {
+		t.Error("LoadFile() expected error for missing explicit path, got nil")
+	}
+}
+
 func TestOIDCConfig_ManualEndpoints(t *testing.T) {
 	tests := []struct {
 		name             string

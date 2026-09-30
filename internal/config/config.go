@@ -1,6 +1,5 @@
 // Package config loads and validates application configuration from environment
-// variables and optional YAML config files. It supports both unprefixed env vars
-// (DB_HOST) matching the PHP convention and DOCUMCP_-prefixed variants.
+// variables (unprefixed, e.g. DB_HOST) and an optional YAML config file.
 package config
 
 import (
@@ -465,6 +464,13 @@ func setDefaults(v *viper.Viper) {
 // config file. The config file path is determined by the DOCUMCP_CONFIG_PATH
 // env var, falling back to ./config.yaml if present.
 func Load() (*Config, error) {
+	return LoadFile("")
+}
+
+// LoadFile is Load with an explicit config file path, as given by the
+// --config flag. A non-empty path takes precedence over DOCUMCP_CONFIG_PATH
+// and must exist. An empty path behaves exactly like Load.
+func LoadFile(path string) (*Config, error) {
 	v := viper.New()
 
 	setDefaults(v)
@@ -472,8 +478,12 @@ func Load() (*Config, error) {
 	// Allow reading env vars automatically.
 	v.AutomaticEnv()
 
-	// Determine config file path from DOCUMCP_CONFIG_PATH or default.
-	configPath := v.GetString("DOCUMCP_CONFIG_PATH")
+	// Determine config file path: explicit path, then DOCUMCP_CONFIG_PATH,
+	// then ./config.yaml.
+	configPath := path
+	if configPath == "" {
+		configPath = v.GetString("DOCUMCP_CONFIG_PATH")
+	}
 	if configPath != "" {
 		v.SetConfigFile(configPath)
 	} else {

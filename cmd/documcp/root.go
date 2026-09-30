@@ -26,7 +26,7 @@ It also provides a REST API and web-based admin panel.`,
 		}
 
 		var err error
-		cfg, err = config.Load()
+		cfg, err = config.LoadFile(cfgFile)
 		if err != nil {
 			return err
 		}
