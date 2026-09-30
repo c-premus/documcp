@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -43,6 +44,10 @@ type RegisterClientResult struct {
 	Scope                   string   `json:"scope"`
 }
 
+// ErrInvalidScope is returned by RegisterClient when the requested scope
+// contains a scope that is not registered.
+var ErrInvalidScope = errors.New("invalid scopes")
+
 // RegisterClient creates a new OAuth client per RFC 7591.
 func (s *Service) RegisterClient(ctx context.Context, params RegisterClientParams) (*RegisterClientResult, error) {
 	// Defaults
@@ -59,7 +64,7 @@ func (s *Service) RegisterClient(ctx context.Context, params RegisterClientParam
 		params.Scope = authscope.DefaultScopes()
 	}
 	if invalid := authscope.ValidateAll(params.Scope); len(invalid) > 0 {
-		return nil, fmt.Errorf("invalid scopes: %s", strings.Join(invalid, ", "))
+		return nil, fmt.Errorf("%w: %s", ErrInvalidScope, strings.Join(invalid, ", "))
 	}
 
 	clientID := uuid.New().String()

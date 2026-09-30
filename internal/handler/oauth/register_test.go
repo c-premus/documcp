@@ -416,6 +416,34 @@ func TestHandler_Register(t *testing.T) {
 		require.Equal(t, http.StatusCreated, rr.Code)
 	})
 
+	t.Run("returns invalid_client_metadata for an unknown scope", func(t *testing.T) {
+		t.Parallel()
+		repo := &mockOAuthRepo{
+			FindUserByIDFunc: func(_ context.Context, _ int64) (*model.User, error) {
+				return &model.User{ID: 42, IsAdmin: true}, nil
+			},
+			CreateClientFunc: func(_ context.Context, _ *model.OAuthClient) error {
+				t.Error("CreateClient must not be called for an invalid scope")
+				return nil
+			},
+		}
+		cfg := defaultOAuthConfig()
+		cfg.RegistrationRequireAuth = true
+		h, store := newHandlerWithRepoAndConfig(repo, cfg)
+		store.session.Values["user_id"] = int64(42)
+
+		body := `{"client_name":"My App","redirect_uris":["https://example.com/cb"],"scope":"mcp:access not:a-scope"}`
+		req := httptest.NewRequest(http.MethodPost, "/oauth/register", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		h.Register(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+		result := decodeOAuthJSON(t, rr.Body)
+		assert.Equal(t, "invalid_client_metadata", result["error"])
+	})
+
 	t.Run("returns server_error when repository fails", func(t *testing.T) {
 		t.Parallel()
 		repo := &mockOAuthRepo{

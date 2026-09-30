@@ -2,6 +2,7 @@ package oauthhandler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -146,6 +147,10 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.service.RegisterClient(r.Context(), req)
+	if errors.Is(err, oauth.ErrInvalidScope) {
+		oauthError(w, http.StatusBadRequest, "invalid_client_metadata", "The scope field contains an unknown scope.")
+		return
+	}
 	if err != nil {
 		h.logger.Error("registering oauth client", "error", err)
 		oauthError(w, http.StatusInternalServerError, "server_error", "An internal error occurred while registering the client")
