@@ -1384,6 +1384,72 @@ func TestExchangeAuthorizationCode(t *testing.T) {
 		assert.Contains(t, err.Error(), "invalid authorization code")
 	})
 
+	// A client registered anonymously has the read-only DefaultScopes as its
+	// base. mcp:write reaches its token only through a non-admin's consent,
+	// which records a scope grant; without the grant it is narrowed away.
+	for _, tc := range []struct {
+		name      string
+		withGrant bool
+		wantWrite bool
+	}{
+		{name: "non-admin mcp:write consent grant reaches the token", withGrant: true, wantWrite: true},
+		{name: "mcp:write without a consent grant is narrowed away", withGrant: false, wantWrite: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			codePlaintext, codeHash, client, authCode := setupValidExchange(t)
+			client.Scope = sql.NullString{String: authscope.DefaultScopes(), Valid: true}
+			// What the consent step stores for a non-admin approving a full MCP request.
+			approved := authscope.Intersect("mcp:access mcp:read mcp:write", authscope.ThirdPartyGrantable(false))
+			require.Contains(t, authscope.ParseScopes(approved), authscope.MCPWrite)
+			authCode.Scope = sql.NullString{String: approved, Valid: true}
+
+			repo := &mockOAuthRepo{
+				FindClientByClientIDFunc: func(_ context.Context, _ string) (*model.OAuthClient, error) {
+					return client, nil
+				},
+				FindAuthorizationCodeByCodeFunc: func(_ context.Context, hash string) (*model.OAuthAuthorizationCode, error) {
+					if hash == codeHash {
+						return authCode, nil
+					}
+					return nil, sql.ErrNoRows
+				},
+				FindActiveScopeGrantsFunc: func(_ context.Context, _ int64) ([]model.OAuthClientScopeGrant, error) {
+					if !tc.withGrant {
+						return nil, nil
+					}
+					return []model.OAuthClientScopeGrant{{ClientID: client.ID, Scope: approved, GrantedBy: 42}}, nil
+				},
+				RevokeAuthorizationCodeFunc: func(_ context.Context, _ int64) error { return nil },
+				CreateAccessTokenFunc: func(_ context.Context, token *model.OAuthAccessToken) error {
+					token.ID = 300
+					return nil
+				},
+				CreateRefreshTokenFunc: func(_ context.Context, token *model.OAuthRefreshToken) error {
+					token.ID = 400
+					return nil
+				},
+			}
+			svc := testService(repo)
+
+			result, err := svc.ExchangeAuthorizationCode(context.Background(), ExchangeAuthorizationCodeParams{
+				Code:        codePlaintext,
+				ClientID:    testClientID,
+				RedirectURI: testRedirectURI,
+			})
+
+			require.NoError(t, err)
+			got := authscope.ParseScopes(result.Scope)
+			assert.Contains(t, got, authscope.MCPRead)
+			if tc.wantWrite {
+				assert.Contains(t, got, authscope.MCPWrite)
+			} else {
+				assert.NotContains(t, got, authscope.MCPWrite)
+			}
+		})
+	}
+
 	t.Run("auth code scope exceeding client scope is narrowed", func(t *testing.T) {
 		t.Parallel()
 

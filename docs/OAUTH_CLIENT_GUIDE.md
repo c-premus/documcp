@@ -268,7 +268,7 @@ Default scopes for new registrations: `mcp:access mcp:read documents:read search
 
 What a user can delegate to a client at consent time depends on who they are:
 
-- **Non-admin users** can grant only the default scopes, so their clients get read-only MCP access.
+- **Non-admin users** can grant the default scopes plus `mcp:write`. Their clients can create documents and update, replace, or delete the documents that user owns; anyone else's documents return "document not found". REST write scopes stay admin-only.
 - **Admins** can grant every scope except `admin` and `services:write`, which never leave the server.
 
 A client never receives more than its registered scopes plus scopes a user has approved for it. Those approvals expire after `OAUTH_SCOPE_GRANT_TTL`.

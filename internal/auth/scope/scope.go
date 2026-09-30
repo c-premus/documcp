@@ -159,11 +159,19 @@ var thirdPartyExcluded = map[string]bool{
 
 // ThirdPartyGrantable returns the scopes a user may grant to a third-party
 // OAuth client at consent time. Admins receive every registered scope except
-// the thirdPartyExcluded set; non-admins receive DefaultScopes only. This is
-// the ceiling applied in the authorize and device-flow consent paths.
+// the thirdPartyExcluded set. Non-admins receive DefaultScopes plus MCPWrite,
+// so their MCP clients can create documents and edit the ones they own; the
+// MCP write tools enforce ownership (non-owners get "document not found"),
+// so the scope does not reach anyone else's documents. REST write scopes
+// stay admin-only. This is the ceiling applied in the authorize and
+// device-flow consent paths.
+//
+// DefaultScopes itself stays read-only because it is also the base scope of
+// an anonymously registered client: such a client only holds MCPWrite after
+// a user approves it, which records a time-bounded scope grant.
 func ThirdPartyGrantable(isAdmin bool) string {
 	if !isAdmin {
-		return DefaultScopes()
+		return Union(DefaultScopes(), MCPWrite)
 	}
 	out := make([]string, 0, len(All))
 	for s := range All {

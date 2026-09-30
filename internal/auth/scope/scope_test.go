@@ -248,18 +248,29 @@ func TestThirdPartyGrantable(t *testing.T) {
 		assert.Len(t, got, want)
 	})
 
-	t.Run("non-admin gets default scopes only", func(t *testing.T) {
-		t.Parallel()
-		assert.Equal(t, DefaultScopes(), ThirdPartyGrantable(false))
-	})
-
-	t.Run("non-admin can grant read-only MCP tool access", func(t *testing.T) {
+	t.Run("non-admin can grant MCP read and write", func(t *testing.T) {
 		t.Parallel()
 		got := ParseScopes(ThirdPartyGrantable(false))
 		assert.Contains(t, got, MCPAccess)
 		assert.Contains(t, got, MCPRead,
 			"without mcp:read a non-admin's MCP token fails every tool call")
-		assert.NotContains(t, got, MCPWrite)
+		assert.Contains(t, got, MCPWrite,
+			"non-admins create and edit their own documents over MCP")
+	})
+
+	t.Run("non-admin ceiling is defaults plus mcp:write only", func(t *testing.T) {
+		t.Parallel()
+		assert.Equal(t, Union(DefaultScopes(), MCPWrite), ThirdPartyGrantable(false))
+		got := ParseScopes(ThirdPartyGrantable(false))
+		for _, s := range []string{Admin, ServicesWrite, DocumentsWrite, TemplatesWrite} {
+			assert.NotContains(t, got, s)
+		}
+	})
+
+	t.Run("default scopes stay read-only", func(t *testing.T) {
+		t.Parallel()
+		assert.NotContains(t, ParseScopes(DefaultScopes()), MCPWrite,
+			"DefaultScopes is the anonymous-DCR base; mcp:write must come from consent")
 	})
 
 	t.Run("scopes are sorted", func(t *testing.T) {

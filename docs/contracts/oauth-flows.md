@@ -19,7 +19,7 @@ DocuMCP implements an OAuth 2.1 authorization server with the following characte
 | Device polling interval | 5 seconds minimum; +5 seconds per `slow_down`, capped at 300 |
 | Default scope (DCR) | `mcp:access mcp:read documents:read search:read zim:read templates:read services:read` |
 | Registered scopes | `mcp:access`, `mcp:read`, `mcp:write`, `documents:read`, `documents:write`, `search:read`, `zim:read`, `templates:read`, `templates:write`, `services:read`, `services:write`, `admin` |
-| Consent ceiling | Non-admin users can grant the default scope set only. Admins can grant every scope except `admin` and `services:write`. Neither is ever granted to an OAuth client. |
+| Consent ceiling | Non-admin users can grant the default scope set plus `mcp:write`. Admins can grant every scope except `admin` and `services:write`. Neither of those two is ever granted to an OAuth client. |
 | State parameter | Required, minimum 8 characters |
 | Consent nonce | UUID v4, 10-minute expiry, prevents TOCTOU attacks |
 | Localhost redirect | Any port allowed for `localhost`, `127.0.0.1`, `[::1]` (RFC 8252) |
@@ -374,7 +374,7 @@ Cookie: documcp_session=<session-cookie>
 
 **Scope narrowing.** The server intersects the requested scope with the signed-in user's consent ceiling:
 
-- Non-admin user: the default scope set (`mcp:access mcp:read documents:read search:read zim:read templates:read services:read`). A request for `mcp:access mcp:read mcp:write` becomes `mcp:access mcp:read`.
+- Non-admin user: the default scope set plus `mcp:write` (`mcp:access mcp:read mcp:write documents:read search:read zim:read templates:read services:read`). A request for `mcp:access mcp:read mcp:write` is granted in full; a request for `documents:write` is dropped. MCP write tools only act on documents the user owns.
 - Admin user: every scope except `admin` and `services:write`.
 
 If nothing is left after narrowing, the server returns `400 invalid_scope`. The consent screen shows the narrowed scope. The example below assumes an admin user.

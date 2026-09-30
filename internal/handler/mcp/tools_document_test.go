@@ -978,3 +978,66 @@ func TestHandleReplaceDocumentContent(t *testing.T) {
 		}
 	})
 }
+
+// TestCheckDocumentOwnership pins the guard that makes mcp:write safe to
+// delegate to non-admin users: update, replace and delete all go through it,
+// and anything but the owner or an admin sees "document not found".
+func TestCheckDocumentOwnership(t *testing.T) {
+	t.Parallel()
+
+	const ownerID int64 = 7
+	doc := func() *model.Document {
+		return &model.Document{ID: 1, UUID: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", UserID: sql.NullInt64{Int64: ownerID, Valid: true}}
+	}
+	withUser := func(u *model.User) context.Context {
+		if u == nil {
+			return context.Background()
+		}
+		return context.WithValue(context.Background(), authmiddleware.UserContextKey, u)
+	}
+
+	tests := []struct {
+		name    string
+		ctx     context.Context
+		wantErr bool
+	}{
+		{name: "non-admin owner", ctx: withUser(&model.User{ID: ownerID}), wantErr: false},
+		{name: "admin non-owner", ctx: withUser(&model.User{ID: 999, IsAdmin: true}), wantErr: false},
+		{name: "non-admin non-owner", ctx: withUser(&model.User{ID: ownerID + 1}), wantErr: true},
+		{name: "no user (machine token)", ctx: withUser(nil), wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := &Handler{documentService: &mockDocumentService{
+				findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) { return doc(), nil },
+			}}
+			err := h.checkDocumentOwnership(tc.ctx, doc().UUID)
+			if tc.wantErr {
+				if err == nil || err.Error() != "document not found" {
+					t.Errorf("err = %v, want exact \"document not found\"", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+
+	t.Run("update and delete reject a non-owner with mcp:write", func(t *testing.T) {
+		t.Parallel()
+		token := &model.OAuthAccessToken{Scope: sql.NullString{String: "mcp:access mcp:read mcp:write", Valid: true}}
+		ctx := context.WithValue(withUser(&model.User{ID: ownerID + 1}), authmiddleware.AccessTokenContextKey, token)
+		h := &Handler{documentService: &mockDocumentService{
+			findByUUIDFn: func(_ context.Context, _ string) (*model.Document, error) { return doc(), nil },
+		}, documentRepo: &mockDocumentRepo{}}
+
+		if _, _, err := h.handleUpdateDocument(ctx, nil, dto.UpdateDocumentInput{UUID: doc().UUID, Title: "x"}); err == nil || err.Error() != "document not found" {
+			t.Errorf("update: err = %v, want \"document not found\"", err)
+		}
+		if _, _, err := h.handleDeleteDocument(ctx, nil, dto.DeleteDocumentInput{UUID: doc().UUID}); err == nil || err.Error() != "document not found" {
+			t.Errorf("delete: err = %v, want \"document not found\"", err)
+		}
+	})
+}
