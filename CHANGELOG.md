@@ -1205,7 +1205,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 - chore(changelog): update for v0.30.18
 - chore(deps): update https://github.com/golangci/golangci-lint-action action to v9.3.0 (#253)
-- chore(skills): pull memory-bank archiving guidance from ai-coding-template
+- chore(skills): pull memory-bank archiving guidance from a shared project template
 - chore(deps): update golangci/golangci-lint-action action to v9.3.0 (#251)
 
 ## [0.30.17] - 2026-06-30

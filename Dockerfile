@@ -73,7 +73,7 @@ COPY --from=builder /src/migrations/ /migrations/
 COPY --from=builder --chown=65532:65532 /out/data/ /data/
 
 # Dozzle app icon (https://dozzle.dev/guide/app-icons). Dozzle matches the last path
-# segment of the image name against a bundled dashboard-icons subset; "documcp-go" will
+# segment of the image name against a bundled dashboard-icons subset; the production name will
 # never be in it, so the icon rides inline as a data URI instead. Docker merges image
 # labels into every container's Config.Labels, which is what Dozzle reads — no compose
 # edit needed on the host. Value cap is 16KB; this is 1222 chars.

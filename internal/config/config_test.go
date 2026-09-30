@@ -1043,8 +1043,8 @@ func TestConfig_Validate_HKDFSalt(t *testing.T) {
 			wantErr: "at least 16 characters",
 		},
 		{
-			name:    "legacy default string (14 chars) fails the length floor",
-			salt:    "DocuMCP-go-v1",
+			name:    "14-char salt fails the length floor",
+			salt:    "legacy-salt-v1",
 			prod:    true,
 			wantErr: "at least 16 characters",
 		},
