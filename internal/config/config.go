@@ -107,7 +107,6 @@ type AppConfig struct {
 	Env                string `mapstructure:"app_env"`
 	Debug              bool   `mapstructure:"app_debug"`
 	URL                string `mapstructure:"app_url"`
-	Timezone           string `mapstructure:"app_timezone"`
 	InternalAPIToken   string `mapstructure:"internal_api_token"`
 	EncryptionKey      string `mapstructure:"encryption_key"`
 	EncryptionKeyBytes []byte // Decoded from EncryptionKey (hex); populated by Validate()
@@ -160,8 +159,6 @@ type DatabaseConfig struct {
 	Password           string        `mapstructure:"db_password"`
 	SSLMode            string        `mapstructure:"db_sslmode"`
 	MaxOpenConns       int32         `mapstructure:"db_max_open_conns"`
-	MaxIdleConns       int           `mapstructure:"db_max_idle_conns"`
-	MaxLifetime        time.Duration `mapstructure:"db_max_lifetime"`
 	PgxMinConns        int32         `mapstructure:"db_pgx_min_conns"`
 	PgxMaxConnLifetime time.Duration `mapstructure:"db_pgx_max_conn_lifetime"`
 	PgxMaxConnIdleTime time.Duration `mapstructure:"db_pgx_max_conn_idle_time"`
@@ -260,7 +257,6 @@ type StorageConfig struct {
 	Driver       string `mapstructure:"storage_driver"`
 	BasePath     string `mapstructure:"storage_base_path"`
 	DocumentPath string `mapstructure:"storage_document_path"`
-	TempPath     string `mapstructure:"storage_temp_path"`
 
 	// Extraction limits — safety guards for document processing.
 	MaxUploadSize    int64 `mapstructure:"storage_max_upload_size"`
@@ -316,7 +312,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("app_env", "development")
 	v.SetDefault("app_debug", false)
 	v.SetDefault("app_url", "http://localhost")
-	v.SetDefault("app_timezone", "UTC")
 	v.SetDefault("internal_api_token", "")
 	v.SetDefault("app_queue_stop_timeout", 10*time.Second)
 	v.SetDefault("app_tracer_stop_timeout", 5*time.Second)
@@ -364,8 +359,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("db_password", "")
 	v.SetDefault("db_sslmode", "require")
 	v.SetDefault("db_max_open_conns", 25)
-	v.SetDefault("db_max_idle_conns", 5)
-	v.SetDefault("db_max_lifetime", 5*time.Minute)
 	v.SetDefault("db_pgx_min_conns", int32(5))
 	v.SetDefault("db_pgx_max_conn_lifetime", 30*time.Minute)
 	v.SetDefault("db_pgx_max_conn_idle_time", 5*time.Minute)
@@ -411,7 +404,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("storage_driver", "local")
 	v.SetDefault("storage_base_path", "./storage")
 	v.SetDefault("storage_document_path", "documents")
-	v.SetDefault("storage_temp_path", "tmp")
 	v.SetDefault("storage_max_upload_size", 50*1024*1024)    // 50 MiB
 	v.SetDefault("storage_max_extracted_text", 50*1024*1024) // 50 MiB
 	v.SetDefault("storage_max_zip_files", 100)
@@ -510,7 +502,6 @@ func Load() (*Config, error) {
 		Env:                   v.GetString("app_env"),
 		Debug:                 v.GetBool("app_debug"),
 		URL:                   v.GetString("app_url"),
-		Timezone:              v.GetString("app_timezone"),
 		InternalAPIToken:      v.GetString("internal_api_token"),
 		EncryptionKey:         v.GetString("encryption_key"),
 		EncryptionKeyPrevious: v.GetString("encryption_key_previous"),
@@ -563,8 +554,6 @@ func Load() (*Config, error) {
 		Password:           v.GetString("db_password"),
 		SSLMode:            v.GetString("db_sslmode"),
 		MaxOpenConns:       clampInt32(v.GetInt("db_max_open_conns")),
-		MaxIdleConns:       v.GetInt("db_max_idle_conns"),
-		MaxLifetime:        v.GetDuration("db_max_lifetime"),
 		PgxMinConns:        clampInt32(v.GetInt("db_pgx_min_conns")),
 		PgxMaxConnLifetime: v.GetDuration("db_pgx_max_conn_lifetime"),
 		PgxMaxConnIdleTime: v.GetDuration("db_pgx_max_conn_idle_time"),
@@ -610,7 +599,6 @@ func Load() (*Config, error) {
 		Driver:            v.GetString("storage_driver"),
 		BasePath:          v.GetString("storage_base_path"),
 		DocumentPath:      v.GetString("storage_document_path"),
-		TempPath:          v.GetString("storage_temp_path"),
 		MaxUploadSize:     v.GetInt64("storage_max_upload_size"),
 		MaxExtractedText:  v.GetInt64("storage_max_extracted_text"),
 		MaxZIPFiles:       v.GetInt("storage_max_zip_files"),
@@ -780,9 +768,6 @@ func (c *Config) Validate() error { //nolint:gocyclo // validation is inherently
 	}
 	if c.Server.TLSEnabled && c.Server.TLSPort == c.Server.Port {
 		errs = append(errs, "TLS_PORT and SERVER_PORT must be different when TLS is enabled")
-	}
-	if c.Database.MaxOpenConns > 0 && c.Database.MaxIdleConns > int(c.Database.MaxOpenConns) {
-		errs = append(errs, "DB_MAX_IDLE_CONNS must not exceed DB_MAX_OPEN_CONNS")
 	}
 	if c.Database.PgxMinConns > 0 && c.Database.PgxMinConns > c.Database.MaxOpenConns {
 		errs = append(errs, "DB_PGX_MIN_CONNS must not exceed DB_MAX_OPEN_CONNS")

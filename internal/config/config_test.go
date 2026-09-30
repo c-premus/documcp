@@ -80,13 +80,13 @@ func setEnv(t *testing.T, key, value string) {
 func TestLoad_Defaults(t *testing.T) {
 	// Ensure no env vars interfere with default tests.
 	for _, key := range []string{
-		"APP_NAME", "APP_ENV", "APP_DEBUG", "APP_URL", "APP_TIMEZONE",
+		"APP_NAME", "APP_ENV", "APP_DEBUG", "APP_URL",
 		"SERVER_HOST", "SERVER_PORT",
 		"DB_HOST", "DB_PORT", "DB_DATABASE", "DB_USERNAME", "DB_PASSWORD", "DB_SSLMODE",
-		"DB_MAX_OPEN_CONNS", "DB_MAX_IDLE_CONNS", "DB_MAX_LIFETIME",
+		"DB_MAX_OPEN_CONNS",
 		"OTEL_ENABLED", "OTEL_SERVICE_NAME", "OTEL_INSECURE",
 		"OAUTH_PKCE_REQUIRED",
-		"STORAGE_DRIVER", "STORAGE_BASE_PATH", "STORAGE_DOCUMENT_PATH", "STORAGE_TEMP_PATH",
+		"STORAGE_DRIVER", "STORAGE_BASE_PATH", "STORAGE_DOCUMENT_PATH",
 		"DOCUMCP_ENDPOINT", "DOCUMCP_NAME", "DOCUMCP_VERSION",
 	} {
 		setEnv(t, key, "")
@@ -108,7 +108,6 @@ func TestLoad_Defaults(t *testing.T) {
 		{"App.Env", cfg.App.Env, "development"},
 		{"App.Debug", cfg.App.Debug, false},
 		{"App.URL", cfg.App.URL, "http://localhost"},
-		{"App.Timezone", cfg.App.Timezone, "UTC"},
 
 		// Server
 		{"Server.Host", cfg.Server.Host, "0.0.0.0"},
@@ -122,8 +121,6 @@ func TestLoad_Defaults(t *testing.T) {
 		{"Database.Port", cfg.Database.Port, 5432},
 		{"Database.SSLMode", cfg.Database.SSLMode, "require"},
 		{"Database.MaxOpenConns", cfg.Database.MaxOpenConns, int32(25)},
-		{"Database.MaxIdleConns", cfg.Database.MaxIdleConns, 5},
-		{"Database.MaxLifetime", cfg.Database.MaxLifetime, 5 * time.Minute},
 
 		// OAuth
 		{"OAuth.AuthCodeLifetime", cfg.OAuth.AuthCodeLifetime, 10 * time.Minute},
@@ -136,7 +133,6 @@ func TestLoad_Defaults(t *testing.T) {
 		{"Storage.Driver", cfg.Storage.Driver, "local"},
 		{"Storage.BasePath", cfg.Storage.BasePath, "./storage"},
 		{"Storage.DocumentPath", cfg.Storage.DocumentPath, "documents"},
-		{"Storage.TempPath", cfg.Storage.TempPath, "tmp"},
 
 		// OTEL
 		{"OTEL.Enabled", cfg.OTEL.Enabled, false},
@@ -235,7 +231,6 @@ func validBaseConfig() Config {
 			Database:     "mydb",
 			Username:     "admin",
 			MaxOpenConns: 25,
-			MaxIdleConns: 10,
 		},
 		Git: GitConfig{
 			MaxFileSize:  10 * 1024 * 1024,
@@ -527,27 +522,6 @@ func TestConfig_Validate(t *testing.T) {
 			}(),
 			wantErr: true,
 			errMsg:  "SERVER_MAX_BODY_SIZE must be positive",
-		},
-		{
-			name: "idle conns exceeds open conns",
-			cfg: func() Config {
-				c := validBaseConfig()
-				c.Database.MaxOpenConns = 10
-				c.Database.MaxIdleConns = 20
-				return c
-			}(),
-			wantErr: true,
-			errMsg:  "DB_MAX_IDLE_CONNS must not exceed DB_MAX_OPEN_CONNS",
-		},
-		{
-			name: "idle conns equals open conns is valid",
-			cfg: func() Config {
-				c := validBaseConfig()
-				c.Database.MaxOpenConns = 10
-				c.Database.MaxIdleConns = 10
-				return c
-			}(),
-			wantErr: false,
 		},
 		{
 			name: "git max file size zero is invalid",
