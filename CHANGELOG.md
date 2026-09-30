@@ -11,10 +11,33 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.0] - 2026-09-30
+
+### Features
+
+- feat(oauth): let non-admin users grant mcp:write to MCP clients
+
+### Fixes
+
+- fix(server): log when rate limiting falls back to per-process counters
+- fix(config): strip trailing slashes from APP_URL
+- fix(oauth): reject unknown scopes at registration with invalid_client_metadata
+- fix(cli): honor the --config flag
+- fix(docs): make the README quick start boot as written
+- fix(compose): make the bundled docker compose stack boot
+- fix(config): parse OAUTH_ALLOWED_RESOURCES as comma-separated
+- fix(oauth): let non-admin users grant mcp:read to MCP clients
+
+### Maintenance
+
+- chore(config): remove config keys that have no effect
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to e0583d0 (#633)
+
 ## [0.31.64] - 2026-09-29
 
 ### Maintenance
 
+- chore(changelog): update for v0.31.64
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 5e9ea3e (#632)
 - chore(deps): update dependency @types/node to v24.19.0 (#631)
 
@@ -2510,6 +2533,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.0]: https://github.com/c-premus/documcp/compare/v0.31.64...v0.32.0
 [0.31.64]: https://github.com/c-premus/documcp/compare/v0.31.63...v0.31.64
 [0.31.63]: https://github.com/c-premus/documcp/compare/v0.31.62...v0.31.63
 [0.31.62]: https://github.com/c-premus/documcp/compare/v0.31.61...v0.31.62
