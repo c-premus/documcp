@@ -71,7 +71,7 @@ type Tuning struct {
 	MaxBodySize      int64         // max request body size (excludes multipart)
 	RequestTimeout   time.Duration // context timeout for non-streaming requests
 	HSTSMaxAge       int           // HSTS max-age in seconds (0 to disable)
-	InternalAPIToken string        // protects /metrics + /health/ready (empty = unrestricted)
+	InternalAPIToken string        // protects /metrics (empty = unrestricted); /health/ready stays open for the health subcommand
 }
 
 // Deps holds handler dependencies injected from the app layer. The big
