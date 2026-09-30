@@ -189,10 +189,15 @@ func ValidateAll(scopes string) []string {
 }
 
 // DefaultScopes returns the default read-only scope set for new client
-// registrations.
+// registrations. It is also the non-admin consent ceiling (see
+// ThirdPartyGrantable), so it must carry MCPRead alongside MCPAccess:
+// MCPAccess only admits a request to /documcp, and every tool additionally
+// checks MCPRead or MCPWrite. Without MCPRead a non-admin user could connect
+// an MCP client but never call a tool.
 func DefaultScopes() string {
 	return strings.Join([]string{
 		MCPAccess,
+		MCPRead,
 		DocumentsRead,
 		SearchRead,
 		ZIMRead,

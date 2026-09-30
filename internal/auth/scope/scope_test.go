@@ -253,6 +253,15 @@ func TestThirdPartyGrantable(t *testing.T) {
 		assert.Equal(t, DefaultScopes(), ThirdPartyGrantable(false))
 	})
 
+	t.Run("non-admin can grant read-only MCP tool access", func(t *testing.T) {
+		t.Parallel()
+		got := ParseScopes(ThirdPartyGrantable(false))
+		assert.Contains(t, got, MCPAccess)
+		assert.Contains(t, got, MCPRead,
+			"without mcp:read a non-admin's MCP token fails every tool call")
+		assert.NotContains(t, got, MCPWrite)
+	})
+
 	t.Run("scopes are sorted", func(t *testing.T) {
 		t.Parallel()
 		got := ParseScopes(ThirdPartyGrantable(true))
@@ -268,7 +277,7 @@ func TestDefaultScopes(t *testing.T) {
 
 	got := DefaultScopes()
 	assert.Equal(t,
-		"mcp:access documents:read search:read zim:read templates:read services:read",
+		"mcp:access mcp:read documents:read search:read zim:read templates:read services:read",
 		got,
 	)
 
