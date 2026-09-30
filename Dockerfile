@@ -47,8 +47,12 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -ldflags "-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}" \
     -o /bin/documcp ./cmd/documcp
 
+# Empty storage directory for the runtime image (distroless has no shell to
+# create one). See the COPY --chown in the final stage.
+RUN mkdir -p /out/data/storage
+
 # Stage 3: Distroless static runtime — no shell, no package manager, no CVEs.
-# gcr.io/distroless/static:nonroot includes CA certificates and runs as UID 65534.
+# gcr.io/distroless/static:nonroot includes CA certificates and runs as UID 65532.
 FROM gcr.io/distroless/static:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
 
 # Reset working directory — distroless:nonroot defaults to /home/nonroot,
@@ -60,6 +64,13 @@ COPY --from=builder /bin/documcp /documcp
 
 # Copy database migrations for goose.
 COPY --from=builder /src/migrations/ /migrations/
+
+# Default STORAGE_BASE_PATH, owned by the nonroot user. Docker seeds a new named
+# volume from the image directory it is mounted over, ownership included, so a
+# volume at /data/storage (docker-compose.yml) starts out writable. Without this
+# the volume is root-owned and startup fails creating the documents directory.
+# Host bind mounts are unaffected: they keep the host directory's ownership.
+COPY --from=builder --chown=65532:65532 /out/data/ /data/
 
 # Dozzle app icon (https://dozzle.dev/guide/app-icons). Dozzle matches the last path
 # segment of the image name against a bundled dashboard-icons subset; "documcp-go" will

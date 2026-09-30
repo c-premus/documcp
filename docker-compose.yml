@@ -16,6 +16,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Pass every variable from .env through to the app, so anything documented in
+    # .env.example / docs/CONFIGURATION.md (OIDC_ADMIN_GROUPS, OAUTH_*, KIWIX_*, ...)
+    # takes effect. Without this, compose only reads .env to fill in the ${...}
+    # references below and silently drops everything else. Entries under
+    # `environment:` still win over env_file.
+    env_file:
+      - path: .env
+        required: false
     environment:
       # App
       APP_NAME: DocuMCP
@@ -40,9 +48,10 @@ services:
       DB_USERNAME: ${DB_USERNAME:?DB_USERNAME is required}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       # SSL mode for PostgreSQL connections. Options: disable, allow, prefer, require, verify-ca, verify-full
-      # For managed databases (AWS RDS, GCP Cloud SQL, etc.), use "require" or stricter.
-      # Only use "disable" for local/dev databases without TLS.
-      DB_SSLMODE: ${DB_SSLMODE:-require}
+      # The bundled postgres service below has no TLS configured and is reachable only
+      # on the internal compose network, so the default is "disable". When pointing
+      # DB_HOST at a managed or remote database, set DB_SSLMODE=require or stricter.
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
       # OIDC
       OIDC_PROVIDER_URL: ${OIDC_PROVIDER_URL:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
@@ -57,6 +66,9 @@ services:
       # Redis
       REDIS_ADDR: redis:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # Scheduler: periodic sync, cleanup and health-check jobs. On by default for
+      # this single-replica stack; see README "Running multiple replicas".
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
       # Storage
       STORAGE_DRIVER: local
       STORAGE_BASE_PATH: /data/storage
@@ -96,7 +108,10 @@ services:
       POSTGRES_USER: ${DB_USERNAME:?DB_USERNAME is required}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # PostgreSQL 18+ images keep data in a version-named subdirectory
+      # (/var/lib/postgresql/18/docker) and refuse to start with a volume at the
+      # old /var/lib/postgresql/data path. Mount the parent directory.
+      - postgres_data:/var/lib/postgresql
     networks:
       - documcp
     healthcheck:
@@ -113,6 +128,16 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # The official entrypoint starts as root, fixes ownership of the data and
+    # socket directories, then drops to the postgres user. Those steps need
+    # these capabilities; without them the container restart-loops on
+    # "chown: Operation not permitted".
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     restart: unless-stopped
 
   redis:
