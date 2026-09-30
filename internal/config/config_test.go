@@ -1134,7 +1134,15 @@ func TestLoad_AllowedResourcesCanonicalization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	want := []string{"https://host/", "https://host/documcp"}
+	if cfg.App.URL != "https://host" {
+		t.Errorf("App.URL = %q, want trailing slash stripped", cfg.App.URL)
+	}
+	// The MCP audience the middleware checks (App.URL + endpoint) must equal
+	// the canonical allowlist entry a token gets bound to.
+	if got := cfg.App.URL + cfg.DocuMCP.Endpoint; got != "https://host/documcp" {
+		t.Errorf("MCP audience = %q, want %q", got, "https://host/documcp")
+	}
+	want := []string{"https://host", "https://host/documcp"}
 	if len(cfg.OAuth.AllowedResources) != 2 {
 		t.Fatalf("expected 2 allowlist entries, got %#v", cfg.OAuth.AllowedResources)
 	}

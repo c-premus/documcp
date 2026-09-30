@@ -23,7 +23,7 @@ Keys in the file are the lowercase variable names (for example, `db_host: postgr
 | `APP_NAME` | No | `DocuMCP` | Display name used in logs and the admin UI |
 | `APP_ENV` | No | `development` | Environment: `development`, `staging`, `production`, `testing` |
 | `APP_DEBUG` | No | `false` | Enables verbose debug logging |
-| `APP_URL` | No | `http://localhost` | Public application URL (also seeds the OAuth resource indicator allowlist) |
+| `APP_URL` | No | `http://localhost` | Public application URL (also seeds the OAuth resource indicator allowlist). A trailing slash is stripped |
 | `INTERNAL_API_TOKEN` | Prod | -- | Bearer token guarding `/metrics` (on `SERVER_PORT` in `serve` mode, and on `WORKER_HEALTH_PORT` in `worker` mode). When unset, `/metrics` is unauthenticated and a `WARN` is logged. `/health/ready` is always unauthenticated so the `documcp health` subcommand and container healthchecks can call it. Generate `openssl rand -hex 32` |
 | `ENCRYPTION_KEY` | Prod | -- | 64-char hex (32 bytes) for AES-256-GCM encryption of stored Git tokens. Generate `openssl rand -hex 32` |
 | `ENCRYPTION_KEY_PREVIOUS` | No | -- | Optional retired key retained for decrypt-only during rotation. Same 64-char hex format. Requires `ENCRYPTION_KEY`. See [Encryption key rotation](#encryption-key-rotation-encryption_key) below. |

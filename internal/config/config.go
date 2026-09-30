@@ -508,10 +508,15 @@ func LoadFile(path string) (*Config, error) {
 
 	// Populate each section by binding env vars and unmarshalling.
 	cfg.App = AppConfig{
-		Name:                  v.GetString("app_name"),
-		Env:                   v.GetString("app_env"),
-		Debug:                 v.GetBool("app_debug"),
-		URL:                   v.GetString("app_url"),
+		Name:  v.GetString("app_name"),
+		Env:   v.GetString("app_env"),
+		Debug: v.GetBool("app_debug"),
+		// Trailing slashes are stripped so every URL derived by concatenation
+		// (issuer, RFC 8707 audiences, protected-resource metadata) is
+		// canonical. Without this, APP_URL=https://host/ made the /documcp
+		// audience "https://host//documcp", which never matched the
+		// canonicalized resource a token is bound to.
+		URL:                   strings.TrimRight(v.GetString("app_url"), "/"),
 		InternalAPIToken:      v.GetString("internal_api_token"),
 		EncryptionKey:         v.GetString("encryption_key"),
 		EncryptionKeyPrevious: v.GetString("encryption_key_previous"),
