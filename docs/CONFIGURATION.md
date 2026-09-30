@@ -1,10 +1,20 @@
 # Configuration
 
-DocuMCP is configured entirely through environment variables. `.env.example` is the authoritative list; this document groups those variables by concern and explains how each one is used.
+DocuMCP is configured through environment variables, optionally backed by a YAML file (see [Config file](#config-file)). `.env.example` lists the variables; this document groups them by concern and explains how each one is used.
 
-"Required" in the tables below means startup fails when the variable is unset. "Prod" means the variable is required only when `APP_ENV=production`. Defaults shown are what the application applies when the variable is unset.
+"Required" in the tables below means startup fails when the variable is unset. "Prod" means the variable is required only when `APP_ENV=production`. Defaults shown are what the application applies when the variable is unset. Cross-field checks are listed under [Validation rules](#validation-rules).
 
 For the minimum set needed to boot a deployment, see [Required for startup](../README.md#configuration) in the README. Everything else lives below.
+
+## Config file
+
+On startup, DocuMCP reads an optional YAML file in addition to environment variables:
+
+- If the `--config <path>` flag is given, that file is loaded. Startup fails if it cannot be read.
+- Otherwise, if `DOCUMCP_CONFIG_PATH` is set, that file is loaded, with the same rule.
+- Otherwise, `./config.yaml` in the working directory is loaded if it exists. A missing file is not an error.
+
+Keys in the file are the lowercase variable names (for example, `db_host: postgres.example.com`). Environment variables take precedence over values in the file.
 
 ## Application
 
@@ -14,10 +24,9 @@ For the minimum set needed to boot a deployment, see [Required for startup](../R
 | `APP_ENV` | No | `development` | Environment: `development`, `staging`, `production`, `testing` |
 | `APP_DEBUG` | No | `false` | Enables verbose debug logging |
 | `APP_URL` | No | `http://localhost` | Public application URL (also seeds the OAuth resource indicator allowlist) |
-| `APP_TIMEZONE` | No | `UTC` | Server timezone |
-| `INTERNAL_API_TOKEN` | Prod | -- | Bearer token guarding `/metrics` and `/health/ready`. Generate `openssl rand -hex 32` |
+| `INTERNAL_API_TOKEN` | Prod | -- | Bearer token guarding `/metrics` (on `SERVER_PORT` in `serve` mode, and on `WORKER_HEALTH_PORT` in `worker` mode). When unset, `/metrics` is unauthenticated and a `WARN` is logged. `/health/ready` is always unauthenticated so the `documcp health` subcommand and container healthchecks can call it. Generate `openssl rand -hex 32` |
 | `ENCRYPTION_KEY` | Prod | -- | 64-char hex (32 bytes) for AES-256-GCM encryption of stored Git tokens. Generate `openssl rand -hex 32` |
-| `ENCRYPTION_KEY_PREVIOUS` | No | -- | Optional retired key retained for decrypt-only during rotation. Same 64-char hex format. See [Encryption key rotation](#encryption-key-rotation) below. |
+| `ENCRYPTION_KEY_PREVIOUS` | No | -- | Optional retired key retained for decrypt-only during rotation. Same 64-char hex format. Requires `ENCRYPTION_KEY`. See [Encryption key rotation](#encryption-key-rotation-encryption_key) below. |
 
 ## Server
 
@@ -49,16 +58,14 @@ For the minimum set needed to boot a deployment, see [Required for startup](../R
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DB_HOST` | Yes | `127.0.0.1` | PostgreSQL host |
+| `DB_HOST` | No | `127.0.0.1` | PostgreSQL host (startup fails if set to an empty string) |
 | `DB_PORT` | No | `5432` | PostgreSQL port |
-| `DB_DATABASE` | Yes | `documcp` | Database name |
-| `DB_USERNAME` | Yes | `documcp` | Database user |
+| `DB_DATABASE` | Yes | -- | Database name |
+| `DB_USERNAME` | Yes | -- | Database user |
 | `DB_PASSWORD` | Prod | -- | Database password |
-| `DB_SSLMODE` | No | `require` | SSL mode: `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full` |
+| `DB_SSLMODE` | No | `require` | SSL mode: `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`. The bundled `docker-compose.yml` defaults this to `disable` for its local postgres service |
 | `DB_MAX_OPEN_CONNS` | No | `25` | Max pool size (raise to 40–50 for combined `serve --with-worker` mode) |
-| `DB_MAX_IDLE_CONNS` | No | `5` | Max idle connections in the pool |
-| `DB_MAX_LIFETIME` | No | `5m` | Max lifetime per connection |
-| `DB_PGX_MIN_CONNS` | No | `5` | Minimum idle connections kept warm |
+| `DB_PGX_MIN_CONNS` | No | `5` | Minimum idle connections kept warm (must not exceed `DB_MAX_OPEN_CONNS`) |
 | `DB_PGX_MAX_CONN_LIFETIME` | No | `30m` | pgx-level max connection lifetime |
 | `DB_PGX_MAX_CONN_IDLE_TIME` | No | `5m` | pgx-level max idle time before close |
 
@@ -76,7 +83,7 @@ existing cookies — users re-authenticate through OIDC once.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `REDIS_ADDR` | Yes | `localhost:6379` | Redis address (`host:port`) |
+| `REDIS_ADDR` | Yes | -- | Redis address (`host:port`) |
 | `REDIS_USERNAME` | No | -- | Redis 6+ ACL username (empty = default user) |
 | `REDIS_PASSWORD` | No | -- | Redis password |
 | `REDIS_DB` | No | `0` | Redis database number |
@@ -93,7 +100,7 @@ existing cookies — users re-authenticate through OIDC once.
 
 ## OIDC Authentication
 
-DocuMCP requires an OpenID Connect provider for user login. Set `OIDC_PROVIDER_URL` + `OIDC_CLIENT_ID` to enable auto-discovery; at least one of `OIDC_ADMIN_GROUPS` or `OIDC_BOOTSTRAP_ADMIN_EMAIL` must also be set so an admin can ever exist.
+DocuMCP requires an OpenID Connect provider for user login. Set `OIDC_PROVIDER_URL` + `OIDC_CLIENT_ID` to enable auto-discovery. When both are set, at least one of `OIDC_ADMIN_GROUPS` or `OIDC_BOOTSTRAP_ADMIN_EMAIL` must also be set so an admin can ever exist; startup fails otherwise.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -114,8 +121,8 @@ DocuMCP requires an OpenID Connect provider for user login. Set `OIDC_PROVIDER_U
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `OAUTH_SESSION_SECRET` | Prod | -- | Session secret (min 32 bytes); derives CSRF and token HMAC keys via HKDF. Generate `openssl rand -base64 32` |
-| `OAUTH_SESSION_SECRET_PREVIOUS` | No | -- | Previous session secret for key rotation. When set, token hashes stored under the previous key still verify alongside the current key — see rotation runbook below. |
+| `OAUTH_SESSION_SECRET` | Prod | -- | Session secret (min 32 characters in production); derives the session cookie and token HMAC keys via HKDF. Outside production, an unset value makes the server generate a random secret at startup and log a `WARN` — sessions and issued OAuth tokens then stop working after a restart. Generate `openssl rand -base64 32` |
+| `OAUTH_SESSION_SECRET_PREVIOUS` | No | -- | Previous session secret for key rotation. When set, token hashes stored under the previous key still verify alongside the current key — see [Rotating the OAuth HMAC key](#rotating-the-oauth-hmac-key-oauth_session_secret) below. |
 | `OAUTH_SESSION_MAX_AGE` | No | `720h` | Sliding session lifetime (30 days) |
 | `OAUTH_SESSION_ABSOLUTE_MAX_AGE` | No | `168h` | Absolute session lifetime anchored at login (7 days). Stale sessions are forced back through OIDC regardless of activity. `0` disables. |
 | `HKDF_SALT` | Yes | -- | Per-deployment salt for HKDF key derivation. Required (min 16 chars) in every environment. Generate `openssl rand -base64 24` |
@@ -131,14 +138,14 @@ DocuMCP requires an OpenID Connect provider for user login. Set `OIDC_PROVIDER_U
 | `OAUTH_DEVICE_FAILURE_LIMIT` | No | `5` | Max failed `user_code` submissions per user within the window before the device-flow verification page is blocked. `0` disables. |
 | `OAUTH_DEVICE_FAILURE_WINDOW` | No | `1h` | Window over which failures are counted. Counter is keyed on `user_id` in Redis so it survives session-cookie resets. `0` disables. |
 | `OAUTH_ALLOWED_RESOURCES` | No | _derived_ | RFC 8707 resource indicator allowlist (comma-separated absolute URIs). Defaults to `[APP_URL, APP_URL+DOCUMCP_ENDPOINT]` |
-| `OAUTH_ACCEPT_EMPTY_RESOURCE` | No | `false` | Compatibility shim for non-RFC-8707 MCP clients (e.g. Open WebUI). When `true`, the audience-checking middleware accepts access tokens whose `resource` claim is empty / NULL; tokens with a non-empty mismatched resource still reject. Logs a `WARN` on every accepted empty-resource request. See [Accepting non-RFC-8707 clients](#accepting-non-rfc-8707-clients) below. |
+| `OAUTH_ACCEPT_EMPTY_RESOURCE` | No | `false` | Compatibility shim for non-RFC-8707 MCP clients (e.g. Open WebUI). When `true`, the audience-checking middleware accepts access tokens whose `resource` claim is empty / NULL; tokens with a non-empty mismatched resource still reject. Logs a `WARN` on every accepted empty-resource request. See [Accepting non-RFC-8707 clients](#accepting-non-rfc-8707-clients-oauth_accept_empty_resource) below. |
 
 ### Accepting non-RFC-8707 clients (`OAUTH_ACCEPT_EMPTY_RESOURCE`)
 
 DocuMCP enforces RFC 8707 audience binding strictly: every authenticated MCP
 or REST request requires the access token's `resource` claim to match the
 expected resource (`APP_URL+DOCUMCP_ENDPOINT` for `/documcp`, `APP_URL` for
-`/api`). The 2026-03-15 MCP Authorization spec mandates this.
+`/api`). The MCP authorization spec requires this.
 
 Some MCP clients in the wild don't yet send the `resource` parameter on
 `/oauth/authorize` or `/oauth/token`, most notably **Open WebUI**
@@ -176,12 +183,15 @@ To rotate without interruption:
 3. Fresh tokens are hashed under the new primary key with its version prefix.
    Tokens hashed before rotation continue to verify against the retired key.
 4. After the longest token lifetime elapses (the larger of
-   `OAUTH_ACCESS_TOKEN_LIFETIME` + `OAUTH_REFRESH_TOKEN_LIFETIME`, default 30d),
+   `OAUTH_ACCESS_TOKEN_LIFETIME` and `OAUTH_REFRESH_TOKEN_LIFETIME`, default 30d),
    remove `OAUTH_SESSION_SECRET_PREVIOUS` and redeploy.
 
-Every environment must configure a non-empty `OAUTH_SESSION_SECRET`. The
-prior silent SHA-256 fallback for a missing key was removed — `serve` now
-fails to boot without a derivable HMAC key (security L4).
+`OAUTH_SESSION_SECRET` is required when `APP_ENV=production`; startup fails
+without it. In other environments an unset secret is replaced by a random
+per-process value (with a `WARN` log). That value keys both the session store
+and the token HMAC, so every restart invalidates existing sessions and
+issued OAuth tokens, and multiple replicas do not share keys. Set the secret
+explicitly in any environment where that matters.
 
 ### Encryption key rotation (`ENCRYPTION_KEY`)
 
@@ -217,20 +227,19 @@ upgrade those rows too. Distinct `ENCRYPTION_KEY` and
 | `STORAGE_DRIVER` | No | `local` | Blob backend: `local` / `fs` (node-local), `s3` (any S3-compatible service) |
 | `STORAGE_BASE_PATH` | No | `./storage` | Filesystem root — always required (workers stage git clones and extraction scratch here, even with `s3`) |
 | `STORAGE_DOCUMENT_PATH` | No | `documents` | Subdirectory under `STORAGE_BASE_PATH` for the FSBlob document tree |
-| `STORAGE_TEMP_PATH` | No | `tmp` | Subdirectory for transient worker scratch |
 | `STORAGE_MAX_UPLOAD_SIZE` | No | `52428800` | Max upload file size in bytes (50 MiB) |
 | `STORAGE_MAX_EXTRACTED_TEXT` | No | `52428800` | Max decompressed text per file in bytes (50 MiB) |
 | `STORAGE_MAX_ZIP_FILES` | No | `100` | Max files in a DOCX/EPUB ZIP archive |
 | `STORAGE_MAX_SHEETS` | No | `100` | Max sheets in an XLSX file |
 | `STORAGE_S3_ENDPOINT` | No† | -- | S3 endpoint URL (empty = AWS default; required for R2, B2, Garage, SeaweedFS, etc.) |
 | `STORAGE_S3_BUCKET` | No† | -- | Target bucket name |
-| `STORAGE_S3_REGION` | No† | `us-east-1` | AWS region string (`us-east-1` is a safe placeholder for Garage/SeaweedFS) |
+| `STORAGE_S3_REGION` | No† | -- | AWS region string (use `us-east-1` as a placeholder for Garage/SeaweedFS) |
 | `STORAGE_S3_ACCESS_KEY_ID` | No† | -- | Static access key |
 | `STORAGE_S3_SECRET_ACCESS_KEY` | No† | -- | Static secret key |
 | `STORAGE_S3_USE_PATH_STYLE` | No | `true` | Force path-style addressing; required for most self-hosted backends |
-| `STORAGE_S3_FORCE_SSL` | No | `true` | Reject plaintext S3 endpoints at startup |
+| `STORAGE_S3_FORCE_SSL` | No | `true` | Reject plaintext S3 endpoints at startup (a non-empty `STORAGE_S3_ENDPOINT` must start with `https://`) |
 
-† Required when `STORAGE_DRIVER=s3`. The `s3` driver speaks the S3 API and works against AWS S3, Cloudflare R2, Backblaze B2, Wasabi, Garage, SeaweedFS, and any other S3-compatible service. Keys use the same `{file_type}/{uuid}.{ext}` layout as the filesystem driver, so switching backends requires no database migration.
+† `STORAGE_S3_BUCKET`, `STORAGE_S3_REGION`, `STORAGE_S3_ACCESS_KEY_ID`, and `STORAGE_S3_SECRET_ACCESS_KEY` are required when `STORAGE_DRIVER=s3`; `STORAGE_S3_ENDPOINT` is optional for AWS S3. The `s3` driver speaks the S3 API and works against AWS S3, Cloudflare R2, Backblaze B2, Wasabi, Garage, SeaweedFS, and any other S3-compatible service. Keys use the same `{file_type}/{uuid}.{ext}` layout as the filesystem driver, so switching backends requires no database migration.
 
 ## External Services: Kiwix
 
@@ -263,7 +272,7 @@ upgrade those rows too. Distinct `ENCRYPTION_KEY` and
 | `QUEUE_HIGH_WORKERS` | No | `10` | River high-priority queue concurrency |
 | `QUEUE_DEFAULT_WORKERS` | No | `5` | River default queue concurrency |
 | `QUEUE_LOW_WORKERS` | No | `2` | River low-priority queue concurrency |
-| `WORKER_HEALTH_PORT` | No | `9090` | Health endpoint port for worker-only mode |
+| `WORKER_HEALTH_PORT` | No | `9090` | Port for the health (`/health`, `/healthz`, `/health/ready`, `/readyz`) and `/metrics` endpoints in worker-only mode |
 
 ## Lifecycle
 
@@ -287,12 +296,15 @@ See [docs/OBSERVABILITY.md](OBSERVABILITY.md) for architecture and [docs/PROMETH
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `OTEL_ENABLED` | No | `false` | Enable OpenTelemetry tracing |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | -- | OTLP HTTP exporter endpoint (e.g., `tempo:4318`) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | -- | OTLP HTTP exporter endpoint. Accepts `host:port` (e.g., `otel.example.com:4318`) or a full URL (e.g., `https://otel.example.com:4318`). Required when `OTEL_ENABLED=true` |
 | `OTEL_SERVICE_NAME` | No | `documcp` | Service name in traces |
-| `OTEL_INSECURE` | No | `false` | Use HTTP instead of HTTPS for the OTLP exporter |
-| `OTEL_SAMPLE_RATE` | No | `1.0` | Trace sampling rate (0.0–1.0); ignores upstream sampling decisions |
-| `OTEL_ENVIRONMENT` | No | -- | `deployment.environment` resource attribute |
+| `OTEL_INSECURE` | No | `false` | Use HTTP instead of HTTPS for the OTLP exporter. An `http://` endpoint URL also uses plain HTTP |
+| `OTEL_SAMPLE_RATE` | No | `1.0` | Trace sampling rate. Startup fails for values below `0.0` or above `1.0`. Values strictly between `0` and `1` sample that fraction of traces. Both `0` and `1` record every trace (AlwaysSample) — `0` does not disable tracing; use `OTEL_ENABLED=false` for that. Upstream sampling decisions are always ignored |
+| `OTEL_ENVIRONMENT` | No | -- | `deployment.environment` resource attribute (omitted when empty) |
+| `OTEL_SERVICE_VERSION` | No | -- | `service.version` resource attribute. When empty, release builds use the build version from ldflags; `dev` builds omit it |
 | `SENTRY_DSN` | No | -- | Sentry/GlitchTip DSN for error tracking (empty = disabled) |
+| `SENTRY_ENVIRONMENT` | No | -- | Sentry environment tag. When empty, falls back to `APP_ENV` |
+| `SENTRY_RELEASE` | No | -- | Sentry release tag. When empty, falls back to the server version (the build version, or `DOCUMCP_VERSION` in `dev` builds) |
 | `SENTRY_SAMPLE_RATE` | No | `1.0` | Error sample rate (0.0–1.0) |
 | `VITE_SENTRY_DSN` | No | -- | Frontend Sentry DSN — read by Vite at `npm run build` time only |
 
@@ -300,14 +312,42 @@ See [docs/OBSERVABILITY.md](OBSERVABILITY.md) for architecture and [docs/PROMETH
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `SCHEDULER_ENABLED` | No | `false` | Master switch for periodic jobs |
+| `SCHEDULER_ENABLED` | No | `false` | Master switch for periodic jobs. The bundled `docker-compose.yml` sets this to `true` unless you override it |
 | `SCHEDULER_KIWIX_SCHEDULE` | No | `0 */6 * * *` | Kiwix archive metadata refresh |
 | `SCHEDULER_GIT_SCHEDULE` | No | `0 * * * *` | Git template repository sync |
 | `SCHEDULER_OAUTH_CLEANUP_SCHEDULE` | No | `0 * * * *` | Expired OAuth token / scope-grant cleanup |
 | `SCHEDULER_ORPHANED_FILES_SCHEDULE` | No | `0 2 * * *` | Orphan blob cleanup (no DB row) |
-| `SCHEDULER_SEARCH_VERIFY_SCHEDULE` | No | `0 3 * * *` | Search-index integrity verification |
 | `SCHEDULER_SOFT_DELETE_PURGE_SCHEDULE` | No | `0 4 * * *` | Permanent deletion of soft-deleted documents |
-| `SCHEDULER_ZIM_CLEANUP_SCHEDULE` | No | `0 5 * * *` | Stale ZIM archive cache cleanup |
 | `SCHEDULER_HEALTH_CHECK_SCHEDULE` | No | `*/15 * * * *` | External service health probing |
 | `SCHEDULER_SEARCH_QUERY_CLEANUP_SCHEDULE` | No | `0 3 * * *` | Retention-based cleanup of `search_queries` rows |
 | `SEARCH_QUERY_RETENTION` | No | `2160h` (90 days) | Age after which `search_queries` rows are deleted (Go duration; `0` disables) |
+
+## Validation rules
+
+Startup runs these checks after loading configuration and reports every failure in one error.
+
+### Always
+
+- `REDIS_ADDR`, `DB_DATABASE`, and `DB_USERNAME` must be set, and `DB_HOST` must not be empty.
+- `HKDF_SALT` must be set and at least 16 characters, in every environment.
+- `APP_ENV` must be one of `development`, `staging`, `production`, `testing`.
+- `ENCRYPTION_KEY`, when set, must be 64 hex characters (32 bytes). Generate with `openssl rand -hex 32`.
+- `ENCRYPTION_KEY_PREVIOUS`, when set, must use the same format and requires `ENCRYPTION_KEY`.
+- `TLS_CERT_FILE` and `TLS_KEY_FILE` must be set together or both left empty.
+- When `TLS_ENABLED=true`, `TLS_PORT` must be 1–65535 and differ from `SERVER_PORT`.
+- `SERVER_PORT` must be 1–65535, and `SERVER_MAX_BODY_SIZE` must be positive.
+- `DB_PGX_MIN_CONNS` must not exceed `DB_MAX_OPEN_CONNS`.
+- `QUEUE_HIGH_WORKERS` + `QUEUE_DEFAULT_WORKERS` + `QUEUE_LOW_WORKERS` must not exceed 2 × `DB_MAX_OPEN_CONNS`.
+- `REDIS_POOL_SIZE` must not be negative.
+- `GIT_MAX_FILE_SIZE` and `GIT_MAX_TOTAL_SIZE` must be positive.
+- `STORAGE_DRIVER` must be `local`, `fs`, or `s3`. With `s3`, see the [Storage](#storage) footnote for required variables; when `STORAGE_S3_FORCE_SSL=true`, a non-empty `STORAGE_S3_ENDPOINT` must start with `https://`.
+- When `OTEL_ENABLED=true`, `OTEL_EXPORTER_OTLP_ENDPOINT` must be set (`host:port` or full URL).
+- `OTEL_SAMPLE_RATE` must be between `0.0` and `1.0`.
+- When both `OIDC_PROVIDER_URL` and `OIDC_CLIENT_ID` are set, at least one of `OIDC_ADMIN_GROUPS` or `OIDC_BOOTSTRAP_ADMIN_EMAIL` must be set.
+
+### Only when `APP_ENV=production`
+
+- `OAUTH_SESSION_SECRET` must be set and at least 32 characters.
+- `DB_PASSWORD`, `ENCRYPTION_KEY`, and `INTERNAL_API_TOKEN` must be set.
+- `APP_URL` must start with `https://` and must not be the default `http://localhost`.
+- `APP_DEBUG` must be `false`.
