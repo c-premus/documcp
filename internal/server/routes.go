@@ -573,12 +573,11 @@ func rateLimitByIP(count int, window time.Duration, rc *redis.Client) func(http.
 		// err.Error() straight to the client under 428 Precondition Required.
 		// That leaks limiter-backend detail (Redis addresses, dial errors) to
 		// unauthenticated callers under a status that misdescribes the failure.
-		// Note that with the Redis counter below, Redis errors do not reach
-		// this handler: httprate-redis (FallbackDisabled unset) switches to a
-		// per-process in-memory counter until Redis answers a ping again. This
-		// handler covers the in-memory counter (rc == nil) and any other
-		// counter error; 503 is the honest code, and the real error goes to
-		// the log, not the response.
+		// With the Redis counter below, Redis errors do not reach this
+		// handler: the counter falls back to per-process counting instead
+		// (see the Config comment). This handler covers any other counter
+		// error; 503 is the honest code, and the real error goes to the log,
+		// not the response.
 		httprate.WithErrorHandler(func(w http.ResponseWriter, _ *http.Request, err error) {
 			// Identify the limiter by its own configuration rather than by the
 			// request path: count/window pins down the call site just as well,
@@ -591,9 +590,31 @@ func rateLimitByIP(count int, window time.Duration, rc *redis.Client) func(http.
 		}),
 	}
 	if rc != nil {
+		// When Redis fails, the counter deliberately degrades to a
+		// per-process in-memory count (httprate-redis's default; it re-pings
+		// Redis every 200ms and switches back) rather than rejecting traffic.
+		// With one replica that is exactly as strict; with N replicas a client
+		// can get up to N times the limit until Redis returns. Rejecting
+		// instead would turn a Redis blip into a 503 on every rate-limited
+		// route, and the outage already surfaces through the readiness alert
+		// (documcp_ready pings Redis). The hooks make the degradation visible;
+		// both fire on the transition, not per request.
 		opts = append(opts, httprateredis.WithRedisLimitCounter(&httprateredis.Config{
 			Client:    rc,
 			PrefixKey: "documcp:rate",
+			OnError: func(err error) {
+				slog.Warn("rate limiter Redis error",
+					"error", err, "limit", count, "window", window)
+			},
+			OnFallbackChange: func(active bool) {
+				if active {
+					slog.Warn("rate limiter lost Redis; enforcing per-process limits",
+						"limit", count, "window", window)
+					return
+				}
+				slog.Info("rate limiter reconnected to Redis; limits shared across instances again",
+					"limit", count, "window", window)
+			},
 		}))
 	}
 	return httprate.LimitBy(count, window, keyByResolvedIP, opts...)

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -11,10 +12,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/go-chi/httprate"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/c-premus/documcp/internal/observability"
 )
@@ -1341,6 +1345,70 @@ func TestRateLimitByIPBackendErrorDoesNotLeakDetail(t *testing.T) {
 		t.Errorf("response leaks the backend error detail: %q", rr.Body.String())
 	}
 	decodeErrorEnvelope(t, rr)
+}
+
+// syncBuffer is a goroutine-safe bytes.Buffer for capturing slog output from
+// callbacks that may run off the test goroutine.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// TestRateLimitByIPRedisOutageDegradesAndLogs pins the chosen failure mode:
+// when Redis goes away the limiter keeps serving (per-process counting), and
+// says so in the log rather than degrading silently. Not parallel: it swaps
+// slog's default logger.
+func TestRateLimitByIPRedisOutageDegradesAndLogs(t *testing.T) {
+	logs := &syncBuffer{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	mr := miniredis.RunT(t)
+	rc := redis.NewClient(&redis.Options{
+		Addr:         mr.Addr(),
+		MaxRetries:   -1,
+		DialTimeout:  200 * time.Millisecond,
+		ReadTimeout:  200 * time.Millisecond,
+		WriteTimeout: 200 * time.Millisecond,
+	})
+	t.Cleanup(func() { _ = rc.Close() })
+
+	handler := rateLimitByIP(5, time.Minute, rc)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	serve := func() int {
+		req := httptest.NewRequest(http.MethodGet, "/api/documents", http.NoBody)
+		req.RemoteAddr = "192.0.2.61:1234"
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		return rr.Code
+	}
+
+	if code := serve(); code != http.StatusOK {
+		t.Fatalf("with Redis up: status = %d, want 200", code)
+	}
+
+	mr.Close()
+
+	if code := serve(); code != http.StatusOK {
+		t.Errorf("with Redis down: status = %d, want 200 (degrade, not reject)", code)
+	}
+	if got := logs.String(); !strings.Contains(got, "rate limiter lost Redis") {
+		t.Errorf("fallback was not logged; log output:\n%s", got)
+	}
 }
 
 // failingLimitCounter is a httprate.LimitCounter whose every operation fails,

@@ -269,7 +269,10 @@ example, when no instance is being scraped). Two rules:
 - **`DocuMCP — readiness failing`** (UID `documcp_readiness_failing`) —
   `documcp_ready == 0` for 2m. Check the serve-mode `/health/ready` JSON
   for the specific dependency (`postgres` or `redis`) and investigate
-  from there.
+  from there. During a Redis outage, rate limiting keeps working per
+  instance and logs `rate limiter lost Redis; enforcing per-process
+  limits`; sessions and live events do not (see
+  [Redis troubleshooting](REDIS.md#rate-limits-stop-being-shared-across-instances)).
 
 Notification routing (Matrix, email, PagerDuty, etc.) is configured in
 Grafana outside the repo — contact points + notification policies on the

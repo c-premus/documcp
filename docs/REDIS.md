@@ -131,9 +131,19 @@ See the [Why `+@transaction` Is Critical](#why-transaction-is-critical) section 
 
 ### Rate limits stop being shared across instances
 
-When a rate-limit call to Redis fails, httprate-redis switches that limiter to a per-instance in-memory counter and pings Redis every 200 ms until it answers, then switches back. While the fallback is active, each instance enforces the limit on its own, so a client spread across N instances can make up to N times the configured requests. Requests are not rejected because of the Redis error.
+When a rate-limit call to Redis fails, httprate-redis switches that limiter to a per-instance in-memory counter and pings Redis every 200 ms until it answers, then switches back. While the fallback is active, each instance enforces the limit on its own, so a client spread across N instances can make up to N times the configured requests. With a single instance the limits are unchanged. Requests are not rejected because of the Redis error.
 
-The rate limiter also installs an error handler that returns 503 with a JSON error envelope (`Rate limiting is temporarily unavailable. Please retry shortly.`) and logs `rate limiter backend error; rejecting request`. With the in-memory fallback enabled (the httprate-redis default, which DocuMCP does not change), a Redis error does not reach that handler.
+This is deliberate. Rejecting requests instead would turn a Redis blip into a 503 on every rate-limited route, and the outage is already reported by the `DocuMCP — readiness failing` alert, since `documcp_ready` pings Redis. Each limiter logs the switch in both directions, identified by its limit and window:
+
+```
+level=WARN msg="rate limiter Redis error" error="..." limit=300 window=1m0s
+level=WARN msg="rate limiter lost Redis; enforcing per-process limits" limit=300 window=1m0s
+level=INFO msg="rate limiter reconnected to Redis; limits shared across instances again" limit=300 window=1m0s
+```
+
+These fire once per limiter per transition, not per request. Expect one set per rate-limited route group.
+
+The rate limiter also installs an error handler that returns 503 with a JSON error envelope (`Rate limiting is temporarily unavailable. Please retry shortly.`) and logs `rate limiter backend error; rejecting request`. Because of the in-memory fallback, a Redis error does not reach that handler.
 
 The other Redis-backed features have no in-memory fallback: the session store, EventBus, and control bus depend on Redis being reachable, and `/health/ready` returns 503 while it is not. The device-flow failure limiter fails open: on a Redis error it logs a warning and allows the attempt.
 
