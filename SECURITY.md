@@ -30,11 +30,11 @@ You can expect an initial response within 72 hours. We will work with you to und
 
 DocuMCP implements the following security controls:
 
-- **OAuth 2.1** with mandatory PKCE (S256) for all public clients
+- **OAuth 2.1** with mandatory PKCE (S256) for every client, RFC 8707 audience-bound tokens, and refresh-token replay detection
 - **AES-256-GCM** encryption at rest for stored credentials
-- **HKDF** key derivation for CSRF tokens and HMAC signing
-- **SSRF prevention** for user-supplied URLs
+- **HKDF** key derivation for session and token HMAC keys
+- **SSRF prevention** for outbound URLs, re-checked at connection time
 - **Rate limiting** on authentication endpoints
 - **Content Security Policy**, HSTS, and security headers
-- **Non-root container** runtime with minimal Alpine base
+- **Non-root container** on `gcr.io/distroless/static:nonroot` (no shell or package manager)
 - **Supply chain**: all CI action refs SHA-pinned, Docker base images digest-pinned

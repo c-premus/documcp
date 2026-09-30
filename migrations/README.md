@@ -121,12 +121,20 @@ exits non-zero on:
 - `CREATE INDEX` (without CONCURRENTLY) on a table that is not also
   being created in the same migration.
 - `DROP INDEX` (without CONCURRENTLY) on existing indexes.
-- `CREATE INDEX CONCURRENTLY`, `DROP INDEX CONCURRENTLY`, or
-  `ALTER COLUMN … TYPE` in a file that lacks `-- +goose NO TRANSACTION`
-  at the top.
+- `CREATE INDEX CONCURRENTLY`, `DROP INDEX CONCURRENTLY`,
+  `REINDEX CONCURRENTLY`, or `ALTER COLUMN … TYPE` in a file that lacks
+  `-- +goose NO TRANSACTION` at the top.
+
+It does not check `ADD COLUMN … GENERATED … STORED`, and it accepts
+`ALTER COLUMN … TYPE` once the file is non-transactional, so both of
+those rules rely on review.
+
+A file whose header contains `-- lint-disable-file: <reason>` is skipped
+entirely. Seven historical migrations carry it (000009, 000013 through
+000017, 000019). Do not add it to new migrations.
 
 The script is wired into the Forgejo `lint` job and the GitHub Actions
-mirror.
+mirror. Run it locally with `bash scripts/check-migrations.sh`.
 
 ## Historical record
 

@@ -85,7 +85,7 @@ This matches Semver §4 ("v0.x.y is unstable; anything may change").
 
 ## Development setup
 
-See [`README.md`](./README.md) for environment requirements (Go 1.26+,
+See [`README.md`](./README.md) for environment requirements (Go 1.27.1,
 PostgreSQL, Redis, optional Kiwix Serve / OIDC provider). The
 `devcontainer.json` definition is private; if you contribute often, the
 maintainer can share it on request.
@@ -111,5 +111,6 @@ project's LICENSE.
 
 ## Reporting security issues
 
-Don't open a public issue. Email the maintainer directly (see commit
-metadata) and include reproduction steps.
+Don't open a public issue. Follow [`SECURITY.md`](./SECURITY.md): email
+the maintainer at the address on their GitHub profile and include
+reproduction steps.
