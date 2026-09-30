@@ -602,7 +602,7 @@ func Load() (*Config, error) {
 		ScopeGrantTTL:           v.GetDuration("oauth_scope_grant_ttl"),
 		DeviceFailureLimit:      v.GetInt("oauth_device_failure_limit"),
 		DeviceFailureWindow:     v.GetDuration("oauth_device_failure_window"),
-		AllowedResources:        v.GetStringSlice("oauth_allowed_resources"),
+		AllowedResources:        splitComma(v.GetString("oauth_allowed_resources")),
 		AcceptEmptyResource:     v.GetBool("oauth_accept_empty_resource"),
 	}
 

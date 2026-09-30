@@ -1140,6 +1140,44 @@ func TestLoad_AllowedResourcesCanonicalization(t *testing.T) {
 	}
 }
 
+// TestLoad_AllowedResourcesCommaSeparated guards the documented format.
+// viper's GetStringSlice splits an env string on whitespace, so a
+// comma-separated OAUTH_ALLOWED_RESOURCES used to load as one bogus entry.
+func TestLoad_AllowedResourcesCommaSeparated(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+	}{
+		{name: "no spaces", env: "https://a.example.com,https://b.example.com/documcp"},
+		{name: "spaces after commas", env: "https://a.example.com, https://b.example.com/documcp"},
+		{name: "trailing comma", env: "https://a.example.com,https://b.example.com/documcp,"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("OAUTH_ALLOWED_RESOURCES", tt.env)
+			t.Setenv("APP_URL", "https://host")
+			t.Setenv("REDIS_ADDR", "localhost:6379")
+			t.Setenv("DB_HOST", "localhost")
+			t.Setenv("DB_DATABASE", "documcp")
+			t.Setenv("DB_USERNAME", "documcp")
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			want := []string{"https://a.example.com", "https://b.example.com/documcp"}
+			if len(cfg.OAuth.AllowedResources) != len(want) {
+				t.Fatalf("AllowedResources = %#v, want %#v", cfg.OAuth.AllowedResources, want)
+			}
+			for i, got := range cfg.OAuth.AllowedResources {
+				if got != want[i] {
+					t.Errorf("AllowedResources[%d] = %q, want %q", i, got, want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestConfig_DatabaseDSN_PasswordWithSpecialChars(t *testing.T) {
 	cfg := Config{
 		Database: DatabaseConfig{
