@@ -6,28 +6,40 @@ This guide explains how to integrate with DocuMCP's OAuth 2.1 Authorization Serv
 
 DocuMCP implements OAuth 2.1 with:
 - **RFC 7591** - Dynamic Client Registration
-- **RFC 7636** - Proof Key for Code Exchange (PKCE, S256 required for public clients)
+- **RFC 7636** - Proof Key for Code Exchange (PKCE, S256, always required)
 - **RFC 7009** - Token Revocation
 - **RFC 8628** - Device Authorization Grant (for CLI tools)
 - **RFC 8414** - OAuth Authorization Server Metadata Discovery
+- **RFC 8707** - Resource Indicators (tokens are bound to the resource they were issued for)
+- **RFC 9207** - `iss` parameter on every authorization response
 - **RFC 9728** - Protected Resource Metadata (automatic auth server discovery)
+
+Most MCP clients (Claude.ai, Claude Code, mcp-remote) do all of this for you once they are given the MCP endpoint URL. The manual steps below are for writing your own client or debugging one.
+
+The examples use `https://documcp.example.com` as the server URL (`APP_URL`) and `https://documcp.example.com/documcp` as the MCP resource.
 
 ## Quick Start
 
 ### 1. Register Your Client
 
 ```bash
-curl -X POST http://localhost:8080/oauth/register \
+curl -X POST https://documcp.example.com/oauth/register \
   -H "Content-Type: application/json" \
   -d '{
     "client_name": "My MCP Client",
     "redirect_uris": ["http://localhost:3000/callback"],
     "grant_types": ["authorization_code", "refresh_token"],
     "response_types": ["code"],
-    "token_endpoint_auth_method": "none",
-    "scope": "mcp:access documents:read search:read"
+    "token_endpoint_auth_method": "none"
   }'
 ```
+
+Registration is controlled by two settings:
+
+- `OAUTH_REGISTRATION_REQUIRE_AUTH=true` (the default): only a signed-in admin can register clients. The request must carry the admin panel's session cookie; without it the endpoint returns 401. Admins can request any scope and grant type.
+- `OAUTH_REGISTRATION_REQUIRE_AUTH=false`: anyone can register, which is what Claude.ai and other clients that self-register need. These registrations are restricted to public clients (`token_endpoint_auth_method` is forced to `none`), get the default scopes whatever they ask for, and cannot use the device-code grant.
+
+`OAUTH_REGISTRATION_ENABLED=false` turns the endpoint off entirely.
 
 **Response:**
 ```json
@@ -39,7 +51,7 @@ curl -X POST http://localhost:8080/oauth/register \
   "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"],
   "token_endpoint_auth_method": "none",
-  "scope": "mcp:access documents:read search:read"
+  "scope": "mcp:access mcp:read documents:read search:read zim:read templates:read services:read"
 }
 ```
 
@@ -60,58 +72,70 @@ echo "Code Challenge: $code_challenge"
 
 ### 3. Authorization Request
 
-Redirect user to:
+Redirect the user to (line breaks added for readability):
 
 ```
-http://localhost:8080/oauth/authorize?
+https://documcp.example.com/oauth/authorize?
   response_type=code&
   client_id=YOUR_CLIENT_ID&
   redirect_uri=http://localhost:3000/callback&
-  scope=mcp:access+documents:read+search:read&
+  scope=mcp:access+mcp:read&
+  resource=https://documcp.example.com/documcp&
   code_challenge=YOUR_CODE_CHALLENGE&
   code_challenge_method=S256&
   state=RANDOM_STATE_VALUE
 ```
 
-User logs in and approves access. DocuMCP redirects to your callback:
+- `scope`: `mcp:access` lets the token reach the MCP endpoint at all; each tool then also checks `mcp:read` (search, list, read) or `mcp:write` (create, update, replace, delete). A token with only `mcp:access` can list tools but every tool call fails with an insufficient-scope error. See [Available Scopes](#available-scopes).
+- `resource`: the MCP endpoint URL ([RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707)). The token is bound to it, and `/documcp` rejects tokens bound to anything else or to nothing. Operators can accept tokens without a resource for older clients with `OAUTH_ACCEPT_EMPTY_RESOURCE=true`; see [Configuration](CONFIGURATION.md#accepting-non-rfc-8707-clients-oauth_accept_empty_resource).
+
+The user signs in and approves access. DocuMCP redirects to your callback:
 
 ```
 http://localhost:3000/callback?
   code=AUTHORIZATION_CODE&
-  state=YOUR_STATE_VALUE
+  state=YOUR_STATE_VALUE&
+  iss=https://documcp.example.com
 ```
+
+Check that `state` matches what you sent and that `iss` is the server you started with ([RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207)). Error redirects carry `iss` too.
 
 ### 4. Exchange Code for Tokens
 
+The token endpoint only accepts `application/x-www-form-urlencoded` bodies ([RFC 6749 §3.2](https://datatracker.ietf.org/doc/html/rfc6749#section-3.2)); JSON gets `415 Unsupported Media Type`.
+
 ```bash
-curl -X POST http://localhost:8080/oauth/token \
-  -H "Content-Type: application/json" \
-  -d '{
-    "grant_type": "authorization_code",
-    "code": "AUTHORIZATION_CODE",
-    "redirect_uri": "http://localhost:3000/callback",
-    "client_id": "YOUR_CLIENT_ID",
-    "code_verifier": "YOUR_CODE_VERIFIER"
-  }'
+curl -X POST https://documcp.example.com/oauth/token \
+  -d grant_type=authorization_code \
+  -d code=AUTHORIZATION_CODE \
+  -d redirect_uri=http://localhost:3000/callback \
+  -d client_id=YOUR_CLIENT_ID \
+  -d code_verifier=YOUR_CODE_VERIFIER \
+  -d resource=https://documcp.example.com/documcp
 ```
+
+`resource` is optional here, but if you send it, it must match the one from the authorization request. Confidential clients authenticate with HTTP Basic (`-u CLIENT_ID:CLIENT_SECRET`) or with `client_secret` in the body, not both.
 
 **Response:**
 ```json
 {
-  "access_token": "64_CHARACTER_TOKEN",
+  "access_token": "ACCESS_TOKEN",
   "token_type": "Bearer",
   "expires_in": 3600,
-  "refresh_token": "64_CHARACTER_REFRESH_TOKEN",
-  "scope": "mcp:access"
+  "refresh_token": "REFRESH_TOKEN",
+  "scope": "mcp:access mcp:read"
 }
 ```
+
+The granted `scope` can be narrower than the requested one: it is limited to what the approving user may delegate (see [Available Scopes](#available-scopes)).
 
 ### 5. Use Token with MCP Endpoint
 
 ```bash
-curl -X POST http://localhost:8080/documcp \
+curl -X POST https://documcp.example.com/documcp \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
@@ -124,39 +148,37 @@ curl -X POST http://localhost:8080/documcp \
 ### Refresh Token
 
 ```bash
-curl -X POST http://localhost:8080/oauth/token \
-  -H "Content-Type: application/json" \
-  -d '{
-    "grant_type": "refresh_token",
-    "refresh_token": "YOUR_REFRESH_TOKEN",
-    "client_id": "YOUR_CLIENT_ID"
-  }'
+curl -X POST https://documcp.example.com/oauth/token \
+  -d grant_type=refresh_token \
+  -d refresh_token=YOUR_REFRESH_TOKEN \
+  -d client_id=YOUR_CLIENT_ID
 ```
+
+Refresh tokens rotate: each refresh returns a new one and invalidates the old. Presenting a refresh token (or authorization code) a second time is treated as theft, and every token descended from the same authorization is revoked.
 
 ### Revoke Token
 
+The revocation endpoint accepts a form-encoded or JSON body.
+
 ```bash
-curl -X POST http://localhost:8080/oauth/revoke \
-  -H "Content-Type: application/json" \
-  -d '{
-    "token": "YOUR_ACCESS_TOKEN",
-    "client_id": "YOUR_CLIENT_ID"
-  }'
+curl -X POST https://documcp.example.com/oauth/revoke \
+  -d token=YOUR_ACCESS_TOKEN \
+  -d client_id=YOUR_CLIENT_ID
 ```
 
 ## Device Authorization Grant (CLI Tools)
 
-For CLI tools and devices without browsers, use RFC 8628 Device Authorization Grant. This avoids callback URL issues with dynamic port forwarding.
+For CLI tools and devices without browsers, use the RFC 8628 Device Authorization Grant. This avoids callback URL issues with dynamic port forwarding. The client must be registered with the `urn:ietf:params:oauth:grant-type:device_code` grant type, which requires an admin registration (see step 1).
 
 ### 1. Request Device Code
 
+This endpoint accepts a form-encoded or JSON body.
+
 ```bash
-curl -X POST http://localhost:8080/oauth/device/code \
-  -H "Content-Type: application/json" \
-  -d '{
-    "client_id": "YOUR_CLIENT_ID",
-    "scope": "mcp:access"
-  }'
+curl -X POST https://documcp.example.com/oauth/device/code \
+  -d client_id=YOUR_CLIENT_ID \
+  -d "scope=mcp:access mcp:read" \
+  -d resource=https://documcp.example.com/documcp
 ```
 
 **Response:**
@@ -164,29 +186,28 @@ curl -X POST http://localhost:8080/oauth/device/code \
 {
   "device_code": "DEVICE_CODE",
   "user_code": "ABCD-EFGH",
-  "verification_uri": "http://localhost:8080/device",
-  "verification_uri_complete": "http://localhost:8080/device?user_code=ABCD-EFGH",
-  "expires_in": 900,
+  "verification_uri": "https://documcp.example.com/oauth/device",
+  "verification_uri_complete": "https://documcp.example.com/oauth/device?user_code=ABCD-EFGH",
+  "expires_in": 600,
   "interval": 5
 }
 ```
 
+`expires_in` follows `OAUTH_DEVICE_CODE_LIFETIME` (default 10 minutes).
+
 ### 2. User Authenticates
 
-Direct user to `verification_uri_complete` or have them manually enter the `user_code` at `verification_uri`.
+Direct the user to `verification_uri_complete`, or have them enter the `user_code` at `verification_uri`. Repeated wrong codes are rate limited per IP and per user.
 
 ### 3. Poll for Token
 
 Poll the token endpoint at the specified `interval` (minimum 5 seconds):
 
 ```bash
-curl -X POST http://localhost:8080/oauth/token \
-  -H "Content-Type: application/json" \
-  -d '{
-    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-    "device_code": "DEVICE_CODE",
-    "client_id": "YOUR_CLIENT_ID"
-  }'
+curl -X POST https://documcp.example.com/oauth/token \
+  -d grant_type=urn:ietf:params:oauth:grant-type:device_code \
+  -d device_code=DEVICE_CODE \
+  -d client_id=YOUR_CLIENT_ID
 ```
 
 **Pending Response (keep polling):**
@@ -200,11 +221,11 @@ curl -X POST http://localhost:8080/oauth/token \
 **Success Response:**
 ```json
 {
-  "access_token": "64_CHARACTER_TOKEN",
+  "access_token": "ACCESS_TOKEN",
   "token_type": "Bearer",
   "expires_in": 3600,
-  "refresh_token": "64_CHARACTER_REFRESH_TOKEN",
-  "scope": "mcp:access"
+  "refresh_token": "REFRESH_TOKEN",
+  "scope": "mcp:access mcp:read"
 }
 ```
 
@@ -219,11 +240,10 @@ curl -X POST http://localhost:8080/oauth/token \
 ### Example: Using with Claude Code
 
 ```bash
-# Register client for device flow
-claude mcp add documcp -- npx -y mcp-remote http://localhost:8080/documcp 3334 --allow-http
+claude mcp add documcp -- npx -y mcp-remote https://documcp.example.com/documcp 3334
 ```
 
-The fixed port 3334 avoids VS Code port forwarding issues.
+The fixed port 3334 avoids VS Code port forwarding issues. For a plain-HTTP development server, add `--allow-http`.
 
 ## Available Scopes
 
@@ -242,11 +262,20 @@ The fixed port 3334 avoids VS Code port forwarding issues.
 | `services:write` | Write/modify services |
 | `admin` | Admin access |
 
-Default scopes for new registrations: `mcp:access documents:read search:read zim:read templates:read services:read`
+`mcp:access` admits a request to the MCP endpoint. Inside it, every tool checks `mcp:read` or `mcp:write`. The other scopes gate the REST API only.
+
+Default scopes for new registrations: `mcp:access mcp:read documents:read search:read zim:read templates:read services:read`
+
+What a user can delegate to a client at consent time depends on who they are:
+
+- **Non-admin users** can grant only the default scopes, so their clients get read-only MCP access.
+- **Admins** can grant every scope except `admin` and `services:write`, which never leave the server.
+
+A client never receives more than its registered scopes plus scopes a user has approved for it. Those approvals expire after `OAUTH_SCOPE_GRANT_TTL`.
 
 ## MCP Tools Available
 
-After authentication, you can use these tools:
+After authentication, you can call the tools below. The first two need `mcp:read`; the rest need `mcp:write`. `tools/list` returns all 17 tools with their input schemas, and [docs/contracts/mcp-contract.json](contracts/mcp-contract.json) documents them.
 
 ### 1. search_documents
 
@@ -260,7 +289,7 @@ After authentication, you can use these tools:
     "arguments": {
       "query": "OAuth security",
       "file_type": "markdown",
-      "include_content": true,
+      "include_snippets": true,
       "limit": 10
     }
   }
@@ -336,14 +365,14 @@ After authentication, you can use these tools:
 
 ## Security Best Practices
 
-1. **Always use PKCE with S256** - Required for public clients, plain method rejected
+1. **Always use PKCE with S256** - Required for every client; the `plain` method is rejected
 2. **Validate state parameter** - Prevent CSRF attacks
 3. **Store tokens securely** - Never expose in URLs or logs
 4. **Implement token rotation** - Use refresh tokens to get new access tokens
 5. **Revoke on logout** - Clean up tokens when user logs out
 6. **Validate redirect URIs** - Only registered URIs are allowed
 7. **Use Device Authorization Grant for CLI** - Avoids callback URL issues
-8. **Respect rate limits** - Token endpoint: 30/min, registration: 10/hour
+8. **Respect rate limits** - See [Rate Limits](#rate-limits)
 
 ## Error Responses
 
@@ -363,13 +392,21 @@ Common errors:
 
 ### MCP Errors
 
+A missing, expired, or wrong-audience token gets `401` with a JSON body and a `WWW-Authenticate` header that points at the protected resource metadata:
+
+```
+WWW-Authenticate: Bearer resource_metadata="https://documcp.example.com/.well-known/oauth-protected-resource/documcp"
+```
+
 ```json
 {
-  "error": "Invalid or expired token"
+  "error": "Unauthorized",
+  "message": "Bearer token required"
 }
 ```
 
-Or JSON-RPC errors:
+A token that reaches the endpoint but lacks a tool's scope gets a normal tool result with `isError: true` and a message such as `mcp:read scope required for document search`. Protocol-level problems come back as JSON-RPC errors:
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -415,7 +452,8 @@ class DocuMCPClient {
   constructor(clientId, redirectUri) {
     this.clientId = clientId;
     this.redirectUri = redirectUri;
-    this.baseUrl = 'http://localhost:8080';
+    this.baseUrl = 'https://documcp.example.com';
+    this.resource = `${this.baseUrl}/documcp`;
   }
 
   generateRandomString(length) {
@@ -451,7 +489,8 @@ class DocuMCPClient {
       `response_type=code&` +
       `client_id=${this.clientId}&` +
       `redirect_uri=${encodeURIComponent(this.redirectUri)}&` +
-      `scope=mcp:access+documents:read+search:read&` +
+      `scope=${encodeURIComponent('mcp:access mcp:read')}&` +
+      `resource=${encodeURIComponent(this.resource)}&` +
       `code_challenge=${challenge}&` +
       `code_challenge_method=S256&` +
       `state=${state}`;
@@ -459,23 +498,27 @@ class DocuMCPClient {
     window.location.href = url;
   }
 
-  async handleCallback(code, state) {
-    // Verify state
+  async handleCallback(code, state, iss) {
+    // Verify state and issuer (RFC 9207)
     if (state !== sessionStorage.getItem('oauth_state')) {
       throw new Error('State mismatch');
+    }
+    if (iss !== this.baseUrl) {
+      throw new Error('Issuer mismatch');
     }
 
     const verifier = sessionStorage.getItem('pkce_verifier');
 
+    // The token endpoint only accepts form-encoded bodies.
     const response = await fetch(`${this.baseUrl}/oauth/token`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body: new URLSearchParams({
         grant_type: 'authorization_code',
         code,
         redirect_uri: this.redirectUri,
         client_id: this.clientId,
-        code_verifier: verifier
+        code_verifier: verifier,
+        resource: this.resource
       })
     });
 
@@ -487,7 +530,8 @@ class DocuMCPClient {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream'
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
@@ -505,34 +549,24 @@ class DocuMCPClient {
 }
 ```
 
-## Performance Expectations
-
-Based on performance testing:
-
-| Operation | Average Time |
-|-----------|-------------|
-| OAuth client registration | ~21ms |
-| Token exchange | ~20-25ms |
-| tools/list | ~16ms |
-| search_documents | ~29ms |
-| read_document | ~18ms |
-
-All operations complete well under 500ms, suitable for real-time MCP integrations.
-
 ## Rate Limits
+
+Per client IP:
 
 | Endpoint | Limit |
 |----------|-------|
-| Token (`/oauth/token`) | 30/min, 100/hour |
-| Registration (`/oauth/register`) | 10/hour, 50/day |
-| Authorization (`/oauth/authorize`) | 30/min |
-| Device Authorization (`/oauth/device/code`) | 30/min |
-| Device Verification (`/device`) | 5/min, 30/hour |
+| Token and revocation (`/oauth/token`, `/oauth/revoke`) | 30/min and 100/hour |
+| Registration (`/oauth/register`) | 10/hour and 50/day |
+| Authorization and consent (`/oauth/authorize*`) | 30/min |
+| Device authorization (`/oauth/device/code`) | 30/min |
+| Device verification form (`POST /oauth/device*`) | 10/min |
 
 ## Support
 
 - MCP Protocol: [Model Context Protocol](https://modelcontextprotocol.io)
-- OAuth 2.1: [RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749)
+- OAuth 2.0: [RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749)
+- Resource Indicators: [RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707)
+- Authorization Server Issuer Identification: [RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207)
 - PKCE: [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636)
 - Dynamic Registration: [RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591)
 - Device Authorization: [RFC 8628](https://datatracker.ietf.org/doc/html/rfc8628)
