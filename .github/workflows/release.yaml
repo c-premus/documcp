@@ -120,11 +120,31 @@ jobs:
       # registry-side referrer manifest is skipped because Docker Hub has no
       # public API to GC orphan manifests once a tag rolls off (same constraint
       # the attest-build-provenance step above documents).
+      # Both steps retry: the public Fulcio/Rekor instances return transient
+      # errors (v0.32.3 failed on a Fulcio 400 wrapping a cancelled GCP KMS
+      # call), and cosign does not retry them itself. A retry after a partial
+      # success at worst records a second, equally valid signature.
       - name: Sign GHCR image
-        run: cosign sign --yes ${{ env.GHCR_IMAGE }}@${{ steps.push.outputs.digest }}
+        env:
+          IMAGE_REF: ${{ env.GHCR_IMAGE }}@${{ steps.push.outputs.digest }}
+        run: |
+          for attempt in 1 2 3; do
+            cosign sign --yes "$IMAGE_REF" && exit 0
+            echo "::warning::cosign sign attempt $attempt failed"
+            [ "$attempt" -lt 3 ] && sleep $((attempt * 20))
+          done
+          exit 1
 
       - name: Sign Docker Hub image
-        run: cosign sign --yes --upload=false docker.io/${{ env.DOCKERHUB_IMAGE }}@${{ steps.push.outputs.digest }}
+        env:
+          IMAGE_REF: docker.io/${{ env.DOCKERHUB_IMAGE }}@${{ steps.push.outputs.digest }}
+        run: |
+          for attempt in 1 2 3; do
+            cosign sign --yes --upload=false "$IMAGE_REF" && exit 0
+            echo "::warning::cosign sign attempt $attempt failed"
+            [ "$attempt" -lt 3 ] && sleep $((attempt * 20))
+          done
+          exit 1
 
       # Docker Hub tag retention. We can't prune untagged manifests from here:
       # the "Advanced Image Management" API (/v2/namespaces/.../images) was
