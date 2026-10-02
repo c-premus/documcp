@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -32,14 +31,18 @@ const (
 	defaultExtractionTimeout = 2 * time.Minute
 )
 
-// pdfcpuConfigOnce pins pdfcpu to its in-memory default configuration the
-// first time an extractor is constructed. Without this, NewDefaultConfiguration
+// pdfcpuConfig returns a stateless pdfcpu configuration: built-in defaults, no
+// config dir on disk, no network fetches. Every pdfcpu call must receive one.
+// A nil configuration makes pdfcpu fall back to NewDefaultConfiguration, which
 // tries to materialize a config dir under os.UserConfigDir()/os.TempDir() and
 // panics via fault.Fail if it can't write there — a real risk on the distroless
-// runtime (no HOME, read-only filesystem). Done under sync.Once from the
-// constructor rather than init() to honor the project's no-init-side-effects
-// rule (mirrors the go-git InstallProtocol pattern).
-var pdfcpuConfigOnce sync.Once
+// runtime (no HOME, read-only filesystem).
+func pdfcpuConfig() *pdfcpumodel.Configuration {
+	conf := pdfcpumodel.NewStatelessConfiguration()
+	conf.ValidationMode = pdfcpumodel.ValidationRelaxed
+	conf.Offline = true
+	return conf
+}
 
 // PDFExtractor extracts text from PDF files via pure Go libraries.
 //
@@ -50,7 +53,6 @@ type PDFExtractor struct {
 
 // New creates a new PDFExtractor with default limits.
 func New() *PDFExtractor {
-	pdfcpuConfigOnce.Do(pdfcpuapi.DisableConfigDir)
 	return &PDFExtractor{
 		maxExtractedTextSize: defaultMaxExtractedTextSize,
 	}
@@ -74,7 +76,8 @@ func (e *PDFExtractor) Supports(mimeType string) bool {
 // Extract reads the PDF at filePath and returns its text content and metadata.
 // It uses ledongthuc/pdf for text extraction and pdfcpu for metadata.
 // Extraction runs in a goroutine with a timeout to prevent indefinite blocking
-// (the underlying library does not accept context.Context).
+// (ledongthuc/pdf does not accept context.Context; pdfcpu calls receive the
+// timeout context and stop at their cancellation checkpoints).
 func (e *PDFExtractor) Extract(ctx context.Context, filePath string) (*extractor.ExtractedContent, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("context canceled before PDF extraction: %w", err)
@@ -89,12 +92,12 @@ func (e *PDFExtractor) Extract(ctx context.Context, filePath string) (*extractor
 	}
 	ch := make(chan result, 1)
 	go func() {
-		text, err := extractText(filePath, e.maxExtractedTextSize)
+		text, err := extractText(ctx, filePath, e.maxExtractedTextSize)
 		if err != nil {
 			ch <- result{err: fmt.Errorf("extracting PDF text: %w", err)}
 			return
 		}
-		metadata := extractMetadata(filePath)
+		metadata := extractMetadata(ctx, filePath)
 		ch <- result{content: &extractor.ExtractedContent{
 			Content:   text,
 			Metadata:  metadata,
@@ -116,7 +119,7 @@ func (e *PDFExtractor) Extract(ctx context.Context, filePath string) (*extractor
 // The per-page Page.GetPlainText() has its own recover() for panics during
 // content parsing. We add an outer recover() for panics during Open/NumPage/Page
 // (cross-reference table parsing, encryption handling, etc.).
-func extractText(filePath string, maxSize int64) (text string, err error) {
+func extractText(ctx context.Context, filePath string, maxSize int64) (text string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			text = ""
@@ -135,7 +138,7 @@ func extractText(filePath string, maxSize int64) (text string, err error) {
 		if !isEncryptedPDFError(err) {
 			return "", fmt.Errorf("opening PDF: %w", err)
 		}
-		decryptedPath, derr := decryptToTempPDF(filePath)
+		decryptedPath, derr := decryptToTempPDF(ctx, filePath)
 		if derr != nil {
 			return "", fmt.Errorf("opening encrypted PDF: %w", derr)
 		}
@@ -202,7 +205,7 @@ func isEncryptedPDFError(err error) bool {
 // writable location (the worker's temp dir in production) rather than relying
 // on a system temp dir, which isn't guaranteed writable on the distroless
 // runtime.
-func decryptToTempPDF(srcPath string) (string, error) {
+func decryptToTempPDF(ctx context.Context, srcPath string) (string, error) {
 	tmp, err := os.CreateTemp(filepath.Dir(srcPath), "documcp-pdf-decrypt-*.pdf")
 	if err != nil {
 		return "", fmt.Errorf("creating scratch file: %w", err)
@@ -211,10 +214,7 @@ func decryptToTempPDF(srcPath string) (string, error) {
 	// pdfcpu's DecryptFile reopens the output path itself.
 	_ = tmp.Close()
 
-	conf := pdfcpumodel.NewDefaultConfiguration()
-	conf.ValidationMode = pdfcpumodel.ValidationRelaxed
-
-	if err := pdfcpuapi.DecryptFile(srcPath, tmpPath, conf); err != nil {
+	if err := pdfcpuapi.DecryptFile(ctx, srcPath, tmpPath, pdfcpuConfig()); err != nil {
 		_ = os.Remove(tmpPath)
 		return "", fmt.Errorf("pdfcpu decrypt: %w", err)
 	}
@@ -329,7 +329,7 @@ func isContinuation(r rune) bool {
 // extractMetadata uses pdfcpu to read PDF document properties.
 // It returns a best-effort result — if metadata extraction fails or panics,
 // an empty map is returned.
-func extractMetadata(filePath string) (metadata map[string]any) {
+func extractMetadata(ctx context.Context, filePath string) (metadata map[string]any) {
 	metadata = make(map[string]any)
 
 	defer func() {
@@ -344,7 +344,7 @@ func extractMetadata(filePath string) (metadata map[string]any) {
 	}
 	defer func() { _ = f.Close() }()
 
-	props, err := pdfcpuapi.Properties(f, nil)
+	props, err := pdfcpuapi.Properties(ctx, f, pdfcpuConfig())
 	if err != nil {
 		return metadata
 	}
