@@ -11,6 +11,17 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.9] - 2026-10-07
+
+### Fixes
+
+- fix(deps): patch source-map-js and drop obsolete npm overrides
+
+### Maintenance
+
+- chore(deps): update traefik:v3.7 docker digest to b588cb5 (#663)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 6165430 (#662)
+
 ## [0.32.8] - 2026-10-06
 
 ### Fixes
@@ -20,6 +31,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.8
 - chore(deps): update dependency eslint to v10.12.0 (#661)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 32027ed
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to cada868 (#658)
@@ -2625,6 +2637,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.9]: https://github.com/c-premus/documcp/compare/v0.32.8...v0.32.9
 [0.32.8]: https://github.com/c-premus/documcp/compare/v0.32.7...v0.32.8
 [0.32.7]: https://github.com/c-premus/documcp/compare/v0.32.6...v0.32.7
 [0.32.6]: https://github.com/c-premus/documcp/compare/v0.32.5...v0.32.6
