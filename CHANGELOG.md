@@ -11,6 +11,21 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.10] - 2026-10-08
+
+### Fixes
+
+- fix(deps): update dependency @tanstack/vue-table to v9.2.6 (#669)
+- fix(deps): update go dependencies
+- fix(deps): update dependency @tanstack/vue-table to v9.2.5
+- fix(deps): restore bundled tailwind oxide entries in package-lock
+
+### Maintenance
+
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 6f1f3e2 (#668)
+- chore(deps): update dependency jsdom to v30.1.2
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to dbf6d87 (#665)
+
 ## [0.32.9] - 2026-10-07
 
 ### Fixes
@@ -19,6 +34,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.9
 - chore(deps): update traefik:v3.7 docker digest to b588cb5 (#663)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 6165430 (#662)
 
@@ -2637,6 +2653,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.10]: https://github.com/c-premus/documcp/compare/v0.32.9...v0.32.10
 [0.32.9]: https://github.com/c-premus/documcp/compare/v0.32.8...v0.32.9
 [0.32.8]: https://github.com/c-premus/documcp/compare/v0.32.7...v0.32.8
 [0.32.7]: https://github.com/c-premus/documcp/compare/v0.32.6...v0.32.7
