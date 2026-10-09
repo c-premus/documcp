@@ -11,6 +11,23 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.11] - 2026-10-09
+
+### Fixes
+
+- fix(deps): update module golang.org/x/net to v0.60.0 [security] (#679)
+- fix(deps): update go dependencies
+
+### Maintenance
+
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 2c7b118 (#678)
+- chore(deps): update go toolchain to v1.27.2 (#673)
+- chore(deps): update dependency typescript-eslint to v8.71.1 (#676)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 9b8e99b
+- chore(deps): update docker dependencies
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to ece849d
+- chore(deps): update dependency postcss to v8.5.29 (#671)
+
 ## [0.32.10] - 2026-10-08
 
 ### Fixes
@@ -22,6 +39,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.10
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 6f1f3e2 (#668)
 - chore(deps): update dependency jsdom to v30.1.2
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to dbf6d87 (#665)
@@ -2653,6 +2671,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.11]: https://github.com/c-premus/documcp/compare/v0.32.10...v0.32.11
 [0.32.10]: https://github.com/c-premus/documcp/compare/v0.32.9...v0.32.10
 [0.32.9]: https://github.com/c-premus/documcp/compare/v0.32.8...v0.32.9
 [0.32.8]: https://github.com/c-premus/documcp/compare/v0.32.7...v0.32.8
