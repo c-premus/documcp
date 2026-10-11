@@ -54,7 +54,7 @@ require (
 	golang.org/x/net v0.60.0
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sync v0.24.0
-	riverqueue.com/riverui v0.20.0
+	riverqueue.com/riverui v0.21.0
 )
 
 require (

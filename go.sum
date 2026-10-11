@@ -1333,3 +1333,5 @@ riverqueue.com/riverui v0.19.0 h1:BOFDze4EXN6QwWeFRh4C9UsknH7dGDxhl9LiYGvsRzY=
 riverqueue.com/riverui v0.19.0/go.mod h1:97c0ys8TMLR8S3g32iITDjWVPO4zkNqlg28wRVT0KyI=
 riverqueue.com/riverui v0.20.0 h1:roQ5OQnXjoo2N+oLYj/ZiG4XxV3G1MnBZk1zQJ1RJoo=
 riverqueue.com/riverui v0.20.0/go.mod h1:18ukgX62InstKiDNRdlMUVge8aUWSZbRKYTYYeTJWWA=
+riverqueue.com/riverui v0.21.0 h1:ERvscQm7Ohw6qmJ24nbgbBIibMME/zcL6DTYfZHZvdQ=
+riverqueue.com/riverui v0.21.0/go.mod h1:4Ak1OzaMolEjH/7PLSP/zu0wB/MvrVtadQ/K2e1/6Uc=
