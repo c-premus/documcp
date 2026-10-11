@@ -11,6 +11,23 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.13] - 2026-10-11
+
+### Fixes
+
+- fix(extractor): bound xlsx parse time and panics
+- fix(deps): patch 15 excelize security advisories
+- fix(deps): update module riverqueue.com/riverui to v0.21.0 (#691)
+- fix(deps): update dependency @tanstack/vue-table to v9.2.7 (#689)
+- fix(deps): update frontend dependencies (#688)
+
+### Maintenance
+
+- chore(deps): prune unused go.mod requirements
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 11431b1 (#690)
+- chore(deps): update golang:1.27.2-alpine docker digest to f92b6ef (#687)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 4a93eba (#686)
+
 ## [0.32.12] - 2026-10-10
 
 ### Fixes
@@ -22,6 +39,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.12
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 0423c5d (#685)
 - chore(deps): update mcr.microsoft.com/devcontainers/base:debian docker digest to 6ee2b40 (#683)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 33e1ce7
@@ -2687,6 +2705,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.13]: https://github.com/c-premus/documcp/compare/v0.32.12...v0.32.13
 [0.32.12]: https://github.com/c-premus/documcp/compare/v0.32.11...v0.32.12
 [0.32.11]: https://github.com/c-premus/documcp/compare/v0.32.10...v0.32.11
 [0.32.10]: https://github.com/c-premus/documcp/compare/v0.32.9...v0.32.10
