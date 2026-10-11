@@ -215,12 +215,21 @@ jobs:
           echo "Done. deleted=$((DELETE_COUNT - FAIL)), failed=${FAIL}"
           [ "${FAIL}" = "0" ]
 
-      # Multi-arch builds + attestations create ~5 versions per release
       - name: Clean up old GHCR versions
-        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55  # v5.0.0
+        # Keep the 10 newest releases. Each release leaves TWO tagged versions:
+        # the image index (semver + major.minor + latest) and its cosign
+        # signature (tag sha256-<digest>), hence keep-n-most-recent: 20.
+        # tag-selection: both also prunes untagged versions older than the
+        # cut-off, but snok never deletes the platform/attestation children
+        # of a kept multi-arch index. Do not swap this for
+        # actions/delete-package-versions: its min-versions-to-keep counts
+        # those children and deleted them out from under kept tags.
+        uses: snok/container-retention-policy@d3bdcf5ce9b05f685154e4a16c39233b245e3d53  # v3.1.0
         continue-on-error: true
         with:
-          package-name: documcp
-          package-type: container
-          min-versions-to-keep: 25
-          delete-only-untagged-versions: false
+          account: user
+          token: ${{ secrets.GITHUB_TOKEN }}
+          image-names: documcp
+          tag-selection: both
+          keep-n-most-recent: 20
+          cut-off: 1d
