@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/xuri/excelize/v2"
 
@@ -23,6 +24,11 @@ const (
 
 	// defaultMaxSheets limits the number of sheets processed from an XLSX file.
 	defaultMaxSheets = 100
+
+	// defaultExtractionTimeout bounds XLSX extraction. excelize does not
+	// accept a context, and malformed workbooks have made its readers loop
+	// or burn CPU (e.g. GHSA-jw42-f3rr-4cc3, GHSA-jrfj-fhj2-jjvm).
+	defaultExtractionTimeout = 2 * time.Minute
 )
 
 // Compile-time check that XLSXExtractor implements extractor.Extractor.
@@ -35,6 +41,7 @@ type XLSXExtractor struct {
 	maxSheets       int
 	maxUnzipSize    int64
 	maxUnzipXMLSize int64
+	timeout         time.Duration
 }
 
 // New creates a new XLSXExtractor with default limits.
@@ -43,6 +50,7 @@ func New() *XLSXExtractor {
 		maxSheets:       defaultMaxSheets,
 		maxUnzipSize:    defaultMaxUnzipSize,
 		maxUnzipXMLSize: defaultMaxUnzipXMLSize,
+		timeout:         defaultExtractionTimeout,
 	}
 }
 
@@ -66,8 +74,52 @@ func (e *XLSXExtractor) Supports(mime string) bool {
 }
 
 // Extract reads the XLSX file at filePath and returns its text content
-// formatted as markdown tables.
-func (e *XLSXExtractor) Extract(ctx context.Context, filePath string) (result *extractor.ExtractedContent, retErr error) {
+// formatted as markdown tables. Extraction runs in a goroutine with a timeout
+// and panic recovery, because excelize parses untrusted input without a
+// context and has a history of panicking on malformed workbooks.
+func (e *XLSXExtractor) Extract(ctx context.Context, filePath string) (*extractor.ExtractedContent, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context canceled before xlsx extraction: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, e.timeout)
+	defer cancel()
+
+	return runGuarded(ctx, func() (*extractor.ExtractedContent, error) {
+		return e.extract(ctx, filePath)
+	})
+}
+
+// runGuarded runs fn in a goroutine, converting a panic into an error and
+// returning early when ctx is done. On timeout the goroutine is abandoned:
+// excelize offers no way to interrupt it, so it runs to completion in the
+// background and its result is discarded.
+func runGuarded(ctx context.Context, fn func() (*extractor.ExtractedContent, error)) (*extractor.ExtractedContent, error) {
+	type result struct {
+		content *extractor.ExtractedContent
+		err     error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				ch <- result{err: fmt.Errorf("xlsx parser panic: %v", r)}
+			}
+		}()
+		content, err := fn()
+		ch <- result{content: content, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("xlsx extraction timed out: %w", ctx.Err())
+	case r := <-ch:
+		return r.content, r.err
+	}
+}
+
+// extract does the actual work of Extract.
+func (e *XLSXExtractor) extract(ctx context.Context, filePath string) (result *extractor.ExtractedContent, retErr error) {
 	f, err := excelize.OpenFile(filePath, excelize.Options{
 		UnzipSizeLimit:    e.maxUnzipSize,
 		UnzipXMLSizeLimit: e.maxUnzipXMLSize,
