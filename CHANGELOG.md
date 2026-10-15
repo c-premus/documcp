@@ -11,11 +11,26 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.19] - 2026-10-15
+
+### Fixes
+
+- fix(deps): update go dependencies (#714)
+
+### Maintenance
+
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to a57b12d (#713)
+- chore(deps): update node.js to 44fce69 (#715)
+
 ## [0.32.18] - 2026-10-14
 
 ### Fixes
 
 - fix(deps): bump mermaid to 12.2 for katex advisory
+
+### Maintenance
+
+- chore(changelog): update for v0.32.18
 
 ## [0.32.17] - 2026-10-14
 
@@ -2768,6 +2783,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.19]: https://github.com/c-premus/documcp/compare/v0.32.18...v0.32.19
 [0.32.18]: https://github.com/c-premus/documcp/compare/v0.32.17...v0.32.18
 [0.32.17]: https://github.com/c-premus/documcp/compare/v0.32.16...v0.32.17
 [0.32.16]: https://github.com/c-premus/documcp/compare/v0.32.15...v0.32.16
