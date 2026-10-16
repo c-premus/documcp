@@ -11,6 +11,26 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.20] - 2026-10-16
+
+### Fixes
+
+- fix(deps): update dependency @tanstack/vue-table to v9.3.1
+- fix(deps): update frontend dependencies (#720)
+- fix(deps): update module github.com/go-chi/chi/v5 to v5.4.0 (#721)
+- fix(ci): move Renovate forward to 44.164.2, the first release with the Forgejo fix
+- fix(ci): roll Renovate back to 44.155.9 until Forgejo clone fix ships
+
+### Maintenance
+
+- chore(deps): update traefik:v3.7 docker digest to 0f61502 (#727)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to cddc848 (#726)
+- chore(deps): update dependency postcss to v8.5.30
+- chore(deps): update traefik:v3.7 docker digest to 1daf7eb
+- chore(deps): update dependency typescript-eslint to v8.71.2 (#722)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to a77b3f9 (#719)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to 30cb7c1 (#716)
+
 ## [0.32.19] - 2026-10-15
 
 ### Fixes
@@ -19,6 +39,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.19
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to a57b12d (#713)
 - chore(deps): update node.js to 44fce69 (#715)
 
@@ -2783,6 +2804,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.20]: https://github.com/c-premus/documcp/compare/v0.32.19...v0.32.20
 [0.32.19]: https://github.com/c-premus/documcp/compare/v0.32.18...v0.32.19
 [0.32.18]: https://github.com/c-premus/documcp/compare/v0.32.17...v0.32.18
 [0.32.17]: https://github.com/c-premus/documcp/compare/v0.32.16...v0.32.17
