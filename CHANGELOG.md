@@ -11,6 +11,14 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.22] - 2026-10-17
+
+### Fixes
+
+- fix(renovate): move every Node pin in one PR
+- fix(deps): update module github.com/go-chi/chi/v5 to v5.5.0 (#733)
+- fix(deps): update dependency pinia to v4.1.0 (#732)
+
 ## [0.32.21] - 2026-10-17
 
 ### Fixes
@@ -20,6 +28,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.21
 - chore(deps): pin ghcr.io/renovatebot/renovate docker tag to a1a928e (#731)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to a1a928e (#728)
 
@@ -2817,6 +2826,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.22]: https://github.com/c-premus/documcp/compare/v0.32.21...v0.32.22
 [0.32.21]: https://github.com/c-premus/documcp/compare/v0.32.20...v0.32.21
 [0.32.20]: https://github.com/c-premus/documcp/compare/v0.32.19...v0.32.20
 [0.32.19]: https://github.com/c-premus/documcp/compare/v0.32.18...v0.32.19
