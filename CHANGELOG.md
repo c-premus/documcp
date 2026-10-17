@@ -11,6 +11,18 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.21] - 2026-10-17
+
+### Fixes
+
+- fix(deps): update dependency vue to v3.5.44 (#729)
+- fix(renovate): age-gate the runner image through GitHub releases
+
+### Maintenance
+
+- chore(deps): pin ghcr.io/renovatebot/renovate docker tag to a1a928e (#731)
+- chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to a1a928e (#728)
+
 ## [0.32.20] - 2026-10-16
 
 ### Fixes
@@ -23,6 +35,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.20
 - chore(deps): update traefik:v3.7 docker digest to 0f61502 (#727)
 - chore(deps): update ghcr.io/renovatebot/renovate:latest docker digest to cddc848 (#726)
 - chore(deps): update dependency postcss to v8.5.30
@@ -2804,6 +2817,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.21]: https://github.com/c-premus/documcp/compare/v0.32.20...v0.32.21
 [0.32.20]: https://github.com/c-premus/documcp/compare/v0.32.19...v0.32.20
 [0.32.19]: https://github.com/c-premus/documcp/compare/v0.32.18...v0.32.19
 [0.32.18]: https://github.com/c-premus/documcp/compare/v0.32.17...v0.32.18
