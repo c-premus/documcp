@@ -16,7 +16,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/exaring/otelpgx v0.13.0
 	github.com/getsentry/sentry-go v0.50.0
-	github.com/go-chi/chi/v5 v5.4.0
+	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-chi/httprate v0.16.1
 	github.com/go-chi/httprate-redis v0.7.0
 	github.com/go-git/go-git/v5 v5.19.3
