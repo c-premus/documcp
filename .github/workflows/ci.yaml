@@ -66,56 +66,52 @@ jobs:
       # CVEs (incl. GO-2026-4970, an os.Root escape that undercuts our own
       # path-traversal defense) past a green CI. CI itself is immune — its
       # setup-go reads go.mod — which is exactly why nothing caught it.
-      - name: Go toolchain agreement (go.mod vs Dockerfile vs devcontainer)
+      # The GitHub mirror has no .devcontainer/ (stripped by sync-github.yaml);
+      # the Forgejo ci.yaml also checks the devcontainer pins.
+      - name: Go toolchain agreement (go.mod vs Dockerfile)
         run: |
           set -euo pipefail
           MOD=$(sed -n 's/^toolchain go\([0-9][0-9.]*\)[[:space:]]*$/\1/p' go.mod)
           IMG=$(sed -n 's/^FROM .*[[:space:]]golang:\([0-9][0-9.]*\)-alpine@sha256:.*/\1/p' Dockerfile)
-          DEVC=$(sed -n '/features\/go:/,/}/ s/.*"version": *"\([0-9][0-9.]*\)".*/\1/p' .devcontainer/devcontainer.json)
-          if [ -z "$MOD" ] || [ -z "$IMG" ] || [ -z "$DEVC" ]; then
-            echo "::error::Could not parse the Go version from go.mod ('$MOD'), Dockerfile ('$IMG') or .devcontainer/devcontainer.json ('$DEVC') — the guard's pattern has drifted from the file format" >&2
+          if [ -z "$MOD" ] || [ -z "$IMG" ]; then
+            echo "::error::Could not parse the Go version from go.mod ('$MOD') or Dockerfile ('$IMG') — the guard's pattern has drifted from the file format" >&2
             exit 1
           fi
           if [ "$MOD" != "$IMG" ]; then
             echo "::error::Go toolchain mismatch — go.mod toolchain is go$MOD but the Dockerfile builder is golang:$IMG-alpine. The Dockerfile is what actually ships; bump it (tag AND digest) to match." >&2
             exit 1
           fi
-          if [ "$MOD" != "$DEVC" ]; then
-            echo "::error::Go toolchain mismatch — go.mod toolchain is go$MOD but the devcontainer go feature is $DEVC. Bump .devcontainer/devcontainer.json to match." >&2
-            exit 1
-          fi
-          echo "Go toolchain agrees: go.mod=$MOD Dockerfile=$IMG devcontainer=$DEVC"
+          echo "Go toolchain agrees: go.mod=$MOD Dockerfile=$IMG"
 
-      # Node is pinned in three places Renovate moves as one "Node.js" group:
-      # frontend/.nvmrc (read by setup-node here), the Dockerfile node image
-      # (builds the frontend that actually ships) and the devcontainer node
-      # feature. @types/node is capped to the same major in renovate.json so
-      # the type definitions never describe APIs the runtime lacks. Compared
-      # by major: the Dockerfile and the other pins name a major line, not a
-      # patch.
-      - name: Node version agreement (.nvmrc vs Dockerfile vs devcontainer vs @types/node)
+      # Node is pinned in frontend/.nvmrc (read by setup-node here) and the
+      # Dockerfile node image (builds the frontend that actually ships);
+      # Renovate moves them as one "Node.js" group. @types/node is capped to
+      # the same major so the type definitions never describe APIs the
+      # runtime lacks. Compared by major: the Dockerfile names a major line,
+      # not a patch. The GitHub mirror has no .devcontainer/ (stripped by
+      # sync-github.yaml); the Forgejo ci.yaml also checks the devcontainer pins.
+      - name: Node version agreement (.nvmrc vs Dockerfile vs @types/node)
         run: |
           set -euo pipefail
           NVM=$(sed -n 's/^v\{0,1\}\([0-9][0-9]*\).*/\1/p' frontend/.nvmrc)
           IMG=$(sed -n 's/^FROM .*[[:space:]]node:\([0-9][0-9]*\)-alpine@sha256:.*/\1/p' Dockerfile)
-          DEVC=$(sed -n '/features\/node:/,/}/ s/.*"version": *"\([0-9][0-9]*\).*/\1/p' .devcontainer/devcontainer.json)
           TFE=$(sed -n 's/.*"@types\/node": *"[^0-9]*\([0-9][0-9]*\)\..*/\1/p' frontend/package.json)
           TGR=$(sed -n 's/.*"@types\/node": *"[^0-9]*\([0-9][0-9]*\)\..*/\1/p' grafana/package.json)
-          if [ -z "$NVM" ] || [ -z "$IMG" ] || [ -z "$DEVC" ] || [ -z "$TFE" ] || [ -z "$TGR" ]; then
-            echo "::error::Could not parse a Node major from frontend/.nvmrc ('$NVM'), Dockerfile ('$IMG'), .devcontainer/devcontainer.json ('$DEVC'), frontend/package.json @types/node ('$TFE') or grafana/package.json @types/node ('$TGR') — the guard's pattern has drifted from the file format" >&2
+          if [ -z "$NVM" ] || [ -z "$IMG" ] || [ -z "$TFE" ] || [ -z "$TGR" ]; then
+            echo "::error::Could not parse a Node major from frontend/.nvmrc ('$NVM'), Dockerfile ('$IMG'), frontend/package.json @types/node ('$TFE') or grafana/package.json @types/node ('$TGR') — the guard's pattern has drifted from the file format" >&2
             exit 1
           fi
           FAIL=0
-          for pair in "Dockerfile node:$IMG-alpine=$IMG" ".devcontainer/devcontainer.json node feature $DEVC=$DEVC" "frontend/package.json @types/node $TFE.x=$TFE" "grafana/package.json @types/node $TGR.x=$TGR"; do
+          for pair in "Dockerfile node:$IMG-alpine=$IMG" "frontend/package.json @types/node $TFE.x=$TFE" "grafana/package.json @types/node $TGR.x=$TGR"; do
             where=${pair%=*}
             major=${pair##*=}
             if [ "$major" != "$NVM" ]; then
-              echo "::error::Node major mismatch — frontend/.nvmrc says $NVM but $where. Bump it to match (for @types/node, raise the allowedVersions cap in renovate.json too)." >&2
+              echo "::error::Node major mismatch — frontend/.nvmrc says $NVM but $where. Bump it to match (for @types/node, renovate.json's allowedVersions cap lives in the Forgejo source repo)." >&2
               FAIL=1
             fi
           done
           [ "$FAIL" -eq 0 ] || exit 1
-          echo "Node major agrees: .nvmrc=$NVM Dockerfile=$IMG devcontainer=$DEVC @types/node frontend=$TFE grafana=$TGR"
+          echo "Node major agrees: .nvmrc=$NVM Dockerfile=$IMG @types/node frontend=$TFE grafana=$TGR"
 
   test:
     name: Test
