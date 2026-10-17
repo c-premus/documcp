@@ -1,5 +1,7 @@
 # Stage 1: Frontend build (always native — output is static files)
-# node:24-alpine — pinned for supply chain integrity
+# node:<major>-alpine@sha256 — pinned by tag and digest for supply chain integrity.
+# The major must match frontend/.nvmrc and the devcontainer node feature: Renovate's
+# "Node.js" group moves all three, and ci.yaml fails the build if they disagree.
 FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS frontend
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
