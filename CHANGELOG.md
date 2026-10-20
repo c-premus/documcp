@@ -11,6 +11,18 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.26] - 2026-10-20
+
+### Fixes
+
+- fix(deps): update github.com/xuri/excelize/v2 digest to 611b222 (#739)
+
+### Maintenance
+
+- chore(deps): update go toolchain to v1.27.3 (#740)
+- chore(deps): update dependency eslint to v10.13.0 (#738)
+- chore(deps): update golangci-lint to v2.15.0 (#737)
+
 ## [0.32.25] - 2026-10-19
 
 ### Fixes
@@ -19,6 +31,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.25
 - chore(deps): update frontend dependencies to v5.0.5 (#736)
 
 ## [0.32.24] - 2026-10-18
@@ -2860,6 +2873,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.26]: https://github.com/c-premus/documcp/compare/v0.32.25...v0.32.26
 [0.32.25]: https://github.com/c-premus/documcp/compare/v0.32.24...v0.32.25
 [0.32.24]: https://github.com/c-premus/documcp/compare/v0.32.23...v0.32.24
 [0.32.23]: https://github.com/c-premus/documcp/compare/v0.32.22...v0.32.23
