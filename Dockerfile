@@ -55,7 +55,7 @@ RUN mkdir -p /out/data/storage
 
 # Stage 3: Distroless static runtime — no shell, no package manager, no CVEs.
 # gcr.io/distroless/static:nonroot includes CA certificates and runs as UID 65532.
-FROM gcr.io/distroless/static:nonroot@sha256:516757106de35205efb70b91ba03f6f1298424a0678c603255cf2852a7000087
+FROM gcr.io/distroless/static:nonroot@sha256:d62067879de890a1def9da0e7766b7d20810a5e5555cef8506b752437d7a3e88
 
 # Reset working directory — distroless:nonroot defaults to /home/nonroot,
 # but our paths (binary, migrations) are at the filesystem root.
