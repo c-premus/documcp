@@ -11,10 +11,23 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.28] - 2026-10-22
+
+### Maintenance
+
+- chore(deps): update node.js to 06d7adf (#749)
+- chore(deps): update docker dependencies (#747)
+- chore(deps): update golang:1.27.3-alpine docker digest to d530cf6 (#748)
+- chore(deps): update node.js to feb7665 (#746)
+- chore(deps): update dependency postcss to v8.5.31 (#745)
+- chore(deps): update node.js to 6a1c190 (#744)
+- chore(deps): update gcr.io/distroless/static:nonroot docker digest to d620678 (#743)
+
 ## [0.32.27] - 2026-10-21
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.27
 - chore(deps): update traefik:v3.7 docker digest to 6d3e069 (#742)
 - chore(deps): update gcr.io/distroless/static:nonroot docker digest to 5167571 (#741)
 
@@ -2881,6 +2894,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.28]: https://github.com/c-premus/documcp/compare/v0.32.27...v0.32.28
 [0.32.27]: https://github.com/c-premus/documcp/compare/v0.32.26...v0.32.27
 [0.32.26]: https://github.com/c-premus/documcp/compare/v0.32.25...v0.32.26
 [0.32.25]: https://github.com/c-premus/documcp/compare/v0.32.24...v0.32.25
