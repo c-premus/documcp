@@ -1,19 +1,38 @@
-# DocuMCP
+<p align="center">
+  <img src="https://raw.githubusercontent.com/c-premus/documcp/main/docs/assets/logo.png" alt="DocuMCP logo" width="128" height="128">
+</p>
 
-[![CI](https://github.com/c-premus/documcp/actions/workflows/ci.yaml/badge.svg)](https://github.com/c-premus/documcp/actions/workflows/ci.yaml)
-[![Release](https://img.shields.io/github/v/tag/c-premus/documcp?label=release&sort=semver)](https://github.com/c-premus/documcp/tags)
-[![Image Size](https://img.shields.io/docker/image-size/cpremus/documcp?sort=semver&label=image%20size)](https://hub.docker.com/r/cpremus/documcp)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/c-premus/documcp)](https://go.dev/)
-[![License](https://img.shields.io/github/license/c-premus/documcp)](LICENSE)
+<h1 align="center">DocuMCP</h1>
 
-A documentation server that exposes knowledge bases through the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), enabling AI agents to search, read, and manage documentation.
+<p align="center">
+  <strong>Your documentation, searchable by AI agents over MCP.</strong>
+</p>
 
-DocuMCP gives AI agents structured access to your documentation via MCP tools and prompts. It handles document ingestion, full-text search, and OAuth 2.1 authorization. Written in Go and shipped as a distroless container (~45 MB).
+<p align="center">
+  <a href="https://github.com/c-premus/documcp/actions/workflows/ci.yaml"><img src="https://github.com/c-premus/documcp/actions/workflows/ci.yaml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/c-premus/documcp/tags"><img src="https://img.shields.io/github/v/tag/c-premus/documcp?label=release&sort=semver" alt="Release"></a>
+  <a href="https://github.com/c-premus/documcp/blob/main/go.mod"><img src="https://img.shields.io/badge/go-1.27-00ADD8?logo=go&logoColor=white" alt="Go 1.27"></a>
+  <a href="https://modelcontextprotocol.io/specification"><img src="https://img.shields.io/badge/MCP-2026--07--28-3b82f6" alt="MCP protocol 2026-07-28"></a>
+  <a href="https://github.com/c-premus/documcp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/c-premus/documcp" alt="License"></a>
+  <br>
+  <a href="https://hub.docker.com/r/cpremus/documcp"><img src="https://img.shields.io/docker/pulls/cpremus/documcp?logo=docker&logoColor=white" alt="Docker pulls"></a>
+  <a href="https://hub.docker.com/r/cpremus/documcp"><img src="https://img.shields.io/docker/image-size/cpremus/documcp?sort=semver&label=image%20size" alt="Image size"></a>
+  <a href="https://github.com/c-premus/documcp/pkgs/container/documcp"><img src="https://img.shields.io/badge/ghcr.io-c--premus%2Fdocumcp-24292f?logo=github" alt="GHCR image"></a>
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#connecting-a-client">Connecting a client</a> ·
+  <a href="#configuration">Configuration</a> ·
+  <a href="#documentation">Docs</a>
+</p>
+
+DocuMCP is a documentation server that exposes knowledge bases through the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), so AI agents can search, read, and manage your documentation. It handles document ingestion, full-text search, and OAuth 2.1 authorization, and ships as a single Go binary in a distroless container (~45 MB).
 
 ## Features
 
-- **MCP Server** -- 17 tools and 6 prompts via the official [Go MCP SDK](https://github.com/modelcontextprotocol/go-sdk), stateless Streamable HTTP. Search, read, create, update, replace, and delete documents. Federated search across documents, ZIM archives, and Git templates.
-- **OAuth 2.1 Authorization Server** -- PKCE, device authorization ([RFC 8628](https://datatracker.ietf.org/doc/html/rfc8628)), dynamic client registration ([RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591)), and [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) Protected Resource Metadata for automatic discovery.
+- **MCP Server** -- 17 tools and 6 prompts via the official [Go MCP SDK](https://github.com/modelcontextprotocol/go-sdk), stateless Streamable HTTP. Speaks MCP protocol `2026-07-28`; older clients negotiate down to `2025-11-25` and earlier on the same endpoint. Search, read, create, update, replace, and delete documents. Federated search across documents, ZIM archives, and Git templates.
+- **OAuth 2.1 Authorization Server** -- PKCE, device authorization ([RFC 8628](https://datatracker.ietf.org/doc/html/rfc8628)), dynamic client registration ([RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591)), [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) Protected Resource Metadata for automatic discovery, and strict [RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707) audience binding.
 - **Document Pipeline** -- Upload PDF, DOCX, XLSX, HTML, EPUB, or Markdown. Text is extracted, indexed via PostgreSQL full-text search, and searchable within seconds.
 - **External Integrations** -- Kiwix ZIM archives (federated article search) and Git template repositories.
 - **Background Jobs** -- [River](https://riverqueue.com/) Postgres-native job queue with 8 worker types, 3 queues (`high`, `default`, `low`), and 7 periodic schedules (enabled with `SCHEDULER_ENABLED=true`).
@@ -24,6 +43,13 @@ DocuMCP gives AI agents structured access to your documentation via MCP tools an
 ## Quick Start
 
 Docker Compose is the fastest way to run DocuMCP. The stack includes the application, PostgreSQL 18, Redis 8, and Traefik v3.7.
+
+Prebuilt multi-arch images (`linux/amd64`, `linux/arm64`) are published for every release:
+
+```bash
+docker pull ghcr.io/c-premus/documcp:latest   # GitHub Container Registry (used by docker-compose.yml)
+docker pull cpremus/documcp:latest            # Docker Hub
+```
 
 1. Create a `.env` file:
 
@@ -62,13 +88,23 @@ Migrations run automatically on first start. The compose file passes the whole `
 
 > **OIDC required for login:** The admin panel authenticates users via an OpenID Connect provider. Set `OIDC_PROVIDER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`, and one of `OIDC_ADMIN_GROUPS` or `OIDC_BOOTSTRAP_ADMIN_EMAIL` in your `.env` file. See `.env.example` for the full list.
 
-See [docs/OAUTH_CLIENT_GUIDE.md](docs/OAUTH_CLIENT_GUIDE.md) for connecting AI agents and CLI tools. MCP clients that don't yet implement RFC 8707 resource indicators (e.g. Open WebUI) can be supported via the opt-in `OAUTH_ACCEPT_EMPTY_RESOURCE` flag — see [Accepting non-RFC-8707 clients](docs/CONFIGURATION.md#accepting-non-rfc-8707-clients-oauth_accept_empty_resource).
+## Connecting a client
+
+The MCP endpoint is `<APP_URL>/documcp`, for example `https://documcp.example.com/documcp`. Clients discover the authorization server on their own: the first unauthenticated request gets a `401` whose `WWW-Authenticate` header points at the [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) metadata, then the client registers itself and opens a browser for login. No client ID or secret needs to be pasted anywhere.
+
+- **Claude.ai** -- add a custom connector with the endpoint URL.
+- **Claude Code** -- `claude mcp add --transport http documcp https://documcp.example.com/documcp`
+- **Clients that only speak stdio** (Claude Desktop and others) -- bridge with [mcp-remote](https://www.npmjs.com/package/mcp-remote): `npx -y mcp-remote https://documcp.example.com/documcp`
+- **Headless CLI tools** -- use the device authorization grant (RFC 8628).
+- **Clients without RFC 8707 resource indicators** (e.g. Open WebUI) -- enable the opt-in `OAUTH_ACCEPT_EMPTY_RESOURCE` flag; see [Accepting non-RFC-8707 clients](docs/CONFIGURATION.md#accepting-non-rfc-8707-clients-oauth_accept_empty_resource).
+
+[docs/OAUTH_CLIENT_GUIDE.md](docs/OAUTH_CLIENT_GUIDE.md) walks through every flow, the available scopes, and the error responses.
 
 ## Development
 
 ### Prerequisites
 
-- Go 1.27.1 (the `toolchain` directive in `go.mod`)
+- Go -- the version in `go.mod`'s `toolchain` directive (fetched automatically by `go` if missing)
 - Node.js 24 (frontend)
 - PostgreSQL (with `pg_trgm` and `unaccent` extensions)
 - Redis 8+ (distributed rate limiting and SSE events)
@@ -102,7 +138,7 @@ go test -tags integration ./...      # Unit + integration tests (needs Docker fo
 ```bash
 gofmt -w .                           # Format
 goimports -w .                       # Fix imports
-golangci-lint run                    # Lint (v2.14.0)
+golangci-lint run                    # Lint (version pinned in .github/workflows/ci.yaml)
 ```
 
 ### Frontend
@@ -160,7 +196,7 @@ docs/contracts/          OpenAPI spec, MCP contract, OAuth flow reference
 
 The application uses a single Cobra binary. `serve` and `worker` scale independently; `migrate`, `rekey`, `version`, and `health` are one-shot commands. A shared Foundation holds dependencies (database pool, Redis client, repositories, search). ServerApp handles HTTP; WorkerApp handles River queue processing. Redis provides distributed rate limiting across server instances and cross-instance SSE event delivery via Pub/Sub. Repositories use `pgxpool.Pool` directly, services accept repository interfaces, and handlers accept services. Background jobs run via River, a Postgres-native job queue.
 
-## MCP Tools
+## MCP Tools and Prompts
 
 | Tool | Description |
 |------|-------------|
@@ -183,6 +219,15 @@ The application uses a single Cobra binary. `serve` and `worker` scale independe
 | `download_template` | Download template as base64-encoded archive |
 
 Read tools need the `mcp:read` scope and write tools need `mcp:write`, on top of `mcp:access` for the endpoint itself. ZIM and Git template tools are always registered; they return empty results until a Kiwix server or Git template repository is configured in the admin panel.
+
+| Prompt | Description |
+|--------|-------------|
+| `document_analysis` | Analyze one or more documents with a configurable task, focus area, and output length |
+| `search_query_builder` | Build optimized search queries for the knowledge base from a research goal |
+| `knowledge_base_builder` | Create or expand knowledge base content as structured documents |
+| `git_template_setup` | Set up a project from Git templates with guided variable substitution and deployment |
+| `zim_research` | Research a topic in offline ZIM archives (DevDocs, Wikipedia, Stack Exchange) |
+| `cross_source_research` | Research a topic across documents, ZIM archives, and templates |
 
 ## Configuration
 

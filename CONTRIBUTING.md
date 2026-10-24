@@ -85,8 +85,9 @@ This matches Semver §4 ("v0.x.y is unstable; anything may change").
 
 ## Development setup
 
-See [`README.md`](./README.md) for environment requirements (Go 1.27.1,
-PostgreSQL, Redis, optional Kiwix Serve / OIDC provider). The
+See [`README.md`](./README.md) for environment requirements (Go per
+`go.mod`'s `toolchain` directive, PostgreSQL, Redis, optional Kiwix
+Serve / OIDC provider). The
 `devcontainer.json` definition is private; if you contribute often, the
 maintainer can share it on request.
 

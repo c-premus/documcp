@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+  <!-- GitHub social preview card. Rasterize to social-preview.png (1280x640)
+       and upload in the repository's Settings -> Social preview. -->
+  <rect width="1280" height="640" fill="#1e293b"/>
+
+  <!-- Logo glyph: the shapes of frontend/public/logo-concept-1.svg, scaled 5.5x -->
+  <g transform="translate(110 144) scale(5.5)">
+    <path d="M12 6 L38 6 L50 18 L50 56 L12 56 Z" fill="#f8fafc" stroke="#94a3b8" stroke-width="1"/>
+    <path d="M38 6 L38 18 L50 18" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+    <line x1="18" y1="26" x2="44" y2="26" stroke="#64748b" stroke-width="2" stroke-linecap="round"/>
+    <line x1="18" y1="34" x2="38" y2="34" stroke="#64748b" stroke-width="2" stroke-linecap="round"/>
+    <line x1="18" y1="42" x2="42" y2="42" stroke="#64748b" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="50" cy="50" r="10" fill="#3b82f6"/>
+    <circle cx="50" cy="50" r="4" fill="#ffffff"/>
+    <path d="M56 44 L60 40" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/>
+    <path d="M58 50 L62 50" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/>
+    <path d="M56 56 L60 60" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/>
+  </g>
+
+  <g font-family="Inter, 'DejaVu Sans', sans-serif">
+    <text x="530" y="300" font-size="120" font-weight="700" fill="#f8fafc">DocuMCP</text>
+    <text x="534" y="370" font-size="38" fill="#cbd5e1">Your documentation, searchable</text>
+    <text x="534" y="420" font-size="38" fill="#cbd5e1">by AI agents over MCP.</text>
+    <text x="534" y="500" font-size="26" fill="#3b82f6" letter-spacing="1">MCP · OAuth 2.1 · Full-text search · Go</text>
+  </g>
+</svg>
