@@ -21,4 +21,8 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: cpremus/documcp
-          short-description: "MCP documentation server with OAuth 2.1"
+          short-description: "MCP documentation server: full-text search, OAuth 2.1, PDF/DOCX/EPUB ingest"
+          # Rewrites relative markdown links (the docs table) to absolute GitHub
+          # URLs. It does not touch HTML src/href, so the README header uses
+          # absolute URLs itself.
+          enable-url-completion: true
