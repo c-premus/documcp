@@ -11,6 +11,16 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.31] - 2026-10-25
+
+### Fixes
+
+- fix(deps): update go dependencies (#757)
+
+### Maintenance
+
+- chore(deps): update dependency vite to v8.3.5 (#756)
+
 ## [0.32.30] - 2026-10-24
 
 ### Fixes
@@ -21,6 +31,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.30
 - chore(deps): update gcr.io/distroless/static:nonroot docker digest to 18f4cc2 (#755)
 
 ## [0.32.29] - 2026-10-23
@@ -2920,6 +2931,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.31]: https://github.com/c-premus/documcp/compare/v0.32.30...v0.32.31
 [0.32.30]: https://github.com/c-premus/documcp/compare/v0.32.29...v0.32.30
 [0.32.29]: https://github.com/c-premus/documcp/compare/v0.32.28...v0.32.29
 [0.32.28]: https://github.com/c-premus/documcp/compare/v0.32.27...v0.32.28
