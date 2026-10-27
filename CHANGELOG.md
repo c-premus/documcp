@@ -11,6 +11,21 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.33] - 2026-10-27
+
+### Fixes
+
+- fix(deps): update dependency @sentry/vue to v11.9.0 (#761)
+- fix(renovate): drop runner digest, pin 44.178.5
+
+### Maintenance
+
+- chore(deps): update golang:1.27.3-alpine docker digest to d200d2d (#766)
+- chore(deps): update redis:8-alpine docker digest to 47b0829 (#765)
+- chore(deps): update https://github.com/docker/login-action action to v4.7.0
+- chore(deps): update docker dependencies
+- chore(deps): update docker/login-action action to v4.7.0
+
 ## [0.32.32] - 2026-10-26
 
 ### Fixes
@@ -20,6 +35,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.32
 - chore(deps): update postgres:18-alpine docker digest to 10a5c69 (#760)
 
 ## [0.32.31] - 2026-10-25
@@ -2943,6 +2959,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.33]: https://github.com/c-premus/documcp/compare/v0.32.32...v0.32.33
 [0.32.32]: https://github.com/c-premus/documcp/compare/v0.32.31...v0.32.32
 [0.32.31]: https://github.com/c-premus/documcp/compare/v0.32.30...v0.32.31
 [0.32.30]: https://github.com/c-premus/documcp/compare/v0.32.29...v0.32.30
