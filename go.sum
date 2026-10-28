@@ -738,3 +738,5 @@ pgregory.net/rapid v1.2.0 h1:keKAYRcjm+e1F0oAuU5F5+YPAWcyxNNRK2wud503Gnk=
 pgregory.net/rapid v1.2.0/go.mod h1:PY5XlDGj0+V1FCq0o192FdRhpKHGTRIWBgqjDBTrq04=
 riverqueue.com/riverui v0.21.0 h1:ERvscQm7Ohw6qmJ24nbgbBIibMME/zcL6DTYfZHZvdQ=
 riverqueue.com/riverui v0.21.0/go.mod h1:4Ak1OzaMolEjH/7PLSP/zu0wB/MvrVtadQ/K2e1/6Uc=
+riverqueue.com/riverui v0.22.0 h1:g7L5TPWlnZvN1VCb5XMG9yZ/CfO4MkaI70PXq8msao0=
+riverqueue.com/riverui v0.22.0/go.mod h1:kk8BAx4yyYCMRVe3NBxvpggjPhWDQGkHMSjtRCgSLoI=
