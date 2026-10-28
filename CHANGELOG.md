@@ -11,6 +11,13 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.34] - 2026-10-28
+
+### Fixes
+
+- fix(deps): update module riverqueue.com/riverui to v0.22.0 (#768)
+- fix(deps): update module golang.org/x/net to v0.62.0 [security] (#767)
+
 ## [0.32.33] - 2026-10-27
 
 ### Fixes
@@ -20,6 +27,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.33
 - chore(deps): update golang:1.27.3-alpine docker digest to d200d2d (#766)
 - chore(deps): update redis:8-alpine docker digest to 47b0829 (#765)
 - chore(deps): update https://github.com/docker/login-action action to v4.7.0
@@ -2959,6 +2967,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.34]: https://github.com/c-premus/documcp/compare/v0.32.33...v0.32.34
 [0.32.33]: https://github.com/c-premus/documcp/compare/v0.32.32...v0.32.33
 [0.32.32]: https://github.com/c-premus/documcp/compare/v0.32.31...v0.32.32
 [0.32.31]: https://github.com/c-premus/documcp/compare/v0.32.30...v0.32.31
