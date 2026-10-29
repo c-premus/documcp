@@ -44,7 +44,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.44.0
-	github.com/xuri/excelize/v2 v2.11.1-0.20261026001844-a33694a7c10d
+	github.com/xuri/excelize/v2 v2.11.1-0.20261029001137-c5fd73bde8f6
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.47.0
@@ -145,7 +145,7 @@ require (
 	github.com/prometheus/common v0.72.0 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
 	github.com/redis/go-redis/extra/rediscmd/v9 v9.23.0 // indirect
-	github.com/richardlehane/mscfb v1.0.8 // indirect
+	github.com/richardlehane/mscfb v1.0.9 // indirect
 	github.com/richardlehane/msoleps v1.0.6 // indirect
 	github.com/riverqueue/apiframe v0.0.0-20251229202423-2b52ce1c482e // indirect
 	github.com/riverqueue/river/riverdriver v0.49.0 // indirect
@@ -173,7 +173,7 @@ require (
 	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
-	github.com/xuri/efp v0.0.2 // indirect
+	github.com/xuri/efp v0.0.3-0.20260924042702-217b81952dec // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
