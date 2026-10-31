@@ -11,6 +11,16 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.37] - 2026-10-31
+
+### Fixes
+
+- fix(deps): update go dependencies (#779)
+
+### Maintenance
+
+- chore(deps): update traefik:v3.7 docker digest to e9338a0
+
 ## [0.32.36] - 2026-10-30
 
 ### Fixes
@@ -21,6 +31,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.36
 - chore(deps): update frontend dependencies (#777)
 - chore(deps): update dependency typescript-eslint to v8.72.1 (#775)
 
@@ -2997,6 +3008,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.37]: https://github.com/c-premus/documcp/compare/v0.32.36...v0.32.37
 [0.32.36]: https://github.com/c-premus/documcp/compare/v0.32.35...v0.32.36
 [0.32.35]: https://github.com/c-premus/documcp/compare/v0.32.34...v0.32.35
 [0.32.34]: https://github.com/c-premus/documcp/compare/v0.32.33...v0.32.34
