@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -998,4 +999,71 @@ func TestSyncGitTemplatesWorker_Work(t *testing.T) {
 		assert.Contains(t, err.Error(), "listing git templates")
 		assert.Contains(t, err.Error(), "query timeout")
 	})
+
+	// Templates use an http:// URL so each sync fails at validation, before
+	// any network I/O; pruning runs regardless of per-template failures.
+	makeTemplates := func(n int) []model.GitTemplate {
+		templates := make([]model.GitTemplate, n)
+		for i := range templates {
+			templates[i] = model.GitTemplate{
+				ID:            int64(i + 1),
+				Slug:          fmt.Sprintf("tmpl-%d", i),
+				RepositoryURL: "http://example.com/repo.git",
+				Branch:        "main",
+			}
+		}
+		return templates
+	}
+	makeCloneDirs := func(t *testing.T, root string, names ...string) {
+		t.Helper()
+		for _, name := range names {
+			require.NoError(t, os.MkdirAll(filepath.Join(root, name, ".git"), 0o750))
+		}
+	}
+
+	tests := []struct {
+		name      string
+		templates int
+		wantStale bool // whether the stale clone survives
+	}{
+		{"prunes clones of inactive templates", 2, false},
+		{"prunes all clones when no templates remain", 0, false},
+		{"skips pruning when the list may be truncated", gitSyncListLimit, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tempDir := t.TempDir()
+			templates := makeTemplates(tt.templates)
+			makeCloneDirs(t, tempDir, "stale")
+			if len(templates) > 0 {
+				makeCloneDirs(t, tempDir, templates[0].Slug)
+			}
+
+			worker := &SyncGitTemplatesWorker{
+				Deps: SchedulerDeps{
+					GitRepo: &mockGitTemplateRepo{
+						listFn: func(_ context.Context, _ string, _, _ int) ([]model.GitTemplate, error) {
+							return templates, nil
+						},
+					},
+					GitTempDir: tempDir,
+					Logger:     testLogger(),
+				},
+			}
+
+			require.NoError(t, worker.Work(context.Background(), makeJob(SyncGitTemplatesArgs{})))
+
+			assert.Equal(t, tt.wantStale, dirExists(filepath.Join(tempDir, "stale")))
+			if len(templates) > 0 {
+				assert.True(t, dirExists(filepath.Join(tempDir, templates[0].Slug)), "active clone must be kept")
+			}
+		})
+	}
+}
+
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }

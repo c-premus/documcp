@@ -178,6 +178,9 @@ func (w *SyncKiwixWorker) Work(ctx context.Context, job *river.Job[SyncKiwixArgs
 	return nil
 }
 
+// gitSyncListLimit caps how many templates one sync run loads.
+const gitSyncListLimit = 100
+
 // SyncGitTemplatesWorker syncs Git template repositories.
 type SyncGitTemplatesWorker struct {
 	river.WorkerDefaults[SyncGitTemplatesArgs]
@@ -205,17 +208,18 @@ func (w *SyncGitTemplatesWorker) Work(ctx context.Context, job *river.Job[SyncGi
 	logger := w.Deps.Logger.With("job", "git")
 	logger.Info("starting git template sync")
 
-	templates, err := w.Deps.GitRepo.List(ctx, "", 100, 0)
+	templates, err := w.Deps.GitRepo.List(ctx, "", gitSyncListLimit, 0)
 	if err != nil {
 		return fmt.Errorf("listing git templates: %w", err)
 	}
 
+	client := git.NewClient(w.Deps.GitTempDir, w.Deps.GitMaxFileSize, w.Deps.GitMaxTotalSize, logger)
+
 	if len(templates) == 0 {
 		logger.Info("no git templates found")
+		client.PruneClones(nil)
 		return nil
 	}
-
-	client := git.NewClient(w.Deps.GitTempDir, w.Deps.GitMaxFileSize, w.Deps.GitMaxTotalSize, logger)
 
 	for i := range templates {
 		t := &templates[i]
@@ -239,6 +243,17 @@ func (w *SyncGitTemplatesWorker) Work(ctx context.Context, job *river.Job[SyncGi
 
 		tmplLogger.Info("git template sync completed")
 	}
+
+	// Remove clones left behind by renamed, disabled, or deleted templates.
+	// Skipped when the list may be truncated, so a live clone is never removed.
+	if len(templates) < gitSyncListLimit {
+		active := make(map[string]struct{}, len(templates))
+		for i := range templates {
+			active[templates[i].Slug] = struct{}{}
+		}
+		client.PruneClones(active)
+	}
+
 	recordJobCompleted(w.Deps.Metrics, job.Queue, job.Kind, time.Since(start))
 	return nil
 }
