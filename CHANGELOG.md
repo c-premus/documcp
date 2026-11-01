@@ -11,6 +11,17 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.38] - 2026-11-01
+
+### Fixes
+
+- fix(git): re-clone template cache after force-push
+- fix(deps): update dependency @sentry/vue to v11.10.0 (#782)
+
+### Maintenance
+
+- chore(deps): update gcr.io/distroless/static:nonroot docker digest to 25ac8f0 (#783)
+
 ## [0.32.37] - 2026-10-31
 
 ### Fixes
@@ -19,6 +30,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.37
 - chore(deps): update traefik:v3.7 docker digest to e9338a0
 
 ## [0.32.36] - 2026-10-30
@@ -3008,6 +3020,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.38]: https://github.com/c-premus/documcp/compare/v0.32.37...v0.32.38
 [0.32.37]: https://github.com/c-premus/documcp/compare/v0.32.36...v0.32.37
 [0.32.36]: https://github.com/c-premus/documcp/compare/v0.32.35...v0.32.36
 [0.32.35]: https://github.com/c-premus/documcp/compare/v0.32.34...v0.32.35
