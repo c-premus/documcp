@@ -11,10 +11,24 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.40] - 2026-11-03
+
+### Fixes
+
+- fix(deps): update module github.com/jackc/pgx/v5 to v5.12.0 (#790)
+- fix(deps): update go dependencies (#789)
+- fix(deps): update github.com/xuri/excelize/v2 digest to c4331ec
+
+### Maintenance
+
+- chore(deps): update traefik:v3.7 docker digest to 68ae5fe (#791)
+- chore(deps): update dependency eslint to v10.14.0 (#788)
+
 ## [0.32.39] - 2026-11-02
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.39
 - chore(deps): update dependency renovatebot/renovate to v44.198.0 (#787)
 - chore(deps): lock file maintenance (#785)
 - chore(deps): update dependency vue-tsc to v3.3.14 (#784)
@@ -3029,6 +3043,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.40]: https://github.com/c-premus/documcp/compare/v0.32.39...v0.32.40
 [0.32.39]: https://github.com/c-premus/documcp/compare/v0.32.38...v0.32.39
 [0.32.38]: https://github.com/c-premus/documcp/compare/v0.32.37...v0.32.38
 [0.32.37]: https://github.com/c-premus/documcp/compare/v0.32.36...v0.32.37
