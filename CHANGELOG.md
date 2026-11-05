@@ -11,11 +11,25 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.42] - 2026-11-05
+
+### Fixes
+
+- fix(deps): update module github.com/xuri/excelize/v2 to v2.11.1 (#794)
+
+### Maintenance
+
+- chore(deps): update dependency globals to v17.14.0 (#793)
+
 ## [0.32.41] - 2026-11-04
 
 ### Fixes
 
 - fix(deps): update go dependencies to v0.51.0 (#792)
+
+### Maintenance
+
+- chore(changelog): update for v0.32.41
 
 ## [0.32.40] - 2026-11-03
 
@@ -3050,6 +3064,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.42]: https://github.com/c-premus/documcp/compare/v0.32.41...v0.32.42
 [0.32.41]: https://github.com/c-premus/documcp/compare/v0.32.40...v0.32.41
 [0.32.40]: https://github.com/c-premus/documcp/compare/v0.32.39...v0.32.40
 [0.32.39]: https://github.com/c-premus/documcp/compare/v0.32.38...v0.32.39
