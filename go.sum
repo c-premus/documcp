@@ -667,6 +667,8 @@ github.com/xuri/excelize/v2 v2.11.1-0.20261029001137-c5fd73bde8f6 h1:zGu5f3tQT1W
 github.com/xuri/excelize/v2 v2.11.1-0.20261029001137-c5fd73bde8f6/go.mod h1:NQLBThVu4BB7tYM8wJIBj2dZsptXbDW4WyrFlL8YLZQ=
 github.com/xuri/excelize/v2 v2.11.1-0.20261102001617-c4331ec2d7aa h1:jvxFDc4MC1JbcWH8lZEBkORL0xys0MlPU6aA+8OSn4w=
 github.com/xuri/excelize/v2 v2.11.1-0.20261102001617-c4331ec2d7aa/go.mod h1:NQLBThVu4BB7tYM8wJIBj2dZsptXbDW4WyrFlL8YLZQ=
+github.com/xuri/excelize/v2 v2.11.1 h1:tm/FVufArvfUiJXJtGv8jna/zZS1t9Uji2ImsnS9iBo=
+github.com/xuri/excelize/v2 v2.11.1/go.mod h1:NQLBThVu4BB7tYM8wJIBj2dZsptXbDW4WyrFlL8YLZQ=
 github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 h1:+C0TIdyyYmzadGaL/HBLbf3WdLgC29pgyhTjAT/0nuE=
 github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9/go.mod h1:WwHg+CVyzlv/TX9xqBFXEZAuxOPxn2k1GNHwG41IIUQ=
 github.com/yosida95/uritemplate/v3 v3.0.2 h1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=
