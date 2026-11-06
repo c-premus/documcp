@@ -11,6 +11,19 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.43] - 2026-11-06
+
+### Fixes
+
+- fix(deps): update module github.com/go-jose/go-jose/v4 to v4.1.8 (#798)
+
+### Maintenance
+
+- chore(deps): update golang:1.27.3-alpine docker digest to fa3d596 (#799)
+- chore(deps): update docker dependencies (#797)
+- chore(deps): update module github.com/klauspost/compress to v1.20.2 [security] (#800)
+- chore(deps): update golang:1.27.3-alpine docker digest to fa48812 (#796)
+
 ## [0.32.42] - 2026-11-05
 
 ### Fixes
@@ -19,6 +32,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.42
 - chore(deps): update dependency globals to v17.14.0 (#793)
 
 ## [0.32.41] - 2026-11-04
@@ -3064,6 +3078,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.43]: https://github.com/c-premus/documcp/compare/v0.32.42...v0.32.43
 [0.32.42]: https://github.com/c-premus/documcp/compare/v0.32.41...v0.32.42
 [0.32.41]: https://github.com/c-premus/documcp/compare/v0.32.40...v0.32.41
 [0.32.40]: https://github.com/c-premus/documcp/compare/v0.32.39...v0.32.40
