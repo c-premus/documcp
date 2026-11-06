@@ -11,6 +11,86 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.43] - 2026-11-06
+
+### Fixes
+
+- fix(deps): update module github.com/go-jose/go-jose/v4 to v4.1.8 (#798)
+
+### Maintenance
+
+- chore(deps): update golang:1.27.3-alpine docker digest to fa3d596 (#799)
+- chore(deps): update docker dependencies (#797)
+- chore(deps): update module github.com/klauspost/compress to v1.20.2 [security] (#800)
+- chore(deps): update golang:1.27.3-alpine docker digest to fa48812 (#796)
+
+## [0.32.42] - 2026-11-05
+
+### Fixes
+
+- fix(deps): update module github.com/xuri/excelize/v2 to v2.11.1 (#794)
+
+### Maintenance
+
+- chore(changelog): update for v0.32.42
+- chore(deps): update dependency globals to v17.14.0 (#793)
+
+## [0.32.41] - 2026-11-04
+
+### Fixes
+
+- fix(deps): update go dependencies to v0.51.0 (#792)
+
+### Maintenance
+
+- chore(changelog): update for v0.32.41
+
+## [0.32.40] - 2026-11-03
+
+### Fixes
+
+- fix(deps): update module github.com/jackc/pgx/v5 to v5.12.0 (#790)
+- fix(deps): update go dependencies (#789)
+- fix(deps): update github.com/xuri/excelize/v2 digest to c4331ec
+
+### Maintenance
+
+- chore(changelog): update for v0.32.40
+- chore(deps): update traefik:v3.7 docker digest to 68ae5fe (#791)
+- chore(deps): update dependency eslint to v10.14.0 (#788)
+
+## [0.32.39] - 2026-11-02
+
+### Maintenance
+
+- chore(changelog): update for v0.32.39
+- chore(deps): update dependency renovatebot/renovate to v44.198.0 (#787)
+- chore(deps): lock file maintenance (#785)
+- chore(deps): update dependency vue-tsc to v3.3.14 (#784)
+
+## [0.32.38] - 2026-11-01
+
+### Fixes
+
+- fix(git): re-clone template cache after force-push
+- fix(deps): update dependency @sentry/vue to v11.10.0 (#782)
+
+### Maintenance
+
+- chore(changelog): update for v0.32.38
+- chore(deps): update gcr.io/distroless/static:nonroot docker digest to 25ac8f0 (#783)
+
+## [0.32.37] - 2026-10-31
+
+### Fixes
+
+- fix(deps): update go dependencies (#779)
+
+### Maintenance
+
+- chore(changelog): update for v0.32.37
+- chore(deps): update traefik:v3.7 docker digest to e9338a0
+
 ## [0.32.36] - 2026-10-30
 
 ### Fixes
@@ -21,6 +101,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.36
 - chore(deps): update frontend dependencies (#777)
 - chore(deps): update dependency typescript-eslint to v8.72.1 (#775)
 
@@ -2997,6 +3078,13 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.43]: https://github.com/c-premus/documcp/compare/v0.32.42...v0.32.43
+[0.32.42]: https://github.com/c-premus/documcp/compare/v0.32.41...v0.32.42
+[0.32.41]: https://github.com/c-premus/documcp/compare/v0.32.40...v0.32.41
+[0.32.40]: https://github.com/c-premus/documcp/compare/v0.32.39...v0.32.40
+[0.32.39]: https://github.com/c-premus/documcp/compare/v0.32.38...v0.32.39
+[0.32.38]: https://github.com/c-premus/documcp/compare/v0.32.37...v0.32.38
+[0.32.37]: https://github.com/c-premus/documcp/compare/v0.32.36...v0.32.37
 [0.32.36]: https://github.com/c-premus/documcp/compare/v0.32.35...v0.32.36
 [0.32.35]: https://github.com/c-premus/documcp/compare/v0.32.34...v0.32.35
 [0.32.34]: https://github.com/c-premus/documcp/compare/v0.32.33...v0.32.34

@@ -35,6 +35,11 @@ const (
 	binaryProbeSize           = 8 * 1024         // 8 KB for binary detection
 )
 
+// ErrHistoryRewritten is returned by Pull when the remote branch no longer
+// descends from the local clone's HEAD (e.g. after a force-push). The cached
+// clone is disposable, so callers should discard it and clone afresh.
+var ErrHistoryRewritten = errors.New("remote history rewritten")
+
 // VariablePattern matches {{variable}} placeholders in template files.
 var VariablePattern = regexp.MustCompile(`\{\{(\w+)\}\}`)
 
@@ -180,13 +185,74 @@ func (c *Client) Pull(ctx context.Context, repoDir, token string) error {
 			span.SetAttributes(attribute.Bool("git.already_up_to_date", true))
 			return nil
 		}
-		err = fmt.Errorf("git pull failed: %w", sanitizeErr(err))
+		// Check before sanitizeErr, which rebuilds the error and drops the chain.
+		if errors.Is(err, gogit.ErrNonFastForwardUpdate) {
+			err = fmt.Errorf("git pull failed: %w", ErrHistoryRewritten)
+		} else {
+			err = fmt.Errorf("git pull failed: %w", sanitizeErr(err))
+		}
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 
 	return nil
+}
+
+// CloneMatches reports whether the clone at repoDir tracks url on branch.
+// A mismatch means the template's repository URL or branch was changed after
+// the clone was made, so the clone must be replaced rather than pulled.
+func (c *Client) CloneMatches(repoDir, url, branch string) (bool, error) {
+	repo, err := gogit.PlainOpen(repoDir)
+	if err != nil {
+		return false, fmt.Errorf("opening clone: %w", sanitizeErr(err))
+	}
+
+	remote, err := repo.Remote(gogit.DefaultRemoteName)
+	if err != nil {
+		return false, fmt.Errorf("reading origin remote: %w", sanitizeErr(err))
+	}
+	urls := remote.Config().URLs
+	if len(urls) == 0 || urls[0] != url {
+		return false, nil
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		return false, fmt.Errorf("reading HEAD: %w", sanitizeErr(err))
+	}
+	return head.Name() == plumbing.NewBranchReferenceName(branch), nil
+}
+
+// PruneClones removes clone directories directly under tempDir whose name is
+// not in keep. Non-directories are left alone. It is best-effort: removal
+// failures are logged and skipped. A missing or unset tempDir is not an error.
+func (c *Client) PruneClones(keep map[string]struct{}) {
+	if c.tempDir == "" {
+		return
+	}
+	entries, err := os.ReadDir(c.tempDir)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			c.logger.Warn("listing git clone directory", "dir", c.tempDir, "error", err)
+		}
+		return
+	}
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if _, ok := keep[e.Name()]; ok {
+			continue
+		}
+		dir := filepath.Join(c.tempDir, e.Name())
+		if err := os.RemoveAll(dir); err != nil {
+			c.logger.Warn("failed to remove stale git clone", "dir", dir, "error", err)
+			continue
+		}
+		c.logger.Info("removed stale git clone", "dir", dir)
+	}
 }
 
 // ExtractFiles walks a cloned repository directory and returns all non-binary,

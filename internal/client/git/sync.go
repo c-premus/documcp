@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -37,6 +38,10 @@ type SyncTemplate struct {
 	Tags          []string
 	LastCommitSHA string
 }
+
+// validateRepositoryURL is the URL check Sync applies before any git
+// operation. A package variable so tests can sync from local repositories.
+var validateRepositoryURL = ValidateRepositoryURL
 
 // TemplateRepo defines repository methods needed for sync.
 type TemplateRepo interface {
@@ -77,7 +82,7 @@ func Sync(ctx context.Context, params SyncParams) (retErr error) {
 	)
 
 	// 1. Validate repository URL.
-	if err := ValidateRepositoryURL(tmpl.RepositoryURL, true); err != nil {
+	if err := validateRepositoryURL(tmpl.RepositoryURL, true); err != nil {
 		syncErr := fmt.Sprintf("invalid repository URL: %v", err)
 		if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, model.GitTemplateStatusFailed, "", 0, 0, syncErr); statusErr != nil {
 			logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
@@ -86,39 +91,9 @@ func Sync(ctx context.Context, params SyncParams) (retErr error) {
 	}
 
 	// 2. Clone or pull.
-	dest := filepath.Join(params.Client.tempDir, tmpl.Slug)
-	var repoDir string
-
-	if _, err := os.Stat(filepath.Join(dest, ".git")); err == nil {
-		// Existing clone — pull latest.
-		if err := params.Client.Pull(ctx, dest, tmpl.Token); err != nil {
-			syncErr := fmt.Sprintf("pull failed: %v", err)
-			if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, model.GitTemplateStatusFailed, "", 0, 0, syncErr); statusErr != nil {
-				logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
-			}
-			return fmt.Errorf("pulling template repo: %w", err)
-		}
-		repoDir = dest
-	} else {
-		// Fresh clone.
-		dir, err := params.Client.Clone(ctx, CloneParams{
-			URL:    tmpl.RepositoryURL,
-			Branch: tmpl.Branch,
-			Token:  tmpl.Token,
-			Dest:   dest,
-		})
-		if err != nil {
-			// Clean up partial clone directory left by go-git on failure.
-			if rmErr := os.RemoveAll(dest); rmErr != nil {
-				logger.Warn("failed to clean up partial clone", "dest", dest, "error", rmErr)
-			}
-			syncErr := fmt.Sprintf("clone failed: %v", err)
-			if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, model.GitTemplateStatusFailed, "", 0, 0, syncErr); statusErr != nil {
-				logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
-			}
-			return fmt.Errorf("cloning template repo: %w", err)
-		}
-		repoDir = dir
+	repoDir, err := prepareRepo(ctx, params, logger)
+	if err != nil {
+		return err
 	}
 
 	// 3. Get latest commit SHA.
@@ -192,6 +167,62 @@ func Sync(ctx context.Context, params SyncParams) (retErr error) {
 	)
 
 	return nil
+}
+
+// prepareRepo brings the cached clone at <tempDir>/<slug> up to date and
+// returns its path. The clone is disposable scratch space, so it is discarded
+// and cloned afresh when it tracks a different URL or branch than the template,
+// or when the remote history was rewritten. On failure the template is marked
+// failed and the returned error is ready to return from Sync.
+func prepareRepo(ctx context.Context, params SyncParams, logger *slog.Logger) (string, error) {
+	tmpl := params.Template
+	dest := filepath.Join(params.Client.tempDir, tmpl.Slug)
+
+	markFailed := func(errMsg string) {
+		if statusErr := params.Repo.UpdateSyncStatus(ctx, tmpl.ID, model.GitTemplateStatusFailed, "", 0, 0, errMsg); statusErr != nil {
+			logger.Warn("failed to update sync status", "template_id", tmpl.ID, "target_status", "failed", "error", statusErr)
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(dest, ".git")); err == nil {
+		// A clone that cannot be inspected falls through to Pull, which
+		// reports the broken repository.
+		match, matchErr := params.Client.CloneMatches(dest, tmpl.RepositoryURL, tmpl.Branch)
+		if matchErr == nil && !match {
+			logger.Warn("template repository URL or branch changed; re-cloning", "template_id", tmpl.ID, "dest", dest)
+		} else {
+			err := params.Client.Pull(ctx, dest, tmpl.Token)
+			if err == nil {
+				return dest, nil
+			}
+			if !errors.Is(err, ErrHistoryRewritten) {
+				markFailed(fmt.Sprintf("pull failed: %v", err))
+				return "", fmt.Errorf("pulling template repo: %w", err)
+			}
+			logger.Warn("remote history rewritten; re-cloning", "template_id", tmpl.ID, "dest", dest)
+		}
+
+		if err := os.RemoveAll(dest); err != nil {
+			markFailed(fmt.Sprintf("removing stale clone failed: %v", err))
+			return "", fmt.Errorf("removing stale clone: %w", err)
+		}
+	}
+
+	dir, err := params.Client.Clone(ctx, CloneParams{
+		URL:    tmpl.RepositoryURL,
+		Branch: tmpl.Branch,
+		Token:  tmpl.Token,
+		Dest:   dest,
+	})
+	if err != nil {
+		// Clean up partial clone directory left by go-git on failure.
+		if rmErr := os.RemoveAll(dest); rmErr != nil {
+			logger.Warn("failed to clean up partial clone", "dest", dest, "error", rmErr)
+		}
+		markFailed(fmt.Sprintf("clone failed: %v", err))
+		return "", fmt.Errorf("cloning template repo: %w", err)
+	}
+	return dir, nil
 }
 
 // findReadmeContent returns the content of the first README.md file found.

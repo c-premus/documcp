@@ -366,14 +366,25 @@ func (m *mockTemplateRepo) UpdateSearchContent(ctx context.Context, templateID i
 }
 
 // syncURL is a real public IP that passes ValidateRepositoryURL without DNS
-// resolution. Git operations in Sync tests use local origins from pre-cloned
-// repos — this URL is only validated, never fetched.
+// resolution. Sync tests that fail before any git network I/O use it — this
+// URL is only validated, never fetched.
 const syncURL = "https://8.8.8.8/repo.git"
 
+// allowLocalURLs disables Sync's URL validation for the test so a template can
+// point at a local repository path. Tests using it must not run in parallel.
+func allowLocalURLs(t *testing.T) {
+	t.Helper()
+	orig := validateRepositoryURL
+	validateRepositoryURL = func(string, ...bool) error { return nil }
+	t.Cleanup(func() { validateRepositoryURL = orig })
+}
+
 // preclone clones src to <client.tempDir>/<slug> so that Sync sees an existing
-// .git dir and takes the pull path.
+// .git dir and takes the pull path. Sync must then use src as the template's
+// RepositoryURL, so local URLs are allowed for the rest of the test.
 func preclone(t *testing.T, c *Client, src, slug string) string {
 	t.Helper()
+	allowLocalURLs(t)
 	dest := filepath.Join(c.tempDir, slug)
 	if _, err := c.Clone(context.Background(), CloneParams{URL: src, Branch: "main", Dest: dest}); err != nil {
 		t.Fatalf("preclone failed: %v", err)
@@ -473,7 +484,7 @@ func TestSync_AlreadyUpToDate(t *testing.T) {
 			ID:            1,
 			UUID:          "u",
 			Slug:          slug,
-			RepositoryURL: syncURL,
+			RepositoryURL: src,
 			Branch:        "main",
 			LastCommitSHA: sha, // already synced to this commit
 		},
@@ -506,7 +517,7 @@ func TestSync_UpdateSyncStatusFailure(t *testing.T) {
 			ID:            1,
 			UUID:          "u",
 			Slug:          slug,
-			RepositoryURL: syncURL,
+			RepositoryURL: src,
 			Branch:        "main",
 		},
 		Client: c,
@@ -538,7 +549,7 @@ func TestSync_ReplaceFilesError(t *testing.T) {
 			ID:            1,
 			UUID:          "u",
 			Slug:          slug,
-			RepositoryURL: syncURL,
+			RepositoryURL: src,
 			Branch:        "main",
 		},
 		Client: c,
@@ -564,7 +575,7 @@ func TestSync_NilLogger(t *testing.T) {
 			ID:            1,
 			UUID:          "u",
 			Slug:          slug,
-			RepositoryURL: syncURL,
+			RepositoryURL: src,
 			Branch:        "main",
 		},
 		Client: c,
@@ -573,5 +584,225 @@ func TestSync_NilLogger(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("Sync with nil logger failed: %v", err)
+	}
+}
+
+// --- history rewrite / stale clone ---
+
+// rewriteHistory replaces src's main branch with history the existing clones
+// cannot fast-forward to: hello.txt is deleted and rewritten.txt is added.
+func rewriteHistory(t *testing.T, src, mode string) {
+	t.Helper()
+	switch mode {
+	case "amend":
+		runGit(t, src, "git", "rm", "-q", "hello.txt")
+		writeTestFile(t, filepath.Join(src, "rewritten.txt"), "rewritten\n")
+		runGit(t, src, "git", "add", ".")
+		runGit(t, src, "git", "commit", "-q", "--amend", "-m", "rewritten commit")
+	case "orphan":
+		runGit(t, src, "git", "checkout", "-q", "--orphan", "fresh")
+		if err := os.Remove(filepath.Join(src, "hello.txt")); err != nil {
+			t.Fatal(err)
+		}
+		writeTestFile(t, filepath.Join(src, "rewritten.txt"), "rewritten\n")
+		runGit(t, src, "git", "add", "-A")
+		runGit(t, src, "git", "commit", "-q", "-m", "unrelated root")
+		runGit(t, src, "git", "branch", "-M", "fresh", "main")
+	default:
+		t.Fatalf("unknown rewrite mode %q", mode)
+	}
+}
+
+func headSHA(t *testing.T, c *Client, dir string) string {
+	t.Helper()
+	sha, err := c.LatestCommitSHA(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("LatestCommitSHA(%s): %v", dir, err)
+	}
+	return sha
+}
+
+func filePaths(files []TemplateFile) map[string]bool {
+	paths := make(map[string]bool, len(files))
+	for _, f := range files {
+		paths[f.Path] = true
+	}
+	return paths
+}
+
+func TestPull_HistoryRewritten(t *testing.T) {
+	for _, mode := range []string{"amend", "orphan"} {
+		t.Run(mode, func(t *testing.T) {
+			src := makeTestGitRepo(t)
+			c := newTestClient(t)
+			dest := preclone(t, c, src, "repo")
+			rewriteHistory(t, src, mode)
+
+			err := c.Pull(context.Background(), dest, "")
+			if !errors.Is(err, ErrHistoryRewritten) {
+				t.Fatalf("Pull error = %v, want ErrHistoryRewritten", err)
+			}
+		})
+	}
+}
+
+func TestCloneMatches(t *testing.T) {
+	src := makeTestGitRepo(t)
+	other := makeTestGitRepo(t)
+	c := newTestClient(t)
+	dest := preclone(t, c, src, "repo")
+
+	tests := []struct {
+		name   string
+		url    string
+		branch string
+		want   bool
+	}{
+		{"same url and branch", src, "main", true},
+		{"different url", other, "main", false},
+		{"different branch", src, "develop", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := c.CloneMatches(dest, tt.url, tt.branch)
+			if err != nil {
+				t.Fatalf("CloneMatches: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("CloneMatches = %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+	t.Run("not a repo", func(t *testing.T) {
+		if _, err := c.CloneMatches(t.TempDir(), src, "main"); err == nil {
+			t.Fatal("expected error for non-repo dir")
+		}
+	})
+}
+
+// TestSync_RecloneAfterHistoryRewrite is the regression test for a template
+// whose upstream was force-pushed: the second sync must succeed and store the
+// rewritten tree, not keep serving the old files.
+func TestSync_RecloneAfterHistoryRewrite(t *testing.T) {
+	for _, mode := range []string{"amend", "orphan"} {
+		t.Run(mode, func(t *testing.T) {
+			src := makeTestGitRepo(t)
+			c := newTestClient(t)
+			slug := "rewritten"
+			dest := preclone(t, c, src, slug)
+			oldSHA := headSHA(t, c, dest)
+			rewriteHistory(t, src, mode)
+
+			var stored []TemplateFile
+			repo := &mockTemplateRepo{
+				replaceFilesFn: func(_ context.Context, _ int64, files []TemplateFile) error {
+					stored = files
+					return nil
+				},
+			}
+			err := Sync(context.Background(), SyncParams{
+				Template: SyncTemplate{
+					ID:            1,
+					UUID:          "u",
+					Slug:          slug,
+					RepositoryURL: src,
+					Branch:        "main",
+					LastCommitSHA: oldSHA,
+				},
+				Client: c,
+				Repo:   repo,
+				Logger: slog.Default(),
+			})
+			if err != nil {
+				t.Fatalf("Sync after rewrite: %v", err)
+			}
+
+			if got, want := headSHA(t, c, dest), headSHA(t, c, src); got != want {
+				t.Errorf("clone HEAD = %s, want rewritten %s", got, want)
+			}
+			paths := filePaths(stored)
+			if paths["hello.txt"] {
+				t.Error("hello.txt was deleted upstream but is still stored")
+			}
+			if !paths["rewritten.txt"] {
+				t.Error("rewritten.txt was added upstream but is not stored")
+			}
+		})
+	}
+}
+
+func TestSync_RecloneOnURLChange(t *testing.T) {
+	srcA := makeTestGitRepo(t)
+	srcB := makeTestGitRepo(t)
+	writeTestFile(t, filepath.Join(srcB, "only-in-b.txt"), "b\n")
+	runGit(t, srcB, "git", "add", ".")
+	runGit(t, srcB, "git", "commit", "-q", "-m", "b")
+
+	c := newTestClient(t)
+	slug := "moved"
+	dest := preclone(t, c, srcA, slug)
+
+	var stored []TemplateFile
+	err := Sync(context.Background(), SyncParams{
+		Template: SyncTemplate{
+			ID:            1,
+			UUID:          "u",
+			Slug:          slug,
+			RepositoryURL: srcB,
+			Branch:        "main",
+			LastCommitSHA: headSHA(t, c, dest),
+		},
+		Client: c,
+		Repo: &mockTemplateRepo{
+			replaceFilesFn: func(_ context.Context, _ int64, files []TemplateFile) error {
+				stored = files
+				return nil
+			},
+		},
+		Logger: slog.Default(),
+	})
+	if err != nil {
+		t.Fatalf("Sync after URL change: %v", err)
+	}
+	if got, want := headSHA(t, c, dest), headSHA(t, c, srcB); got != want {
+		t.Errorf("clone HEAD = %s, want srcB %s", got, want)
+	}
+	if !filePaths(stored)["only-in-b.txt"] {
+		t.Error("files were not taken from the new repository URL")
+	}
+}
+
+// --- PruneClones ---
+
+func TestPruneClones(t *testing.T) {
+	c := newTestClient(t)
+	for _, d := range []string{"keep-a", "keep-b", "stale"} {
+		if err := os.MkdirAll(filepath.Join(c.tempDir, d, ".git"), 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeTestFile(t, filepath.Join(c.tempDir, "stray-file"), "x")
+
+	c.PruneClones(map[string]struct{}{"keep-a": {}, "keep-b": {}})
+
+	for name, wantExists := range map[string]bool{
+		"keep-a":     true,
+		"keep-b":     true,
+		"stale":      false,
+		"stray-file": true,
+	} {
+		_, err := os.Stat(filepath.Join(c.tempDir, name))
+		if exists := err == nil; exists != wantExists {
+			t.Errorf("%s exists = %v, want %v", name, exists, wantExists)
+		}
+	}
+}
+
+func TestPruneClones_MissingDir(t *testing.T) {
+	c := NewClient(filepath.Join(t.TempDir(), "absent"), 0, 0, slog.Default())
+	c.PruneClones(nil) // must not panic or create the directory
+	if _, err := os.Stat(c.tempDir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("tempDir stat err = %v, want not-exist", err)
 	}
 }
