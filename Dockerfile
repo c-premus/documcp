@@ -2,7 +2,7 @@
 # node:<major>-alpine@sha256 — pinned by tag and digest for supply chain integrity.
 # The major must match frontend/.nvmrc and the devcontainer node feature: Renovate's
 # "Node.js" group moves all three, and ci.yaml fails the build if they disagree.
-FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS frontend
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS frontend
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
