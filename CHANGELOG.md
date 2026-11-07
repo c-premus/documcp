@@ -11,6 +11,20 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.44] - 2026-11-07
+
+### Fixes
+
+- fix(deps): update module github.com/aws/smithy-go to v1.28.8 (#802)
+- fix(deps): update frontend dependencies
+
+### Maintenance
+
+- chore(deps): complete the node.js 26 bump
+- chore(deps): regenerate frontend lockfile and rebuild dist
+- chore(deps): update node.js to a34ab6d (#801)
+- chore(deps): update node.js to v26
+
 ## [0.32.43] - 2026-11-06
 
 ### Fixes
@@ -19,6 +33,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.43
 - chore(deps): update golang:1.27.3-alpine docker digest to fa3d596 (#799)
 - chore(deps): update docker dependencies (#797)
 - chore(deps): update module github.com/klauspost/compress to v1.20.2 [security] (#800)
@@ -3078,6 +3093,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.44]: https://github.com/c-premus/documcp/compare/v0.32.43...v0.32.44
 [0.32.43]: https://github.com/c-premus/documcp/compare/v0.32.42...v0.32.43
 [0.32.42]: https://github.com/c-premus/documcp/compare/v0.32.41...v0.32.42
 [0.32.41]: https://github.com/c-premus/documcp/compare/v0.32.40...v0.32.41
