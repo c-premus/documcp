@@ -119,7 +119,10 @@ jobs:
       # Docker Hub: --upload=false records the signature in Rekor only — the
       # registry-side referrer manifest is skipped because Docker Hub has no
       # public API to GC orphan manifests once a tag rolls off (same constraint
-      # the attest-build-provenance step above documents).
+      # the attest-build-provenance step above documents). cosign v3 defaults
+      # to the new bundle format, which rejects --upload=false unless --bundle
+      # names a local path, so the bundle goes to $RUNNER_TEMP (v0.32.45 failed
+      # here after cosign-installer v4.1.3 moved the default to cosign v3.1.4).
       # Both steps retry: the public Fulcio/Rekor instances return transient
       # errors (v0.32.3 failed on a Fulcio 400 wrapping a cancelled GCP KMS
       # call), and cosign does not retry them itself. A retry after a partial
@@ -140,7 +143,8 @@ jobs:
           IMAGE_REF: docker.io/${{ env.DOCKERHUB_IMAGE }}@${{ steps.push.outputs.digest }}
         run: |
           for attempt in 1 2 3; do
-            cosign sign --yes --upload=false "$IMAGE_REF" && exit 0
+            cosign sign --yes --upload=false \
+              --bundle "$RUNNER_TEMP/dockerhub.sigstore.json" "$IMAGE_REF" && exit 0
             echo "::warning::cosign sign attempt $attempt failed"
             [ "$attempt" -lt 3 ] && sleep $((attempt * 20))
           done
