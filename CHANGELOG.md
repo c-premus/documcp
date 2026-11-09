@@ -11,6 +11,20 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.46] - 2026-11-09
+
+### Fixes
+
+- fix(deps): update go dependencies (#809)
+- fix(deps): update frontend dependencies
+- fix(ci): pass a bundle path when signing the Docker Hub image
+
+### Maintenance
+
+- chore(deps): update dependency jsdom to v31
+- chore(deps): update https://github.com/docker/login-action action to v4.8.0
+- chore(deps): update docker/login-action action to v4.8.0
+
 ## [0.32.45] - 2026-11-08
 
 ### Fixes
@@ -19,6 +33,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.45
 - chore(deps): update sigstore/cosign-installer action to v4.1.3 (#803)
 
 ## [0.32.44] - 2026-11-07
@@ -3104,6 +3119,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.46]: https://github.com/c-premus/documcp/compare/v0.32.45...v0.32.46
 [0.32.45]: https://github.com/c-premus/documcp/compare/v0.32.44...v0.32.45
 [0.32.44]: https://github.com/c-premus/documcp/compare/v0.32.43...v0.32.44
 [0.32.43]: https://github.com/c-premus/documcp/compare/v0.32.42...v0.32.43
