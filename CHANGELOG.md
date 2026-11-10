@@ -11,6 +11,20 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.47] - 2026-11-10
+
+### Fixes
+
+- fix(deps): update go dependencies (#813)
+- fix(deps): allow npm 12 to fetch bundled-dependency tarballs
+- fix(deps): update module golang.org/x/sync to v0.25.0 (#811)
+
+### Maintenance
+
+- chore(deps): regenerate frontend lockfile for tailwind 4.3.5
+- chore(deps): update frontend dependencies to v4.3.5
+- chore(deps): update dependency renovatebot/renovate to v44.221.4 (#810)
+
 ## [0.32.46] - 2026-11-09
 
 ### Fixes
@@ -21,6 +35,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.46
 - chore(deps): update dependency jsdom to v31
 - chore(deps): update https://github.com/docker/login-action action to v4.8.0
 - chore(deps): update docker/login-action action to v4.8.0
@@ -3119,6 +3134,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.47]: https://github.com/c-premus/documcp/compare/v0.32.46...v0.32.47
 [0.32.46]: https://github.com/c-premus/documcp/compare/v0.32.45...v0.32.46
 [0.32.45]: https://github.com/c-premus/documcp/compare/v0.32.44...v0.32.45
 [0.32.44]: https://github.com/c-premus/documcp/compare/v0.32.43...v0.32.44
