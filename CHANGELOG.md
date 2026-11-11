@@ -11,6 +11,14 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.48] - 2026-11-11
+
+### Maintenance
+
+- chore(deps): update traefik:v3.7 docker digest to c1ea95f (#816)
+- chore(deps): update traefik:v3.7 docker digest to 180aa0f (#815)
+- chore(deps): update go toolchain to v1.27.4 (#814)
+
 ## [0.32.47] - 2026-11-10
 
 ### Fixes
@@ -21,6 +29,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.47
 - chore(deps): regenerate frontend lockfile for tailwind 4.3.5
 - chore(deps): update frontend dependencies to v4.3.5
 - chore(deps): update dependency renovatebot/renovate to v44.221.4 (#810)
@@ -3134,6 +3143,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.48]: https://github.com/c-premus/documcp/compare/v0.32.47...v0.32.48
 [0.32.47]: https://github.com/c-premus/documcp/compare/v0.32.46...v0.32.47
 [0.32.46]: https://github.com/c-premus/documcp/compare/v0.32.45...v0.32.46
 [0.32.45]: https://github.com/c-premus/documcp/compare/v0.32.44...v0.32.45
