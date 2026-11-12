@@ -11,10 +11,24 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.49] - 2026-11-12
+
+### Fixes
+
+- fix(deps): update module golang.org/x/crypto to v0.59.0 [security] (#819)
+
+### Maintenance
+
+- chore(deps): update redis:8-alpine docker digest to 7958cfb (#821)
+- chore(deps): update node.js to 6bd9ab4 (#820)
+- chore(deps): update postgres:18-alpine docker digest to 9ba53c7 (#818)
+- chore(deps): update catthehacker/ubuntu:act-22.04 docker digest to 12f97d0 (#817)
+
 ## [0.32.48] - 2026-11-11
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.48
 - chore(deps): update traefik:v3.7 docker digest to c1ea95f (#816)
 - chore(deps): update traefik:v3.7 docker digest to 180aa0f (#815)
 - chore(deps): update go toolchain to v1.27.4 (#814)
@@ -3143,6 +3157,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.49]: https://github.com/c-premus/documcp/compare/v0.32.48...v0.32.49
 [0.32.48]: https://github.com/c-premus/documcp/compare/v0.32.47...v0.32.48
 [0.32.47]: https://github.com/c-premus/documcp/compare/v0.32.46...v0.32.47
 [0.32.46]: https://github.com/c-premus/documcp/compare/v0.32.45...v0.32.46
