@@ -11,6 +11,19 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.50] - 2026-11-13
+
+### Fixes
+
+- fix(deps): update go dependencies
+- fix(deps): update frontend dependencies
+
+### Maintenance
+
+- chore(deps): update docker dependencies
+- chore(deps): update dependency typescript-eslint to v8.72.2 (#823)
+- chore(deps): update dependency vite to v8.3.7 (#822)
+
 ## [0.32.49] - 2026-11-12
 
 ### Fixes
@@ -19,6 +32,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.49
 - chore(deps): update redis:8-alpine docker digest to 7958cfb (#821)
 - chore(deps): update node.js to 6bd9ab4 (#820)
 - chore(deps): update postgres:18-alpine docker digest to 9ba53c7 (#818)
@@ -3157,6 +3171,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.50]: https://github.com/c-premus/documcp/compare/v0.32.49...v0.32.50
 [0.32.49]: https://github.com/c-premus/documcp/compare/v0.32.48...v0.32.49
 [0.32.48]: https://github.com/c-premus/documcp/compare/v0.32.47...v0.32.48
 [0.32.47]: https://github.com/c-premus/documcp/compare/v0.32.46...v0.32.47
