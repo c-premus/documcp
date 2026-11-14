@@ -11,6 +11,20 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.51] - 2026-11-14
+
+### Fixes
+
+- fix(deps): update go dependencies (#830)
+- fix(deps): update frontend dependencies (#829)
+- fix(deps): update module github.com/pressly/goose/v3 to v3.30.0 (#828)
+
+### Maintenance
+
+- chore(deps): update dependency vite to v8.3.8 (#832)
+- chore(deps): update traefik:v3.7 docker digest to b7b1b31 (#831)
+- chore(deps): update mcr.microsoft.com/devcontainers/base:debian docker digest to 38f9e6c (#827)
+
 ## [0.32.50] - 2026-11-13
 
 ### Fixes
@@ -20,6 +34,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.50
 - chore(deps): update docker dependencies
 - chore(deps): update dependency typescript-eslint to v8.72.2 (#823)
 - chore(deps): update dependency vite to v8.3.7 (#822)
@@ -3171,6 +3186,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.51]: https://github.com/c-premus/documcp/compare/v0.32.50...v0.32.51
 [0.32.50]: https://github.com/c-premus/documcp/compare/v0.32.49...v0.32.50
 [0.32.49]: https://github.com/c-premus/documcp/compare/v0.32.48...v0.32.49
 [0.32.48]: https://github.com/c-premus/documcp/compare/v0.32.47...v0.32.48
