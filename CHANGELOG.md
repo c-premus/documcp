@@ -11,6 +11,17 @@ This file lists end-user-facing changes only — `feat`, `fix`, `chore`, and
 `BREAKING`. CI, test, refactor, and docs commits are visible in the git log
 but intentionally omitted here to keep the changelog signal-dense.
 
+## [0.32.52] - 2026-11-15
+
+### Fixes
+
+- fix(deps): update module github.com/jackc/pgx/v5 to v5.13.0 (#834)
+
+### Maintenance
+
+- chore(deps): update postgres:18-alpine docker digest to b6972e1 (#835)
+- chore(deps): update dependency prettier to v3.10.0 (#833)
+
 ## [0.32.51] - 2026-11-14
 
 ### Fixes
@@ -21,6 +32,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 
 ### Maintenance
 
+- chore(changelog): update for v0.32.51
 - chore(deps): update dependency vite to v8.3.8 (#832)
 - chore(deps): update traefik:v3.7 docker digest to b7b1b31 (#831)
 - chore(deps): update mcr.microsoft.com/devcontainers/base:debian docker digest to 38f9e6c (#827)
@@ -3186,6 +3198,7 @@ but intentionally omitted here to keep the changelog signal-dense.
 - chore(docs): Remove PHP/Laravel-specific documentation
 - chore: Update memory bank and enable gopls plugin
 
+[0.32.52]: https://github.com/c-premus/documcp/compare/v0.32.51...v0.32.52
 [0.32.51]: https://github.com/c-premus/documcp/compare/v0.32.50...v0.32.51
 [0.32.50]: https://github.com/c-premus/documcp/compare/v0.32.49...v0.32.50
 [0.32.49]: https://github.com/c-premus/documcp/compare/v0.32.48...v0.32.49
