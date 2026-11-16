@@ -16,7 +16,7 @@ RUN npm run build
 # so go.mod's `toolchain` directive is ignored here. A stale tag silently produces
 # a stale-stdlib binary with no build error (the bare `go` floor still passes).
 # ci.yaml's "Go toolchain agreement" step fails the build if the two disagree.
-FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS builder
 
 # Target architecture injected by Buildx (e.g., amd64, arm64).
 ARG TARGETARCH
